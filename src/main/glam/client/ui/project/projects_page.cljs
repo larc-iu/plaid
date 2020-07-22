@@ -22,7 +22,8 @@
 
 (defsc ProjectList [this {:keys [all-projects]}]
   {:initial-state {}
-   :query         [{[:all-projects '_] (c/get-query ProjectListItem)}]}
+   :ident         (fn [_] [:component/id :project-list])
+   :query         [{:all-projects (c/get-query ProjectListItem)}]}
   [:div "This is the list of projects"
    [:.ui.divider]
    (map ui-project-item all-projects)])
@@ -38,9 +39,9 @@
                         (dr/route-deferred
                           [:component/id :projects-page]
                           #(df/load! app :all-projects ProjectListItem
-                                     {:post-mutation        `dr/target-ready
-                                      :post-mutation-params {:target [:component/id :projects-page]}})))
-   :componentDidMount (fn [this] (df/load! this :all-projects ProjectListItem))}
+                                     {:target [:component/id :project-list :all-projects]
+                                      :post-mutation        `dr/target-ready
+                                      :post-mutation-params {:target [:component/id :projects-page]}})))}
   [:div
    (ui-project-list project-list)])
 

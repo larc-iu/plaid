@@ -49,6 +49,8 @@
 
     (def s (db/get-session conn))
 
+    (prj/create s {:name "test 2" :slug "test-2"})
+
     (db/execute s "MATCH (n) DETACH DELETE (n)")
 
     (def prj-id (prj/create s {:name "test" :slug "test"}))
