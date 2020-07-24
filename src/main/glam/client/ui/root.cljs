@@ -15,13 +15,14 @@
     [glam.client.ui.common :refer [loader]]
     [glam.client.ui.project.core :refer [ProjectRouter]]
     [glam.client.ui.user-settings.core :refer [UserSettings]]
+    [glam.client.ui.admin-settings.core :refer [AdminSettings]]
     [glam.client.ui.home :refer [Home]]
     [glam.client.ui.login :refer [logout-button Login]]
     [com.fulcrologic.fulcro.components :as comp]))
 
 (dr/defrouter TopRouter
   [this {:keys [current-state route-factory route-props]}]
-  {:router-targets      [Home ProjectRouter UserSettings]
+  {:router-targets      [Home ProjectRouter UserSettings AdminSettings]
    :always-render-body? false}
   (loader))
 

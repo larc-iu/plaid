@@ -30,6 +30,7 @@
   (if-let [user-id (neo-user/get-id-by-email neo4j {:email email})]
     (augment-session-resp env {:session/valid?           false
                                :user/email               email
+                               :user/admin?              false
                                :session/server-error-msg "Problem signing up."})
     (do (log/info "doing signup")
         (log/info "inserting user: " email)
@@ -38,18 +39,24 @@
                                 :password_hash (user/hash-password password)})
         (augment-session-resp env {:session/valid?           true
                                    :session/server-error-msg nil
-                                   :user/email               email}))))
+                                   :user/email               email
+                                   :user/admin?              false}))))
 
 ;; todo use a protocol to support pluggable auth
 (defmutation login [{:keys [neo4j] :as env} {:keys [username password]}]
-  {::pc/output [:session/valid? :user/email]}
+  {::pc/output [:session/valid? :user/email :user/admin?]}
   (do
     (log/info "Authenticating" username)
     (let [user-id (neo-user/get-id-by-email neo4j {:email username})]
       (if-let [{hashed-pw :user/password :as user} (user/change-keys (neo-user/get-props neo4j {:uuid user-id}))]
         (do (log/info "User from db: " (dissoc user :user/password))
             (if (user/verify-password password hashed-pw)
-              (augment-session-resp env {:session/valid? true :user/email username})
+              (augment-session-resp env {:session/valid?           true
+                                         :user/email               username
+                                         :session/server-error-msg nil
+                                         :user/admin?              (boolean
+                                                                     (:admin
+                                                                       (neo-user/get-props neo4j {:uuid user-id})))})
               (do
                 (log/error "Invalid credentials supplied for" username)
                 (fu/server-error "Invalid credentials"))))
@@ -59,16 +66,19 @@
   {::pc/output [:session/valid?]}
   (log/info "in logout")
   (augment-session-resp env
-                        {:session/valid? false :session/server-error-msg nil :user/email ""}))
+                        {:session/valid?           false
+                         :session/server-error-msg nil
+                         :user/email               ""
+                         :user/admin?              false}))
 
 (defresolver current-session-resolver [env _]
-  {::pc/output [{::current-session [:session/valid? :user/email]}]}
-  (let [{:keys [user/email session/valid?] :as session} (get-in env [:ring/request :session])]
+  {::pc/output [{::current-session [:session/valid? :user/email :user/admin?]}]}
+  (let [{:keys [user/email session/valid? user/admin?] :as session} (get-in env [:ring/request :session])]
     (log/info " in current sesh resolver: " session)
     (if valid?
       (do
         (log/info email "already logged in!")
-        {::current-session {:session/valid? true :user/email email}})
+        {::current-session {:session/valid? true :user/email email :user/admin? admin?}})
       {::current-session {:session/valid? false}})))
 
 (def resolvers [current-session-resolver signup login logout])

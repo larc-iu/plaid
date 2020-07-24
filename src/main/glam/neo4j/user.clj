@@ -4,7 +4,7 @@
 ;; create
 (defquery-1 create
   "WITH randomUUID() AS uuid
-  CREATE (u:User {name: $name, email: $email, password_hash: $password_hash, uuid: uuid})
+  CREATE (u:User {name: $name, email: $email, password_hash: $password_hash, admin: false, uuid: uuid})
   RETURN uuid")
 
 ;; multiple lookup

@@ -53,6 +53,9 @@
 
     (db/execute s "MATCH (n) DETACH DELETE (n)")
 
+    (user/set-admin s {:uuid (user/get-id-by-email s {:email "b@b.com"})
+                       :admin true})
+
     (def prj-id (prj/create s {:name "test" :slug "test"}))
     prj-id
     (prj/get-props s {:uuid prj-id})

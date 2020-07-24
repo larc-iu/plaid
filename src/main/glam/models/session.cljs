@@ -17,22 +17,25 @@
 
 ;; query-only defsc for normalization
 (defsc Session
-  [_ {:keys [:session/valid? :user/email :session/server-error-msg]}]
-  {:query         [:session/valid? :session/server-error-msg :user/email :ui/loading?]
+  [_ {:keys [:session/valid? :user/email :session/server-error-msg :user/admin?]}]
+  {:query         [:session/valid? :user/admin? :session/server-error-msg :user/email :ui/loading?]
    :ident         (fn [] session-ident)
    :pre-merge     (fn [{:keys [data-tree]}]
                     (merge
                       {:session/valid?           false
+                       :user/admin?           false
                        :user/email               ""
                        :session/server-error-msg nil}
                       data-tree))
-   :initial-state {:session/valid? false :user/email "" :session/server-error-msg nil}})
+   :initial-state {:session/valid? false :user/admin? false :user/email "" :session/server-error-msg nil}})
 
 (def session-join {session-ident (comp/get-query Session)})
 
 (defn get-session [props] (get props session-ident))
 
 (defn valid-session? [props] (:session/valid? (get props session-ident)))
+
+(defn admin? [props] (:user/admin? (get props session-ident)))
 
 (defn clear [env]
   (sm/assoc-aliased env :error ""))

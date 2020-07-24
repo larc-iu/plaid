@@ -61,6 +61,10 @@
     {:name    :user-settings
      :segment ["settings"]}]
 
+   ["/admin"
+    {:name    :admin-settings
+     :segment ["admin"]}]
+
    ["/project/"
     {:name    :projects
      :segment ["project" ""]}]

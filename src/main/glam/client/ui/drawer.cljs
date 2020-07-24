@@ -17,31 +17,36 @@
 (def ident [:component/id :drawer])
 
 (defn drawer-item
-  [path text icon onClose]
-  (mui/list-item {:key     text
-                  :button  true
-                  :onClick (fn [e]
-                             (onClose)
-                             (r/route-to! path))}
-    (mui/list-item-icon {} (icon))
-    (mui/list-item-text {} text)))
+  ([path text icon onClose]
+   (drawer-item path text icon onClose nil))
+  ([path text icon onClose divider]
+   (mui/list-item {:key     text
+                   :button  true
+                   :divider (boolean divider)
+                   :onClick (fn [e]
+                              (onClose)
+                              (r/route-to! path))}
+     (mui/list-item-icon {} (icon))
+     (mui/list-item-text {} text))))
 
-(defsc Drawer [this {:keys []} {:keys [onClose open?]}]
-  {:query         [:ui/dummy]
+(defsc Drawer [this props {:keys [onClose open?]}]
+  {:query         [session-join]
    :ident         (fn [] ident)
-   :initial-state {:ui/dummy ""}}
+   :initial-state {}}
   (js/console.log (pr-str (c/props this)))
-  (mui/drawer
-    {:open    open?
-     :onClose onClose
-     :anchor  "left"}
-    ((mui/styled-list {:width 300}) {}
+  (let [admin? (session/admin? props)]
+    (mui/drawer
+      {:open    open?
+       :onClose onClose
+       :anchor  "left"}
+      ((mui/styled-list {:width 300}) {}
 
-      (drawer-item :projects "Projects" muic/home onClose)
-      (drawer-item :user-settings "Settings" muic/settings onClose)
+       (drawer-item :projects "Projects" muic/home onClose)
+       (drawer-item :user-settings "Settings" muic/settings onClose admin?)
 
-      )
-    )
+       (when admin?
+         (drawer-item :admin-settings "Admin Settings" muic/supervisor-account onClose)))
+      ))
   )
 
 (def ui-drawer (c/factory Drawer))
