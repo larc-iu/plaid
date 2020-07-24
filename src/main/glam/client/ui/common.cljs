@@ -1,10 +1,15 @@
 (ns glam.client.ui.common
   (:require [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.components :as c]
-            [com.fulcrologic.fulcro.algorithms.form-state :as fs]))
+            [com.fulcrologic.fulcro.algorithms.form-state :as fs]
+            [glam.client.ui.material-ui :as mui]))
 
 (defn loader []
-  (dom/div :.ui.massive.active.text.loader "Loading"))
+  (mui/box {:alignItems     "center"
+            :justifyContent "center"
+            :display        "flex"
+            :minHeight      400}
+    (mui/circular-progress {:size "6em"})))
 
 ;; form stuff
 (defn field-attrs
@@ -33,13 +38,13 @@
             :name id}
            attrs)))
 
-(defn input-with-label
+(defn text-input-with-label
   [component field label validator validation-message input-attrs]
-  (let [{:keys [dirty? invalid?]} (field-attrs component field validator)]
-    (c/fragment
-      (dom/div :.field {:classes [(when invalid? "error") (when dirty? "warning")]}
-               (dom/label {:htmlFor (str field)} label)
-               (input-field (str field) input-attrs))
-      (when invalid?
-        (dom/div :.ui.error.message {} validation-message)))))
+  (let [{:keys [invalid?]} (field-attrs component field validator)]
+    (mui/text-field
+      (merge {:variant    "filled"
+              :error      invalid?
+              :helperText (if invalid? validation-message "")
+              :label      label}
+             input-attrs))))
 

@@ -201,6 +201,12 @@
 (defn change-route-after-signout! [this]
   (route-to! :home))
 
+(defn route-for
+  ([name]
+   (route-for name {}))
+  ([name params]
+   (:path (rf/match-by-name router name params))))
+
 (defn link
   ([route-name body]
    (link route-name {} body))
@@ -210,15 +216,6 @@
             {:classes [(when (= route-name (current-route-name)) "active")]
              :href    url}
             body))))
-
-
-(defsc ProjectListItem
-  [this {:project/keys [id name slug] :as props}]
-  {:query (fn [_] [:project/id :project/name :project/slug])
-   :ident :project/id})
-(defsc ProjectList [this {:keys [all-projects]}]
-  {:initial-state {}
-   :query         [{[:all-projects '_] (c/get-query ProjectListItem)}]})
 
 (defn init! [SPA]
   (log/info "Starting router.")

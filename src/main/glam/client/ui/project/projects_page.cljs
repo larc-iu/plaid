@@ -3,20 +3,22 @@
             [com.fulcrologic.fulcro.data-fetch :as df]
             [dv.fulcro-util :as fu]
             [glam.client.router :as r]
-            [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]))
+            [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
+            [com.fulcrologic.fulcro.dom :as dom]
+            [glam.client.ui.material-ui :as mui]))
 
 
 (defsc ProjectListItem
   [this {:project/keys [id name slug] :as props}]
   {:query (fn [_] [:project/id :project/name :project/slug])
    :ident :project/id}
-  [:div
-   [:h4 "Project"]
-   [:div "id: " (pr-str id)]
-   [:div "name: " (pr-str name)]
-   [:div "slug: " (pr-str slug)
-    (r/link :project {:id id} name)
-    (fu/props-data-debug this true)]])
+  (dom/div
+    (dom/h4 "Project")
+    (dom/div "id: " (pr-str id))
+    (dom/div "name: " (pr-str name))
+    (dom/div "slug: " (pr-str slug))
+    (dom/div (r/link :project {:id id} name)
+             (fu/props-data-debug this true))))
 
 (def ui-project-item (c/factory ProjectListItem {:keyfn :project/id}))
 
@@ -24,9 +26,9 @@
   {:initial-state {}
    :ident         (fn [_] [:component/id :project-list])
    :query         [{:all-projects (c/get-query ProjectListItem)}]}
-  [:div "This is the list of projects"
-   [:.ui.divider]
-   (map ui-project-item all-projects)])
+  (dom/div
+    "This is the list of projects"
+    (map ui-project-item all-projects)))
 
 (def ui-project-list (c/factory ProjectList))
 
@@ -42,7 +44,7 @@
                                      {:target [:component/id :project-list :all-projects]
                                       :post-mutation        `dr/target-ready
                                       :post-mutation-params {:target [:component/id :projects-page]}})))}
-  [:div
-   (ui-project-list project-list)])
+  (mui/page-container
+    (ui-project-list project-list)))
 
 (def ui-projects-page (c/factory ProjectsPage))

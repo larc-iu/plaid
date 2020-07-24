@@ -6,7 +6,8 @@
             [com.fulcrologic.fulcro.ui-state-machines :as sm]
             [glam.client.router :as r]
             [glam.models.session :as session :refer [Session]]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            [com.fulcrologic.fulcro.dom :as dom]))
 
 
 (defsc ProjectDetail
@@ -24,15 +25,12 @@
                         #(df/load! app [:project/id id] ProjectDetail
                                    {:post-mutation        `dr/target-ready
                                     :post-mutation-params {:target [:project/id id]}}))))}
-  [:div
-   [:h4 "Projectzzz"]
-   [:div (pr-str props)]
-   [:div (pr-str (session/get-session props))]
-   [:div "props" (pr-str props)]
-   [:div "id: " (pr-str id)]
-   [:div "name: " (pr-str name)]
-   [:div "slug: " (pr-str slug)]
-   (r/link :projects "Projects")])
+  (dom/div
+    (dom/div "props" (pr-str props))
+    (dom/div "id: " (pr-str id))
+    (dom/div "name: " (pr-str name))
+    (dom/div "slug: " (pr-str slug))
+    (r/link :projects "Projects")))
 
 (def ui-project-detail (c/factory ProjectDetail))
 

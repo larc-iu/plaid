@@ -5,14 +5,19 @@
     [com.fulcrologic.fulcro.dom :as dom :refer [div]]
     [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
     [com.fulcrologic.fulcro.ui-state-machines :as sm]
+    [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
+    [glam.models.session :as session :refer [Session session-join valid-session?]]
     [glam.client.application :refer [SPA]]
     [glam.client.router :as r]
+    [glam.client.ui.material-ui :as mui]
+    [glam.client.ui.material-ui-icon :as muic]
+    [glam.client.ui.drawer :refer [ui-drawer Drawer]]
     [glam.client.ui.common :refer [loader]]
     [glam.client.ui.project.core :refer [ProjectRouter]]
     [glam.client.ui.user-settings.core :refer [UserSettings]]
-    [glam.models.session :as session :refer [Session session-join valid-session?]]
     [glam.client.ui.home :refer [Home]]
-    [glam.client.ui.login :refer [ui-navbar-login NavbarLogin Login]]))
+    [glam.client.ui.login :refer [logout-button Login]]
+    [com.fulcrologic.fulcro.components :as comp]))
 
 (dr/defrouter TopRouter
   [this {:keys [current-state route-factory route-props]}]
@@ -22,27 +27,38 @@
 
 (def ui-top-router (c/factory TopRouter))
 
-(defn menu [{:keys [session? login]}]
-  [:div.ui.secondary.pointing.menu
-   (conj
-     (mapv #(apply r/link %) (if session?
-                               [[:projects "Projects"]]
-                               [[:home "Login"]]))
-     (ui-navbar-login login))])
+(def ident [:component/id :page-container])
 
-(defsc PageContainer [this {:root/keys [router login] :as props}]
+(defmutation set-open [{:keys [open?]}]
+  (action [{:keys [state]}]
+          (swap! state #(assoc-in % (conj ident :root/drawer-open?) open?))))
+
+(defsc PageContainer [this {:root/keys [drawer router drawer-open?] :as props}]
   {:query         [{:root/router (c/get-query TopRouter)}
+                   {:root/drawer (c/get-query Drawer)}
+                   :root/drawer-open?
                    [::sm/asm-id ::TopRouter]
-                   session-join
-                   {:root/login (c/get-query NavbarLogin)}]
-   :ident         (fn [] [:component/id :page-container])
+                   session-join]
+   :ident         (fn [] ident)
    :initial-state (fn [_] {:root/router          (c/get-initial-state TopRouter {})
-                           :root/login           (c/get-initial-state NavbarLogin {})
+                           :root/drawer          (c/get-initial-state Drawer {})
+                           :root/drawer-open?    false
                            session/session-ident (c/get-initial-state Session {})})}
   (let [session? (valid-session? props)]
-    [:.ui.container
-     ^:inline (menu {:session? session? :login login})
-     (ui-top-router router)]))
+    (mui/theme-provider {:theme mui/default-theme}
+      (mui/app-bar {:position "static"}
+        (mui/toolbar {:variant "dense"}
+          (mui/icon-button {:edge    "start"
+                            :color   "inherit"
+                            :onClick #(c/transact! this [(set-open {:open? true})])}
+            (muic/menu {:fontSize "large"}))
+          ((mui/styled-typography {:flex-grow 1}) {:variant "h4"} "Glam")
+          (logout-button this session?)))
+      (ui-drawer
+        (c/computed drawer {:open?   drawer-open?
+                            :onClose #(c/transact! this [(set-open {:open? false})])}))
+      (mui/css-baseline)
+      (ui-top-router router))))
 
 (def ui-page-container (c/factory PageContainer))
 

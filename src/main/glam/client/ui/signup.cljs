@@ -1,10 +1,10 @@
 (ns glam.client.ui.signup
   (:require
-    [clojure.string :as str]
     [clojure.pprint :refer [pprint]]
     [com.fulcrologic.fulcro.algorithms.denormalize :as fdn]
     [com.fulcrologic.fulcro.algorithms.form-state :as fs]
     [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
+    [com.fulcrologic.fulcro.components :as c]
     [com.fulcrologic.fulcro.data-fetch :as df]
     [com.fulcrologic.fulcro.dom :as dom]
     [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
@@ -13,10 +13,12 @@
     [dv.fulcro-util :as fu]
     [glam.models.session :as session]
     [glam.client.router :as r]
+    [glam.models.user-common :refer [valid-email valid-password]]
     [glam.models.session :refer [session-join Session get-session signup-ident signup]]
     [sablono.util :as su]
     [taoensso.timbre :as log]
-    [com.fulcrologic.fulcro.components :as c]))
+    [glam.client.ui.material-ui :as mui]
+    [glam.client.ui.common :as common]))
 
 (declare Signup)
 
@@ -25,34 +27,34 @@
   [state-map]
   (log/info "Clearing signup form")
   (-> state-map
-    (assoc-in signup-ident
-      {:account/email          ""
-       :account/password       ""
-       :account/password-again ""})
-    (fs/add-form-config* Signup signup-ident)))
+      (assoc-in signup-ident
+                {:account/email          ""
+                 :account/password       ""
+                 :account/password-again ""})
+      (fs/add-form-config* Signup signup-ident)))
 
 (defmutation clear-signup-form [_]
   (action [{:keys [state]}]
-    (swap! state clear-signup-form*)))
+          (swap! state clear-signup-form*)))
 
 (defmutation
   mark-complete!* [{field :field}]
   (action [{:keys [state]}]
-    (log/info "Marking complete field: " field)
-    (swap! state fs/mark-complete* signup-ident field)))
+          (log/info "Marking complete field: " field)
+          (swap! state fs/mark-complete* signup-ident field)))
 
 (defn mark-complete!
   [this field]
   (comp/transact!! this [(mark-complete!* {:field field})]))
 
-(defn signup-valid [form field]
+(defn form-valid [form field]
   (let [v (get form field)]
     (case field
-      :account/email (fu/valid-email? v)
-      :account/password (fu/valid-password? v)
-      :account/password-again (= (:account/password form) v))))
+      :account/email (valid-email v)
+      :account/password (valid-password v)
+      :account/password-again (= v (get form :account/password)))))
 
-(def validator (fs/make-validator signup-valid))
+(def validator (fs/make-validator form-valid))
 
 (defsc Signup [this {:account/keys [email password password-again] :as props}]
   {:query             [:account/email :account/password :account/password-again fs/form-config-join session-join
@@ -73,22 +75,45 @@
         checked? (fs/checked? props)
         mark-complete! (partial mark-complete! this)
         saving? (df/loading? (get props [df/marker-table ::signup]))]
-    [:div
-     [:h3 "Signup"]
-     [:form
-      {:class    (str "ui form" (when checked? " error"))
-       :onSubmit submit!}
-      ^:inline (fu/ui-email this :account/email email mark-complete! :autofocus? false
-                 :tabIndex 1)
-      ^:inline (fu/ui-password2 this :account/password password :tabIndex 2)
-      ^:inline (fu/ui-verify-password this :account/password-again
-                 password password-again mark-complete!
-                 :tabIndex 3)
-      (when-not (empty? server-err) [:.ui.error.message server-err])
-      [:button
-       {:type      "submit"
-        :tab-index 4
-        :class     (str "ui primary button" (when saving? " loading"))
-        :disabled  (not form-valid?)} "Sign Up"]]]))
+    (dom/div
+      (dom/form
+        {:onSubmit submit!}
+        (mui/grid {:container true :direction "column" :spacing 1}
+          (mui/grid {:item true} (mui/typography {:variant "h5"} "Signup"))
+          (mui/grid {:item true}
+            (common/text-input-with-label this :account/email "Email" validator "Must be a valid email"
+                                          {:type      "email"
+               :fullWidth true
+               :value     email
+               :disabled  saving?
+               :onBlur    #(mark-complete! :account/email)
+               :onChange  #(m/set-string!! this :account/email :event %)}))
+          (mui/grid {:item true}
+            (common/text-input-with-label this :account/password "Password" validator "Password must be 8 characters or longer"
+                                          {:type      "password"
+               :fullWidth true
+               :value     password
+               :disabled  saving?
+               :onBlur    #(mark-complete! :account/password)
+               :onChange  #(m/set-string!! this :account/password :event %)}))
+          (mui/grid {:item true}
+            (common/text-input-with-label this :account/password-again "Password (repeat)" validator "Passwords must match"
+                                          {:type      "password"
+               :fullWidth true
+               :value     password-again
+               :disabled  saving?
+               :onBlur    #(mark-complete! :account/password-again)
+               :onChange  (fn [e]
+                            (m/set-string!! this :account/password-again :event e)
+                            ;; also mark complete when it's valid since this is the last in the form
+                            (mark-complete! :account/password-again))}))
+          (when-not (empty? server-err)
+            (mui/grid {:item true}
+              (mui/alert {:severity "error"} server-err)))
+          (mui/grid {:item true}
+            (mui/button {:type     "submit"
+                         :disabled (or (not form-valid?) saving?)
+                         :variant  "contained"}
+              "Register")))))))
 
 (def ui-signup (c/factory Signup))

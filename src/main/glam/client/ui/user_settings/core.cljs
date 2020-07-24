@@ -3,7 +3,8 @@
             [com.fulcrologic.fulcro.components :as c]
             [glam.models.session :as sn]
             [glam.client.router :as r]
-            [glam.client.ui.user-settings.change-password :refer [ChangePasswordForm ui-change-password-form]]))
+            [glam.client.ui.user-settings.change-password :refer [ChangePasswordForm ui-change-password-form]]
+            [glam.client.ui.material-ui :as mui]))
 
 (defsc UserSettings [this {:keys [change-password-form] :as props}]
   {:ident         (fn [_] [:component/id :user-settings])
@@ -12,4 +13,5 @@
    :initial-state {:change-password-form {}}
    :route-segment (r/route-segment :user-settings)}
        (when (sn/valid-session? props)
-         (ui-change-password-form change-password-form)))
+         (mui/page-container
+           (ui-change-password-form change-password-form))))

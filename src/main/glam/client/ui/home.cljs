@@ -4,7 +4,8 @@
             [glam.models.session :as sn]
             [glam.client.router :as r]
             [glam.client.ui.login :refer [Login ui-login]]
-            [glam.client.ui.signup :refer [Signup ui-signup]]))
+            [glam.client.ui.signup :refer [Signup ui-signup]]
+            [glam.client.ui.material-ui :as mui]))
 
 (defsc Home [this props]
   {:query              [{:home/signup (c/get-query Signup)}
@@ -18,6 +19,9 @@
    :initial-state      (fn [_] {:home/signup (c/get-initial-state Signup)
                                 :home/login  (c/get-initial-state Login)})
    :route-segment      (r/route-segment :home)}
-  [:div.ui.grid
-   [:div.eight.wide.column (ui-login (:home/login props))]
-   [:div.eight.wide.column (ui-signup (:home/signup props))]])
+  (mui/box {:width 600 :p 1 :m 1 :mx "auto"}
+    (mui/paper {}
+      (mui/box {:p 2}
+        (mui/grid {:container true :direction "column" :spacing 5}
+          (mui/grid {:item true} (ui-login (:home/login props)))
+          (mui/grid {:item true} (ui-signup (:home/signup props))))))))
