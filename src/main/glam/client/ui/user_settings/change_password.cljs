@@ -30,14 +30,14 @@
 
 (defmutation mark-busy [{:keys [busy?]}]
   (action [{:keys [state]}]
-          (swap! state #(assoc-in % (conj ident :busy?) busy?))))
+    (swap! state #(assoc-in % (conj ident :busy?) busy?))))
 
 (defmutation handle-server-message [{:server/keys [message error?]}]
   (action [{:keys [state]}]
-          (swap! state (fn [s]
-                         (-> s
-                             (assoc-in (conj ident :server-msg) message)
-                             (assoc-in (conj ident :server-err) error?))))))
+    (swap! state (fn [s]
+                   (-> s
+                       (assoc-in (conj ident :server-msg) message)
+                       (assoc-in (conj ident :server-err) error?))))))
 
 ;; TODO: rewrite storing passwords in component-local state
 (defsc ChangePasswordForm [this {:keys [current-password
@@ -98,28 +98,28 @@
 
         (mui/grid {:item true}
           (common/text-input-with-label this :current-password "Current Password" validator "Password must be 8 or more characters long"
-                                        {:type      "password"
-             :value     current-password
-             :disabled  busy?
-             :onBlur    #(complete-field this :current-password)
-             :onChange  #(m/set-string!! this :current-password :event %)}))
+            {:type     "password"
+             :value    current-password
+             :disabled busy?
+             :onBlur   #(complete-field this :current-password)
+             :onChange #(m/set-string!! this :current-password :event %)}))
         (mui/grid {:item true}
           (common/text-input-with-label this :new-password "New Password" validator "Password must be 8 or more characters long"
-                                        {:type      "password"
-             :value     new-password
-             :disabled  busy?
-             :onBlur    #(complete-field this :new-password)
-             :onChange  #(m/set-string!! this :new-password :event %)}))
+            {:type     "password"
+             :value    new-password
+             :disabled busy?
+             :onBlur   #(complete-field this :new-password)
+             :onChange #(m/set-string!! this :new-password :event %)}))
         (mui/grid {:item true}
           (common/text-input-with-label this :new-password-confirm "Confirm New Password" validator "Passwords must match"
-                                        {:type      "password"
-             :value     new-password-confirm
-             :disabled  busy?
-             :onBlur    #(complete-field this :new-password-confirm)
-             :onChange  (fn [e]
-                          (m/set-string!! this :new-password-confirm :event e)
-                          ;; also mark complete when it's valid since this is the last in the form
-                          (complete-field this :new-password-confirm))}))
+            {:type     "password"
+             :value    new-password-confirm
+             :disabled busy?
+             :onBlur   #(complete-field this :new-password-confirm)
+             :onChange (fn [e]
+                         (m/set-string!! this :new-password-confirm :event e)
+                         ;; also mark complete when it's valid since this is the last in the form
+                         (complete-field this :new-password-confirm))}))
 
         (mui/grid {:container true :item true :direction "row" :spacing 1}
           (mui/grid {:item true}

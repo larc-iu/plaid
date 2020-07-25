@@ -7,10 +7,12 @@
     [glam.models.project :refer [project-resolvers]]
     [glam.models.session :as session]
     [glam.models.user :as user]
+    [glam.models.common :refer [server-error]]
     [glam.server.config :refer [config]]
     [neo4j-clj.core :as neo4j]
     [dv.pathom :as dp]
-    [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]))
+    [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
+    [taoensso.timbre :as log]))
 
 (def all-resolvers
   [session/resolvers

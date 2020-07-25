@@ -45,15 +45,16 @@
 
   (do
     (def conn (db/create-in-memory-connection))
-    (def conn (db/connect (java.net.URI. "neo4j://localhost:7687") "neo4j" "password"))
 
-    (def s (db/get-session conn))
+    (do
+      (def conn (db/connect (java.net.URI. "neo4j://localhost:7687") "neo4j" "password"))
+      (def s (db/get-session conn)))
 
     (prj/create s {:name "test 2" :slug "test-2"})
 
     (db/execute s "MATCH (n) DETACH DELETE (n)")
 
-    (user/set-admin s {:uuid (user/get-id-by-email s {:email "b@b.com"})
+    (user/set-admin s {:uuid (user/get-id-by-email s {:email "a@a.com"})
                        :admin true})
 
     (def prj-id (prj/create s {:name "test" :slug "test"}))

@@ -176,18 +176,9 @@
       (get-in [:component/id :session :session/valid?])
       boolean))
 
-;; TODO: make 1-arity call 2-arity, don't hardcode session information in valid-session
 (defn route-to!
   ([route-key]
-   (let [{:keys [name] :as route} (get routes-by-name route-key)]
-     (when-not (route=url? route-key {})
-       (if-not (valid-session)
-         (do
-           (log/info "Invalid session, routing to login")
-           (rfe/push-state :home))
-         (do
-           (log/info "Changing route to: " route)
-           (rfe/push-state name))))))
+   (route-to! route-key {}))
 
   ([route-key params]
    (let [{:keys [name] :as route} (get routes-by-name route-key)]
@@ -203,17 +194,18 @@
 (defn redirect-to!
   "Like route-to!, but doesn't leave the current route in history"
   ([route-key]
-   (let [{:keys [name] :as route} (get routes-by-name route-key)]
-     (when-not (route=url? route-key {})
-       (log/info "Redirecting to: " route)
-       (rfe/replace-state name))))
+   (redirect-to! route-key {}))
 
   ([route-key params]
    (let [{:keys [name] :as route} (get routes-by-name route-key)]
      (when-not (route=url? route-key params)
-       (log/info "Redirecting to : " route)
-       (log/info "push state : " name " params: " params)
-       (rfe/replace-state name params)))))
+       (if-not (valid-session)
+         (do
+           (log/info "Invalid session, redirecting to login")
+           (rfe/replace-state :home))
+         (do
+           (log/info "Redirecting to : " route)
+           (rfe/replace-state name params)))))))
 
 (defn change-route-to-default! [this]
   (route-to! :home))

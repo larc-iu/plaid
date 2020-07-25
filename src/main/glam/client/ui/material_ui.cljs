@@ -159,6 +159,9 @@
             ["@material-ui/lab/ToggleButtonGroup" :default ToggleButtonGroup]
             ["@material-ui/lab/TreeItem" :default TreeItem]
             ["@material-ui/lab/TreeView" :default TreeView]
+
+            ;; other
+            ["material-table" :default MaterialTable]
             ))
 
 
@@ -307,6 +310,8 @@
 (def unstable-trap-focus (interop/react-factory Unstable_TrapFocus))
 (def zoom (interop/react-factory Zoom))
 ;; END AUTO GEN
+
+(def material-table (interop/react-factory MaterialTable))
 
 ;; styled variants
 (defn- wrap-styles
