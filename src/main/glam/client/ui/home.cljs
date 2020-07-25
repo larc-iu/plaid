@@ -19,7 +19,7 @@
    :initial-state      (fn [_] {:home/signup (c/get-initial-state Signup)
                                 :home/login  (c/get-initial-state Login)})
    :route-segment      (r/route-segment :home)}
-  (mui/box {:width 600 :p 1 :m 1 :mx "auto"}
+  (mui/box {:width 400 :p 1 :m 1 :mx "auto"}
     (mui/paper {}
       (mui/box {:p 2}
         (mui/grid {:container true :direction "column" :spacing 5}

@@ -5,7 +5,9 @@
     [clojure.string :as str]
     [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
     [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
+    [com.fulcrologic.fulcro.components :as c]
     [com.fulcrologic.fulcro.dom :as dom]
+    [com.fulcrologic.fulcro.application :as app]
     [com.fulcrologic.guardrails.core :refer [>defn => | ? >def]]
     [goog.object :as g]
     [reitit.core :as r]
@@ -168,21 +170,35 @@
 
 (comment (route=url? :goals {:date "2020-05-12"}))
 
-(>defn route-to!
+(defn valid-session []
+  (-> SPA
+      app/current-state
+      (get-in [:component/id :session :session/valid?])
+      boolean))
+
+;; TODO: make 1-arity call 2-arity, don't hardcode session information in valid-session
+(defn route-to!
   ([route-key]
-   [keyword? => any?]
    (let [{:keys [name] :as route} (get routes-by-name route-key)]
      (when-not (route=url? route-key {})
-       (log/info "Changing route to: " route)
-       (rfe/push-state name))))
+       (if-not (valid-session)
+         (do
+           (log/info "Invalid session, routing to login")
+           (rfe/push-state :home))
+         (do
+           (log/info "Changing route to: " route)
+           (rfe/push-state name))))))
 
   ([route-key params]
-   [keyword? map? => any?]
    (let [{:keys [name] :as route} (get routes-by-name route-key)]
      (when-not (route=url? route-key params)
-       (log/info "Changing route to : " route)
-       (log/info "push state : " name " params: " params)
-       (rfe/push-state name params)))))
+       (if-not (valid-session)
+         (do
+           (log/info "Invalid session, routing to login")
+           (rfe/push-state :home))
+         (do
+           (log/info "Changing route to: " route)
+           (rfe/push-state name params)))))))
 
 (defn redirect-to!
   "Like route-to!, but doesn't leave the current route in history"
