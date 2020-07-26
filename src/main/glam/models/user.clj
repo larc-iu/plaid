@@ -45,7 +45,7 @@
 (defresolver user-resolver [{:keys [neo4j]} {:user/keys [id]}]
   {::pc/input     #{:user/id}
    ::pc/output    [:user/email :user/name :user/admin?]
-   ::pc/transform mc/user-resolver-transform}
+   ::pc/transform mc/user-required}
   (-> neo4j
       (user/get-props {:uuid id})
       (take-keys [:user/email :user/name :user/admin?])))
@@ -53,7 +53,7 @@
 (pc/defmutation change-password
   [{:keys [neo4j] :as env} {:keys [:user/email current-password new-password]}]
   {::pc/sym       'glam.models.user/change-password
-   ::pc/transform mc/user-mutation-transform}
+   ::pc/transform mc/user-required}
   (let [user-id (user/get-id-by-email neo4j {:email email})]
     (if (nil? user-id)
       (server-error (str "No user found with email " email))
@@ -70,7 +70,7 @@
 ;; admin level -------------------------------------------------------------------------------
 (pc/defresolver all-users-resolver [{:keys [neo4j]} _]
   {::pc/output    [{:all-users [:user/id]}]
-   ::pc/transform mc/admin-resolver-transform}
+   ::pc/transform mc/admin-required}
   {:all-users (->> neo4j
                    user/get-all
                    (map #(take-keys % [:user/id]))
