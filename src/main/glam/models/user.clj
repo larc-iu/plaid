@@ -22,12 +22,12 @@
    :password_hash :user/password
    :admin         :user/admin?})
 
-(defn change-keys [m]
-  (rename-keys m keymap))
+(defn change-keys [m] (rename-keys m keymap))
 
 (defn take-keys [m keys]
+  "renames neo4j keys to glam keys and selects a subset of them"
   (-> m
-      change-keys
+      (rename-keys keymap)
       (select-keys keys)))
 
 (defn get-current-user
@@ -41,26 +41,19 @@
         (do (log/info "no user")
             nil)))))
 
+;; user level --------------------------------------------------------------------------------
 (defresolver user-resolver [{:keys [neo4j]} {:user/keys [id]}]
-  {::pc/input  #{:user/id}
-   ::pc/output [:user/email :user/name :user/admin?]}
+  {::pc/input     #{:user/id}
+   ::pc/output    [:user/email :user/name :user/admin?]
+   ::pc/transform mc/user-resolver-transform}
   (-> neo4j
       (user/get-props {:uuid id})
       (take-keys [:user/email :user/name :user/admin?])))
 
-(pc/defresolver all-users-resolver [{:keys [neo4j]} _]
-  {::pc/output    [{:all-users [:user/id]}]
-   ;;::pc/transform mc/auth-tx
-   ;;:auth          :admin
-   }
-  {:all-users (->> neo4j
-                   user/get-all
-                   (map #(take-keys % [:user/id]))
-                   vec)})
-
 (pc/defmutation change-password
   [{:keys [neo4j] :as env} {:keys [:user/email current-password new-password]}]
-  {::pc/sym 'glam.models.user/change-password}
+  {::pc/sym       'glam.models.user/change-password
+   ::pc/transform mc/user-mutation-transform}
   (let [user-id (user/get-id-by-email neo4j {:email email})]
     (if (nil? user-id)
       (server-error (str "No user found with email " email))
@@ -73,6 +66,15 @@
               {:uuid          user-id
                :password_hash (hash-password new-password)})
             (server-message "Password change successful")))))))
+
+;; admin level -------------------------------------------------------------------------------
+(pc/defresolver all-users-resolver [{:keys [neo4j]} _]
+  {::pc/output    [{:all-users [:user/id]}]
+   ::pc/transform mc/admin-resolver-transform}
+  {:all-users (->> neo4j
+                   user/get-all
+                   (map #(take-keys % [:user/id]))
+                   vec)})
 
 (def resolvers [user-resolver
                 all-users-resolver

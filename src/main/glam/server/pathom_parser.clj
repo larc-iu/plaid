@@ -58,8 +58,7 @@
                                                               pc/reader2
                                                               pc/index-reader
                                                               pc/open-ident-reader
-                                                              p/env-placeholder-reader
-                                                              pc/parallel-reader]
+                                                              p/env-placeholder-reader]
                                   ::p/placeholder-prefixes   #{">"}
                                   ::pc/mutation-join-globals [:tempids]}
                   ::p/plugins    (cond-> base-plugins

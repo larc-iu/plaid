@@ -81,67 +81,67 @@
                                          :on-error         [(mark-busy {:busy? false})]
                                          :message-handler  handle-server-message})])))]
 
+    (mui/padded-paper
+      (dom/form
+        {:onSubmit (fn [^js/Event e]
+                     (.preventDefault e)
+                     (log/info "submit")
+                     (submit))}
 
-    (dom/form
-      {:onSubmit (fn [^js/Event e]
-                   (.preventDefault e)
-                   (log/info "submit")
-                   (submit))}
-
-      (mui/grid {:container true :direction "column" :spacing 1}
-        (mui/grid {:item true}
-          (mui/typography {:variant "h4"} "Change Password"))
-        (mui/grid {:item true}
-          (when-not (empty? server-msg)
-            (mui/alert {:severity (if server-err "error" "success")}
-              server-msg)))
-
-        (mui/grid {:item true}
-          (common/text-input-with-label this :current-password "Current Password" validator "Password must be 8 or more characters long"
-            {:type     "password"
-             :value    current-password
-             :disabled busy?
-             :onBlur   #(complete-field this :current-password)
-             :onChange #(m/set-string!! this :current-password :event %)}))
-        (mui/grid {:item true}
-          (common/text-input-with-label this :new-password "New Password" validator "Password must be 8 or more characters long"
-            {:type     "password"
-             :value    new-password
-             :disabled busy?
-             :onBlur   #(complete-field this :new-password)
-             :onChange #(m/set-string!! this :new-password :event %)}))
-        (mui/grid {:item true}
-          (common/text-input-with-label this :new-password-confirm "Confirm New Password" validator "Passwords must match"
-            {:type     "password"
-             :value    new-password-confirm
-             :disabled busy?
-             :onBlur   #(complete-field this :new-password-confirm)
-             :onChange (fn [e]
-                         (m/set-string!! this :new-password-confirm :event e)
-                         ;; also mark complete when it's valid since this is the last in the form
-                         (complete-field this :new-password-confirm))}))
-
-        (mui/grid {:container true :item true :direction "row" :spacing 1}
+        (mui/grid {:container true :direction "column" :spacing 1}
           (mui/grid {:item true}
-            (mui/button
-              {:type     "submit"
-               :size     "large"
-               :disabled (or (not (fs/checked? props))
-                             (not= :valid (validator props))
-                             busy?)
-               :variant  "contained"}
-              "Change Password"))
+            (mui/typography {:variant "h4"} "Change Password"))
           (mui/grid {:item true}
-            (mui/button
-              {:onClick  (fn []
-                           (c/transact! this [(handle-server-message {:server/error?  false
-                                                                      :server/message ""})])
-                           (c/transact! this [(fs/clear-complete! {})])
-                           (c/transact! this [(fs/reset-form! {})]))
-               :size     "large"
+            (when-not (empty? server-msg)
+              (mui/alert {:severity (if server-err "error" "success")}
+                server-msg)))
+
+          (mui/grid {:item true}
+            (common/text-input-with-label this :current-password "Current Password" validator "Password must be 8 or more characters long"
+              {:type     "password"
+               :value    current-password
                :disabled busy?
-               :variant  "outlined"}
-              "Reset")))))))
+               :onBlur   #(complete-field this :current-password)
+               :onChange #(m/set-string!! this :current-password :event %)}))
+          (mui/grid {:item true}
+            (common/text-input-with-label this :new-password "New Password" validator "Password must be 8 or more characters long"
+              {:type     "password"
+               :value    new-password
+               :disabled busy?
+               :onBlur   #(complete-field this :new-password)
+               :onChange #(m/set-string!! this :new-password :event %)}))
+          (mui/grid {:item true}
+            (common/text-input-with-label this :new-password-confirm "Confirm New Password" validator "Passwords must match"
+              {:type     "password"
+               :value    new-password-confirm
+               :disabled busy?
+               :onBlur   #(complete-field this :new-password-confirm)
+               :onChange (fn [e]
+                           (m/set-string!! this :new-password-confirm :event e)
+                           ;; also mark complete when it's valid since this is the last in the form
+                           (complete-field this :new-password-confirm))}))
+
+          (mui/grid {:container true :item true :direction "row" :spacing 1}
+            (mui/grid {:item true}
+              (mui/button
+                {:type     "submit"
+                 :size     "large"
+                 :disabled (or (not (fs/checked? props))
+                               (not= :valid (validator props))
+                               busy?)
+                 :variant  "contained"}
+                "Change Password"))
+            (mui/grid {:item true}
+              (mui/button
+                {:onClick  (fn []
+                             (c/transact! this [(handle-server-message {:server/error?  false
+                                                                        :server/message ""})])
+                             (c/transact! this [(fs/clear-complete! {})])
+                             (c/transact! this [(fs/reset-form! {})]))
+                 :size     "large"
+                 :disabled busy?
+                 :variant  "outlined"}
+                "Reset"))))))))
 
 (def ui-change-password-form (c/factory ChangePasswordForm))
 

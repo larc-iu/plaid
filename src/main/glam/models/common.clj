@@ -19,17 +19,29 @@
         (and (= level :admin) admin?)
         (and (= level :user) valid?))))
 
-(defn auth-tx [{::pc/keys [resolve] :keys [auth] :as outer-env}]
-  "Transform for a Pathom resolver that checks whether the user has sufficient permissions
-  for a given operation. Checks the resolver's env for the :auth keyword, which can
-  currently be either :user or :admin"
-  (assoc
-    outer-env
-    (if resolve ::pc/resolve ::pc/mutate)
-    (fn [env params]
-      (if (authorized env auth)
-        (resolve env params)
-        (server-error (str "Unauthorized mutation: session "
-                           (get-in env [:ring/request :session])
-                           " does not satisfy authorization requirement "
-                           auth))))))
+;; pathom security transforms
+(defn make-auth-transform [mutate? level]
+  "Make a transform for a Pathom resolver that checks whether the user has sufficient
+  permissions for a given operation. mutate? is a bool that indicates whether this is
+  for a resolver or a mutation, and level is one of :admin or :user indicating required
+  permissions."
+  (fn auth-transform [outer-env]
+    (assoc
+      outer-env
+      (if mutate? ::pc/mutate ::pc/resolve)
+      (fn [env params]
+        (log/info (str "authorized? " (authorized env level)))
+        (let [action ((if mutate? ::pc/mutate ::pc/resolve) outer-env)
+              res (if (authorized env level)
+                    (action env params)
+                    (server-error (str "Unauthorized pathom action: session "
+                                       (get-in env [:ring/request :session])
+                                       " does not satisfy authorization requirement "
+                                       level)))]
+          (log/info (str "auth-tx output: " (pr-str res)))
+          res)))))
+
+(def admin-mutation-transform (make-auth-transform true :admin))
+(def admin-resolver-transform (make-auth-transform false :admin))
+(def user-mutation-transform (make-auth-transform true :user))
+(def user-resolver-transform (make-auth-transform false :user))

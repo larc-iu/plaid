@@ -12,7 +12,7 @@
   (:require [com.fulcrologic.fulcro.algorithms.react-interop :as interop]
             ["@material-ui/core/styles" :refer [styled createMuiTheme ThemeProvider]]
 
-            ;; BEGIN AUTO GEN
+    ;; BEGIN AUTO GEN
             ["@material-ui/core/Accordion" :default Accordion]
             ["@material-ui/core/AccordionActions" :default AccordionActions]
             ["@material-ui/core/AccordionDetails" :default AccordionDetails]
@@ -131,9 +131,9 @@
             ["@material-ui/core/Typography" :default Typography]
             ["@material-ui/core/Unstable_TrapFocus" :default Unstable_TrapFocus]
             ["@material-ui/core/Zoom" :default Zoom]
-            ;; END AUTO GEN
+    ;; END AUTO GEN
 
-            ;; had to manually move these down from above and change core to lab
+    ;; had to manually move these down from above and change core to lab
             ["@material-ui/lab/Alert" :default Alert]
             ["@material-ui/lab/AlertTitle" :default AlertTitle]
             ["@material-ui/lab/Autocomplete" :default Autocomplete]
@@ -160,7 +160,7 @@
             ["@material-ui/lab/TreeItem" :default TreeItem]
             ["@material-ui/lab/TreeView" :default TreeView]
 
-            ;; other
+    ;; other
             ["material-table" :default MaterialTable]
             ))
 
@@ -331,6 +331,11 @@
 (defn page-container
   [child]
   (container {}
-    (paper {}
-      (box {:m 2 :px 0 :py 2}
-        child))))
+    (box {:mx 1 :my 2 :px 1 :py 2}
+      child)))
+
+(defn padded-paper
+  [child]
+  (paper {}
+    (box {:m 1 :p 1}
+      child)))

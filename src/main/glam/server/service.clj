@@ -76,6 +76,7 @@
     (let [resp (handle-api-request
                  body-params
                  (fn [tx] (parser {:ring/request req} tx)))]
+      (log/info "Outgoing response: " (pr-str resp))
       (update resp :headers dissoc "Content-Type"))))
 
 (comment

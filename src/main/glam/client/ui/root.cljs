@@ -49,12 +49,12 @@
     (mui/theme-provider {:theme mui/default-theme}
       (mui/app-bar {:position "static"}
         (mui/toolbar {:variant "dense"}
-          (when session?
-            (mui/icon-button {:edge    "start"
-                              :color   "inherit"
-                              :onClick #(c/transact! this [(set-open {:open? true})])}
-              (muic/menu {:fontSize "large"})))
-          ((mui/styled-typography {:flex-grow 1}) {:variant "h4"} "Glam")
+          (mui/icon-button {:edge     "start"
+                            :color    "inherit"
+                            :disabled (not session?)
+                            :onClick  #(c/transact! this [(set-open {:open? true})])}
+            (muic/menu {:fontSize "large"}))
+          ((mui/styled-typography {:flex-grow 1}) {:variant "h5"} "Glam")
           (logout-button this session?)))
       (when session?
         (ui-drawer

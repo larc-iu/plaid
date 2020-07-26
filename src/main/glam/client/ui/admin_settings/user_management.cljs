@@ -18,22 +18,20 @@
 (def ident [:component/id :user-management])
 
 (defsc UserRow [_ _]
-  {:query [:user/name :user/id :user/admin?]})
+  {:query [:user/id :user/name :user/email :user/admin?]})
 
 (defsc UserManagement [this {:keys [users] :as props}]
   {:ident         (fn [_] ident)
    :query         [:users]
    :initial-state {:users []}
    :load-fn       #(df/load! SPA :all-users UserRow {:target (conj ident :users)})}
-  (c/fragment
-    (js/console.log (clj->js users))
+  (mui/container {}
     (mui/material-table {:title   "User Management"
                          :columns [{:title "Name" :field :name}
                                    {:title "Email" :field :email}
-                                   {:title "Admin?" :field :admin?}]
+                                   {:title "Admin?" :field :admin? :type "boolean"}]
                          :data    (clj->js users)
                          :options {:pageSize        10
-                                   :pageSizeOptions [10 25 50]}}))
-  )
+                                   :pageSizeOptions [10 25 50]}})))
 
 (def ui-user-management (c/factory UserManagement))
