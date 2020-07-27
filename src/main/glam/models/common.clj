@@ -28,19 +28,20 @@
   (fn auth-transform [{::pc/keys [mutate resolve] :as outer-env}]
     (let [pathom-action (if mutate mutate resolve)
           pathom-action-kwd (if mutate ::pc/mutate ::pc/resolve)]
-      (assoc
-        outer-env
-        pathom-action-kwd
-        (fn [env params]
-          (log/info (str "authorized? " (authorized env level)))
-          (let [res (if (authorized env level)
-                      (pathom-action env params)
-                      (server-error (str "Unauthorized pathom action: session "
-                                         (get-in env [:ring/request :session])
-                                         " does not satisfy authorization requirement "
-                                         level)))]
-            (log/info (str "auth-tx output: " (pr-str res)))
-            res))))))
+      (-> outer-env
+          (assoc
+            pathom-action-kwd
+            (fn [env params]
+              (log/info (str "authorized? " (authorized env level)))
+              (log/info (keys env))
+              (let [res (if (authorized env level)
+                          (pathom-action env params)
+                          (server-error (str "Unauthorized pathom action: session "
+                                             (get-in env [:ring/request :session])
+                                             " does not satisfy authorization requirement "
+                                             level)))]
+                (log/info (str "auth-tx output: " (pr-str res)))
+                res)))))))
 
 (def admin-required (make-auth-transform :admin))
 (def user-required (make-auth-transform :user))

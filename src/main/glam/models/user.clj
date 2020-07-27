@@ -52,8 +52,7 @@
 
 (pc/defmutation change-password
   [{:keys [neo4j] :as env} {:keys [:user/email current-password new-password]}]
-  {::pc/sym       'glam.models.user/change-password
-   ::pc/transform mc/user-required}
+  {::pc/transform mc/user-required}
   (let [user-id (user/get-id-by-email neo4j {:email email})]
     (if (nil? user-id)
       (server-error (str "No user found with email " email))

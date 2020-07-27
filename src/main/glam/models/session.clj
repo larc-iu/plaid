@@ -26,7 +26,7 @@
 
 (pc/defmutation signup
   [{:keys [neo4j] :as env} {:keys [email password]}]
-  {::pc/sym 'glam.models.session/signup}
+  {}
   (if-let [user-id (neo-user/get-id-by-email neo4j {:email email})]
     (augment-session-resp env {:session/valid?           false
                                :user/email               email

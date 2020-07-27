@@ -54,7 +54,7 @@
 
     (db/execute s "MATCH (n) DETACH DELETE (n)")
 
-    (user/set-admin s {:uuid (user/get-id-by-email s {:email "a@a.com"})
+    (user/set-admin s {:uuid  (user/get-id-by-email s {:email "a@a.com"})
                        :admin true})
 
     (def prj-id (prj/create s {:name "test" :slug "test"}))
@@ -98,6 +98,7 @@
     (def token-layer-id (text/add-token-layer s {:name "tokens4" :text_layer_uuid text-layer-id}))
 
     (token/add-span-layer s {:name "span1" :token_layer_uuid token-layer-id})
+
 
 
 
