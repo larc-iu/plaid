@@ -6,6 +6,7 @@
     [com.fulcrologic.fulcro.server.api-middleware :refer [handle-api-request]]
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
     [dv.fulcro-util :as fu]
+    [dv.crux-ring-session-store :refer [crux-session-store]]
     [hiccup.page :refer [html5]]
     [io.pedestal.http :as http]
     [io.pedestal.interceptor :as interceptor]
@@ -20,6 +21,7 @@
     [reitit.pedestal :as rpedestal]
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser]]
+    [glam.server.crux :refer [crux-node]]
     [taoensso.timbre :as log]))
 
 (def manifest-file "public/js/main/manifest.edn")
@@ -110,7 +112,7 @@
 
 (def logger {:name  ::logger
              :enter (fn [ctx]
-                      (let [req     (:request ctx)
+                      (let [req (:request ctx)
                             session (-> req :session)]
                         ;; add custom logging here
                         (log-request-begin req)
@@ -126,12 +128,12 @@
   (log/info "make-muuntaja dev? " dev?)
   (let [muu-config
         (-> muu/default-options
-          (assoc :default-format transit-type)
-          (update-in
-            [:formats transit-type]
-            merge
-            {:decoder-opts {:verbose dev?}
-             :encoder-opts {:verbose dev?}}))]
+            (assoc :default-format transit-type)
+            (update-in
+              [:formats transit-type]
+              merge
+              {:decoder-opts {:verbose dev?}
+               :encoder-opts {:verbose dev?}}))]
     (muu/create muu-config)))
 
 (defn rrouter [dev?]
@@ -169,7 +171,8 @@
     {:env                  :prod
      ::http/routes         []
      ::http/resource-path  "/public"
-     ::http/enable-session {:cookie-attrs {:secure    (not dev?)
+     ::http/enable-session {:store        (crux-session-store crux-node)
+                            :cookie-attrs {:secure    (not dev?)
                                            :same-site :strict
                                            ;; expires in two weeks
                                            :max-age   1209600}}
@@ -186,20 +189,20 @@
   ([base-map]
    (let [dev? (#{:dev} (:env base-map))]
      (-> base-map
-       (cond->
-         dev?
-         (assoc ::http/allowed-origins {:creds true :allowed-origins (constantly true)}))
+         (cond->
+           dev?
+           (assoc ::http/allowed-origins {:creds true :allowed-origins (constantly true)}))
 
-       http/default-interceptors
-       ;; By default enabling csrf in pedestal also enables body parsing.
-       ;; We remove it as muuntaja does content negotiation.
-       (update ::http/interceptors
-         (fn [ints]
-           (vec (remove #(= (:name %) :io.pedestal.http.body-params/body-params) ints))))
+         http/default-interceptors
+         ;; By default enabling csrf in pedestal also enables body parsing.
+         ;; We remove it as muuntaja does content negotiation.
+         (update ::http/interceptors
+                 (fn [ints]
+                   (vec (remove #(= (:name %) :io.pedestal.http.body-params/body-params) ints))))
 
-       ;; use reitit for routing
-       (rpedestal/replace-last-interceptor (router (::config config)))
-       (update ::http/interceptors conj (interceptor/interceptor logger))
-       (cond-> dev? http/dev-interceptors)))))
+         ;; use reitit for routing
+         (rpedestal/replace-last-interceptor (router (::config config)))
+         (update ::http/interceptors conj (interceptor/interceptor logger))
+         (cond-> dev? http/dev-interceptors)))))
 
 (comment (make-service-map (service config)))

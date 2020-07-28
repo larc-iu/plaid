@@ -1,6 +1,7 @@
 (ns glam.models.session
   (:require
     [clojure.spec.alpha :as s]
+    [crux.api :as crux]
     [com.fulcrologic.fulcro.server.api-middleware :as fmw]
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
     [com.wsscode.pathom.connect :as pc :refer [defresolver defmutation]]

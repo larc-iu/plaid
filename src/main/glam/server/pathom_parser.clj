@@ -9,6 +9,7 @@
     [glam.models.user :as user]
     [glam.models.common :refer [server-error]]
     [glam.server.config :refer [config]]
+    [glam.server.crux :refer [crux-node]]
     [neo4j-clj.core :as neo4j]
     [dv.pathom :as dp]
     [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
@@ -39,7 +40,8 @@
 (def env-additions
   (fn [env]
     (let [session (neo4j/get-session neo4j-conn)]
-      {:neo4j        session
+      {:crux         crux-node
+       :neo4j        session
        :config       config
        :current-user (user/get-current-user (assoc env :neo4j session))})))
 
