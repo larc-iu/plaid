@@ -1,6 +1,5 @@
 (ns glam.crux.user
   (:require [crux.api :as crux]
-            [glam.server.crux :refer [crux-node]]
             [glam.crux.common :as gc]))
 
 (defn create [node {:keys [name email password-hash]}]
@@ -13,31 +12,14 @@
     (gc/put node [record])
     id))
 
-(defn get-all [node]
-  (gc/find-entities node {:user/id '_}))
+(defn get-all [node] (gc/find-entities node {:user/id '_}))
+(defn get-by-name [node name] (gc/find-entity node {:user/name name}))
+(defn get-by-email [node email] (gc/find-entity node {:user/email email}))
+(defn set-name [node eid name] (gc/set node eid :user/name name))
+(defn set-email [node eid email] (gc/set node eid :user/email email))
+(defn set-password-hash [node eid password-hash] (gc/set node eid :user/password-hash password-hash))
+(defn set-admin? [node eid admin?] (gc/set node eid :user/admin? admin?))
 
-(defn find-by-name [node name]
-  (gc/find-entity node {:user/name name}))
-
-(defn find-by-email [node email]
-  (gc/find-entity node {:user/email email}))
-
-#_(gc/deftx set-name crux-node
-  (fn [ctx eid name]
-    (when-let [user (crux.api/entity (crux.api/db ctx) eid)]
-      [[:crux.tx/put (assoc user :user/name name)]])))
-
-#_(gc/deftx set-name crux-node
-  (fn [ctx eid name]
-    (when-let [user (crux.api/entity (crux.api/db ctx) eid)]
-      [[:crux.tx/put (assoc user :user/name name)]])))
-
-;;;; sets
-;;(defquery set-name "MATCH (u:User) WHERE u.uuid = $uuid SET u.name = $name")
-;;(defquery set-email "MATCH (u:User) WHERE u.uuid = $uuid SET u.email = $email")
-;;(defquery set-password-hash "MATCH (u:User) WHERE u.uuid = $uuid SET u.password_hash = $password_hash")
-;;(defquery set-admin "MATCH (u:User) WHERE u.uuid = $uuid SET u.admin = $admin")
-;;
 ;;;; delete
 ;;(defquery delete "MATCH (u:User) WHERE u.uuid = $uuid DELETE u")
 ;;

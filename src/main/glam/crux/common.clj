@@ -7,49 +7,17 @@
 (defn uuid []
   (UUID/randomUUID))
 
-;; writes --------------------------------------------------------------------------------
 (defn new-record
   "Create a blank record with a UUID in :crux.db/id. If ns is provided,
   will also assoc this id with (keyword ns \"id\"), e.g. :person/id.
   This simplifies queries for use with pathom and fulcro."
   ([] (new-record nil))
   ([ns]
-   (let [id (uuid)]
+   (let [eid (uuid)]
      (if (nil? ns)
-       {:crux.db/id id}
-       {:crux.db/id       id
-        (keyword ns "id") id}))))
-
-(defn put [node doc-or-docs]
-  "Put either a single document or a sequence of documents"
-  (crux/submit-tx node (->> (if-not (sequential? doc-or-docs)
-                              (vector doc-or-docs)
-                              doc-or-docs)
-                            (map (fn [doc] [:crux.tx/put doc]))
-                            vec)))
-
-(defn put-sync [node doc-or-docs]
-  (crux/await-tx node (put node doc-or-docs)))
-
-(defmacro deftx [name node bindings & body]
-  "Defines a transaction function on the given node."
-  (let [kwd-name (keyword (str *ns*) (str name))]
-    `(do
-       (crux/submit-tx ~node [[:crux.tx/put {:crux.db/id ~kwd-name
-                                             :crux.db/fn (quote (fn ~bindings
-                                                                  ~@body))}]])
-       (defn ~name [& ~'args]
-         (crux/submit-tx ~node (log/spy [(into [:crux.tx/fn ~kwd-name] ~'args)]))))))
-
-(defmacro defsetter [name node attr]
-  "Shortcut for simple sets on a single attribute"
-  `(deftx
-     ~name
-     ~node
-     [ctx# eid# val#]
-     (when-let [entity# (crux.api/entity (crux.api/db ctx#) eid#)]
-       [[:crux.tx/put (assoc entity# ~attr val#)]])))
-
+       {:crux.db/id eid}
+       {:crux.db/id       eid
+        (keyword ns "id") eid}))))
 
 ;; reads ---------------------------------------------------------------------------------
 (defn entity [node id]
@@ -86,3 +54,50 @@
 (defn find-entity [node attrs] (find-entity-by-attrs node attrs {:id-only? false :all-results false}))
 (defn find-entities [node attrs] (find-entity-by-attrs node attrs {:id-only? false :all-results true}))
 
+
+;; mutations --------------------------------------------------------------------------------
+(defn put-async [node doc-or-docs]
+  "Put either a single document or a sequence of documents"
+  (crux/submit-tx node (->> (if-not (sequential? doc-or-docs)
+                              (vector doc-or-docs)
+                              doc-or-docs)
+                            (map (fn [doc] [:crux.tx/put doc]))
+                            vec)))
+(defn put [node doc-or-docs]
+  (crux/await-tx node (put-async node doc-or-docs)))
+
+(defn delete-async [node eid]
+  (crux/submit-tx node [[:crux.tx/delete (:crux.db/id eid)]]))
+(defn delete [node eid]
+  (crux/await-tx node (delete-async node eid)))
+
+(defn set-async [node eid attr val]
+  "WARNING: there is no atomicity guarantee here: `ent` might have changed
+  between the two lines. We accept this as it will be pretty rare and inconsequential"
+  (let [ent (entity node eid)]
+    (put node (assoc ent attr val))))
+(defn set [node eid attr val]
+  (crux/await-tx node (set-async node eid attr val)))
+
+;; unused --------------------------------------------------------------------------------
+;; below two macros are unused for now--they're an attempt to avoid race conditions on puts,
+;; but these are fairly rare and inconsequential in this application
+(defmacro deftx [name bindings & body]
+  "Defines a transaction function on the given node."
+  (let [kwd-name (keyword (str *ns*) (str name))
+        symbol-name (symbol (str name))]
+    `(def ~symbol-name
+       (fn [node#]
+         (crux/submit-tx node# [[:crux.tx/put {:crux.db/id ~kwd-name
+                                               :crux.db/fn (quote (fn ~bindings
+                                                                    ~@body))}]])
+         (defn ~symbol-name [& ~'args]
+           (crux/submit-tx node# (log/spy [(into [:crux.tx/fn ~kwd-name] ~'args)])))))))
+
+(defmacro defsetter [name attr]
+  "Shortcut for simple sets on a single attribute"
+  `(deftx
+     ~name
+     [ctx# eid# val#]
+     (when-let [entity# (crux.api/entity (crux.api/db ctx#) eid#)]
+       [[:crux.tx/put (assoc entity# ~attr val#)]])))

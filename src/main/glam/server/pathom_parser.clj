@@ -40,7 +40,7 @@
 (def env-additions
   (fn [env]
     (let [session (neo4j/get-session neo4j-conn)]
-      {:crux         crux-node
+      {
        :neo4j        session
        :config       config
        :current-user (user/get-current-user (assoc env :neo4j session))})))
