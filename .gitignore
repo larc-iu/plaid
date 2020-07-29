@@ -29,3 +29,4 @@ resources/public/devcards/*
 crux-store
 builds/
 prn_debug.cljs
+glam_db.sqlite
