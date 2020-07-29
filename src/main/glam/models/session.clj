@@ -5,8 +5,8 @@
     [com.fulcrologic.fulcro.server.api-middleware :as fmw]
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
     [com.wsscode.pathom.connect :as pc :refer [defresolver defmutation]]
-    [dv.fulcro-util :as fu]
     [glam.models.user :as user]
+    [glam.models.common :refer [server-error]]
     [glam.neo4j.user :as neo-user]
     [taoensso.timbre :as log]))
 
@@ -60,8 +60,8 @@
                                                                        (neo-user/get-props neo4j {:uuid user-id})))})
               (do
                 (log/error "Invalid credentials supplied for" username)
-                (fu/server-error "Invalid credentials"))))
-        (fu/server-error "Invalid credentials")))))
+                (server-error "Invalid credentials"))))
+        (server-error "Invalid credentials")))))
 
 (defmutation logout [env params]
   {::pc/output [:session/valid?]}

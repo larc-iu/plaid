@@ -5,9 +5,9 @@
     [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
     [com.fulcrologic.fulcro.ui-state-machines :as sm]
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
-    [dv.fulcro-util :as fu]
     [glam.client.application :refer [SPA]]
     [glam.client.router :as r]
+    [glam.models.user-common :refer [valid-email valid-password]]
     [taoensso.timbre :as log]
     [com.fulcrologic.fulcro.algorithms.form-state :as fs]
     [com.fulcrologic.fulcro.algorithms.denormalize :as fdn]
@@ -92,6 +92,16 @@
   {:event/close-modal  {::sm/handler (fn [env] (sm/assoc-aliased env :modal-open? false))}
    :event/toggle-modal {::sm/handler (fn [env] (sm/update-aliased env :modal-open? not))}})
 
+(defn get-server-mutation-err
+  [result-or-env]
+  (let [result       (or (some-> result-or-env ::sm/event-data ::sm/mutation-result) result-or-env)
+        body         (:body result)
+        mutation-sym (-> body keys first)]
+    (let [error (-> body mutation-sym :server/message)]
+      (if (nil? error)
+        "There was an error sending your request."
+        error))))
+
 ;; todo adapt this to load all app start data - including session
 (sm/defstatemachine session-machine
   {::sm/actors
@@ -121,7 +131,7 @@
                                                                (-> env
                                                                    (clear)
                                                                    (sm/activate :state/logged-out)
-                                                                   (sm/assoc-aliased :error (fu/get-server-mutation-err env))))}
+                                                                   (sm/assoc-aliased :error (get-server-mutation-err env))))}
                          :event/complete {::sm/target-states #{:state/logged-out :state/logged-in}
                                           ::sm/handler       #(process-session-result % "Invalid Credentials." true)}})}
 
@@ -162,7 +172,7 @@
 
   (remote [{:keys [state] :as env}]
           (let [{:account/keys [email password password-again]} (get-in @state signup-ident)]
-            (let [valid? (boolean (and (fu/valid-email? email) (fu/valid-password? password)
+            (let [valid? (boolean (and (valid-email email) (valid-password password)
                                        (= password password-again)))]
               (when valid?
                 (-> env (m/returning Session)))))))

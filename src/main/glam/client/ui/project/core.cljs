@@ -7,7 +7,6 @@
     [glam.client.ui.common :refer [loader]]
     [glam.client.ui.project.projects-page :refer [ProjectsPage]]
     [glam.client.ui.project.project-detail :refer [ProjectDetail]]
-    [dv.fulcro-util :as fu]
     [taoensso.timbre :as log]))
 
 ;; top level --------------------------------------------------------------------------------

@@ -2,8 +2,7 @@
   (:require
     [com.fulcrologic.fulcro.components :as c]
     [com.fulcrologic.fulcro.mutations :as fm]
-    [devcards.core :as dc :refer (defcard)]
-    [dv.devcards-fulcro3 :as f3]))
+    [devcards.core :as dc :refer (defcard)]))
 
 (c/defsc FulcroDemo
   [this {:keys [counter]}]

@@ -1,6 +1,7 @@
 (ns glam.crux.common
   (:require [crux.api :as crux]
             [taoensso.timbre :as log])
+  (:refer-clojure :exclude [set])
   (:import (java.util UUID)))
 
 ;; conveniences
@@ -53,7 +54,6 @@
 (defn find-entity-ids [node attrs] (find-entity-by-attrs node attrs {:id-only? true :all-results true}))
 (defn find-entity [node attrs] (find-entity-by-attrs node attrs {:id-only? false :all-results false}))
 (defn find-entities [node attrs] (find-entity-by-attrs node attrs {:id-only? false :all-results true}))
-
 
 ;; mutations --------------------------------------------------------------------------------
 (defn put-async [node doc-or-docs]

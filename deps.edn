@@ -36,8 +36,8 @@
            org.neo4j.test/neo4j-harness        {:mvn/version "4.0.0"}
 
            ;; crux
-           juxt/crux-core                      {:mvn/version "20.07-1.9.2-beta"}
-           juxt/crux-jdbc                      {:mvn/version "20.07-1.9.2-beta"}
+           juxt/crux-core                      {:mvn/version "20.07-1.10.0-beta"}
+           juxt/crux-jdbc                      {:mvn/version "20.07-1.10.0-beta"}
            org.xerial/sqlite-jdbc              {:mvn/version "3.32.3.1"}
 
            ;; Pedestal

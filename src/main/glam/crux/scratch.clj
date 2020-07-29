@@ -14,6 +14,8 @@
        :crux.kv/db-dir                     "data/db-dir-1"
        :crux.standalone/event-log-kv-store "crux.kv.memdb/kv"}))
 
+  (def node glam.server.crux/crux-node)
+
   (crux/listen node {:crux/event-type :crux/indexed-tx, :with-tx-ops? true}
                (fn [ev]
                  (println "event received!")

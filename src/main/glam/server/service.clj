@@ -5,11 +5,10 @@
     [clojure.string :as string]
     [com.fulcrologic.fulcro.server.api-middleware :refer [handle-api-request]]
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
-    [dv.fulcro-util :as fu]
-    [dv.crux-ring-session-store :refer [crux-session-store]]
     [hiccup.page :refer [html5]]
     [io.pedestal.http :as http]
     [io.pedestal.interceptor :as interceptor]
+    [io.pedestal.http.csrf :refer [anti-forgery-token-str]]
     [muuntaja.core :as muu]
     [reitit.http :as rhttp]
     ;; needed for specs
@@ -22,12 +21,81 @@
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser]]
     [glam.server.crux :refer [crux-node]]
-    [taoensso.timbre :as log]))
+    [taoensso.timbre :as log]
+    [clojure.java.io :as io]
+    [clojure.tools.reader.edn :as edn]
+    [crux.api :as crux]
+    [glam.crux.common :as cutil])
+  (:import (java.io PushbackReader IOException)
+           (ring.middleware.session.store SessionStore)
+           (java.util UUID)))
+
+;; crux ring session store, from dvingo
+
+(defn make-session-data
+  [key data]
+  (-> data
+      (assoc :__anti-forgery-token (get data anti-forgery-token-str))
+      (dissoc anti-forgery-token-str)
+      (assoc :crux.db/id key ::session? true)))
+
+(deftype CruxSessionStore [crux-node]
+  SessionStore
+
+  (read-session [this key]
+    (if (some? key)
+      (try
+        (let [sess (crux/entity (crux/db crux-node) (UUID/fromString key))]
+          (-> sess
+              (assoc anti-forgery-token-str (:__anti-forgery-token sess))
+              (dissoc :__anti-forgery-token)))
+        (catch Exception e
+          (log/error "Invalid session. Error reading crux/entity for key: " key)
+          {}))
+      {}))
+
+  (write-session [_ key data]
+    ;(log/info "writing session: at key: " key)
+    (let [key     (try (cond-> key (some? key) UUID/fromString)
+                       (catch Exception e (UUID/randomUUID)))
+          key     (or key (UUID/randomUUID))
+          tx-data (make-session-data key data)]
+      (log/trace "Writing session data: " tx-data)
+      (log/trace "At key : " key)
+      (cutil/put crux-node tx-data)
+      key))
+
+  (delete-session [_ key]
+    (log/info "Deleting session: " key)
+    (cutil/delete crux-node key)
+    nil))
+
+(defn crux-session-store [crux-node]
+  (CruxSessionStore. crux-node))
+;; end ring session store
 
 (def manifest-file "public/js/main/manifest.edn")
 
+(defn load-edn
+  "Load edn from an io/reader source
+  Tries to read as resource first then filename."
+  [source]
+  (try
+    (with-open [r (io/reader (io/resource source))] (edn/read (PushbackReader. r)))
+    (catch IOException e
+      (try
+        ;; try just a file read
+        (with-open [r (io/reader source)] (edn/read (PushbackReader. r)))
+        (catch IOException e
+          (printf "Couldn't open '%s': %s\n" source (.getMessage e)))
+        (catch RuntimeException e
+          (printf "Error parsing edn file '%s': %s\n" source (.getMessage e))))
+      (printf "Couldn't open '%s': %s\n" source (.getMessage e)))
+    (catch RuntimeException e
+      (printf "Error parsing edn file '%s': %s\n" source (.getMessage e)))))
+
 (defn get-js-filename []
-  (:output-name (first (fu/load-edn manifest-file))))
+  (:output-name (first (load-edn manifest-file))))
 
 ;; ================================================================================
 ;; Dynamically generated HTML. We do this so we can safely embed the CSRF token

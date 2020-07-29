@@ -10,7 +10,6 @@
     [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
     [com.fulcrologic.fulcro.ui-state-machines :as uism]
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
-    [dv.fulcro-util :as fu]
     [glam.models.session :as session]
     [glam.client.router :as r]
     [glam.models.user-common :refer [valid-email valid-password]]
@@ -69,7 +68,8 @@
    :componentDidMount (fn [this] (comp/transact! this [(clear-signup-form {})]))}
   (let [server-err (:session/server-error-msg (get-session props))
         form-valid? (= :valid (validator props))
-        submit! (fu/prevent-default
+        submit! (fn [e]
+                  (.preventDefault e)
                   #(when form-valid?
                      (comp/transact! this [(signup {:password password :email email})])))
         checked? (fs/checked? props)

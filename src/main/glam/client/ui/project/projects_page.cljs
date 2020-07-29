@@ -1,7 +1,6 @@
 (ns glam.client.ui.project.projects-page
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.data-fetch :as df]
-            [dv.fulcro-util :as fu]
             [glam.client.router :as r]
             [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
             [com.fulcrologic.fulcro.dom :as dom]
@@ -17,8 +16,7 @@
     (dom/div "id: " (pr-str id))
     (dom/div "name: " (pr-str name))
     (dom/div "slug: " (pr-str slug))
-    (dom/div (r/link :project {:id id} name)
-             (fu/props-data-debug this true))))
+    (dom/div (r/link :project {:id id} name))))
 
 (def ui-project-item (c/factory ProjectListItem {:keyfn :project/id}))
 

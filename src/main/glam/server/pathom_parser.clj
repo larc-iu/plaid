@@ -2,7 +2,6 @@
   (:require
     [com.wsscode.pathom.connect :as pc]
     [com.wsscode.pathom.core :as p]
-    [dv.pathom :refer [build-parser]]
     [glam.server.neo4j :refer [neo4j-conn]]
     [glam.models.project :refer [project-resolvers]]
     [glam.models.session :as session]
@@ -11,7 +10,6 @@
     [glam.server.config :refer [config]]
     [glam.server.crux :refer [crux-node]]
     [neo4j-clj.core :as neo4j]
-    [dv.pathom :as dp]
     [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
     [taoensso.timbre :as log]))
 
@@ -20,38 +18,31 @@
    user/resolvers
    project-resolvers])
 
-
-#_(def parser
-    (let [{:keys [trace? index-explorer? log-responses?
-                  connect-viz? sensitive-keys]} (::config config)]
-      (build-parser
-        {:resolvers          all-resolvers
-         :trace?             trace?
-         :index-explorer?    index-explorer?
-         :log-responses?     log-responses?
-         :enable-pathom-viz? connect-viz?
-         :sensitive-keys     sensitive-keys
-         :env-additions      (fn [env] {:crux-node    crux-node
-                                        :neo4j        (neo4j/get-session neo4j-conn)
-                                        :config       config
-                                        :current-user (user/get-current-user env)})})))
-
-
 (def env-additions
   (fn [env]
     (let [session (neo4j/get-session neo4j-conn)]
-      {
+      {:crux         crux-node
        :neo4j        session
        :config       config
        :current-user (user/get-current-user (assoc env :neo4j session))})))
+
+(defn mk-augment-env-request
+  [get-config-map]
+  (fn augment-env-request
+    [env]
+    (merge env (get-config-map env))))
 
 (def parser
   (let [{:keys [trace? index-explorer?
                 log-responses? connect-viz?
                 handle-errors? sensitive-keys]} (::config config)
         base-plugins [(pc/connect-plugin {::pc/register all-resolvers})
-                      (dp/preprocess-parser-plugin dp/log-requests)
-                      dp/query-params-to-env-plugin
+                      (p/pre-process-parser-plugin
+                        (fn log-requests [{:keys [env tx] :as req}]
+                          (println)
+                          (log/debug "Pathom transaction:")
+                          (println)
+                          req))
                       (p/post-process-parser-plugin p/elide-not-found)]
         parser (p/parser
                  {::p/fail-fast? true
@@ -65,7 +56,7 @@
                                   ::pc/mutation-join-globals [:tempids]}
                   ::p/plugins    (cond-> base-plugins
                                          #_#_handle-errors? (conj p/error-handler-plugin)
-                                         env-additions (conj (p/env-wrap-plugin (dp/mk-augment-env-request env-additions)))
+                                         env-additions (conj (p/env-wrap-plugin (mk-augment-env-request env-additions)))
                                          trace? (conj p/trace-plugin)
                                          )})
         parser (cond->> parser
@@ -77,7 +68,5 @@
       (let [tx (if (and trace? (not connect-viz?))
                  (conj tx :com.wsscode.pathom/trace) tx)
             resp (parser env tx)]
-        (when log-responses?
-          (dp/log-response! sensitive-keys resp))
         resp))))
 
