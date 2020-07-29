@@ -14,7 +14,6 @@
             [glam.client.router :as r]
             [glam.client.ui.common :as common]
             [glam.client.ui.material-ui :as mui]
-            [dv.fulcro-util :as fu]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]))
 
 (defn toggle-modal! [this] (sm/trigger! this ::session/session :event/toggle-modal))

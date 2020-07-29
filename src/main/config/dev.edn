@@ -1,23 +1,18 @@
 {:taoensso.timbre/logging-config
-   {:level        :debug
-    :ns-blacklist ["shadow.cljs.devtools.server.worker.impl"]}
+ {:level        :debug
+  :ns-blacklist ["shadow.cljs.devtools.server.worker.impl"]}
 
  :io.pedestal.http/config
- {:env :dev
+ {:env                    :dev
   :io.pedestal.http/join? false}
 
  :glam.server.pathom-parser/config
-   {:connect-viz?    true
-    :index-explorer? true
-    :trace?          true
-    :log-responses?  true
-    :handle-errors?  false
-    :sensitive-keys  [:password]}
-
- :glam.server.neo4j/config
-   {:url "neo4j://localhost:7687"
-    :username "neo4j"
-    :password "password"}
+ {:connect-viz?    true
+  :index-explorer? true
+  :trace?          true
+  :log-responses?  true
+  :handle-errors?  false
+  :sensitive-keys  [:password]}
 
  :glam.server.service/config
-   {:dev? true}}
+ {:dev? true}}

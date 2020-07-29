@@ -2,14 +2,12 @@
   (:require
     [com.wsscode.pathom.connect :as pc]
     [com.wsscode.pathom.core :as p]
-    [glam.server.neo4j :refer [neo4j-conn]]
     [glam.models.project :refer [project-resolvers]]
     [glam.models.session :as session]
     [glam.models.user :as user]
     [glam.models.common :refer [server-error]]
     [glam.server.config :refer [config]]
     [glam.server.crux :refer [crux-node]]
-    [neo4j-clj.core :as neo4j]
     [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
     [taoensso.timbre :as log]))
 
@@ -20,11 +18,9 @@
 
 (def env-additions
   (fn [env]
-    (let [session (neo4j/get-session neo4j-conn)]
-      {:crux         crux-node
-       :neo4j        session
-       :config       config
-       :current-user (user/get-current-user (assoc env :neo4j session))})))
+    {:crux         crux-node
+     :config       config
+     :current-user (user/get-current-user (assoc env :crux crux-node))}))
 
 (defn mk-augment-env-request
   [get-config-map]

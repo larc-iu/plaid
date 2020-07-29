@@ -3,7 +3,7 @@
             [glam.crux.common :as gc]))
 
 (defn create [node {:keys [name email password-hash]}]
-  (let [{:person/keys [id] :as record}
+  (let [{:user/keys [id] :as record}
         (merge (gc/new-record "user")
                {:user/name          name
                 :user/email         email
@@ -15,10 +15,22 @@
 (defn get-all [node] (gc/find-entities node {:user/id '_}))
 (defn get-by-name [node name] (gc/find-entity node {:user/name name}))
 (defn get-by-email [node email] (gc/find-entity node {:user/email email}))
+
 (defn set-name [node eid name] (gc/set node eid :user/name name))
 (defn set-email [node eid email] (gc/set node eid :user/email email))
 (defn set-password-hash [node eid password-hash] (gc/set node eid :user/password-hash password-hash))
 (defn set-admin? [node eid admin?] (gc/set node eid :user/admin? admin?))
+
+(defn delete [node eid] (gc/delete node eid))
+
+(comment
+  (def node glam.server.crux/crux-node)
+  (set-admin? node (gc/find-entity-id node {:user/email "a@a.com"}) true)
+
+  (get-by-email node "a@a.com")
+  (get-all node)
+
+  )
 
 ;;;; delete
 ;;(defquery delete "MATCH (u:User) WHERE u.uuid = $uuid DELETE u")

@@ -7,7 +7,8 @@
     [com.wsscode.pathom.connect :as pc :refer [defresolver defmutation]]
     [glam.models.user :as user]
     [glam.models.common :refer [server-error]]
-    [glam.neo4j.user :as neo-user]
+    [glam.crux.user :as cuser]
+    [glam.crux.common :as gc]
     [taoensso.timbre :as log]))
 
 (defn augment-session-resp
@@ -26,42 +27,39 @@
            (assoc resp :session new-session)))))))
 
 (pc/defmutation signup
-  [{:keys [neo4j] :as env} {:keys [email password]}]
+  [{:keys [crux] :as env} {:keys [email password]}]
   {}
-  (if-let [user-id (neo-user/get-id-by-email neo4j {:email email})]
+  (if-let [user-id (cuser/get-by-email crux email)]
     (augment-session-resp env {:session/valid?           false
                                :user/email               email
                                :user/admin?              false
                                :session/server-error-msg "Problem signing up."})
     (do (log/info "doing signup")
         (log/info "inserting user: " email)
-        (neo-user/create neo4j {:name          email
-                                :email         email
-                                :password_hash (user/hash-password password)})
+        (cuser/create crux {:name          email
+                            :email         email
+                            :password-hash (user/hash-password password)})
         (augment-session-resp env {:session/valid?           true
                                    :session/server-error-msg nil
                                    :user/email               email
                                    :user/admin?              false}))))
 
 ;; todo use a protocol to support pluggable auth
-(defmutation login [{:keys [neo4j] :as env} {:keys [username password]}]
+(defmutation login [{:keys [crux] :as env} {:keys [username password]}]
   {::pc/output [:session/valid? :user/email :user/admin?]}
   (do
     (log/info "Authenticating" username)
-    (let [user-id (neo-user/get-id-by-email neo4j {:email username})]
-      (if-let [{hashed-pw :user/password :as user} (user/change-keys (neo-user/get-props neo4j {:uuid user-id}))]
-        (do (log/info "User from db: " (dissoc user :user/password))
-            (if (user/verify-password password hashed-pw)
-              (augment-session-resp env {:session/valid?           true
-                                         :user/email               username
-                                         :session/server-error-msg nil
-                                         :user/admin?              (boolean
-                                                                     (:admin
-                                                                       (neo-user/get-props neo4j {:uuid user-id})))})
-              (do
-                (log/error "Invalid credentials supplied for" username)
-                (server-error "Invalid credentials"))))
-        (server-error "Invalid credentials")))))
+    (if-let [{:user/keys [password-hash admin?] :as user} (log/spy (cuser/get-by-email crux username))]
+      (do (log/info "User from db: " (dissoc user :user/password-hash))
+          (if (user/verify-password password password-hash)
+            (augment-session-resp env {:session/valid?           true
+                                       :session/server-error-msg nil
+                                       :user/email               username
+                                       :user/admin?              admin?})
+            (do
+              (log/error "Invalid credentials supplied for" username)
+              (server-error "Invalid credentials"))))
+      (server-error "Invalid credentials"))))
 
 (defmutation logout [env params]
   {::pc/output [:session/valid?]}

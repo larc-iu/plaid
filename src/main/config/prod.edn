@@ -3,9 +3,4 @@
   :io.pedestal.http/allowed-origins ["localhost"]}
 
  :taoensso.timbre/logging-config
- {:level :info}
-
- :glam.server.neo4j/config
- {:url "neo4j://localhost:7687"
-  :username "neo4j"
-  :password "password"}}
+ {:level :info}}
