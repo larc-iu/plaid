@@ -16,10 +16,10 @@
 (defn get-by-name [node name] (gc/find-entity node {:user/name name}))
 (defn get-by-email [node email] (gc/find-entity node {:user/email email}))
 
-(defn set-name [node eid name] (gc/set node eid :user/name name))
-(defn set-email [node eid email] (gc/set node eid :user/email email))
-(defn set-password-hash [node eid password-hash] (gc/set node eid :user/password-hash password-hash))
-(defn set-admin? [node eid admin?] (gc/set node eid :user/admin? admin?))
+(gc/defsetter set-name :user/name)
+(gc/defsetter set-email :user/email)
+(gc/defsetter set-password-hash :user/password-hash)
+(gc/defsetter set-admin? :user/admin?)
 
 (defn delete [node eid] (gc/delete node eid))
 

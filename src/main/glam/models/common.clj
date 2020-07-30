@@ -33,7 +33,6 @@
             pathom-action-kwd
             (fn [env params]
               (log/info (str "authorized? " (authorized env level)))
-              (log/info (keys env))
               (let [res (if (authorized env level)
                           (pathom-action env params)
                           (server-error (str "Unauthorized pathom action: session "

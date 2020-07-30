@@ -17,17 +17,18 @@
 
 ;; query-only defsc for normalization
 (defsc Session
-  [_ {:keys [:session/valid? :user/email :session/server-error-msg :user/admin?]}]
-  {:query         [:session/valid? :user/admin? :session/server-error-msg :user/email :ui/loading?]
+  [_ {:keys [:session/valid? :user/email :user/id :session/server-error-msg :user/admin?]}]
+  {:query         [:session/valid? :user/admin? :session/server-error-msg :user/email :user/id :ui/loading?]
    :ident         (fn [] session-ident)
    :pre-merge     (fn [{:keys [data-tree]}]
                     (merge
                       {:session/valid?           false
-                       :user/admin?           false
+                       :user/admin?              false
                        :user/email               ""
+                       :user/id                  nil
                        :session/server-error-msg nil}
                       data-tree))
-   :initial-state {:session/valid? false :user/admin? false :user/email "" :session/server-error-msg nil}})
+   :initial-state {:session/valid? false :user/admin? false :user/email "" :user/id nil :session/server-error-msg nil}})
 
 (def session-join {session-ident (comp/get-query Session)})
 
@@ -94,8 +95,8 @@
 
 (defn get-server-mutation-err
   [result-or-env]
-  (let [result       (or (some-> result-or-env ::sm/event-data ::sm/mutation-result) result-or-env)
-        body         (:body result)
+  (let [result (or (some-> result-or-env ::sm/event-data ::sm/mutation-result) result-or-env)
+        body (:body result)
         mutation-sym (-> body keys first)]
     (let [error (-> body mutation-sym :server/message)]
       (if (nil? error)

@@ -29,55 +29,61 @@
 (pc/defmutation signup
   [{:keys [crux] :as env} {:keys [email password]}]
   {}
-  (if-let [user-id (cuser/get-by-email crux email)]
+  (if-let [{:user/keys [id]} (cuser/get-by-email crux email)]
     (augment-session-resp env {:session/valid?           false
                                :user/email               email
+                               :user/id                  id
                                :user/admin?              false
                                :session/server-error-msg "Problem signing up."})
     (do (log/info "doing signup")
         (log/info "inserting user: " email)
-        (cuser/create crux {:name          email
-                            :email         email
-                            :password-hash (user/hash-password password)})
-        (augment-session-resp env {:session/valid?           true
-                                   :session/server-error-msg nil
-                                   :user/email               email
-                                   :user/admin?              false}))))
+        (let [id (cuser/create crux {:name          email
+                                     :email         email
+                                     :password-hash (user/hash-password password)})]
+          (augment-session-resp env {:session/valid?           true
+                                     :session/server-error-msg nil
+                                     :user/email               email
+                                     :user/id                  id
+                                     :user/admin?              false})))))
 
 ;; todo use a protocol to support pluggable auth
 (defmutation login [{:keys [crux] :as env} {:keys [username password]}]
-  {::pc/output [:session/valid? :user/email :user/admin?]}
+  {::pc/output [:session/valid? :user/email :user/id :user/admin?]}
   (do
     (log/info "Authenticating" username)
-    (if-let [{:user/keys [password-hash admin?] :as user} (log/spy (cuser/get-by-email crux username))]
+    (if-let [{:user/keys [id password-hash admin?] :as user} (log/spy (cuser/get-by-email crux username))]
       (do (log/info "User from db: " (dissoc user :user/password-hash))
           (if (user/verify-password password password-hash)
             (augment-session-resp env {:session/valid?           true
                                        :session/server-error-msg nil
                                        :user/email               username
-                                       :user/admin?              admin?})
+                                       :user/admin?              admin?
+                                       :user/id                  id})
             (do
               (log/error "Invalid credentials supplied for" username)
               (server-error "Invalid credentials"))))
       (server-error "Invalid credentials"))))
 
 (defmutation logout [env params]
-  {::pc/output [:session/valid?]}
+  {::pc/output [:session/valid?
+                :session/server-error-msg
+                :user/email :user/id :user/admin?]}
   (log/info "in logout")
   (augment-session-resp env
                         {:session/valid?           false
                          :session/server-error-msg nil
                          :user/email               ""
+                         :user/id                  nil
                          :user/admin?              false}))
 
 (defresolver current-session-resolver [env _]
-  {::pc/output [{::current-session [:session/valid? :user/email :user/admin?]}]}
-  (let [{:keys [user/email session/valid? user/admin?] :as session} (get-in env [:ring/request :session])]
+  {::pc/output [{::current-session [:session/valid? :user/email :user/id :user/admin?]}]}
+  (let [{:keys [user/email session/valid? user/admin? user/id] :as session} (get-in env [:ring/request :session])]
     (log/info " in current sesh resolver: " session)
     (if valid?
       (do
         (log/info email "already logged in!")
-        {::current-session {:session/valid? true :user/email email :user/admin? admin?}})
+        {::current-session {:session/valid? true :user/email email :user/admin? admin? :user/id id}})
       {::current-session {:session/valid? false}})))
 
 (def resolvers [current-session-resolver signup login logout])

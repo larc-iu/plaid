@@ -71,33 +71,58 @@
 (defn delete [node eid]
   (crux/await-tx node (delete-async node eid)))
 
-(defn set-async [node eid attr val]
+(defn unsafe-set-async [node eid attr val]
   "WARNING: there is no atomicity guarantee here: `ent` might have changed
   between the two lines. We accept this as it will be pretty rare and inconsequential"
   (let [ent (entity node eid)]
     (put node (assoc ent attr val))))
-(defn set [node eid attr val]
-  (crux/await-tx node (set-async node eid attr val)))
+(defn unsafe-set [node eid attr val]
+  (crux/await-tx node (unsafe-set-async node eid attr val)))
 
-;; unused --------------------------------------------------------------------------------
-;; below two macros are unused for now--they're an attempt to avoid race conditions on puts,
-;; but these are fairly rare and inconsequential in this application
+(defn evict-async [node eid]
+  (crux/submit-tx node [[:crux.tx/evict eid]]))
+(defn evict [node eid]
+  (crux/await-tx node (evict-async node eid)))
+
+;; deftx --------------------------------------------------------------------------------
+;; macro for transactions to avoid race conditions
 (defmacro deftx [name bindings & body]
-  "Defines a transaction function on the given node."
+  "Defines a function used for mutations that uses a Crux transaction function under the hood.
+  body must return a valid Crux transaction vector, with any non-clojure.core variables fully
+  qualified. `install-tx-fns` must be called on namespaces where deftx is used for the function
+  to work."
   (let [kwd-name (keyword (str *ns*) (str name))
         symbol-name (symbol (str name))]
-    `(def ~symbol-name
-       (fn [node#]
-         (crux/submit-tx node# [[:crux.tx/put {:crux.db/id ~kwd-name
-                                               :crux.db/fn (quote (fn ~bindings
-                                                                    ~@body))}]])
-         (defn ~symbol-name [& ~'args]
+    `(def
+       ~(vary-meta
+          symbol-name
+          assoc
+          :crux-tx-fn
+          `(fn [node#]
+             (crux/submit-tx node# [[:crux.tx/put {:crux.db/id ~kwd-name
+                                                   :crux.db/fn (quote (fn ~bindings
+                                                                        ~@body))}]])))
+       (fn ~symbol-name [node# & ~'args]
+         (crux/await-tx
+           node#
            (crux/submit-tx node# (log/spy [(into [:crux.tx/fn ~kwd-name] ~'args)])))))))
 
+(defn install-tx-fns [node namespaces]
+  "Given a node and a seq of namespace symbols, scan all public vars
+  and use any :crux-tx-fn in their metadata to install the tx-fn on
+  the node"
+  (doseq [ns-symbol namespaces]
+    (when-let [ns (the-ns ns-symbol)]
+      (doseq [[vname v] (ns-publics ns)]
+        (when-let [tx-install-fn (some-> v meta :crux-tx-fn)]
+          ;; evict any already-existing entities with the tx-fn's id
+          (evict node (keyword (str ns) (str vname)))
+          (tx-install-fn node))))))
+
 (defmacro defsetter [name attr]
-  "Shortcut for simple sets on a single attribute"
-  `(deftx
-     ~name
-     [ctx# eid# val#]
-     (when-let [entity# (crux.api/entity (crux.api/db ctx#) eid#)]
-       [[:crux.tx/put (assoc entity# ~attr val#)]])))
+    "Shortcut for simple sets on a single attribute"
+    `(deftx
+       ~name
+       [ctx# eid# val#]
+       (when-let [entity# (crux.api/entity (crux.api/db ctx#) eid#)]
+         [[:crux.tx/put (assoc entity# ~attr val#)]])))

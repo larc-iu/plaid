@@ -12,16 +12,15 @@
 (defn get-all [node] (gc/find-entities node {:project/id '_}))
 (defn get-by-name [node name] (gc/find-entity node {:project/name name}))
 
-(defn set-name [node eid name] (gc/set node eid :project/name name))
+(gc/defsetter set-name :project/name)
+
 (defn delete [node eid] (gc/delete node eid))
 
 (comment
   (def node glam.server.crux/crux-node)
   (create node {:name "Project 1"})
   (create node {:name "Project 2"})
-
   (get-all node)
-
   )
 
 ;;;; Cascading delete: don't just delete the project, delete EVERYTHING dependent on it (!)

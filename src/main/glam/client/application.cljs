@@ -80,6 +80,5 @@
 
 (defonce SPA
   (app/fulcro-app
-    {:render-middleware (fn [this render] (html (render)))
-     :remote-error?     remote-error?
+    {:remote-error?     remote-error?
      :remotes           {:remote (api-remote)}}))

@@ -10,7 +10,9 @@
             [glam.models.user :as user]
             [glam.models.user-common :refer [valid-password]]
             [glam.client.ui.material-ui :as mui]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            [com.fulcrologic.fulcro.components :as comp]
+            [glam.client.ui.global-snackbar :as snack]))
 
 (def ident [:component/id :change-password-form])
 
@@ -32,19 +34,15 @@
   (action [{:keys [state]}]
     (swap! state #(assoc-in % (conj ident :busy?) busy?))))
 
-(defmutation handle-server-message [{:server/keys [message error?]}]
-  (action [{:keys [state]}]
-    (swap! state (fn [s]
-                   (-> s
-                       (assoc-in (conj ident :server-msg) message)
-                       (assoc-in (conj ident :server-err) error?))))))
+(defn handle-server-message [this {:server/keys [message error?]}]
+  (log/info "handle!" message error?)
+  (snack/message! this {:message  message
+                        :severity (if error? "error" "success")}))
 
 ;; TODO: rewrite storing passwords in component-local state
 (defsc ChangePasswordForm [this {:keys [current-password
                                         new-password-confirm
                                         new-password
-                                        server-msg
-                                        server-err
                                         busy?]
                                  :as   props}]
   {:ident         (fn [_] ident)
@@ -53,24 +51,18 @@
                    :current-password
                    :new-password
                    :new-password-confirm
-                   :server-msg
-                   :server-err
                    :busy?]
    :initial-state (fn [_]
                     (fs/add-form-config ChangePasswordForm
                                         {:current-password     ""
                                          :new-password         ""
                                          :new-password-confirm ""
-                                         :server-msg           ""
-                                         :server-err           false
                                          :busy?                false}))
    :form-fields   #{:current-password :new-password :new-password-confirm}}
   (let [submit (fn []
                  (when-not busy?
-                   (c/transact! this [(handle-server-message {:server/error?  ""
-                                                              :server/message ""})
-                                      (mark-busy {:busy? true})
-                                      (user/change-password
+                   (c/transact! this [(mark-busy {:busy? true})
+                                      (user/change-own-password
                                         {:current-password current-password
                                          :new-password     new-password
                                          :user/email       (:user/email (sn/get-session props))
@@ -79,7 +71,7 @@
                                                             (fs/clear-complete! {})
                                                             (fs/reset-form! {})]
                                          :on-error         [(mark-busy {:busy? false})]
-                                         :message-handler  handle-server-message})])))]
+                                         :message-handler  (partial handle-server-message this)})])))]
 
     (mui/padded-paper
       (dom/form
@@ -91,10 +83,6 @@
         (mui/grid {:container true :direction "column" :spacing 1}
           (mui/grid {:item true}
             (mui/typography {:variant "h4"} "Change Password"))
-          (mui/grid {:item true}
-            (when-not (empty? server-msg)
-              (mui/alert {:severity (if server-err "error" "success")}
-                server-msg)))
 
           (mui/grid {:item true}
             (common/text-input-with-label this :current-password "Current Password" validator "Password must be 8 or more characters long"
@@ -134,8 +122,6 @@
             (mui/grid {:item true}
               (mui/button
                 {:onClick  (fn []
-                             (c/transact! this [(handle-server-message {:server/error?  false
-                                                                        :server/message ""})])
                              (c/transact! this [(fs/clear-complete! {})])
                              (c/transact! this [(fs/reset-form! {})]))
                  :size     "large"

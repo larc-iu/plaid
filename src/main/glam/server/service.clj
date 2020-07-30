@@ -239,7 +239,7 @@
     {:env                  :prod
      ::http/routes         []
      ::http/resource-path  "/public"
-     ::http/enable-session {:store        (crux-session-store crux-node)
+     ::http/enable-session {;;:store        (crux-session-store crux-node)
                             :cookie-attrs {:secure    (not dev?)
                                            :same-site :strict
                                            ;; expires in two weeks

@@ -18,6 +18,7 @@
     [glam.client.ui.admin-settings.core :refer [AdminSettings]]
     [glam.client.ui.home :refer [Home]]
     [glam.client.ui.login :refer [logout-button Login]]
+    [glam.client.ui.global-snackbar :refer [ui-global-snackbar GlobalSnackbar]]
     [com.fulcrologic.fulcro.components :as comp]))
 
 (dr/defrouter TopRouter
@@ -34,19 +35,22 @@
   (action [{:keys [state]}]
           (swap! state #(assoc-in % (conj ident :root/drawer-open?) open?))))
 
-(defsc PageContainer [this {:root/keys [drawer router drawer-open?] :as props}]
+(defsc PageContainer [this {:root/keys [drawer global-snackbar router drawer-open?] :as props}]
   {:query         [{:root/router (c/get-query TopRouter)}
+                   {:root/global-snackbar (c/get-query GlobalSnackbar)}
                    {:root/drawer (c/get-query Drawer)}
                    :root/drawer-open?
                    [::sm/asm-id ::TopRouter]
                    session-join]
    :ident         (fn [] ident)
    :initial-state (fn [_] {:root/router          (c/get-initial-state TopRouter {})
+                           :root/global-snackbar (c/get-initial-state GlobalSnackbar {})
                            :root/drawer          (c/get-initial-state Drawer {})
                            :root/drawer-open?    false
                            session/session-ident (c/get-initial-state Session {})})}
   (let [session? (valid-session? props)]
     (mui/theme-provider {:theme mui/default-theme}
+      (ui-global-snackbar global-snackbar)
       (mui/app-bar {:position "static"}
         (mui/toolbar {:variant "dense"}
           (mui/icon-button {:edge     "start"
