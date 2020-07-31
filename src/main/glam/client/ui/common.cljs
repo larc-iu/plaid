@@ -2,7 +2,8 @@
   (:require [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.components :as c]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
-            [glam.client.ui.material-ui :as mui]))
+            [glam.client.ui.material-ui :as mui]
+            [com.fulcrologic.fulcro.mutations :as m]))
 
 (defn loader []
   (mui/box {:alignItems     "center"
@@ -10,6 +11,11 @@
             :display        "flex"
             :minHeight      400}
     (mui/circular-progress {:size "6em"})))
+
+(defn complete-field
+  [this field]
+  (c/transact! this [(fs/mark-complete! {:entity-ident (c/get-ident this)
+                                         :field        field})]))
 
 ;; form stuff
 (defn field-attrs
@@ -39,12 +45,22 @@
            attrs)))
 
 (defn text-input-with-label
-  [component field label validator validation-message input-attrs]
+  "Text input based on mui/text-field for use with forms. Note: onBlur completes
+  the field by default."
+  [component field label validator validation-message {:keys [last-input] :as input-attrs}]
   (let [{:keys [invalid?]} (field-attrs component field validator)]
     (mui/text-field
-      (merge {:variant    "filled"
+      (merge {:key        (str field)
+              :variant    "filled"
               :error      invalid?
               :helperText (if invalid? validation-message "")
-              :label      label}
-             input-attrs))))
+              :label      label
+              :onBlur     #(complete-field component field)
+              :onChange   (if last-input
+                            (fn [e]
+                              (m/set-string!! component field :event e)
+                              (complete-field component field))
+                            (fn [e]
+                              (m/set-string!! component field :event e)))}
+             (dissoc input-attrs :last-input)))))
 

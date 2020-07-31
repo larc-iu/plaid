@@ -11,6 +11,9 @@
   (:refer-clojure :exclude [list alert])
   (:require [com.fulcrologic.fulcro.algorithms.react-interop :as interop]
             ["@material-ui/core/styles" :refer [styled createMuiTheme ThemeProvider]]
+            ["@material-ui/core/colors/green" :default green]
+            ["@material-ui/core/colors/purple" :default purple]
+            ["@material-ui/core/colors/blue" :default blue]
 
     ;; BEGIN AUTO GEN
             ["@material-ui/core/Accordion" :default Accordion]
@@ -324,7 +327,9 @@
 (defn styled-typography [styles] (wrap-styles Typography styles))
 
 ;; theme
-(def default-theme (createMuiTheme #js {:spacing 8}))
+(def default-theme (createMuiTheme #js {:spacing 8
+                                        :palette #js {:primary   purple
+                                                      :secondary blue}}))
 (def theme-provider (interop/react-factory ThemeProvider))
 
 ;; conveniences
@@ -339,3 +344,22 @@
   (paper {}
     (box {:m 1 :p 1}
       child)))
+
+(defn vertical-grid [& children]
+  "Only use with static seqs! (key function is just the position in the list)"
+  (grid {:container true :direction "column" :spacing 1}
+    (map-indexed (fn [i child]
+                   (grid {:item true
+                          :key  i}
+                     child))
+                 children)))
+
+(defn horizontal-grid [& children]
+  "Only use with static seqs! (key function is just the position in the list)"
+  (grid {:container true :direction "row" :spacing 1}
+    (map-indexed (fn [i child]
+                   (grid {:item true
+                          :key  i}
+                     child))
+                 children)))
+

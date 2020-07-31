@@ -35,12 +35,12 @@
   (gc/entity crux id))
 
 (pc/defmutation change-own-password
-  [{:keys [crux] :as env} {:keys [:user/email current-password new-password]}]
+  [{:keys [crux] :as env} {:keys [current-password new-password]}]
   {::pc/transform mc/user-required}
   (let [id (get-current-user env)
         {:user/keys [password-hash]} (gc/entity crux id)]
     (if (nil? id)
-      (server-error (str "No user found with email " email))
+      (server-error "Invalid session")
       (if-not (verify-password current-password password-hash)
         (server-error (str "Current password incorrect"))
         (do

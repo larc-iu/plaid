@@ -5,8 +5,27 @@
             [taoensso.timbre :as log])
   )
 
+(defn init [node]
+  (let [admin-id
+        (user/create
+          node
+          {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+           :name          "admin"
+           :email         "a@b.com"
+           })]
+    (user/set-admin? node admin-id true))
+  (user/create
+    node
+    {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+     :name          "user"
+     :email         "b@b.com"})
+  )
+
 (comment
   (def node glam.server.crux/crux-node)
+  (let [node glam.server.crux/crux-node]
+    (glam.crux.scratch/init node))
+
   (user/get-by-email node "a@a.com")
   (user/get-by-email node "a@b.com")
   (user/get-by-email node "b@b.com")

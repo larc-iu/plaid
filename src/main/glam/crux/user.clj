@@ -8,7 +8,9 @@
                {:user/name          name
                 :user/email         email
                 :user/password-hash password-hash
-                :user/admin?        false})]
+                :user/admin?        false
+                :user/reader        #{}
+                :user/writer        #{}})]
     (gc/put node [record])
     id))
 
@@ -20,16 +22,31 @@
 (gc/defsetter set-email :user/email)
 (gc/defsetter set-password-hash :user/password-hash)
 (gc/defsetter set-admin? :user/admin?)
+(gc/deftx set-reader [node user-id project-id]
+  (let [db (crux.api/db node)
+        user (crux.api/entity db user-id)]
+    [[:crux.tx/put (update user :user/reader conj project-id)]]))
+(gc/deftx set-writer [node user-id project-id]
+  (let [db (crux.api/db node)
+        user (crux.api/entity db user-id)]
+    [[:crux.tx/put (update user :user/writer conj project-id)]]))
+(gc/deftx revoke-reader [node user-id project-id]
+  (let [db (crux.api/db node)
+        user (crux.api/entity db user-id)]
+    [[:crux.tx/put (update user :user/reader disj project-id)]]))
+(gc/deftx revoke-writer [node user-id project-id]
+  (let [db (crux.api/db node)
+        user (crux.api/entity db user-id)]
+    [[:crux.tx/put (update user :user/writer disj project-id)]]))
 
 (defn delete [node eid] (gc/delete node eid))
 
 (comment
   (def node glam.server.crux/crux-node)
-  (set-admin? node (gc/find-entity-id node {:user/email "a@a.com"}) true)
+  (set-admin? node (gc/find-entity-id node {:user/email "a@b.com"}) true)
 
   (get-by-email node "a@a.com")
   (get-all node)
-
   )
 
 ;;;; delete

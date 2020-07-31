@@ -30,11 +30,11 @@
   (let [submit (fn []
                  (c/transact! this [(fs/clear-complete! {})
                                     (fs/reset-form! {})])
-                 (c/transact! this [(user/change-own-name
-                                      {:name     new-name
-                                       :callback (fn [{:server/keys [message error?]}]
-                                                   (snack/message! this {:severity (if error? "error" "success")
-                                                                         :message  message}))})])
+                 (c/transact! this [(user/change-own-name {:name new-name})]
+                              {:on-result (fn [{:server/keys [message error?]}]
+                                            (js/console.log "got message " message)
+                                            (snack/message! this {:severity (if error? "error" "success")
+                                                                  :message  message}))})
                  (m/set-string! this :new-name :value ""))]
     (mui/padded-paper
       (dom/div

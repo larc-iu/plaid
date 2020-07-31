@@ -8,7 +8,6 @@
             [glam.neo4j.layers.token-layer :as token]
             [glam.neo4j.layers.span-layer :as span]
             [glam.neo4j.layers.relation-layer :as relation]
-
             ))
 
 (comment
