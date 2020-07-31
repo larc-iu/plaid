@@ -39,7 +39,7 @@
         (mui/grid {:item true} (mui/typography {:variant "h5"} "Login"))
         (mui/grid {:item true}
           (common/text-input-with-label this :user/email "Email" validator "Must be a valid email"
-                                        {:autoFocus true
+            {:autoFocus true
              :type      "email"
              :fullWidth true
              :value     email
@@ -47,7 +47,7 @@
              :onChange  #(m/set-string!! this :user/email :event %)}))
         (mui/grid {:item true}
           (common/text-input-with-label this :password "Password" validator "Password invalid"
-                                        {:type      "password"
+            {:type      "password"
              :fullWidth true
              :value     password
              :disabled  loading?

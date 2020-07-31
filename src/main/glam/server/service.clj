@@ -20,7 +20,7 @@
     [reitit.pedestal :as rpedestal]
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser]]
-    [glam.server.crux :refer [crux-node]]
+    [glam.server.crux :refer [crux-node crux-session-node]]
     [taoensso.timbre :as log]
     [clojure.java.io :as io]
     [clojure.tools.reader.edn :as edn]
@@ -239,7 +239,7 @@
     {:env                  :prod
      ::http/routes         []
      ::http/resource-path  "/public"
-     ::http/enable-session {;;:store        (crux-session-store crux-node)
+     ::http/enable-session {:store        (crux-session-store crux-session-node)
                             :cookie-attrs {:secure    (not dev?)
                                            :same-site :strict
                                            ;; expires in two weeks

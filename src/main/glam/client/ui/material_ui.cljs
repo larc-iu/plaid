@@ -321,6 +321,8 @@
   [component styles]
   (interop/react-factory
     ((styled component) (clj->js styles))))
+(defn styled-container [styles] (wrap-styles Container styles))
+(defn styled-fab [styles] (wrap-styles Fab styles))
 (defn styled-box [styles] (wrap-styles Box styles))
 (defn styled-list [styles] (wrap-styles List styles))
 (defn styled-paper [styles] (wrap-styles Paper styles))

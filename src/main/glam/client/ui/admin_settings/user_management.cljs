@@ -43,6 +43,12 @@
 
 (def ui-user-accordion (c/factory UserAccordion {:keyfn :user/id}))
 
+(def um-container (mui/styled-container {:position "relative"}))
+
+(def um-fab (mui/styled-fab {:position   "absolute"
+                             :margin-top "3em"
+                             :right      "2em"}))
+
 (defsc UserManagement [this {:keys [users expanded-id] :as props}]
   {:ident         (fn [_] ident)
    :query         [{:users (c/get-query UserAccordion)}
@@ -51,12 +57,14 @@
                     {:users       (c/get-initial-state UserAccordion)
                      :expanded-id {}})
    :load-fn       #(df/load! SPA :all-users UserAccordion {:target (conj ident :users)})}
-  (mui/container {}
+  (um-container {}
     (c/fragment
       (for [user (sort-by (fn [u] [(if (:user/admin? u) 0 1) (:user/name u)]) users)]
-        (do
-          (log/info (pr-str user))
-          (ui-user-accordion (c/computed user {:expanded-id expanded-id
-                                               :expand      #(m/set-value! this :expanded-id %)})))))))
+        (ui-user-accordion (c/computed user {:expanded-id expanded-id
+                                             :expand      #(m/set-value! this :expanded-id %)})))
+      (um-fab
+        {:label "Add"
+         :color "primary"}
+        (muic/add)))))
 
 (def ui-user-management (c/factory UserManagement))

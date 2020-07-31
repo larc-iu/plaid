@@ -61,11 +61,11 @@
 
         (mui/vertical-grid
           (mui/typography {:variant "h4"} "Change Password")
-          (common/text-input-with-label this :current-password "Current Password" validator "Password must be 8 or more characters long"
+          (common/text-input-with-label this :current-password "Current Password" validator "Must have 8 or more characters"
             {:type     "password"
              :value    current-password
              :disabled busy?})
-          (common/text-input-with-label this :new-password "New Password" validator "Password must be 8 or more characters long"
+          (common/text-input-with-label this :new-password "New Password" validator "Must have 8 or more characters"
             {:type     "password"
              :value    new-password
              :disabled busy?})

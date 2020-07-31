@@ -1,15 +1,14 @@
 (ns glam.server.pathom-parser
-  (:require
-    [com.wsscode.pathom.connect :as pc]
-    [com.wsscode.pathom.core :as p]
-    [glam.models.project :refer [project-resolvers]]
-    [glam.models.session :as session]
-    [glam.models.user :as user]
-    [glam.models.common :refer [server-error]]
-    [glam.server.config :refer [config]]
-    [glam.server.crux :refer [crux-node]]
-    [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
-    [taoensso.timbre :as log]))
+  (:require [com.wsscode.pathom.connect :as pc]
+            [com.wsscode.pathom.core :as p]
+            [glam.models.project :refer [project-resolvers]]
+            [glam.models.session :as session]
+            [glam.models.user :as user]
+            [glam.models.common :refer [server-error]]
+            [glam.server.config :refer [config]]
+            [glam.server.crux :refer [crux-node]]
+    ;[com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
+            [taoensso.timbre :as log]))
 
 (def all-resolvers
   [session/resolvers
@@ -56,8 +55,9 @@
                                          trace? (conj p/trace-plugin)
                                          )})
         parser (cond->> parser
-                        connect-viz?
-                        (pathom-viz/connect-parser {::pathom-viz/parser-id ::parser}))]
+                        ;connect-viz?
+                        ;(pathom-viz/connect-parser {::pathom-viz/parser-id ::parser})
+                        )]
     (fn wrapped-parser [env tx]
       (when-not (vector? tx) (throw (Exception. "You must pass a vector for the transaction.")))
       ;; Add trace - pathom-viz already adds it so only add if that's not included.

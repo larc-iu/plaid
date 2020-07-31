@@ -29,11 +29,6 @@
            ring/ring-defaults                  {:mvn/version "0.3.2"}
            bk/ring-gzip                        {:mvn/version "0.3.0"}
 
-           ;; glam.neo4j
-           gorillalabs/neo4j-clj               {:mvn/version "4.0.1"}
-           ;; missing dep from neo4j-clj
-           org.neo4j.test/neo4j-harness        {:mvn/version "4.0.0"}
-
            ;; crux
            juxt/crux-core                      {:mvn/version "20.07-1.10.0-beta"}
            juxt/crux-jdbc                      {:mvn/version "20.07-1.10.0-beta"}
@@ -59,9 +54,8 @@
                                    thheller/shadow-cljs                {:mvn/version "2.10.12"}
                                    com.fulcrologic/semantic-ui-wrapper {:mvn/version "1.0.0"}
                                    ;; Logging for pedestal, not sure if exclusion is necessary.
-                                   ch.qos.logback/logback-classic      {:mvn/version "1.2.3"
-                                                                        :exclusions  [org.slf4j/slf4j-api]}
-                                   com.wsscode/pathom-viz-connector    {:mvn/version "1.0.3"}
+                                   ch.qos.logback/logback-classic      {:mvn/version "1.2.3"}
+                                   ;com.wsscode/pathom-viz-connector    {:mvn/version "1.0.3"}
                                    org.clojure/tools.namespace         {:mvn/version "1.0.0"}
                                    devcards                            {:mvn/version "0.2.7"}
                                    dv/cljs-emotion                     {:mvn/version "version-two"}

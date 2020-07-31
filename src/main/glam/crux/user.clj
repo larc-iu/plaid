@@ -3,12 +3,14 @@
             [glam.crux.common :as gc]))
 
 (defn create [node {:keys [name email password-hash]}]
-  (let [{:user/keys [id] :as record}
+  (let [;; make the first user to sign up an admin
+        first-signup? (= 0 (count (gc/find-entities node {:user/id '_})))
+        {:user/keys [id] :as record}
         (merge (gc/new-record "user")
                {:user/name          name
                 :user/email         email
                 :user/password-hash password-hash
-                :user/admin?        false
+                :user/admin?        first-signup?
                 :user/reader        #{}
                 :user/writer        #{}})]
     (gc/put node [record])

@@ -79,7 +79,7 @@ All builds are handled by tasks in the Makefile.
 make be-release
 
 # Start the server with:
-make start-prod-server
+PORT=8080 make start-prod-server
 ```
 
 

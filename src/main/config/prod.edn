@@ -1,5 +1,5 @@
 {:io.pedestal.http/config
- {:io.pedestal.http/port            :env.edn/PORT
+ {:io.pedestal.http/port            8080
   :io.pedestal.http/allowed-origins ["localhost"]}
 
  :taoensso.timbre/logging-config

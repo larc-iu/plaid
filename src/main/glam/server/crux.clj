@@ -15,3 +15,9 @@
            (install-tx-fns node '[glam.crux.user])
            node)
   :stop (.close crux-node))
+
+(defstate crux-session-node
+  :start (crux/start-node {:crux.node/topology ['crux.jdbc/topology]
+                           :crux.jdbc/dbtype   "sqlite"
+                           :crux.jdbc/dbname   "glam_session.db"})
+  :stop (.close crux-session-node))
