@@ -31,8 +31,7 @@
 
            ;; crux
            juxt/crux-core                      {:mvn/version "20.07-1.10.0-beta"}
-           juxt/crux-jdbc                      {:mvn/version "20.07-1.10.0-beta"}
-           org.xerial/sqlite-jdbc              {:mvn/version "3.32.3.1"}
+           juxt/crux-lmdb                      {:mvn/version "20.07-1.10.0-alpha"}
 
            ;; Pedestal
            io.pedestal/pedestal.service        {:mvn/version "0.5.8"}

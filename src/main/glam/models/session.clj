@@ -1,7 +1,6 @@
 (ns glam.models.session
   (:require
     [clojure.spec.alpha :as s]
-    [crux.api :as crux]
     [com.fulcrologic.fulcro.server.api-middleware :as fmw]
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
     [com.wsscode.pathom.connect :as pc :refer [defresolver defmutation]]
@@ -39,12 +38,13 @@
         (log/info "inserting user: " email)
         (let [id (cuser/create crux {:name          email
                                      :email         email
-                                     :password-hash (user/hash-password password)})]
+                                     :password-hash (user/hash-password password)})
+              admin? (:user/admin? (gc/entity crux id))]
           (augment-session-resp env {:session/valid?           true
                                      :session/server-error-msg nil
                                      :user/email               email
                                      :user/id                  id
-                                     :user/admin?              false})))))
+                                     :user/admin?              admin?})))))
 
 ;; todo use a protocol to support pluggable auth
 (defmutation login [{:keys [crux] :as env} {:keys [username password]}]
