@@ -7,30 +7,41 @@
 
 (def ident [:component/id :global-snackbar])
 
+;; TODO: if another message comes in while a previous message is still displayed the
+;; counter doesn't get reset
 (defmutation snackbar-update [{:keys [open severity message] :as args}]
   (action [{:keys [state]}]
-    (swap! state (fn [s]
-                   (-> s
-                       (assoc-in (conj ident :open) open)
-                       (assoc-in (conj ident :severity) severity)
-                       (assoc-in (conj ident :message) message))))))
+    (if open
+      (swap! state (fn [s]
+                     (-> s
+                         (assoc-in (conj ident :open) true)
+                         (assoc-in (conj ident :severity) severity)
+                         (assoc-in (conj ident :message) message))))
+      (swap! state (fn [s]
+                     (-> s
+                         (assoc-in (conj ident :open) false)))))))
 
 (defn close! [this]
   (c/transact! this [(snackbar-update {:open     false
                                        :severity "info"
                                        :message  ""})]))
 
-(defn message! [this args]
+(def snackbar-ref (atom nil))
+(defn message!
   "Make a new snackbar notification. Arguments: :message and :severity,
   one of [error warning info success]"
-  (c/transact! this [(snackbar-update (merge {:severity "info"} args {:open true}))]))
+  ([args]
+   (message! @snackbar-ref args))
+  ([this args]
+   (c/transact! this [(snackbar-update (merge {:severity "info"} args {:open true}))])))
 
 (defsc GlobalSnackbar [this {:keys [open severity message] :as props}]
   {:ident         (fn [_] ident)
    :query         [:open :severity :message]
    :initial-state (fn [_] {:open     false
                            :severity "success"
-                           :message  ""})}
+                           :message  ""})
+   :componentDidMount #(reset! snackbar-ref %)}
   (mui/snackbar {:anchorOrigin        {:vertical   "bottom"
                                        :horizontal "center"}
                  :open                open

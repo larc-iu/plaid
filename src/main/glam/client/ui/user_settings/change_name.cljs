@@ -2,15 +2,13 @@
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.dom :as dom]
-            [glam.client.ui.common :as common]
+            [glam.client.ui.common.forms :as forms]
             [glam.client.ui.global-snackbar :as snack]
             [glam.models.session :as sn]
             [glam.models.user :as user]
             [glam.models.user-common :refer [valid-name]]
             [glam.client.ui.material-ui :as mui]
-            [com.fulcrologic.fulcro.mutations :as m]
-            [com.fulcrologic.fulcro.components :as comp]
-            [taoensso.timbre :as log]))
+            [com.fulcrologic.fulcro.mutations :as m]))
 
 (def ident [:component/id :change-name-form])
 
@@ -48,8 +46,8 @@
               (mui/typography {:variant "h4"} "Change Name"))
 
             (mui/grid {:item true}
-              (common/text-input-with-label this :new-name "Name" validator "Name must be between 2 and 40 characters long"
-                {:type     "text"
+              (forms/text-input-with-label this :new-name "Name" validator "Name must be between 2 and 40 characters long"
+                                           {:type     "text"
                  :value    new-name
                  :onChange (fn [e]
                              (m/set-string!! this :new-name :event e)

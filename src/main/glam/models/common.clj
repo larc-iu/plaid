@@ -33,14 +33,23 @@
             pathom-action-kwd
             (fn [env params]
               (log/info (str "authorized? " (authorized env level)))
-              (let [res (if (authorized env level)
-                          (pathom-action env params)
-                          (server-error (str "Unauthorized pathom action: session "
-                                             (get-in env [:ring/request :session])
-                                             " does not satisfy authorization requirement "
-                                             level)))]
-                (log/info (str "auth-tx output: " (pr-str res)))
-                res)))))))
+              (if (authorized env level)
+                (pathom-action env params)
+                (server-error (str "Unauthorized pathom action: session "
+                                   (get-in env [:ring/request :session])
+                                   " does not satisfy authorization requirement "
+                                   level)))))))))
+
+(defn apply-delta [entity delta]
+  (let [new-vals (into {} (for [[k {:keys [after]}] delta]
+                            [k after]))
+        new-entity (merge entity new-vals)]
+    new-entity))
+
+(defn validate-delta [record-valid-fn delta]
+  (let [new-vals (into {} (for [[k {:keys [after]}] delta]
+                            [k after]))]
+    (record-valid-fn new-vals)))
 
 (def admin-required (make-auth-transform :admin))
 (def user-required (make-auth-transform :user))

@@ -1,7 +1,8 @@
-(ns glam.crux.common
+(ns glam.crux.common.easy
+  "A set of convenience functions for transactions with only one part and other common crux operations."
   (:require [crux.api :as crux]
             [taoensso.timbre :as log])
-  (:refer-clojure :exclude [set])
+  (:refer-clojure :exclude [set update])
   (:import (java.util UUID)))
 
 ;; conveniences
@@ -56,36 +57,46 @@
 (defn find-entities [node attrs] (find-entity-by-attrs node attrs {:id-only? false :all-results true}))
 
 ;; mutations --------------------------------------------------------------------------------
-(defn put-async [node doc-or-docs]
-  "Put either a single document or a sequence of documents"
+(defn- put-async [node doc-or-docs]
   (crux/submit-tx node (->> (if-not (sequential? doc-or-docs)
                               (vector doc-or-docs)
                               doc-or-docs)
                             (map (fn [doc] [:crux.tx/put doc]))
                             vec)))
 (defn put [node doc-or-docs]
+  "Put either a single document or a sequence of documents. NOTE: only use
+  this if you are creating a new document. Otherwise, prefer `update`"
   (crux/await-tx node (put-async node doc-or-docs)))
 
-(defn delete-async [node eid]
-  (crux/submit-tx node [[:crux.tx/delete (:crux.db/id eid)]]))
+(defn- update-async [node eid f & args]
+  (locking eid
+    (let [ent (entity node eid)]
+      (put-async node (apply f (into [ent] args))))))
+(defn update [node eid f & args]
+  "Apply f and its arguments to the document identified by eid, (apply f [ent a1 a2 a3 ...]).
+  E.g.: (cce/update node :birthday-boy update :age inc)
+  This function LOCKS the entity id using the clojure `locking` macro to avoid race conditions
+  (https://clojurians-log.clojureverse.org/crux/2020-03-24). If you need to avoid this perf penalty
+  or use a more sophisticated coordination technique, don't use this function."
+  (crux/await-tx node (apply update-async (into [node eid f] args))))
+
+(defn- delete-async [node eid]
+  (crux/submit-tx node [[:crux.tx/delete eid]]))
 (defn delete [node eid]
+  "Delete a document by eid."
   (crux/await-tx node (delete-async node eid)))
 
-(defn unsafe-set-async [node eid attr val]
-  "WARNING: there is no atomicity guarantee here: `ent` might have changed
-  between the two lines. We accept this as it will be pretty rare and inconsequential"
-  (let [ent (entity node eid)]
-    (put node (assoc ent attr val))))
-(defn unsafe-set [node eid attr val]
-  (crux/await-tx node (unsafe-set-async node eid attr val)))
-
-(defn evict-async [node eid]
+(defn- evict-async [node eid]
   (crux/submit-tx node [[:crux.tx/evict eid]]))
 (defn evict [node eid]
+  "Evict a document by eid."
   (crux/await-tx node (evict-async node eid)))
 
 ;; deftx --------------------------------------------------------------------------------
-;; macro for transactions to avoid race conditions
+;; macro for transactions to avoid race conditions: https://clojurians-log.clojureverse.org/crux/2020-03-24
+;; The installation of tx functions makes this a little more complicated than the one used by `update` above
+;; which simply locks the entity ID. On the other hand, this approach is more powerful. For now, I'm ignoring
+;; this approach in favor of just using `update`.
 (defmacro deftx [name bindings & body]
   "Defines a function used for mutations that uses a Crux transaction function under the hood.
   body must return a valid Crux transaction vector, with any non-clojure.core variables fully
@@ -126,3 +137,4 @@
        [ctx# eid# val#]
        (when-let [entity# (crux.api/entity (crux.api/db ctx#) eid#)]
          [[:crux.tx/put (assoc entity# ~attr val#)]])))
+

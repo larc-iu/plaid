@@ -162,9 +162,6 @@
             ["@material-ui/lab/ToggleButtonGroup" :default ToggleButtonGroup]
             ["@material-ui/lab/TreeItem" :default TreeItem]
             ["@material-ui/lab/TreeView" :default TreeView]
-
-    ;; other
-            ["material-table" :default MaterialTable]
             ))
 
 
@@ -314,16 +311,16 @@
 (def zoom (interop/react-factory Zoom))
 ;; END AUTO GEN
 
-(def material-table (interop/react-factory MaterialTable))
-
 ;; styled variants
 (defn- wrap-styles
   [component styles]
   (interop/react-factory
     ((styled component) (clj->js styles))))
+(defn styled-button [styles] (wrap-styles Button styles))
 (defn styled-container [styles] (wrap-styles Container styles))
 (defn styled-fab [styles] (wrap-styles Fab styles))
 (defn styled-box [styles] (wrap-styles Box styles))
+(defn styled-icon [styles] (wrap-styles Icon styles))
 (defn styled-list [styles] (wrap-styles List styles))
 (defn styled-paper [styles] (wrap-styles Paper styles))
 (defn styled-typography [styles] (wrap-styles Typography styles))

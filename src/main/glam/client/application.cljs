@@ -98,5 +98,3 @@
          (when-let [on-ok (:on-ok options)]
            (on-ok (get-in result [:body (:dispatch-key transacted-ast)])))))}))
 
-(js/console.log (pr-str (:com.fulcrologic.fulcro.application/config SPA)))
-(js/console.log (pr-str (keys SPA)))

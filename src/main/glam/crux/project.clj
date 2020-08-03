@@ -1,20 +1,20 @@
 (ns glam.crux.project
   (:require [crux.api :as crux]
-            [glam.crux.common :as gc]))
+            [glam.crux.common.easy :as cce]))
 
 (defn create [node {:keys [name]}]
   (let [{:project/keys [id] :as record}
-        (merge (gc/new-record "project")
+        (merge (cce/new-record "project")
                {:project/name name})]
-    (gc/put node [record])
+    (cce/put node [record])
     id))
 
-(defn get-all [node] (gc/find-entities node {:project/id '_}))
-(defn get-by-name [node name] (gc/find-entity node {:project/name name}))
+(defn get-all [node] (cce/find-entities node {:project/id '_}))
+(defn get-by-name [node name] (cce/find-entity node {:project/name name}))
 
-(gc/defsetter set-name :project/name)
+(cce/defsetter set-name :project/name)
 
-(defn delete [node eid] (gc/delete node eid))
+(defn delete [node eid] (cce/delete node eid))
 
 (comment
   (def node glam.server.crux/crux-node)

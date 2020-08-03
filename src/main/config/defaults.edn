@@ -11,8 +11,8 @@
  :glam.server.crux/config
  {:db-dir "crux_data/indexes"
   :event-log-dir "crux_data/event-log"
-  :session {:db-dir "crux_data/session/indexes"
-            :event-log-dir "crux_data/session/event-log"}}
+  :session {:db-dir "crux_session_data/indexes"
+            :event-log-dir "crux_session_data/event-log"}}
 
  :glam.server.pathom/config
  {:connect-viz? false}

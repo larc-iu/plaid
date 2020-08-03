@@ -4,7 +4,7 @@
             [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
             [com.fulcrologic.fulcro.dom :as dom]
             [sablono.core :as html :refer [html]]
-            [glam.client.ui.common :as common]
+            [glam.client.ui.common.forms :as forms]
             [glam.client.router :as r]
             [glam.models.session :as sn]
             [glam.models.user :as user]
@@ -61,37 +61,27 @@
 
         (mui/vertical-grid
           (mui/typography {:variant "h4"} "Change Password")
-          (common/text-input-with-label this :current-password "Current Password" validator "Must have 8 or more characters"
+          (forms/text-input-with-label this :current-password "Current Password" validator "Must have 8 or more characters"
             {:type     "password"
              :value    current-password
              :disabled busy?})
-          (common/text-input-with-label this :new-password "New Password" validator "Must have 8 or more characters"
+          (forms/text-input-with-label this :new-password "New Password" validator "Must have 8 or more characters"
             {:type     "password"
              :value    new-password
              :disabled busy?})
-          (common/text-input-with-label this :new-password-confirm "Confirm New Password" validator "Passwords must match"
+          (forms/text-input-with-label this :new-password-confirm "Confirm New Password" validator "Passwords must match"
             {:type       "password"
              :value      new-password-confirm
              :disabled   busy?
              :last-input true}))
 
-        (mui/horizontal-grid
-          (mui/button
-            {:type     "submit"
-             :size     "large"
-             :disabled (or (not (fs/checked? props))
-                           (not= :valid (validator props))
-                           busy?)
-             :variant  "contained"}
-            "Change Password")
-          (mui/button
-            {:size     "large"
-             :disabled busy?
-             :variant  "outlined"
-             :onClick  (fn []
-                         (c/transact! this [(fs/clear-complete! {})])
-                         (c/transact! this [(fs/reset-form! {})]))}
-            "Reset"))))))
+        (forms/form-buttons
+          {:component   this
+           :validator   validator
+           :props       props
+           :busy?       busy?
+           :submit-text "Change Password"
+           :reset-text  "Reset"})))))
 
 (def ui-change-password-form (c/factory ChangePasswordForm))
 

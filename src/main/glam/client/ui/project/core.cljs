@@ -4,7 +4,7 @@
     [com.fulcrologic.fulcro.routing.dynamic-routing :as dr :refer [defrouter]]
     [com.fulcrologic.fulcro.data-fetch :as df]
     [glam.client.router :as r]
-    [glam.client.ui.common :refer [loader]]
+    [glam.client.ui.common.core :refer [loader]]
     [glam.client.ui.project.projects-page :refer [ProjectsPage]]
     [glam.client.ui.project.project-detail :refer [ProjectDetail]]
     [taoensso.timbre :as log]))

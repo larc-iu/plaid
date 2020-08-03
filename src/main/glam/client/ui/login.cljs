@@ -12,7 +12,7 @@
             [glam.models.session :as session :refer [session-join get-session]]
             [glam.models.user-common :refer [valid-email valid-password]]
             [glam.client.router :as r]
-            [glam.client.ui.common :as common]
+            [glam.client.ui.common.forms :as forms]
             [glam.client.ui.material-ui :as mui]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]))
 
@@ -38,16 +38,16 @@
       (mui/grid {:container true :direction "column" :spacing 1}
         (mui/grid {:item true} (mui/typography {:variant "h5"} "Login"))
         (mui/grid {:item true}
-          (common/text-input-with-label this :user/email "Email" validator "Must be a valid email"
-            {:autoFocus true
+          (forms/text-input-with-label this :user/email "Email" validator "Must be a valid email"
+                                       {:autoFocus true
              :type      "email"
              :fullWidth true
              :value     email
              :disabled  loading?
              :onChange  #(m/set-string!! this :user/email :event %)}))
         (mui/grid {:item true}
-          (common/text-input-with-label this :password "Password" validator "Password invalid"
-            {:type      "password"
+          (forms/text-input-with-label this :password "Password" validator "Password invalid"
+                                       {:type      "password"
              :fullWidth true
              :value     password
              :disabled  loading?

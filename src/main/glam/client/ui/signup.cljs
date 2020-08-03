@@ -17,7 +17,7 @@
     [sablono.util :as su]
     [taoensso.timbre :as log]
     [glam.client.ui.material-ui :as mui]
-    [glam.client.ui.common :as common]))
+    [glam.client.ui.common.forms :as forms]))
 
 (declare Signup)
 
@@ -81,24 +81,24 @@
         (mui/grid {:container true :direction "column" :spacing 1}
           (mui/grid {:item true} (mui/typography {:variant "h5"} "Signup"))
           (mui/grid {:item true}
-            (common/text-input-with-label this :account/email "Email" validator "Must be a valid email"
-              {:type      "email"
+            (forms/text-input-with-label this :account/email "Email" validator "Must be a valid email"
+                                         {:type      "email"
                :fullWidth true
                :value     email
                :disabled  saving?
                :onBlur    #(mark-complete! :account/email)
                :onChange  #(m/set-string!! this :account/email :event %)}))
           (mui/grid {:item true}
-            (common/text-input-with-label this :account/password "Password" validator "Password must be 8 characters or longer"
-              {:type      "password"
+            (forms/text-input-with-label this :account/password "Password" validator "Password must be 8 characters or longer"
+                                         {:type      "password"
                :fullWidth true
                :value     password
                :disabled  saving?
                :onBlur    #(mark-complete! :account/password)
                :onChange  #(m/set-string!! this :account/password :event %)}))
           (mui/grid {:item true}
-            (common/text-input-with-label this :account/password-again "Password (repeat)" validator "Passwords must match"
-              {:type      "password"
+            (forms/text-input-with-label this :account/password-again "Password (repeat)" validator "Passwords must match"
+                                         {:type      "password"
                :fullWidth true
                :value     password-again
                :disabled  saving?

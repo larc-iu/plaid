@@ -1,7 +1,9 @@
 (ns glam.models.user
   (:require [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
+            [com.fulcrologic.fulcro.components :as c]
             [taoensso.timbre :as log]
-            [com.fulcrologic.fulcro.components :as c]))
+            [glam.models.user-common :as uc]
+            ))
 
 (defmutation change-own-password
   "Changes the user's password given a :user/email, :current-password, and :new-password.
@@ -9,7 +11,7 @@
   with any server message passed to it "
   [args]
   (action [{:keys [app]}] (log/info "Beginning change-password"))
-  (remote [{:keys [ast]}] (update ast :params dissoc :on-result :on-ok :on-error)))
+  (remote [{:keys [ast]}] true))
 
 (defmutation change-own-name
   "Change :user/name"

@@ -12,7 +12,7 @@
     [glam.client.ui.material-ui :as mui]
     [glam.client.ui.material-ui-icon :as muic]
     [glam.client.ui.drawer :refer [ui-drawer Drawer]]
-    [glam.client.ui.common :refer [loader]]
+    [glam.client.ui.common.core :refer [loader]]
     [glam.client.ui.project.core :refer [ProjectRouter]]
     [glam.client.ui.user-settings.core :refer [UserSettings]]
     [glam.client.ui.admin-settings.core :refer [AdminSettings]]

@@ -1,7 +1,7 @@
 (ns glam.server.crux
   (:require [crux.api :as crux]
             [mount.core :refer [defstate]]
-            [glam.crux.common :refer [install-tx-fns]]
+            [glam.crux.common.easy :refer [install-tx-fns]]
             [glam.server.config :refer [config]]
             [clojure.java.io :as io])
   (:import [crux.api ICruxAPI]))
@@ -12,8 +12,8 @@
     {:crux.node/topology                 '[crux.standalone/topology
                                            crux.kv.lmdb/kv-store]
      :crux.standalone/event-log-kv-store 'crux.kv.lmdb/kv
-     :crux.standalone/event-log-dir      (io/file (-> config ::config :event-log-dir))
-     :crux.kv/db-dir                     (io/file (-> config ::config :db-dir))}))
+     :crux.standalone/event-log-dir      (io/file event-log-dir)
+     :crux.kv/db-dir                     (io/file db-dir)}))
 
 (defn start-main-lmdb-node []
   (start-lmdb-node {:event-log-dir (-> config ::config :event-log-dir)
@@ -25,7 +25,7 @@
 
 (defstate crux-node
   :start (let [node (start-main-lmdb-node)]
-           (install-tx-fns node '[glam.crux.user])
+           ;;(install-tx-fns node '[glam.crux.user])
            node)
   :stop (.close crux-node))
 

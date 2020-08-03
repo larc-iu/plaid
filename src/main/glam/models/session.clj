@@ -7,8 +7,8 @@
     [glam.models.user :as user]
     [glam.models.common :refer [server-error]]
     [glam.crux.user :as cuser]
-    [glam.crux.common :as gc]
-    [taoensso.timbre :as log]))
+    [taoensso.timbre :as log]
+    [glam.crux.common.easy :as cce]))
 
 (defn augment-session-resp
   "Uses `mutation-response` as the actual return value for a mutation,
@@ -39,7 +39,7 @@
         (let [id (cuser/create crux {:name          email
                                      :email         email
                                      :password-hash (user/hash-password password)})
-              admin? (:user/admin? (gc/entity crux id))]
+              admin? (:user/admin? (cce/entity crux id))]
           (augment-session-resp env {:session/valid?           true
                                      :session/server-error-msg nil
                                      :user/email               email
