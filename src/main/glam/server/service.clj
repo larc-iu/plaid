@@ -25,7 +25,7 @@
     [clojure.java.io :as io]
     [clojure.tools.reader.edn :as edn]
     [crux.api :as crux]
-    [glam.crux.common.easy :as cutil])
+    [glam.crux.easy :as cutil])
   (:import (java.io PushbackReader IOException)
            (ring.middleware.session.store SessionStore)
            (java.util UUID)))

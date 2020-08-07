@@ -7,7 +7,7 @@
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
     [glam.client.application :refer [SPA]]
     [glam.client.router :as r]
-    [glam.models.user-common :refer [valid-email valid-password]]
+    [glam.models.user :refer [valid-email valid-password]]
     [taoensso.timbre :as log]
     [com.fulcrologic.fulcro.algorithms.form-state :as fs]
     [com.fulcrologic.fulcro.algorithms.denormalize :as fdn]

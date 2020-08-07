@@ -1,4 +1,4 @@
-(ns glam.crux.common.easy
+(ns glam.crux.easy
   "A set of convenience functions for transactions with only one part and other common crux operations."
   (:require [crux.api :as crux]
             [taoensso.timbre :as log])

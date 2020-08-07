@@ -12,7 +12,7 @@
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
     [glam.models.session :as session]
     [glam.client.router :as r]
-    [glam.models.user-common :refer [valid-email valid-password]]
+    [glam.models.user :refer [valid-email valid-password]]
     [glam.models.session :refer [session-join Session get-session signup-ident signup]]
     [sablono.util :as su]
     [taoensso.timbre :as log]

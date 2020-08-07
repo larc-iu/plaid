@@ -1,6 +1,6 @@
 (ns glam.crux.scratch
   (:require [crux.api :as crux]
-            [glam.crux.common.easy :as cce]
+            [glam.crux.easy :as gce]
             [glam.crux.user :as user]
             [taoensso.timbre :as log])
   )
@@ -22,6 +22,8 @@
 
   )
 
+(def my< <)
+
 (comment
   (def node glam.server.crux/crux-node)
   (let [node glam.server.crux/crux-node]
@@ -35,7 +37,7 @@
   (user/create node {:name "b" :email "b@b.com" :password-hash "qwe"})
 
   (user/get-all node)
-  (cce/find-entities node {:user/id '_})
+  (gce/find-entities node {:user/id '_})
   (crux/await-tx node (user/set-admin? node (:user/id (user/get-by-email node "a@b.com")) true))
 
   (def node
@@ -45,7 +47,7 @@
        :crux.standalone/event-log-dir      "data/eventlog-1"
        :crux.kv/db-dir                     "data/db-dir-1"
        :crux.standalone/event-log-kv-store "crux.kv.memdb/kv"}))
-  (cce/install-tx-fns node '[glam.crux.user])
+  (gce/install-tx-fns node '[glam.crux.user])
 
   (crux/listen node {:crux/event-type :crux/indexed-tx, :with-tx-ops? true}
                (fn [ev]
@@ -75,17 +77,22 @@
        :crux.standalone/event-log-kv-store "crux.kv.memdb/kv"}))
 
   (crux/submit-tx node [[:crux.tx/put {:crux.db/id :ivan, :age 40}]])
-  (cce/find-entity node {:crux.db/id :ivan})
-  (cce/find-entity node {:crux.db/id '_})
+  (gce/find-entity node {:crux.db/id :ivan})
+  (gce/find-entity node {:crux.db/id '_})
 
-  (cce/deftx cinc [node eid]
-    (let [entity (crux.api/entity (crux.api/db node) eid)]
+  (crux/q (crux/db node)
+          {:find  '[?e]
+           :where ['[?e :age ?age]
+                   ['(glam.crux.scratch/my< 30 ?age)]]})
+
+  (gce/deftx cinc [node eid]
+             (let [entity (crux.api/entity (crux.api/db node) eid)]
       [[:crux.tx/put (update entity :age inc)]]))
 
   (-> cinc var meta :crux-tx-fn)
   ((-> cinc var meta :crux-tx-fn) node)
   (cinc node :ivan)
-  (cce/find-entity node {:crux.db/id :ivan})
+  (gce/find-entity node {:crux.db/id :ivan})
 
   (user/set-email node :foo "qweqwe")
 
@@ -116,15 +123,15 @@
        :crux.kv/db-dir                     "data/db-dir-1"
        :crux.standalone/event-log-kv-store "crux.kv.memdb/kv"}))
 
-  (cce/put node {:crux.db/id :foo :a 0})
+  (gce/put node {:crux.db/id :foo :a 0})
 
-  (cce/entity node :foo)
-  (cce/update node :foo update :a inc)
+  (gce/entity node :foo)
+  (gce/update node :foo update :a inc)
 
   (dothreads! (fn [c]
                 (println "Updating")
                 (locking :foo
-                  (cce/unsafe-update
+                  (gce/unsafe-update
                     node
                     :foo
                     (fn [doc]

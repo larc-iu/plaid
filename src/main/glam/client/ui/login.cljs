@@ -10,7 +10,7 @@
             [taoensso.timbre :as log]
             [sablono.core :as html]
             [glam.models.session :as session :refer [session-join get-session]]
-            [glam.models.user-common :refer [valid-email valid-password]]
+            [glam.models.user :refer [valid-email valid-password]]
             [glam.client.router :as r]
             [glam.client.ui.common.forms :as forms]
             [glam.client.ui.material-ui :as mui]

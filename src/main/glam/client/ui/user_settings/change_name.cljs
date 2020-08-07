@@ -5,8 +5,7 @@
             [glam.client.ui.common.forms :as forms]
             [glam.client.ui.global-snackbar :as snack]
             [glam.models.session :as sn]
-            [glam.models.user :as user]
-            [glam.models.user-common :refer [valid-name]]
+            [glam.models.user :as user :refer [valid-name]]
             [glam.client.ui.material-ui :as mui]
             [com.fulcrologic.fulcro.mutations :as m]))
 

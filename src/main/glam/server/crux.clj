@@ -1,7 +1,7 @@
 (ns glam.server.crux
   (:require [crux.api :as crux]
             [mount.core :refer [defstate]]
-            [glam.crux.common.easy :refer [install-tx-fns]]
+            [glam.crux.easy :refer [install-tx-fns]]
             [glam.server.config :refer [config]]
             [clojure.java.io :as io])
   (:import [crux.api ICruxAPI]))
