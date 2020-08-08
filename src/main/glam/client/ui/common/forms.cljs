@@ -2,6 +2,7 @@
   (:require [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.algorithms.merge :as merge]
             [com.fulcrologic.fulcro.algorithms.normalized-state :as fns]
+            [com.fulcrologic.fulcro.algorithms.denormalize :as fdn]
             [com.fulcrologic.fulcro.algorithms.data-targeting :as dt]
             [com.fulcrologic.fulcro.ui-state-machines :as uism]
             [com.fulcrologic.fulcro.components :as c]
@@ -58,7 +59,9 @@
               :error      invalid?
               :helperText (if invalid? validation-message "")
               :label      label
-              :onBlur     #(complete-field component field)
+              :onBlur     (fn [e]
+                            (when (not= (.-value (.-target e)) "")
+                              (complete-field component field)))
               :onChange   (if last-input
                             (fn [e]
                               (m/set-string!! component field :event e)
@@ -81,7 +84,8 @@
 
 (def delete-button (mui/styled-button {:background-color "rgb(220, 0, 78)"}))
 (defn form-buttons
-  [{:keys [component validator props busy? submit-text reset-text on-reset delete-text on-delete]}]
+  [{:keys [component validator props busy? submit-text reset-text on-reset delete-text on-delete
+           submit-disabled reset-disabled]}]
   (let [using-busy?-and-busy? (and (not (nil? busy?)) busy?)
         on-reset (or on-reset (fn []
                                 (c/transact! component [(fs/clear-complete! {})])
@@ -90,18 +94,22 @@
       (mui/button
         {:type      "submit"
          :size      "large"
-         :disabled  (or (not (fs/dirty? props))
-                        (not (fs/checked? props))
-                        (not= :valid (validator props))
-                        using-busy?-and-busy?)
+         :disabled  (if-not (nil? submit-disabled)
+                      submit-disabled
+                      (not (and (fs/dirty? props)
+                                (fs/checked? props)
+                                (= :valid (validator props))
+                                (not using-busy?-and-busy?))))
          :color     "primary"
          :variant   "contained"
          :startIcon (muic/save)}
         (or submit-text "Submit"))
       (mui/button
         {:size      "large"
-         :disabled  (or (not (fs/dirty? props))
-                        using-busy?-and-busy?)
+         :disabled  (if-not (nil? reset-disabled)
+                      reset-disabled
+                      (not (and (fs/dirty? props)
+                                (not using-busy?-and-busy?))))
          :variant   "outlined"
          :onClick   on-reset
          :startIcon (muic/restore)}
@@ -136,6 +144,13 @@
                                  (log/debug "edit form: exiting")
                                  (uism/exit env))}})
 
+;; A state machine for editing some entity with an ident. This machine makes the following assumptions:
+;; - ::save-mutation is present on the form component's options
+;; - ::save-message is present optionally present the form component's options
+;; - if deletion is being used:
+;;   - ::delete-mutation is present on the form component's options
+;;   - ::delete-message is optionally present on the form component's options
+;; - the component will query for `:ui/busy?` and use it to lock inputs when true
 (uism/defstatemachine edit-form-machine
   {::uism/actor-names
    #{:actor/form}
@@ -149,13 +164,15 @@
     {::uism/handler
      (fn [env]
        (let [FormClass (uism/actor-class env :actor/form)
-             form-ident (uism/actor->ident env :actor/form)]
+             form-ident (uism/actor->ident env :actor/form)
+             {:keys [form-fields]} (c/component-options FormClass)]
          (log/info "edit form: initialized")
          (-> env
              (uism/apply-action fs/add-form-config* FormClass form-ident)
              (uism/apply-action fs/entity->pristine* form-ident)
-             ;; TODO: should this only apply to filled fields?
-             (uism/apply-action fs/mark-complete* form-ident)
+             (uism/apply-action mark-filled-fields-complete* {:entity-ident     form-ident
+                                                              :initialized-keys form-fields})
+             ;(uism/apply-action fs/mark-complete* form-ident)
              (uism/activate :state/editing))))}
 
     :state/editing
@@ -173,17 +190,14 @@
                       delta (fs/dirty-fields props true)]
                   (if-not save-mutation
                     (log/info (str "Class " FormClass " must have a 'glam.client.common.forms/save-mutation"))
-                    (do
-                      (log/info (pr-str (keys (::uism/state-map env))))
-                      (log/info (pr-str (::uism/event-data env)))
-                      (-> env
-                          (uism/assoc-aliased :busy? true)
-                          (uism/activate :state/saving)
-                          (uism/trigger-remote-mutation :actor/form save-mutation
-                                                        {::uism/ok-event    :event/save-ok
-                                                         ::uism/error-event :event/save-error
-                                                         :ident             form-ident
-                                                         :delta             (get delta form-ident)}))))))}
+                    (-> env
+                        (uism/assoc-aliased :busy? true)
+                        (uism/activate :state/saving)
+                        (uism/trigger-remote-mutation :actor/form save-mutation
+                                                      {::uism/ok-event    :event/save-ok
+                                                       ::uism/error-event :event/save-error
+                                                       :ident             form-ident
+                                                       :delta             (get delta form-ident)})))))}
              :event/reset
              {::uism/handler
               (fn [{::uism/keys [state-map] :as env}]
@@ -194,7 +208,26 @@
                   (when (fs/dirty? props)
                     (snack/message! {:message "Changes discarded"})
                     (let [form-ident (uism/actor->ident env :actor/form)]
-                      (uism/apply-action env fs/pristine->entity* form-ident)))))}})}
+                      (uism/apply-action env fs/pristine->entity* form-ident)))))}
+             :event/delete
+             {::uism/handler
+              (fn [env]
+                (let [proceed (js/confirm "Really delete?")
+                      FormClass (uism/actor-class env :actor/form)
+                      form-ident (uism/actor->ident env :actor/form)
+                      delete-mutation (-> FormClass c/component-options ::delete-mutation)]
+                  (cond
+                    (not delete-mutation)
+                    (log/error (str "Class " FormClass " must have a 'glam.client.common.forms/delete-mutation"))
+
+                    proceed
+                    (-> env
+                        (uism/assoc-aliased :busy? true)
+                        (uism/activate :state/deleting)
+                        (uism/trigger-remote-mutation :actor/form delete-mutation
+                                                      {::uism/ok-event    :event/delete-ok
+                                                       ::uism/error-event :event/delete-error
+                                                       :ident             form-ident})))))}})}
 
     :state/saving
     ;; in the middle of a save: remote mutation will emit save-ok or save-error, and if it's OK,
@@ -223,6 +256,35 @@
                  message (some-> event-data ::uism/mutation-result :body (get save-mutation) :server/message)]
              (log/info "edit form: save failed")
              (snack/message! {:message  (if message message "Error occurred, save has failed.")
+                              :severity "error"})
+             (-> env
+                 (uism/assoc-aliased :busy? false)
+                 (uism/activate :state/editing))))}})}
+
+    :state/deleting
+    {::uism/events
+     (merge
+       global-events
+       {:event/delete-ok
+        {::uism/handler
+         (fn [env]
+           (let [FormClass (uism/actor-class env :actor/form)
+                 form-ident (uism/actor->ident env :actor/form)
+                 message (or (-> FormClass c/component-options ::delete-message) "Deleted")]
+             ;; update pristine state and go to :state/editing
+             (log/info "edit form: delete ok")
+             (snack/message! {:message message :severity "success"})
+             (-> env
+                 (uism/apply-action fns/remove-entity form-ident)
+                 (uism/exit))))}
+        :event/delete-error
+        {::uism/handler
+         (fn [{::uism/keys [event-data] :as env}]
+           (let [FormClass (uism/actor-class env :actor/form)
+                 delete-mutation (-> FormClass c/component-options ::delete-mutation)
+                 message (some-> event-data ::uism/mutation-result :body (get delete-mutation) :server/message)]
+             (log/info "edit form: delete failed")
+             (snack/message! {:message  (if message message "Error occurred, delete has failed.")
                               :severity "error"})
              (-> env
                  (uism/assoc-aliased :busy? false)

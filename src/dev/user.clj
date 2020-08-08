@@ -6,7 +6,9 @@
     [mount.core :as mount]
     [shadow.cljs.devtools.api :as shadow]
     ;; this is the top-level dependent component...mount will find the rest via ns requires
-    [glam.server.server :refer [http-server]]))
+    [glam.server.server :refer [http-server]]
+    [glam.crux.user :as user]
+    [glam.crux.project :as prj]))
 
 ;; ==================== SERVER ====================
 (tools-ns/set-refresh-dirs "src/main" "src/dev" "src/test")
@@ -46,3 +48,32 @@
   (shadow/repl :main)
   (stop)
   (restart))
+
+
+;; crux stuff
+(defn init-db []
+  (let [node glam.server.crux/crux-node]
+    (let [admin-id
+          (user/create
+            node
+            {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+             :name          "admin"
+             :email         "a@b.com"
+             })
+          user1 (user/create
+                  node
+                  {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                   :name          "user"
+                   :email         "b@b.com"})
+          user2 (user/create
+                  node
+                  {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                   :name          "user"
+                   :email         "c@c.com"})
+          project1 (prj/create node {:name "Project 1"})
+          project2 (prj/create node {:name "Project 2"})
+          project3 (prj/create node {:name "Project 3"})
+          project4 (prj/create node {:name "Project 4"})
+          ]
+      (user/set-admin? node admin-id true))))
+

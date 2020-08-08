@@ -5,36 +5,19 @@
             [taoensso.timbre :as log])
   )
 
-(defn init [node]
-  (let [admin-id
-        (user/create
-          node
-          {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
-           :name          "admin"
-           :email         "a@b.com"
-           })]
-    (user/set-admin? node admin-id true))
-  (user/create
-    node
-    {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
-     :name          "user"
-     :email         "b@b.com"})
-
-  )
-
-(def my< <)
-
 (comment
   (def node glam.server.crux/crux-node)
-  (let [node glam.server.crux/crux-node]
-    (glam.crux.scratch/init node))
-
   (user/get-by-email node "a@a.com")
   (user/get-by-email node "a@b.com")
   (user/get-by-email node "b@b.com")
 
-  (user/create node {:name "a" :email "a@a.com" :password-hash "qwe"})
-  (user/create node {:name "b" :email "b@b.com" :password-hash "qwe"})
+  (glam.crux.user/create node {:name "a" :email "a@a.com" :password-hash "qwe"})
+  (glam.crux.user/create node {:name "placeholder1" :email "placeholder1@placeholder.com" :password-hash "qwe"})
+  (glam.crux.user/create node {:name "placeholder2" :email "placeholder2@placeholder.com" :password-hash "qwe"})
+  (glam.crux.user/create node {:name "placeholder3" :email "placeholder3@placeholder.com" :password-hash "qwe"})
+  (glam.crux.user/create node {:name "placeholder4" :email "placeholder4@placeholder.com" :password-hash "qwe"})
+  (glam.crux.user/create node {:name "placeholder5" :email "placeholder5@placeholder.com" :password-hash "qwe"})
+  (glam.crux.user/create node {:name "placeholder6" :email "placeholder6@placeholder.com" :password-hash "qwe"})
 
   (user/get-all node)
   (gce/find-entities node {:user/id '_})

@@ -2,6 +2,7 @@
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
+            [com.fulcrologic.fulcro.algorithms.merge :as merge]
             [com.fulcrologic.fulcro.algorithms.denormalize :as fdn]
             [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.data-fetch :as df]
@@ -52,54 +53,69 @@
         (open-accordion)))))
 
 (defsc UserAccordion [this
-                      {:user/keys [id name email admin? reader writer] :ui/keys [busy?] :as props}
-                      {:keys [expanded-id expand on-delete]}]
-  {:query                [:user/id :user/name :user/email :user/admin? :user/reader :user/writer
-                          fs/form-config-join :ui/busy?]
-   :ident                :user/id
-   :initial-state        {}
-   :form-fields          #{:user/name :user/email :user/admin? :user/reader :user/writer}
-   ::forms/save-mutation 'glam.models.user/save-user
-   ::forms/save-message  "User saved"}
-  (mui/accordion {:expanded        (= expanded-id id)
-                  :onChange        (make-change-handler this id expanded-id expand)
-                  :TransitionProps {:unmountOnExit true}}
-    (mui/accordion-summary {:expandIcon (muic/expand-more)}
-      (c/fragment
-        (when admin?
-          (admin-icon {:color (if (= expanded-id id) "primary" "disabled")}
-            (muic/gavel)))
-        (mui/typography {} (str name))
-        (email-typography {:color "textSecondary"} (str email))))
+                      {:user/keys [id name email admin? new-password reader writer] :ui/keys [busy?] :as props}
+                      {:keys [expanded-id expand]}]
+  {:query                  [:user/id :user/name :user/email :user/new-password :user/admin? :user/reader :user/writer
+                            fs/form-config-join :ui/busy?]
+   :pre-merge              (fn [{:keys [current-normalized data-tree]}]
+                             (update data-tree :user/new-password #(if (= % ::merge/not-found) "" %)))
+   :ident                  :user/id
+   :form-fields            #{:user/name :user/email :user/admin? :user/reader :user/writer}
+   ::forms/save-mutation   'glam.models.user/save-user
+   ::forms/save-message    "User saved"
+   ::forms/delete-mutation 'glam.models.user/delete-user
+   ::forms/delete-message  "User deleted"}
+  (let [dirty (or (#{:valid :unchecked} (validator props :user/new-password)) (fs/dirty? props))]
+    (mui/accordion {:expanded        (= expanded-id id)
+                    :onChange        (make-change-handler this id expanded-id expand)
+                    :TransitionProps {:unmountOnExit true}}
+      (mui/accordion-summary {:expandIcon (muic/expand-more)}
+        (c/fragment
+          (when admin?
+            (admin-icon {:color (if (= expanded-id id) "primary" "disabled")}
+              (muic/gavel)))
+          (mui/typography {} (str name))
+          (email-typography {:color "textSecondary"} (str email))))
 
-    (mui/accordion-details {}
-      (dom/form
-        {:onSubmit (fn [e] (.preventDefault e) (uism/trigger! this ::edit-user :event/save))}
-        (mui/vertical-grid
-          (forms/text-input-with-label this :user/name "Name" validator "Must have 2 to 40 characters"
-                                       {:type     "text"
-                                        :value    name
-                                        :disabled busy?})
-          (forms/text-input-with-label this :user/email "Email" validator "Must be a valid email"
-                                       {:value    email
-                                        :disabled busy?})
-          (forms/checkbox-input-with-label this :user/admin? "Admin"
-                                           {:checked  admin?
-                                            :color    "primary"
-                                            :disabled busy?}))
+      (mui/accordion-details {}
+        (dom/form
+          {:onSubmit (fn [e] (.preventDefault e) (uism/trigger! this ::edit-user :event/save))}
+          (mui/vertical-grid
+            (forms/text-input-with-label this :user/name "Name" validator "Must have 2 to 40 characters"
+                                         {:fullWidth true
+                                          :value     name
+                                          :disabled  busy?})
+            (forms/text-input-with-label this :user/email "Email" validator "Must be a valid email"
+                                         {:value     email
+                                          :fullWidth true
+                                          :disabled  busy?})
+            (forms/text-input-with-label this :user/new-password "New Password" validator "Must be 8 characters or longer"
+                                         {:type      "password"
+                                          :value     new-password
+                                          :fullWidth true
+                                          :onChange  (fn [e]
+                                                       (m/set-string!! this :user/new-password :event e)
+                                                       (forms/complete-field this :user/new-password))
+                                          :disabled  busy?})
+            (forms/checkbox-input-with-label this :user/admin? "Admin"
+                                             {:checked  admin?
+                                              :color    "primary"
+                                              :disabled busy?}))
 
-        (forms/form-buttons
-          {:component   this
-           :validator   validator
-           :props       props
-           :busy?       busy?
-           :submit-text "Save User"
-           :reset-text  "Discard Changes"
-           :on-reset    #(uism/trigger! this ::edit-user :event/reset)
-           :on-delete   (fn []
-                          (m/set-value!! this :ui/busy? true)
-                          (uism/trigger! this ::edit-user :event/exit)
-                          (on-delete #(m/set-value!! this :ui/busy? false)))})))))
+          (forms/form-buttons
+            {:component       this
+             :validator       validator
+             :props           props
+             :busy?           busy?
+             :submit-text     "Save User"
+             :reset-text      "Discard Changes"
+             :on-reset        #(uism/trigger! this ::edit-user :event/reset)
+             :on-delete       #(uism/trigger! this ::edit-user :event/delete)
+             :submit-disabled (not (and dirty
+                                        (fs/checked? props)
+                                        (= :valid (validator props))
+                                        (not busy?)))
+             :reset-disabled  (not (and dirty (not busy?)))}))))))
 
 (def ui-user-accordion (c/factory UserAccordion {:keyfn :user/id}))
 
@@ -117,24 +133,14 @@
                     {:users       (c/get-initial-state UserAccordion)
                      :expanded-id {}})
    :load-fn       #(df/load! SPA :all-users UserAccordion {:target (conj ident :users)})}
-  (um-container {}
+  (um-container {:maxWidth "md"}
     (c/fragment
       (for [{:user/keys [id] :as user} (sort-by (fn [u] [(if (:user/admin? u) 0 1) (:user/name u)]) users)]
         (ui-user-accordion
           (c/computed
             user
             {:expanded-id expanded-id
-             :expand      #(m/set-value! this :expanded-id %)
-             :on-delete   (fn [on-fail]
-                            (comp/transact! this [(user/delete-user {:user/id id})]
-                                            {:on-result
-                                             (fn [{:server/keys [error? message]}]
-                                               (if error?
-                                                 (on-fail)
-                                                 (m/set-value! this :users (log/spy (vec (filter #(not= (:user/id %) id) users)))))
-                                               (when message
-                                                 (snack/message! this {:message  message
-                                                                       :severity (if error? "error" "success")})))}))})))
+             :expand      #(m/set-value! this :expanded-id %)})))
       (add-user-fab
         {:label "Add"
          :color "primary"}

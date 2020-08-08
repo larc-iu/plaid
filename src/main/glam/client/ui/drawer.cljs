@@ -33,7 +33,6 @@
   {:query         [session-join]
    :ident         (fn [] ident)
    :initial-state {}}
-  (js/console.log (pr-str (c/props this)))
   (let [admin? (session/admin? props)]
     (mui/drawer
       {:open    open?

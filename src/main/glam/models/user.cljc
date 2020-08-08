@@ -41,7 +41,8 @@
     :user/writer (valid-writer v)
     ;; remember that password is a special case: "password-hash" is what is stored,
     ;; but we need to validate passwords themselves
-    :user/password (valid-password v)))
+    :user/password (valid-password v)
+    :user/new-password (valid-password v)))
 
 (defn user-valid [form field]
   (let [v (get form field)]
@@ -151,7 +152,7 @@
      (action [{:keys [app]}] (log/info "Beginning delete-user"))
      (remote [{:keys [ast]}] true))
    :clj
-   (pc/defmutation delete-user [{:keys [crux]} {:user/keys [id]}]
+   (pc/defmutation delete-user [{:keys [crux]} {[_ id] :ident :as params}]
      {::pc/transform mc/admin-required}
      (if-not (gce/entity crux id)
        (server-error (str "User not found by ID " id))
