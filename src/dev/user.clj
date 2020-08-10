@@ -62,14 +62,15 @@
              })
           user1 (user/create
                   node
-                  {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
-                   :name          "user"
-                   :email         "b@b.com"})
+                  {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                   :user/name          "user"
+                   :user/email         "b@b.com"})
           user2 (user/create
                   node
-                  {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
-                   :name          "user"
-                   :email         "c@c.com"})
+                  {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                   :user/name          "user"
+                   :user/email         "c@c.com"})
+
           project1 (prj/create node {:name "Project 1"})
           project2 (prj/create node {:name "Project 2"})
           project3 (prj/create node {:name "Project 3"})

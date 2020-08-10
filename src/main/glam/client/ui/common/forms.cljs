@@ -82,7 +82,7 @@
                                     (complete-field component field))}
                        input-attrs))}))
 
-(def delete-button (mui/styled-button {:background-color "rgb(220, 0, 78)"}))
+(def delete-button (mui/styled-button {#_#_:background-color "rgb(220, 0, 78)"}))
 (defn form-buttons
   [{:keys [component validator props busy? submit-text reset-text on-reset delete-text on-delete
            submit-disabled reset-disabled]}]
@@ -118,8 +118,7 @@
         (delete-button
           {:size      "large"
            :disabled  using-busy?-and-busy?
-           :variant   "contained"
-           :color     "secondary"
+           :variant   "outlined"
            :onClick   on-delete
            :startIcon (muic/delete)}
           (or delete-text "Delete"))))))
@@ -129,12 +128,15 @@
 
 (defn mark-filled-fields-complete*
   "Helper function against app state. This function marks `initialized-keys` as complete on the form given a set of
-  keys that you consider initialized. Like form state's mark-complete, but on a set instead of a single field."
+  keys that you consider initialized. Like form state's mark-complete, but on a set instead of a single field.
+  A field is considered filled if it's non-nil and it's not the empty string"
   [state-map {:keys [entity-ident initialized-keys]}]
   (let [mark-complete* (fn [entity {::fs/keys [fields complete?] :as form-config}]
                          (let [to-mark (set/union (set complete?) (set/intersection (set fields) (set initialized-keys)))
                                to-mark (into #{}
-                                             (filter (fn [k] (not (nil? (get entity k)))))
+                                             (filter (fn [k] (and (not (nil? (get entity k)))
+                                                                  (not (and (string? (get entity k))
+                                                                            (= 0 (count (get entity k))))))))
                                              to-mark)]
                            [entity (assoc form-config ::fs/complete? to-mark)]))]
     (fs/update-forms state-map mark-complete* entity-ident)))
@@ -145,12 +147,16 @@
                                  (uism/exit env))}})
 
 ;; A state machine for editing some entity with an ident. This machine makes the following assumptions:
-;; - ::save-mutation is present on the form component's options
-;; - ::save-message is present optionally present the form component's options
+;; - if saving is being used:
+;;   - ::save-mutation is present on the form component's options
+;;   - ::save-message is present optionally present the form component's options
+;;   - ::save-extra-props is optionally present identifying keys in the components props to be sent to the server
 ;; - if deletion is being used:
 ;;   - ::delete-mutation is present on the form component's options
 ;;   - ::delete-message is optionally present on the form component's options
 ;; - the component will query for `:ui/busy?` and use it to lock inputs when true
+;; - no recursive forms! (not sure what would happen)
+;; - no edges (also not sure what would happen)
 (uism/defstatemachine edit-form-machine
   {::uism/actor-names
    #{:actor/form}
@@ -168,7 +174,7 @@
              {:keys [form-fields]} (c/component-options FormClass)]
          (log/info "edit form: initialized")
          (-> env
-             (uism/apply-action fs/add-form-config* FormClass form-ident)
+             (uism/apply-action fs/add-form-config* FormClass form-ident {:destructive? true})
              (uism/apply-action fs/entity->pristine* form-ident)
              (uism/apply-action mark-filled-fields-complete* {:entity-ident     form-ident
                                                               :initialized-keys form-fields})
@@ -187,17 +193,23 @@
                       form-ident (uism/actor->ident env :actor/form)
                       save-mutation (-> FormClass c/component-options ::save-mutation)
                       props (fns/ui->props state-map FormClass form-ident)
-                      delta (fs/dirty-fields props true)]
+                      delta (fs/dirty-fields props true)
+                      extra-props-list (-> FormClass c/component-options ::save-extra-props)
+                      extra-props (select-keys props extra-props-list)]
                   (if-not save-mutation
                     (log/info (str "Class " FormClass " must have a 'glam.client.common.forms/save-mutation"))
                     (-> env
                         (uism/assoc-aliased :busy? true)
                         (uism/activate :state/saving)
-                        (uism/trigger-remote-mutation :actor/form save-mutation
-                                                      {::uism/ok-event    :event/save-ok
-                                                       ::uism/error-event :event/save-error
-                                                       :ident             form-ident
-                                                       :delta             (get delta form-ident)})))))}
+                        (uism/trigger-remote-mutation
+                          :actor/form
+                          save-mutation
+                          (merge
+                            {::uism/ok-event    :event/save-ok
+                             ::uism/error-event :event/save-error
+                             :ident             form-ident
+                             :delta             (get delta form-ident)}
+                            extra-props))))))}
              :event/reset
              {::uism/handler
               (fn [{::uism/keys [state-map] :as env}]
@@ -285,6 +297,109 @@
                  message (some-> event-data ::uism/mutation-result :body (get delete-mutation) :server/message)]
              (log/info "edit form: delete failed")
              (snack/message! {:message  (if message message "Error occurred, delete has failed.")
+                              :severity "error"})
+             (-> env
+                 (uism/assoc-aliased :busy? false)
+                 (uism/activate :state/editing))))}})}}})
+
+
+(uism/defstatemachine create-form-machine
+  {::uism/actor-names
+   #{:actor/form
+     :actor/modal-host}
+
+   ::uism/aliases
+   {:busy?       [:actor/form :ui/busy?]
+    :modal-open? [:actor/modal-host :ui/modal-open?]}
+
+   ::uism/states
+   {:initial
+    ;; kickoff: add form config, mark fields complete, open modal if using, and begin editing
+    {::uism/handler
+     (fn [env]
+       (let [FormClass (uism/actor-class env :actor/form)
+             form-ident (uism/actor->ident env :actor/form)
+             modal-ident (uism/actor->ident env :actor/modal-host)
+             {:keys [form-fields]} (c/component-options FormClass)]
+         (log/info "create form: initialized")
+         (log/info (pr-str modal-ident))
+         (-> env
+             (uism/apply-action fs/add-form-config* FormClass form-ident)
+             (uism/apply-action mark-filled-fields-complete* {:entity-ident     form-ident
+                                                              :initialized-keys form-fields})
+             (cond->
+               modal-ident
+               (uism/assoc-aliased :modal-open? true))
+             (uism/activate :state/editing))))}
+
+    :state/editing
+    ;; editing: we can (1) create the entity, (2) cancel
+    {::uism/events
+     {:event/create
+      {::uism/handler
+       (fn [{::uism/keys [state-map] :as env}]
+         (log/info "edit form: handling create")
+         (let [FormClass (uism/actor-class env :actor/form)
+               form-ident (uism/actor->ident env :actor/form)
+               create-mutation (-> FormClass c/component-options ::create-mutation)
+               props (fns/ui->props state-map FormClass form-ident)
+               delta (fs/dirty-fields props true)]
+           (if-not create-mutation
+             (log/info (str "Class " FormClass " must have a 'glam.client.common.forms/create-mutation"))
+             (-> env
+                 (uism/assoc-aliased :busy? true)
+                 (uism/activate :state/creating)
+                 (uism/trigger-remote-mutation
+                   :actor/form
+                   create-mutation
+                   {::uism/ok-event    :event/create-ok
+                    ::uism/error-event :event/create-error
+                    :ident             form-ident
+                    :delta             (get delta form-ident)})))))}
+      :event/cancel
+      {::uism/handler
+       (fn [env]
+         (let [form-ident (uism/actor->ident env :actor/form)
+               modal-ident (uism/actor->ident env :actor/modal-host)]
+           (log/info "Creation canceled")
+           (-> env
+               (cond->
+                 modal-ident
+                 (uism/assoc-aliased :modal-open? false))
+               (uism/apply-action fns/remove-entity form-ident)
+               (uism/exit))))}}}
+
+    :state/creating
+    {::uism/events
+     (merge
+       global-events
+       {:event/create-ok
+        {::uism/handler
+         (fn [env]
+           (let [FormClass (uism/actor-class env :actor/form)
+                 form-ident (uism/actor->ident env :actor/form)
+                 modal-ident (uism/actor->ident env :actor/modal-host)
+                 message (or (-> FormClass c/component-options ::create-message) "Created")
+                 target-list (-> FormClass c/component-options ::create-append-to)]
+             (log/info "create ok")
+             (log/info (str "ident: " (pr-str form-ident)))
+             (snack/message! {:message message :severity "success"})
+             (-> env
+                 (uism/apply-action fs/entity->pristine* form-ident)
+                 (uism/assoc-aliased :busy? false)
+                 (uism/apply-action update-in target-list conj form-ident)
+                 (cond->
+                   modal-ident
+                   (uism/assoc-aliased :modal-open? false))
+                 (uism/exit))))}
+        :event/create-error
+        {::uism/handler
+         (fn [{::uism/keys [event-data] :as env}]
+           (let [FormClass (uism/actor-class env :actor/form)
+                 create-mutation (-> FormClass c/component-options ::create-mutation)
+                 message (some-> event-data ::uism/mutation-result :body (get create-mutation) :server/message)]
+             (log/info "edit form: create failed")
+             (snack/message! {:message  (if message message "Error occurred, create has failed.")
                               :severity "error"})
              (-> env
                  (uism/assoc-aliased :busy? false)

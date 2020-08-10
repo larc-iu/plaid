@@ -4,9 +4,19 @@
             [glam.crux.easy :as gce])
   (:refer-clojure :exclude [get]))
 
-(defn create [node {:keys [name email password-hash]}]
+
+(defn get [node eid]
+  (-> (gce/entity node eid)
+      (update :user/reader cutil/identize :project/id)
+      (update :user/writer cutil/identize :project/id)))
+
+(defn get-all [node] (gce/find-entities node {:user/id '_}))
+(defn get-by-name [node name] (gce/find-entity node {:user/name name}))
+(defn get-by-email [node email] (gce/find-entity node {:user/email email}))
+
+(defn create [node {:user/keys [name email password-hash]}]
   (let [;; make the first user to sign up an admin
-        first-signup? (= 0 (count (gce/find-entities node {:user/id '_})))
+        first-signup? (= 0 (count (get-all node)))
         {:user/keys [id] :as record}
         (merge (gce/new-record "user")
                {:user/name          name
@@ -17,15 +27,6 @@
                 :user/writer        #{}})]
     (gce/put node [record])
     id))
-
-(defn get [node eid]
-  (-> (gce/entity node eid)
-      (update :user/reader cutil/identize :project/id)
-      (update :user/writer cutil/identize :project/id)))
-
-(defn get-all [node] (gce/find-entities node {:user/id '_}))
-(defn get-by-name [node name] (gce/find-entity node {:user/name name}))
-(defn get-by-email [node email] (gce/find-entity node {:user/email email}))
 
 (defn set-name [node eid name] (gce/update node eid assoc :user/name name))
 (defn set-email [node eid email] (gce/update node eid assoc :user/email email))

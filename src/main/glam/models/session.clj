@@ -36,9 +36,9 @@
                                :session/server-error-msg "Problem signing up."})
     (do (log/info "doing signup")
         (log/info "inserting user: " email)
-        (let [id (cuser/create crux {:name          email
-                                     :email         email
-                                     :password-hash (user/hash-password password)})
+        (let [id (cuser/create crux {:user/name          email
+                                     :user/email         email
+                                     :user/password-hash (user/hash-password password)})
               admin? (:user/admin? (gce/entity crux id))]
           (augment-session-resp env {:session/valid?           true
                                      :session/server-error-msg nil

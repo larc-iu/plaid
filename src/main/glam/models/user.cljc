@@ -146,12 +146,7 @@
       ::pc/transform mc/admin-required}
      {:all-users (user/get-all crux)}))
 
-#?(:cljs
-   (m/defmutation delete-user
-     [args]
-     (action [{:keys [app]}] (log/info "Beginning delete-user"))
-     (remote [{:keys [ast]}] true))
-   :clj
+#?(:clj
    (pc/defmutation delete-user [{:keys [crux]} {[_ id] :ident :as params}]
      {::pc/transform mc/admin-required}
      (if-not (gce/entity crux id)
@@ -161,7 +156,7 @@
          (server-message (str "User " name " deleted"))))))
 
 #?(:clj
-   (pc/defmutation save-user [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
+   (pc/defmutation save-user [{:keys [crux]} {delta :delta [_ id] :ident new-password :user/new-password :as params}]
      {::pc/transform mc/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [old-user (gce/entity crux id)
@@ -173,10 +168,20 @@
          ;; must be valid
          (not (mc/validate-delta record-valid? delta))
          (server-error (str "User delta invalid: " delta))
+         (and (some? new-password) (> (count new-password) 0) (not (valid-password new-password)))
+         (server-error (str "New password is invalid"))
          :else
          (do
-           (gce/put crux new-user)
+           (gce/put crux (if (valid-password new-password)
+                           (merge new-user {:user/password-hash (hash-password new-password)})
+                           new-user))
            (gce/entity crux id))))))
+#?(:clj
+   (pc/defmutation create-user [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
+     {::pc/transform mc/admin-required
+      ::pc/output [:server/error? :server/message]}
+     (let [new-id (user/create crux (mc/apply-delta {} delta))]
+       {:tempids {id new-id}})))
 
 #?(:clj
    (def resolvers [user-resolver
@@ -184,4 +189,5 @@
                    change-own-password
                    change-own-name
                    delete-user
-                   save-user]))
+                   save-user
+                   create-user]))
