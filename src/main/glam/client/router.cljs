@@ -44,14 +44,19 @@
 ;; item in the :segment vectors here are just for documentation.
 
 (defn route-segment [name]
-  (if-let [segment (some-> routes-by-name name :segment last vector)]
+  (if-let [segment (some-> routes-by-name name :segment)]
     segment
     (throw (js/Error. (str "No matching fulcro segment for route: " (pr-str name))))))
+
+(defn last-route-segment [name]
+  (some-> (route-segment name) last vector))
 
 (defn router-segment
   [name]
   (case name
     :project-router ["project"]
+    :project-admin-router ["project"]
+    :admin-router ["admin"]
     (ex-info "unknown router: " name)))
 
 (def routes
@@ -63,9 +68,19 @@
     {:name    :user-settings
      :segment ["settings"]}]
 
-   ["/admin"
-    {:name    :admin-settings
-     :segment ["admin"]}]
+   ["/admin/"
+    {:name    :admin-home
+     :segment ["admin" ""]}]
+   ["/admin/user"
+    {:name    :user-management
+     :segment ["admin" "user"]}]
+   ["/admin/project/"
+    {:name    :project-management
+     :segment ["admin" "project" ""]}]
+   ["/admin/project/:id"
+    {:name    :project-settings
+     :segment ["admin" "project" :id]
+     :params  {:path {:id string?}}}]
 
    ["/project/"
     {:name    :projects
@@ -141,6 +156,8 @@
           (dr/change-route! SPA target-segment)))))
 
 (defn current-route [this]
+  (js/console.log (pr-str (dr/current-route this this)))
+  (js/console.log (pr-str (first (dr/current-route this this))))
   (some-> (dr/current-route this this) first keyword))
 
 (defn current-app-route []
@@ -188,7 +205,7 @@
            (log/info "Invalid session, routing to login")
            (rfe/push-state :home))
          (do
-           (log/info "Changing route to: " route)
+           (log/info "Changing route to: " (pr-str route))
            (rfe/push-state name params)))))))
 
 (defn redirect-to!

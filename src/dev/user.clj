@@ -31,7 +31,7 @@
   ;; as the server has captured output.
   )
 
-(defn start "Start the web server + services" [] (mount/start))
+(defn start "Start the web server + services" [] (mount/start) (def node glam.server.crux/crux-node))
 (defn stop "Stop the web server + services" [] (mount/stop))
 (defn restart
   "Stop, reload code, and restart the server. If there is a compile error, use:
@@ -50,16 +50,15 @@
   (restart))
 
 
+
 ;; crux stuff
 (defn init-db []
   (let [node glam.server.crux/crux-node]
-    (let [admin-id
-          (user/create
-            node
-            {:password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
-             :name          "admin"
-             :email         "a@b.com"
-             })
+    (let [admin-id (user/create
+                     node
+                     {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                      :user/name          "admin"
+                      :user/email         "a@b.com"})
           user1 (user/create
                   node
                   {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
@@ -68,13 +67,12 @@
           user2 (user/create
                   node
                   {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
-                   :user/name          "user"
+                   :user/name          "user2"
                    :user/email         "c@c.com"})
 
-          project1 (prj/create node {:name "Project 1"})
-          project2 (prj/create node {:name "Project 2"})
-          project3 (prj/create node {:name "Project 3"})
-          project4 (prj/create node {:name "Project 4"})
-          ]
-      (user/set-admin? node admin-id true))))
+          project1 (prj/create node {:project/name "Project 1"})
+          project2 (prj/create node {:project/name "Project 2"})
+          project3 (prj/create node {:project/name "Project 3"})
+          project4 (prj/create node {:project/name "Project 4"})
+          ])))
 

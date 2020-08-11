@@ -44,8 +44,6 @@
        (drawer-item :user-settings "Settings" muic/settings onClose admin?)
 
        (when admin?
-         (drawer-item :admin-settings "Admin Settings" muic/supervisor-account onClose)))
-      ))
-  )
+         (drawer-item :admin-home "Admin Settings" muic/supervisor-account onClose))))))
 
 (def ui-drawer (c/factory Drawer))

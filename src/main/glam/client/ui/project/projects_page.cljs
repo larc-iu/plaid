@@ -8,18 +8,18 @@
 
 
 (defsc ProjectListItem
-  [this {:project/keys [id name slug] :as props}]
-  {:query (fn [_] [:project/id :project/name :project/slug])
+  [this {:project/keys [id name] :as props}]
+  {:query (fn [_] [:project/id :project/name])
    :ident :project/id}
   (dom/div
     (dom/h4 "Project")
     (dom/div "id: " (pr-str id))
     (dom/div "name: " (pr-str name))
-    (dom/div "slug: " (pr-str slug))
     (dom/div (r/link :project {:id id} name))))
 
 (def ui-project-item (c/factory ProjectListItem {:keyfn :project/id}))
 
+;; TODO replace :all-projects with user-friendly one
 (defsc ProjectList [this {:keys [all-projects]}]
   {:initial-state {}
    :ident         (fn [_] [:component/id :project-list])
@@ -31,17 +31,17 @@
 (def ui-project-list (c/factory ProjectList))
 
 (defsc ProjectsPage [this {:keys [project-list]}]
-  {:query             [{:project-list (c/get-query ProjectList)}]
-   :ident             (fn [_] [:component/id :projects-page])
-   :initial-state     (fn [_] {:project-list (c/get-initial-state ProjectList)})
-   :route-segment     (r/route-segment :projects)
-   :will-enter        (fn [app route-params]
-                        (dr/route-deferred
-                          [:component/id :projects-page]
-                          #(df/load! app :all-projects ProjectListItem
-                                     {:target [:component/id :project-list :all-projects]
-                                      :post-mutation        `dr/target-ready
-                                      :post-mutation-params {:target [:component/id :projects-page]}})))}
+  {:query         [{:project-list (c/get-query ProjectList)}]
+   :ident         (fn [_] [:component/id :projects-page])
+   :initial-state (fn [_] {:project-list (c/get-initial-state ProjectList)})
+   :route-segment (r/last-route-segment :projects)
+   :will-enter    (fn [app route-params]
+                    (dr/route-deferred
+                      [:component/id :projects-page]
+                      #(df/load! app :all-projects ProjectListItem
+                                 {:target               [:component/id :project-list :all-projects]
+                                  :post-mutation        `dr/target-ready
+                                  :post-mutation-params {:target [:component/id :projects-page]}})))}
   (mui/page-container
     (ui-project-list project-list)))
 

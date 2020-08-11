@@ -2,11 +2,11 @@
   (:require [crux.api :as crux]
             [glam.crux.easy :as gce]))
 
-(defn create [node {:keys [name]}]
+(defn create [node {:project/keys [name]}]
   (let [{:project/keys [id] :as record}
         (merge (gce/new-record "project")
                {:project/name name})]
-    (gce/put node [record])
+    (gce/put node record)
     id))
 
 (defn get-all [node] (gce/find-entities node {:project/id '_}))

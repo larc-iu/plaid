@@ -14,7 +14,7 @@
 (defn get-by-name [node name] (gce/find-entity node {:user/name name}))
 (defn get-by-email [node email] (gce/find-entity node {:user/email email}))
 
-(defn create [node {:user/keys [name email password-hash]}]
+(defn create [node {:user/keys [name email admin? password-hash]}]
   (let [;; make the first user to sign up an admin
         first-signup? (= 0 (count (get-all node)))
         {:user/keys [id] :as record}
@@ -22,7 +22,7 @@
                {:user/name          name
                 :user/email         email
                 :user/password-hash password-hash
-                :user/admin?        first-signup?
+                :user/admin?        (if first-signup? true (boolean admin?))
                 :user/reader        #{}
                 :user/writer        #{}})]
     (gce/put node [record])

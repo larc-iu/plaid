@@ -162,7 +162,7 @@
             ["@material-ui/lab/ToggleButtonGroup" :default ToggleButtonGroup]
             ["@material-ui/lab/TreeItem" :default TreeItem]
             ["@material-ui/lab/TreeView" :default TreeView]
-            ))
+            [glam.client.ui.material-ui-icon :as muic]))
 
 
 ;; BEGIN AUTO GEN
@@ -324,6 +324,8 @@
 (defn styled-list [styles] (wrap-styles List styles))
 (defn styled-paper [styles] (wrap-styles Paper styles))
 (defn styled-typography [styles] (wrap-styles Typography styles))
+(defn styled-breadcrumbs [styles] (wrap-styles Breadcrumbs styles))
+(defn styled-card-media [styles] (wrap-styles CardMedia styles))
 
 ;; theme
 (def default-theme (createMuiTheme #js {:spacing 8
@@ -331,18 +333,37 @@
                                                       :secondary blue}}))
 (def theme-provider (interop/react-factory ThemeProvider))
 
+;; --------------------------------------------------------------------------------
 ;; conveniences
+;; --------------------------------------------------------------------------------
+;; these are glam-specific functions that have been centralized here for consistency
 (defn page-container
-  [child]
-  (container {}
-    (box {:mx 1 :my 2 :px 1 :py 2}
-      child)))
+  ([attrs child]
+   (container attrs
+     (box {:mx 1 :my 2 :px 1 :py 2}
+       child)))
+  ([child]
+   (page-container {} child)))
 
 (defn padded-paper
-  [child]
-  (paper {}
-    (box {:m 1 :p 1}
-      child)))
+  ([attrs child]
+   (paper attrs
+     (box {:m 1 :p 1}
+       child)))
+  ([child]
+   (padded-paper {} child)))
+
+(def mt-typography (styled-typography {:margin-top "0.7em"}))
+(defn page-title
+  ([attrs child]
+   (mt-typography (merge {:variant "h4"} attrs) child))
+  ([child]
+   (page-title {} child)))
+
+(def mb-breadcrumbs (styled-breadcrumbs {:margin-bottom "1.8em"}))
+(defn arrow-breadcrumbs [attrs & children]
+  (mb-breadcrumbs (merge {:separator (muic/navigate-next)} attrs)
+    children))
 
 (defn vertical-grid [& children]
   "Only use with static seqs! (key function is just the position in the list)"

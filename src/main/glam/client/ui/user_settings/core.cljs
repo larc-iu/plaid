@@ -15,7 +15,7 @@
                    {:change-password-form (c/get-query ChangePasswordForm)}]
    :initial-state {:change-name-form     {}
                    :change-password-form {}}
-   :route-segment (r/route-segment :user-settings)}
+   :route-segment (r/last-route-segment :user-settings)}
   (when (sn/valid-session? props)
     (mui/page-container
       (c/fragment

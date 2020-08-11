@@ -385,12 +385,12 @@
              (log/info (str "ident: " (pr-str form-ident)))
              (snack/message! {:message message :severity "success"})
              (-> env
-                 (uism/apply-action fs/entity->pristine* form-ident)
-                 (uism/assoc-aliased :busy? false)
-                 (uism/apply-action update-in target-list conj form-ident)
                  (cond->
                    modal-ident
                    (uism/assoc-aliased :modal-open? false))
+                 (uism/apply-action fs/entity->pristine* form-ident)
+                 (uism/assoc-aliased :busy? false)
+                 (uism/apply-action update-in target-list conj form-ident)
                  (uism/exit))))}
         :event/create-error
         {::uism/handler

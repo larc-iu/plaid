@@ -15,7 +15,7 @@
     [glam.client.ui.common.core :refer [loader]]
     [glam.client.ui.project.core :refer [ProjectRouter]]
     [glam.client.ui.user-settings.core :refer [UserSettings]]
-    [glam.client.ui.admin-settings.core :refer [AdminSettings]]
+    [glam.client.ui.admin-settings.core :refer [AdminRouter]]
     [glam.client.ui.home :refer [Home]]
     [glam.client.ui.login :refer [logout-button Login]]
     [glam.client.ui.global-snackbar :refer [ui-global-snackbar GlobalSnackbar]]
@@ -23,7 +23,7 @@
 
 (dr/defrouter TopRouter
   [this {:keys [current-state route-factory route-props]}]
-  {:router-targets      [Home ProjectRouter UserSettings AdminSettings]
+  {:router-targets      [Home ProjectRouter UserSettings AdminRouter]
    :always-render-body? false}
   (loader))
 

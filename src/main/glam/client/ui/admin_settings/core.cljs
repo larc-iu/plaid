@@ -1,50 +1,57 @@
 (ns glam.client.ui.admin-settings.core
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
+            [com.fulcrologic.fulcro.routing.dynamic-routing :as dr :refer [defrouter]]
             [glam.models.session :as sn]
             [glam.client.router :as r]
+            [glam.client.ui.common.core :refer [loader]]
             [glam.client.ui.material-ui :as mui]
-            [glam.client.ui.admin-settings.user-management :refer [ui-user-management UserManagement]]
-            [com.fulcrologic.fulcro.data-fetch :as df]))
+            [glam.client.ui.admin-settings.user-management :refer [UserManagement]]
+            [glam.client.ui.admin-settings.project-management :refer [ProjectManagement]]
+            [glam.client.ui.admin-settings.project-settings :refer [ProjectSettings]]
+            [com.fulcrologic.fulcro.data-fetch :as df]
+            [com.fulcrologic.fulcro.dom :as dom]
+            [glam.client.ui.material-ui-icon :as muic]))
 
-(def ident [:component/id :admin-settings])
+(def ident [:component/id :admin-home])
 
-(defmutation change-tab [{:keys [tab]}]
-  (action [{:keys [state]}]
-          (swap! state assoc-in (conj ident :tab) tab)))
+(def md-card-media (mui/styled-card-media {:height "120px"}))
+(defn link-card [route text icon]
+  (mui/card {}
+    (mui/card-action-area {:onClick #(r/route-to! route)
+                           :style   {:textAlign "center"}}
+      (md-card-media {}
+        (icon {:color "secondary"
+               :style {:fontSize 120
+                       :marginTop "10px"}}))
+      (mui/card-content {}
+        (mui/typography {:variant "h5"} text)))))
 
-
-(def load-fns
-  "Every tab-level component for admin settings must have a :load-fn component option.
-  It is used to load that tab's data every time the tab is opened."
-  (let [load-fn #(-> % c/component-options :load-fn)]
-    {"0" (load-fn UserManagement)}))
-
-(defsc AdminSettings [this {:keys [tab] :as props}]
-  {:ident             (fn [_] ident)
-   :query             [sn/session-join :tab
-                       {:admin/user-management (c/get-query UserManagement)}]
-   :initial-state     {:tab                   "0"
-                       :admin/user-management {}}
-   ;; mui/tabs's onChange seems not to fire on mount, so we have to manually do the load
-   ;; for the first tab (i know i know...)
-   :componentDidMount (get load-fns "0")
-   :route-segment     (r/route-segment :admin-settings)
-   }
+(defsc AdminHome [this props]
+  {:ident         (fn [_] ident)
+   :query         [sn/session-join]
+   :initial-state (fn [_] sn/session-ident (c/get-initial-state sn/Session {}))
+   :route-segment (r/last-route-segment :admin-home)}
   (when (and (sn/valid-session? props) (sn/admin? props))
-    (mui/tab-context {:value tab}
-      (mui/tabs {:value    tab
-                 :centered true
-                 :onChange (fn [_ tab]
-                             (c/transact! this [(change-tab {:tab tab})])
-                             (if-let [load-fn (get load-fns tab)]
-                               (load-fn)))}
-        (mui/tab {:label "Users" :value "0"})
-        (mui/tab {:label "Bar" :value "1"}))
+    (mui/container {:maxWidth "lg"}
+      (mui/page-title {:style {:marginBottom "0.7em"}} "Admin Settings")
 
-      (mui/tab-panel {:value "0"}
-        (ui-user-management (:admin/user-management props)))
-      (mui/tab-panel {:value "1"}
-        "Bar")
+      (mui/grid {:container true :spacing 3}
+        (mui/grid {:item true :xs 3}
+          (link-card :user-management "Manage Users" muic/supervised-user-circle-sharp))
+        (mui/grid {:item true :xs 3}
+          (link-card :project-management "Manage Projects" muic/work-outline-two-tone))))))
 
-      )))
+(defrouter ProjectAdminRouter
+  [this {:keys [current-state route-factory route-props pending-path-segment]}]
+  {:route-segment       (r/router-segment :project-admin-router)
+   :router-targets      [ProjectManagement ProjectSettings]
+   :always-render-body? false}
+  (loader))
+
+(defrouter AdminRouter
+  [this {:keys [current-state route-factory route-props pending-path-segment]}]
+  {:route-segment       (r/router-segment :admin-router)
+   :router-targets      [AdminHome UserManagement ProjectAdminRouter]
+   :always-render-body? false}
+  (loader))

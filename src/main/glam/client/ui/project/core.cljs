@@ -18,12 +18,3 @@
    :always-render-body? false}
   (loader))
 
-(def ui-project-router (c/factory ProjectRouter))
-
-(defsc Projects
-  [this {:project/keys [router]}]
-  {:query         [{:project/router (c/get-query ProjectRouter)}]
-   :initial-state {:project/router {}}}
-  (ui-project-router))
-
-

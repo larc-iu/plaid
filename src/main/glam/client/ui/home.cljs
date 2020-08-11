@@ -18,7 +18,7 @@
                              (r/redirect-to! :projects))))
    :initial-state      (fn [_] {:home/signup (c/get-initial-state Signup)
                                 :home/login  (c/get-initial-state Login)})
-   :route-segment      (r/route-segment :home)}
+   :route-segment      (r/last-route-segment :home)}
   (mui/box {:width 400 :p 1 :m 1 :mx "auto"}
     (mui/paper {}
       (mui/box {:p 2}

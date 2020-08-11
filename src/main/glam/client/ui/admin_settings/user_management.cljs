@@ -19,7 +19,8 @@
             [com.fulcrologic.fulcro.application :as app]
             [glam.client.ui.global-snackbar :as snack]
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
-            [com.fulcrologic.fulcro.algorithms.normalized-state :as fns]))
+            [com.fulcrologic.fulcro.algorithms.normalized-state :as fns]
+            [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]))
 
 ;; ident of the root element
 (def ident [:component/id :user-management])
@@ -84,7 +85,8 @@
                   (fs/dirty? props))]
     (mui/accordion {:expanded        (= expanded-id id)
                     :onChange        (make-change-handler this id expanded-id expand)
-                    :TransitionProps {:unmountOnExit true}}
+                    :TransitionProps {:unmountOnExit true}
+                    :key             id}
       (mui/accordion-summary {:expandIcon (muic/expand-more)}
         (c/fragment
           (when admin?
@@ -232,8 +234,6 @@
 ;; --------------------------------------------------------------------------------
 ;; root
 ;; --------------------------------------------------------------------------------
-(def um-container (mui/styled-container {:position "relative"}))
-
 (defsc UserManagement [this {:keys [users expanded-id add-user] :ui/keys [modal-open?] :as props}]
   {:ident         (fn [_] ident)
    :query         [{:users (c/get-query UserAccordion)}
@@ -241,34 +241,48 @@
                    :ui/modal-open?
                    {:add-user (c/get-query AddUser)}]
    :initial-state (fn [_]
-                    {:users          (c/get-initial-state UserAccordion)
+                    {:users          []
                      :expanded-id    {}
                      :ui/modal-open? false})
-   :load-fn       #(df/load! SPA :all-users UserAccordion {:target (conj ident :users)})}
-  (um-container {:maxWidth "md"}
-    (c/fragment
-      (for [{:user/keys [id] :as user} (sort-by (fn [u] [(if (:user/admin? u) 0 1) (:user/name u)]) users)]
-        ^{:key id}
-        (ui-user-accordion
-          (c/computed
-            user
-            {:expanded-id expanded-id
-             :expand      #(m/set-value! this :expanded-id %)})))
+   :route-segment (r/last-route-segment :user-management)
+   :will-enter    (fn [app route-params]
+                    (dr/route-deferred
+                      ident
+                      #(df/load! app :all-users UserAccordion
+                                 {:target               (conj ident :users)
+                                  :post-mutation        `dr/target-ready
+                                  :post-mutation-params {:target ident}})))}
+  (mui/container {:maxWidth "lg"}
+    (mui/page-title "User Management")
+    (mui/arrow-breadcrumbs {}
+      (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
+      (mui/link {:color "textPrimary" :href (r/route-for :user-management) :key "user"} "User Management"))
 
-      ;; create new user
-      (mui/dialog {:open modal-open? :onClose #(uism/trigger! this ::add-user :event/cancel)}
-        (mui/dialog-title {} "Create User")
-        (mui/dialog-content {}
-          (ui-add-user add-user)))
-      (add-user-fab
-        {:label   "Add"
-         :color   "primary"
-         :onClick (fn []
-                    (let [id (tempid/tempid)]
-                      (c/transact! this [(init-add-user {:id id})])
-                      (uism/begin! this forms/create-form-machine ::add-user
-                                   {:actor/form       (uism/with-actor-class [:user/id id] AddUser)
-                                    :actor/modal-host (uism/with-actor-class ident UserManagement)})))}
-        (muic/add)))))
+    ;; add user button
+    (mui/dialog {:open modal-open? :onClose #(uism/trigger! this ::add-user :event/cancel)}
+      (mui/dialog-title {} "Create User")
+      (mui/dialog-content {}
+        (when add-user
+          (ui-add-user add-user))))
+    (mui/button
+      {:variant   "contained"
+       :color     "primary"
+       :startIcon (muic/add)
+       :onClick (fn []
+                  (let [id (tempid/tempid)]
+                    (c/transact! this [(init-add-user {:id id})])
+                    (uism/begin! this forms/create-form-machine ::add-user
+                                 {:actor/form       (uism/with-actor-class [:user/id id] AddUser)
+                                  :actor/modal-host (uism/with-actor-class ident UserManagement)})))
+       :style {:marginBottom "1em"}}
+      "New User")
+
+    ;; user accordions
+    (for [user (sort-by (fn [u] [(if (:user/admin? u) 0 1) (:user/name u)]) users)]
+      (ui-user-accordion
+        (c/computed
+          user
+          {:expanded-id expanded-id
+           :expand      #(m/set-value! this :expanded-id %)})))))
 
 (def ui-user-management (c/factory UserManagement))

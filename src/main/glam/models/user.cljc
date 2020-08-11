@@ -156,18 +156,26 @@
          (server-message (str "User " name " deleted"))))))
 
 #?(:clj
+   (defn- user-modification-unpermitted? []
+     ))
+
+#?(:clj
    (pc/defmutation save-user [{:keys [crux]} {delta :delta [_ id] :ident new-password :user/new-password :as params}]
      {::pc/transform mc/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [old-user (gce/entity crux id)
            new-user (mc/apply-delta old-user delta)]
        (cond
-         ;; email must be unique
+         ;; email must be unique if it's being changed
          (and (some-> delta :user/email :after) (gce/find-entity crux {:user/email (-> delta :user/email :after)}))
          (server-error (str "User already exists with email " (-> delta :user/email :after)))
+         ;; name must be unique if it's being changed
+         (and (some-> delta :user/name :after) (gce/find-entity crux {:user/name (-> delta :user/name :after)}))
+         (server-error (str "User already exists with name " (-> delta :user/name :after)))
          ;; must be valid
          (not (mc/validate-delta record-valid? delta))
          (server-error (str "User delta invalid: " delta))
+         ;; if password is present, must be valid
          (and (some? new-password) (> (count new-password) 0) (not (valid-password new-password)))
          (server-error (str "New password is invalid"))
          :else
@@ -179,9 +187,22 @@
 #?(:clj
    (pc/defmutation create-user [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
      {::pc/transform mc/admin-required
-      ::pc/output [:server/error? :server/message]}
-     (let [new-id (user/create crux (mc/apply-delta {} delta))]
-       {:tempids {id new-id}})))
+      ::pc/output    [:server/error? :server/message]}
+     (let [{:user/keys [email name password] :as new-user} (mc/apply-delta {} delta)]
+       (cond
+         ;; email must be unique
+         (gce/find-entity crux {:user/email email})
+         (server-error (str "User already exists with email " email))
+         ;; name must be unique
+         (gce/find-entity crux {:user/name name})
+         (server-error (str "User already exists with name " name))
+         ;; password must be valid
+         (not (valid-password password))
+         (server-error (str "Password is invalid"))
+         :else
+         {:tempids {id (user/create crux (merge new-user {:user/password-hash (hash-password password)}))}}))))
+
+
 
 #?(:clj
    (def resolvers [user-resolver

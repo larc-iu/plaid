@@ -11,25 +11,23 @@
 
 
 (defsc ProjectDetail
-  [this {:project/keys [id name slug] :as props}]
-  {:query         [:project/id :project/name :project/slug
-                   session/session-ident]
+  [this {:project/keys [id name] :as props}]
+  {:query         [:project/id :project/name session/session-ident]
    :ident         :project/id
    :initial-state {}
-   :route-segment (r/route-segment :project)
+   :route-segment (r/last-route-segment :project)
    :will-enter    (fn [app {:keys [id] :as route-params}]
                     (log/info "Entering: " (pr-str route-params))
-                    (when id
+                    (when (uuid id)
                       (dr/route-deferred
-                        [:project/id id]
-                        #(df/load! app [:project/id id] ProjectDetail
+                        [:project/id (uuid id)]
+                        #(df/load! app [:project/id (uuid id)] ProjectDetail
                                    {:post-mutation        `dr/target-ready
-                                    :post-mutation-params {:target [:project/id id]}}))))}
+                                    :post-mutation-params {:target [:project/id (uuid id)]}}))))}
   (dom/div
     (dom/div "props" (pr-str props))
     (dom/div "id: " (pr-str id))
     (dom/div "name: " (pr-str name))
-    (dom/div "slug: " (pr-str slug))
     (r/link :projects "Projects")))
 
 (def ui-project-detail (c/factory ProjectDetail))
