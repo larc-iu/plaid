@@ -193,7 +193,8 @@
         (forms/text-input-with-label this :user/name "Name" validator "Must have 2 to 40 characters"
                                      {:fullWidth true
                                       :value     name
-                                      :disabled  busy?})
+                                      :disabled  busy?
+                                      :autoFocus true})
         (forms/text-input-with-label this :user/email "Email" validator "Must be a valid email"
                                      {:value     email
                                       :fullWidth true
