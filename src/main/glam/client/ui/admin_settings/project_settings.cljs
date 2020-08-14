@@ -25,7 +25,7 @@
                                  {:post-mutation        `dr/target-ready
                                   :post-mutation-params {:target [:project/id (uuid id)]}})))}
   (mui/container {:maxWidth "lg" :style {:position "relative"}}
-    (mui/page-title "Project Management")
+    (mui/page-title name)
     (mui/arrow-breadcrumbs {}
       (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
       (mui/link {:color "inherit" :href (r/route-for :project-management) :key "project"} "Project Management")

@@ -15,7 +15,8 @@
    :query [:project/id :project/name]}
   (mui/list-item {:key    id
                   :button true
-                  :onClick #(r/route-to! :project-settings {:id id})} name))
+                  :onClick #(r/route-to! :project-settings {:id id})}
+    (mui/typography {:variant "h6"} name)))
 
 (def ui-project-list-item (c/factory ProjectListItem))
 
@@ -40,8 +41,10 @@
     (mui/arrow-breadcrumbs {}
       (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
       (mui/link {:color "textPrimary" :href (r/route-for :project-management) :key "project"} "Project Management"))
-    (mui/list {}
-      (map ui-project-list-item all-projects)))
+    (mui/box {:width 600 :m 1 :p 1}
+      (mui/paper {}
+        (mui/list {}
+          (map ui-project-list-item (sort-by :project/name all-projects))))))
 
   )
 
