@@ -14,6 +14,7 @@
 
 
 ;; common --------------------------------------------------------------------------------
+(def user-keys [:user/name :user/admin? :user/email :user/reader :user/writer :user/password :user/new-password])
 (defn valid-password [password] (>= (count password) 8))
 
 (def email-regex #"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,63}$")
@@ -156,15 +157,11 @@
          (server-message (str "User " name " deleted"))))))
 
 #?(:clj
-   (defn- user-modification-unpermitted? []
-     ))
-
-#?(:clj
    (pc/defmutation save-user [{:keys [crux]} {delta :delta [_ id] :ident new-password :user/new-password :as params}]
      {::pc/transform mc/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [old-user (gce/entity crux id)
-           new-user (mc/apply-delta old-user delta)]
+           new-user (-> old-user (mc/apply-delta delta) (select-keys user-keys))]
        (cond
          ;; email must be unique if it's being changed
          (and (some-> delta :user/email :after) (gce/find-entity crux {:user/email (-> delta :user/email :after)}))
@@ -188,7 +185,7 @@
    (pc/defmutation create-user [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
      {::pc/transform mc/admin-required
       ::pc/output    [:server/error? :server/message]}
-     (let [{:user/keys [email name password] :as new-user} (mc/apply-delta {} delta)]
+     (let [{:user/keys [email name password] :as new-user} (-> {} (mc/apply-delta delta) (select-keys user-keys))]
        (cond
          ;; email must be unique
          (gce/find-entity crux {:user/email email})
