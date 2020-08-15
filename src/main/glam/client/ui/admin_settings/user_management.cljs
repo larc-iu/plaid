@@ -76,6 +76,7 @@
                               (update data-tree :user/new-password #(if (= % ::merge/not-found) "" %)))
    :ident                   :user/id
    :form-fields             #{:user/name :user/email :user/admin?}
+   :validator               validator
    ::forms/save-mutation    'glam.models.user/save-user
    ::forms/save-message     "User saved"
    ::forms/save-extra-props [:user/new-password]
@@ -103,29 +104,26 @@
                        (c/transact! this [(fs/clear-complete! {:entity-ident [:user/id id]
                                                                :field        :user/new-password})]))}
           (mui/vertical-grid
-            (forms/text-input-with-label this :user/name "Name" validator "Must have 2 to 40 characters"
-                                         {:fullWidth true
-                                          :value     name
-                                          :disabled  busy?})
-            (forms/text-input-with-label this :user/email "Email" validator "Must be a valid email"
-                                         {:value     email
-                                          :fullWidth true
-                                          :disabled  busy?})
-            (forms/text-input-with-label this :user/new-password "New Password" validator "Must be 8 characters or longer"
-                                         {:type      "password"
-                                          :value     new-password
-                                          :fullWidth true
-                                          :onChange  (fn [e]
-                                                       (m/set-string!! this :user/new-password :event e)
-                                                       (forms/complete-field this :user/new-password)
-                                                       (when (= (.-value (.-target e)) "")
-                                                         (c/transact! this [(fs/clear-complete! {:entity-ident [:user/id id]
-                                                                                                 :field        :user/new-password})])))
-                                          :disabled  busy?})
+            (forms/text-input-with-label this :user/name "Name" "Must have 2 to 40 characters"
+              {:fullWidth true
+               :disabled  busy?})
+            (forms/text-input-with-label this :user/email "Email" "Must be a valid email"
+              {:fullWidth true
+               :disabled  busy?})
+            (forms/text-input-with-label this :user/new-password "New Password" "Must be 8 characters or longer"
+              {:type      "password"
+               :fullWidth true
+               :onChange  (fn [e]
+                            (m/set-string!! this :user/new-password :event e)
+                            (forms/complete-field this :user/new-password)
+                            (when (= (.-value (.-target e)) "")
+                              (c/transact! this [(fs/clear-complete! {:entity-ident [:user/id id]
+                                                                      :field        :user/new-password})])))
+               :disabled  busy?})
             (forms/checkbox-input-with-label this :user/admin? "Admin"
-                                             {:checked  admin?
-                                              :color    "primary"
-                                              :disabled busy?}))
+              {:checked  admin?
+               :color    "primary"
+               :disabled busy?}))
 
           (forms/form-buttons
             {:component       this
@@ -179,6 +177,7 @@
    :query                   [fs/form-config-join :user/id :user/name :user/email :user/password :user/admin? :ui/busy?]
    :initial-state           {:ui/busy? false}
    :form-fields             #{:user/name :user/email :user/admin? :user/password}
+   :validator               validator
    ::forms/create-mutation  'glam.models.user/create-user
    ::forms/create-message   "User created"
    ::forms/create-append-to (conj ident :users)}
@@ -190,27 +189,24 @@
                    (.preventDefault e)
                    (uism/trigger! this ::add-user :event/create))}
       (mui/vertical-grid
-        (forms/text-input-with-label this :user/name "Name" validator "Must have 2 to 40 characters"
-                                     {:fullWidth true
-                                      :value     name
-                                      :disabled  busy?
-                                      :autoFocus true})
-        (forms/text-input-with-label this :user/email "Email" validator "Must be a valid email"
-                                     {:value     email
-                                      :fullWidth true
-                                      :disabled  busy?})
-        (forms/text-input-with-label this :user/password "Password" validator "Must be 8 characters or longer"
-                                     {:type      "password"
-                                      :value     password
-                                      :fullWidth true
-                                      :disabled  busy?
-                                      :onChange  (fn [e]
-                                                   (m/set-string!! this :user/password :event e)
-                                                   (forms/complete-field this :user/password))})
+        (forms/text-input-with-label this :user/name "Name" "Must have 2 to 40 characters"
+          {:fullWidth true
+           :disabled  busy?
+           :autoFocus true})
+        (forms/text-input-with-label this :user/email "Email" "Must be a valid email"
+          {:fullWidth true
+           :disabled  busy?})
+        (forms/text-input-with-label this :user/password "Password" "Must be 8 characters or longer"
+          {:type      "password"
+           :fullWidth true
+           :disabled  busy?
+           :onChange  (fn [e]
+                        (m/set-string!! this :user/password :event e)
+                        (forms/complete-field this :user/password))})
         (forms/checkbox-input-with-label this :user/admin? "Admin"
-                                         {:checked  admin?
-                                          :color    "primary"
-                                          :disabled busy?}))
+          {:checked  admin?
+           :color    "primary"
+           :disabled busy?}))
       (mui/horizontal-grid
         (mui/button
           {:type      "submit"
@@ -269,13 +265,13 @@
       {:variant   "contained"
        :color     "primary"
        :startIcon (muic/add)
-       :onClick (fn []
-                  (let [id (tempid/tempid)]
-                    (c/transact! this [(init-add-user {:id id})])
-                    (uism/begin! this forms/create-form-machine ::add-user
-                                 {:actor/form       (uism/with-actor-class [:user/id id] AddUser)
-                                  :actor/modal-host (uism/with-actor-class ident UserManagement)})))
-       :style {:marginBottom "1em"}}
+       :onClick   (fn []
+                    (let [id (tempid/tempid)]
+                      (c/transact! this [(init-add-user {:id id})])
+                      (uism/begin! this forms/create-form-machine ::add-user
+                                   {:actor/form       (uism/with-actor-class [:user/id id] AddUser)
+                                    :actor/modal-host (uism/with-actor-class ident UserManagement)})))
+       :style     {:marginBottom "1em"}}
       "New User")
 
     ;; user accordions

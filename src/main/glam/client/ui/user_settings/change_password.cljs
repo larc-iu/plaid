@@ -34,7 +34,8 @@
                                          :new-password         ""
                                          :new-password-confirm ""
                                          :busy?                false}))
-   :form-fields   #{:current-password :new-password :new-password-confirm}}
+   :form-fields   #{:current-password :new-password :new-password-confirm}
+   :validator     validator}
   (let [on-result (fn [{:server/keys [error? message]}]
                     (m/set-value! this :busy? false)
                     (when-not error?
@@ -60,17 +61,14 @@
 
         (mui/vertical-grid
           (mui/typography {:variant "h4"} "Change Password")
-          (forms/text-input-with-label this :current-password "Current Password" validator "Must have 8 or more characters"
+          (forms/text-input-with-label this :current-password "Current Password" "Must have 8 or more characters"
             {:type     "password"
-             :value    current-password
              :disabled busy?})
-          (forms/text-input-with-label this :new-password "New Password" validator "Must have 8 or more characters"
+          (forms/text-input-with-label this :new-password "New Password" "Must have 8 or more characters"
             {:type     "password"
-             :value    new-password
              :disabled busy?})
-          (forms/text-input-with-label this :new-password-confirm "Confirm New Password" validator "Passwords must match"
+          (forms/text-input-with-label this :new-password-confirm "Confirm New Password" "Passwords must match"
             {:type       "password"
-             :value      new-password-confirm
              :disabled   busy?
              :last-input true}))
 

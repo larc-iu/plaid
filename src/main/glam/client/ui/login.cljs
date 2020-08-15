@@ -38,18 +38,16 @@
       (mui/grid {:container true :direction "column" :spacing 1}
         (mui/grid {:item true} (mui/typography {:variant "h5"} "Login"))
         (mui/grid {:item true}
-          (forms/text-input-with-label this :user/email "Email" validator "Must be a valid email"
-                                       {:autoFocus true
+          (forms/text-input-with-label this :user/email "Email" "Must be a valid email"
+            {:autoFocus true
              :type      "email"
              :fullWidth true
-             :value     email
              :disabled  loading?
              :onChange  #(m/set-string!! this :user/email :event %)}))
         (mui/grid {:item true}
-          (forms/text-input-with-label this :password "Password" validator "Password invalid"
-                                       {:type      "password"
+          (forms/text-input-with-label this :password "Password" "Password invalid"
+            {:type      "password"
              :fullWidth true
-             :value     password
              :disabled  loading?
              :onChange  #(comp/set-state! this {:password (evt/target-value %)})}))
         (when-not (empty? error)
@@ -67,7 +65,7 @@
   (when session?
     (mui/button
       {:onClick #(sm/trigger! this ::session/session :event/logout)
-       :color "inherit"}
+       :color   "inherit"}
       "Log out")))
 
 (defsc Login [this {:user/keys [email]
@@ -77,6 +75,7 @@
                         [::sm/asm-id ::session/session]]
    :initial-state      {:user/email "" :ui/error ""}
    :ident              (fn [] [:component/id :login])
+   :validator          validator
    :componentDidUpdate (fn [this pprops _]
                          ;; clear password input field after logging in.
                          (let [{curr-session-valid? :session/valid?} (get (comp/props this) [:component/id :session])

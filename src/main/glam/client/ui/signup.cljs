@@ -34,11 +34,11 @@
 
 (defmutation clear-signup-form [_]
   (action [{:keys [state]}]
-    (swap! state clear-signup-form*)))
+          (swap! state clear-signup-form*)))
 
 (defmutation mark-complete!* [{field :field}]
   (action [{:keys [state]}]
-    (swap! state fs/mark-complete* signup-ident field)))
+          (swap! state fs/mark-complete* signup-ident field)))
 
 (defn mark-complete!
   [this field]
@@ -62,6 +62,7 @@
                                              :account/password       ""
                                              :account/password-again ""}))
    :form-fields       #{:account/email :account/password :account/password-again}
+   :validator         validator
    :ident             (fn [] signup-ident)
    :componentDidMount (fn [this] (comp/transact! this [(clear-signup-form {})]))}
   (let [server-err (:session/server-error-msg (get-session props))
@@ -81,26 +82,23 @@
         (mui/grid {:container true :direction "column" :spacing 1}
           (mui/grid {:item true} (mui/typography {:variant "h5"} "Signup"))
           (mui/grid {:item true}
-            (forms/text-input-with-label this :account/email "Email" validator "Must be a valid email"
-                                         {:type      "email"
+            (forms/text-input-with-label this :account/email "Email" "Must be a valid email"
+              {:type      "email"
                :fullWidth true
-               :value     email
                :disabled  saving?
                :onBlur    #(mark-complete! :account/email)
                :onChange  #(m/set-string!! this :account/email :event %)}))
           (mui/grid {:item true}
-            (forms/text-input-with-label this :account/password "Password" validator "Password must be 8 characters or longer"
-                                         {:type      "password"
+            (forms/text-input-with-label this :account/password "Password" "Password must be 8 characters or longer"
+              {:type      "password"
                :fullWidth true
-               :value     password
                :disabled  saving?
                :onBlur    #(mark-complete! :account/password)
                :onChange  #(m/set-string!! this :account/password :event %)}))
           (mui/grid {:item true}
-            (forms/text-input-with-label this :account/password-again "Password (repeat)" validator "Passwords must match"
-                                         {:type      "password"
+            (forms/text-input-with-label this :account/password-again "Password (repeat)" "Passwords must match"
+              {:type      "password"
                :fullWidth true
-               :value     password-again
                :disabled  saving?
                :onBlur    #(mark-complete! :account/password-again)
                :onChange  (fn [e]

@@ -23,6 +23,7 @@
    :query         [sn/session-join fs/form-config-join :new-name]
    :initial-state (fn [_] (fs/add-form-config ChangeNameForm
                                               {:new-name ""}))
+   :validator     validator
    :form-fields   #{:new-name}}
   (let [submit (fn []
                  (c/transact! this [(fs/clear-complete! {})
@@ -45,9 +46,8 @@
               (mui/typography {:variant "h4"} "Change Name"))
 
             (mui/grid {:item true}
-              (forms/text-input-with-label this :new-name "Name" validator "Name must be between 2 and 40 characters long"
-                                           {:type     "text"
-                 :value    new-name
+              (forms/text-input-with-label this :new-name "Name" "Name must be between 2 and 40 characters long"
+                {:type     "text"
                  :onChange (fn [e]
                              (m/set-string!! this :new-name :event e)
                              (c/transact! this [(fs/mark-complete! {:entity-ident ident
