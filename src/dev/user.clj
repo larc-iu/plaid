@@ -7,7 +7,8 @@
     [shadow.cljs.devtools.api :as shadow]
     ;; this is the top-level dependent component...mount will find the rest via ns requires
     [glam.server.server :refer [http-server]]
-    [glam.crux.user :as user]
+    [glam.crux.easy :as gce]
+    [glam.crux.user :as usr]
     [glam.crux.project :as prj]))
 
 ;; ==================== SERVER ====================
@@ -54,17 +55,17 @@
 ;; crux stuff
 (defn init-db []
   (let [node glam.server.crux/crux-node]
-    (let [admin-id (user/create
+    (let [admin-id (usr/create
                      node
                      {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
                       :user/name          "admin"
                       :user/email         "a@b.com"})
-          user1 (user/create
+          user1 (usr/create
                   node
                   {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
                    :user/name          "user"
                    :user/email         "b@b.com"})
-          user2 (user/create
+          user2 (usr/create
                   node
                   {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
                    :user/name          "user2"
