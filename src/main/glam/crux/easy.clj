@@ -81,6 +81,7 @@
 ;; mutations --------------------------------------------------------------------------------
 (defn submit-tx-sync [node tx]
   (crux/await-tx node (crux/submit-tx node tx)))
+(def submit! submit-tx-sync)
 
 ;; vanilla crux mutations
 (defn put* [doc]
