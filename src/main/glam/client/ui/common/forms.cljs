@@ -326,6 +326,7 @@
          (log/info "create form: initialized")
          (log/info (pr-str modal-ident))
          (-> env
+             (uism/clear-timeout! ::exiting)
              (uism/apply-action fs/add-form-config* FormClass form-ident)
              (uism/apply-action mark-filled-fields-complete* {:entity-ident     form-ident
                                                               :initialized-keys form-fields})
@@ -368,6 +369,12 @@
                (cond->
                  modal-ident
                  (uism/assoc-aliased :modal-open? false))
+               (uism/set-timeout ::exiting :event/exiting {} 200))))}
+      :event/exiting
+      {::uism/handler
+       (fn [env]
+         (let [form-ident (uism/actor->ident env :actor/form)]
+           (-> env
                (uism/apply-action fns/remove-entity form-ident)
                (uism/exit))))}}}
 
