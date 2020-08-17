@@ -1,18 +1,17 @@
 (ns glam.crux.project
   (:require [crux.api :as crux]
+            [glam.crux.util :as cutil]
             [glam.crux.easy :as gce]))
 
 (defn create [node {:project/keys [name]}]
   (let [{:project/keys [id] :as record}
-        (merge (gce/new-record "project")
+        (merge (cutil/new-record "project")
                {:project/name name})]
     (gce/put node record)
     id))
 
 (defn get-all [node] (gce/find-entities node {:project/id '_}))
 (defn get-by-name [node name] (gce/find-entity node {:project/name name}))
-
-(gce/defsetter set-name :project/name)
 
 (defn delete [node eid] (gce/delete node eid))
 

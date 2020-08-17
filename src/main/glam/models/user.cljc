@@ -14,7 +14,20 @@
 
 
 ;; common --------------------------------------------------------------------------------
-(def user-keys [:user/name :user/admin? :user/email :user/reader :user/writer :user/password :user/new-password])
+(def user-keys [;; a unique email used for user login
+                :user/email
+                ;; a unique display name. defaults to email on signup
+                :user/name
+                ;; boolean: user is an admin?
+                :user/admin?
+                ;; multi-joins to projects users can read/edit
+                :user/reader
+                :user/writer
+                ;; password fields--these keywords are NOT stored in the database but
+                ;; need to be present here so forms can rely on it when a new password
+                ;; needs to be validated. the crux
+                :user/password
+                :user/new-password])
 (defn valid-password [password] (>= (count password) 8))
 
 (def email-regex #"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,63}$")
@@ -110,7 +123,7 @@
          (server-error "New password is invalid")
          :else
          (do
-           (user/set-password-hash crux id (hash-password new-password))
+           (user/merge crux id {:user/password-hash (hash-password new-password)})
            (server-message "Password change successful"))))))
 
 #?(:cljs
@@ -137,7 +150,7 @@
          (server-error (str "Name \"" name "\" is invalid"))
          :else
          (do
-           (user/set-name crux user-id name)
+           (user/merge crux user-id {:user/name name})
            (server-message (str "Name changed to " name)))))))
 
 ;; admin level -------------------------------------------------------------------------------
@@ -160,27 +173,26 @@
    (pc/defmutation save-user [{:keys [crux]} {delta :delta [_ id] :ident new-password :user/new-password :as params}]
      {::pc/transform mc/admin-required
       ::pc/output    [:server/error? :server/message]}
-     (let [old-user (gce/entity crux id)
-           new-user (-> old-user (mc/apply-delta delta) (select-keys user-keys))]
-       (cond
-         ;; email must be unique if it's being changed
-         (and (some-> delta :user/email :after) (gce/find-entity crux {:user/email (-> delta :user/email :after)}))
-         (server-error (str "User already exists with email " (-> delta :user/email :after)))
-         ;; name must be unique if it's being changed
-         (and (some-> delta :user/name :after) (gce/find-entity crux {:user/name (-> delta :user/name :after)}))
-         (server-error (str "User already exists with name " (-> delta :user/name :after)))
-         ;; must be valid
-         (not (mc/validate-delta record-valid? delta))
-         (server-error (str "User delta invalid: " delta))
-         ;; if password is present, must be valid
-         (and (some? new-password) (> (count new-password) 0) (not (valid-password new-password)))
-         (server-error (str "New password is invalid"))
-         :else
-         (do
-           (gce/put crux (if (valid-password new-password)
-                           (merge new-user {:user/password-hash (hash-password new-password)})
-                           new-user))
-           (gce/entity crux id))))))
+     (log/info (str "id:" (:ident params)))
+     (cond
+       ;; email must be unique if it's being changed
+       (and (some-> delta :user/email :after) (gce/find-entity crux {:user/email (-> delta :user/email :after)}))
+       (server-error (str "User already exists with email " (-> delta :user/email :after)))
+       ;; name must be unique if it's being changed
+       (and (some-> delta :user/name :after) (gce/find-entity crux {:user/name (-> delta :user/name :after)}))
+       (server-error (str "User already exists with name " (-> delta :user/name :after)))
+       ;; must be valid
+       (not (mc/validate-delta record-valid? delta))
+       (server-error (str "User delta invalid: " delta))
+       ;; if password is present, must be valid
+       (and (some? new-password) (> (count new-password) 0) (not (valid-password new-password)))
+       (server-error (str "New password is invalid"))
+       :else
+       (do
+         (gce/merge crux id (-> (mc/apply-delta {} delta)
+                                (cond-> (and (some? new-password) (> (count new-password) 0) (valid-password new-password))
+                                        (merge {:user/password-hash (hash-password new-password)}))))
+         (gce/entity crux id)))))
 #?(:clj
    (pc/defmutation create-user [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
      {::pc/transform mc/admin-required

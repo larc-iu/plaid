@@ -1,7 +1,7 @@
 (ns glam.server.crux
   (:require [crux.api :as crux]
             [mount.core :refer [defstate]]
-            [glam.crux.easy :refer [install-tx-fns]]
+            [glam.crux.easy :refer [install-tx-fns!]]
             [glam.server.config :refer [config]]
             [clojure.java.io :as io])
   (:import [crux.api ICruxAPI]))
@@ -25,10 +25,12 @@
 
 (defstate crux-node
   :start (let [node (start-main-lmdb-node)]
-           ;;(install-tx-fns node '[glam.crux.user])
+           (install-tx-fns! node)
            node)
   :stop (.close crux-node))
 
 (defstate crux-session-node
-  :start (start-session-lmdb-node)
+  :start (let [node (start-session-lmdb-node)]
+           (install-tx-fns! node)
+           node)
   :stop (.close crux-session-node))

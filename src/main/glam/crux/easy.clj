@@ -1,25 +1,9 @@
 (ns glam.crux.easy
-  "A set of convenience functions for transactions with only one part and other common crux operations."
+  "A set of convenience functions for transactions with only one part and other common crux operations.
+  Functions that end in * return a vector that can be used to build transactions incrementally."
   (:require [crux.api :as crux]
             [taoensso.timbre :as log])
-  (:refer-clojure :exclude [set update])
-  (:import (java.util UUID)))
-
-;; conveniences
-(defn uuid []
-  (UUID/randomUUID))
-
-(defn new-record
-  "Create a blank record with a UUID in :crux.db/id. If ns is provided,
-  will also assoc this id with (keyword ns \"id\"), e.g. :person/id.
-  This simplifies queries for use with pathom and fulcro."
-  ([] (new-record nil))
-  ([ns]
-   (let [eid (uuid)]
-     (if (nil? ns)
-       {:crux.db/id eid}
-       {:crux.db/id       eid
-        (keyword ns "id") eid}))))
+  (:refer-clojure :exclude [set update merge]))
 
 ;; reads ---------------------------------------------------------------------------------
 (defn entity [node id]
@@ -56,85 +40,80 @@
 (defn find-entity [node attrs] (find-entity-by-attrs node attrs {:id-only? false :all-results false}))
 (defn find-entities [node attrs] (find-entity-by-attrs node attrs {:id-only? false :all-results true}))
 
+;; match --------------------------------------------------------------------------------
+(defn match*
+  ([eid doc]
+   [:crux.tx/match eid doc])
+  ([eid doc valid-time]
+   [:crux.tx/match eid doc valid-time]))
+
+;; tx functions for mutations ------------------------------------------------------------
+(def ^:private merge-tx-fn-id ::merge)
+(def ^:private merge-tx-fn '(fn [ctx eid m]
+                              (let [db (crux.api/db ctx)
+                                    entity (crux.api/entity db eid)]
+                                [[:crux.tx/put (merge entity m)]])))
+
+(def ^:private update-tx-fn-id ::update)
+(def ^:private update-tx-fn '(fn [ctx eid k f-symbol & args]
+                               (let [db (crux.api/db ctx)
+                                     entity (crux.api/entity db eid)
+                                     ;; namespace qualify f with clojure.core if there is none
+                                     qualified-f-symbol (if (nil? (namespace f-symbol))
+                                                          (symbol "clojure.core" (str f-symbol))
+                                                          f-symbol)
+                                     f-lambda (-> qualified-f-symbol find-var var-get)]
+                                 [[:crux.tx/put (apply update (into [entity k f-lambda] args))]])))
+
+(defn install-tx-fns! [node]
+  "Call this on your crux node whenever you start it"
+  (let [tx-fn (fn [eid fn] {:crux.db/id eid :crux.db/fn fn})
+        put* (fn [doc] [:crux.tx/put doc])]
+    (when-not (entity node merge-tx-fn-id)
+      (log/info "Installing merge transaction function")
+      (crux/submit-tx node [(match* merge-tx-fn-id nil)
+                            (put* (tx-fn merge-tx-fn-id merge-tx-fn))]))
+    (when-not (entity node update-tx-fn-id)
+      (log/info "Installing update transaction function")
+      (crux/submit-tx node [(match* update-tx-fn-id nil)
+                            (put* (tx-fn update-tx-fn-id update-tx-fn))]))))
+
 ;; mutations --------------------------------------------------------------------------------
-(defn- put-async [node doc-or-docs]
-  (crux/submit-tx node (->> (if-not (sequential? doc-or-docs)
-                              (vector doc-or-docs)
-                              doc-or-docs)
-                            (map (fn [doc] [:crux.tx/put doc]))
-                            vec)))
-(defn put [node doc-or-docs]
-  "Put either a single document or a sequence of documents. NOTE: only use
-  this if you are creating a new document. Otherwise, prefer `update`"
-  (crux/await-tx node (put-async node doc-or-docs)))
+(defn submit-tx-sync [node tx]
+  (crux/await-tx node (crux/submit-tx node tx)))
 
-(defn- update-async [node eid f & args]
-  (locking eid
-    (let [ent (entity node eid)]
-      (put-async node (apply f (into [ent] args))))))
-(defn update [node eid f & args]
-  "Apply f and its arguments to the document identified by eid, (apply f [ent a1 a2 a3 ...]).
-  E.g.: (cce/update node :birthday-boy update :age inc)
-  This function LOCKS the entity id using the clojure `locking` macro to avoid race conditions
-  (https://clojurians-log.clojureverse.org/crux/2020-03-24). If you need to avoid this perf penalty
-  or use a more sophisticated coordination technique, don't use this function."
-  (crux/await-tx node (apply update-async (into [node eid f] args))))
+;; vanilla crux mutations
+(defn put* [doc]
+  [:crux.tx/put doc])
+(defn put [node doc]
+  (submit-tx-sync node [(put* doc)]))
 
-(defn- delete-async [node eid]
-  (crux/submit-tx node [[:crux.tx/delete eid]]))
+(defn delete* [eid]
+  [:crux.tx/delete eid])
 (defn delete [node eid]
-  "Delete a document by eid."
-  (crux/await-tx node (delete-async node eid)))
+  (submit-tx-sync node [(delete* eid)]))
 
-(defn- evict-async [node eid]
-  (crux/submit-tx node [[:crux.tx/evict eid]]))
+(defn evict* [eid]
+  [:crux.tx/evict eid])
 (defn evict [node eid]
-  "Evict a document by eid."
-  (crux/await-tx node (evict-async node eid)))
+  (submit-tx-sync node [(evict* eid)]))
 
-;; deftx --------------------------------------------------------------------------------
-;; macro for transactions to avoid race conditions: https://clojurians-log.clojureverse.org/crux/2020-03-24
-;; The installation of tx functions makes this a little more complicated than the one used by `update` above
-;; which simply locks the entity ID. On the other hand, this approach is more powerful. For now, I'm ignoring
-;; this approach in favor of just using `update`.
-(defmacro deftx [name bindings & body]
-  "Defines a function used for mutations that uses a Crux transaction function under the hood.
-  body must return a valid Crux transaction vector, with any non-clojure.core variables fully
-  qualified. `install-tx-fns` must be called on namespaces where deftx is used for the function
-  to work."
-  (let [kwd-name (keyword (str *ns*) (str name))
-        symbol-name (symbol (str name))]
-    `(def
-       ~(vary-meta
-          symbol-name
-          assoc
-          :crux-tx-fn
-          `(fn [node#]
-             (crux/submit-tx node# [[:crux.tx/put {:crux.db/id ~kwd-name
-                                                   :crux.db/fn (quote (fn ~bindings
-                                                                        ~@body))}]])))
-       (fn ~symbol-name [node# & ~'args]
-         (crux/await-tx
-           node#
-           (crux/submit-tx node# (log/spy [(into [:crux.tx/fn ~kwd-name] ~'args)])))))))
+;; additional mutations api enabled by our tx-fns
+(defn merge*
+  "Merges m with some entity identified by eid in a transaction function"
+  [eid m]
+  [:crux.tx/fn merge-tx-fn-id eid m])
+(defn merge
+  "Merges m with some entity identified by eid in a transaction function"
+  [node eid m]
+  (submit-tx-sync node [(merge* eid m)]))
 
-(defn install-tx-fns [node namespaces]
-  "Given a node and a seq of namespace symbols, scan all public vars
-  and use any :crux-tx-fn in their metadata to install the tx-fn on
-  the node"
-  (doseq [ns-symbol namespaces]
-    (when-let [ns (the-ns ns-symbol)]
-      (doseq [[vname v] (ns-publics ns)]
-        (when-let [tx-install-fn (some-> v meta :crux-tx-fn)]
-          ;; evict any already-existing entities with the tx-fn's id
-          (evict node (keyword (str ns) (str vname)))
-          (tx-install-fn node))))))
-
-(defmacro defsetter [name attr]
-    "Shortcut for simple sets on a single attribute"
-    `(deftx
-       ~name
-       [ctx# eid# val#]
-       (when-let [entity# (crux.api/entity (crux.api/db ctx#) eid#)]
-         [[:crux.tx/put (assoc entity# ~attr val#)]])))
-
+(defmacro update*
+  "Updates some entity identified by eid in a transaction function. f can be any function"
+  [eid k f & args]
+  `(let [f-symbol# (-> ~f var symbol)]
+     [:crux.tx/fn ~update-tx-fn-id ~eid ~k f-symbol# ~@args]))
+(defmacro update
+  "Updates some entity identified by eid in a transaction function. f can be any function"
+  [node eid k f & args]
+  `(submit-tx-sync ~node [(update* ~eid ~k ~f ~@args)]))

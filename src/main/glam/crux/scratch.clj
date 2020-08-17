@@ -109,7 +109,6 @@
   (gce/put node {:crux.db/id :foo :a 0})
 
   (gce/entity node :foo)
-  (gce/update node :foo update :a inc)
 
   (dothreads! (fn [c]
                 (println "Updating")
@@ -121,6 +120,47 @@
                       (update doc :a inc)))))
               :threads 5
               :times 5)
+
+
+  )
+
+(comment
+
+  (user/create
+    node
+    {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+     :user/name          "admin"
+     :user/email         "a@b.com"})
+
+  (defn init-db []
+    (let [node glam.server.crux/crux-node]
+      (let [admin-id (user/create
+                       node
+                       {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                        :user/name          "admin"
+                        :user/email         "a@b.com"})
+
+            user1 (user/create
+                    node
+                    {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                     :user/name          "user"
+                     :user/email         "b@b.com"})
+            user2 (user/create
+                    node
+                    {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                     :user/name          "user2"
+                     :user/email         "c@c.com"})
+
+            project1 (prj/create node {:project/name "Project 1"})
+            project2 (prj/create node {:project/name "Project 2"})
+            project3 (prj/create node {:project/name "Project 3"})
+            project4 (prj/create node {:project/name "Project 4"})
+            ])))
+
+
+
+
+
 
 
   )

@@ -2,15 +2,19 @@
   (:require [crux.api :as crux]
             [glam.crux.util :as cutil]
             [glam.crux.easy :as gce])
-  (:refer-clojure :exclude [get]))
+  (:refer-clojure :exclude [get merge]))
 
 
-(defn get [node eid]
-  (-> (gce/entity node eid)
+(defn identize-user [doc]
+  (-> doc
       (update :user/reader cutil/identize :project/id)
       (update :user/writer cutil/identize :project/id)))
 
-(defn get-all [node] (gce/find-entities node {:user/id '_}))
+(defn get [node eid]
+  (-> (gce/entity node eid)
+      identize-user))
+
+(defn get-all [node] (map identize-user (gce/find-entities node {:user/id '_})))
 (defn get-by-name [node name] (gce/find-entity node {:user/name name}))
 (defn get-by-email [node email] (gce/find-entity node {:user/email email}))
 
@@ -18,29 +22,27 @@
   (let [;; make the first user to sign up an admin
         first-signup? (= 0 (count (get-all node)))
         {:user/keys [id] :as record}
-        (merge (gce/new-record "user")
-               {:user/name          name
-                :user/email         email
-                :user/password-hash password-hash
-                :user/admin?        (if first-signup? true (boolean admin?))
-                :user/reader        #{}
-                :user/writer        #{}})]
-    (gce/put node [record])
+        (clojure.core/merge (cutil/new-record "user")
+                            {:user/name          name
+                             :user/email         email
+                             :user/password-hash password-hash
+                             :user/admin?        (if first-signup? true (boolean admin?))
+                             :user/reader        #{}
+                             :user/writer        #{}})]
+    (gce/put node record)
     id))
 
-(defn set-name [node eid name] (gce/update node eid assoc :user/name name))
-(defn set-email [node eid email] (gce/update node eid assoc :user/email email))
-(defn set-password-hash [node eid password-hash] (gce/update node eid assoc :user/password-hash password-hash))
-(defn set-admin? [node eid admin?] (gce/update node eid assoc :user/admin? admin?))
+(defn merge [node eid m]
+  (gce/merge node eid (select-keys m [:user/name :user/email :user/password-hash :user/admin? :user/reader :user/writer])))
 
 (defn add-reader [node user-id project-id]
-  (gce/update node user-id update :user/reader conj project-id))
+  (gce/update node user-id :user/reader conj project-id))
 (defn add-writer [node user-id project-id]
-  (gce/update node user-id update :user/writer conj project-id))
+  (gce/update node user-id :user/writer conj project-id))
 (defn remove-reader [node user-id project-id]
-  (gce/update node user-id update :user/reader disj project-id))
+  (gce/update node user-id :user/reader disj project-id))
 (defn remove-writer [node user-id project-id]
-  (gce/update node user-id update :user/writer disj project-id))
+  (gce/update node user-id :user/writer disj project-id))
 
 (defn delete [node eid] (gce/delete node eid))
 
@@ -59,6 +61,7 @@
   (get-by-email node "a@a.com")
   (get-all node)
   (get node #uuid"8e005674-ce92-4b4d-a6a9-ddc99aa82040")
+  (crux/open-db)
   )
 
 ;;;; delete
