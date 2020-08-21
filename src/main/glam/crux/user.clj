@@ -5,18 +5,19 @@
   (:refer-clojure :exclude [get merge]))
 
 
-(defn identize-user [doc]
-  (-> doc
-      (update :user/reader cutil/identize :project/id)
-      (update :user/writer cutil/identize :project/id)))
+(defn crux->pathom [doc]
+  (when doc
+    (-> doc
+        (update :user/reader cutil/identize :project/id)
+        (update :user/writer cutil/identize :project/id))))
 
 (defn get [node eid]
   (-> (gce/entity node eid)
-      identize-user))
+      crux->pathom))
 
-(defn get-all [node] (map identize-user (gce/find-entities node {:user/id '_})))
-(defn get-by-name [node name] (gce/find-entity node {:user/name name}))
-(defn get-by-email [node email] (gce/find-entity node {:user/email email}))
+(defn get-all [node] (map crux->pathom (gce/find-entities node {:user/id '_})))
+(defn get-by-name [node name] (crux->pathom (gce/find-entity node {:user/name name})))
+(defn get-by-email [node email] (crux->pathom (gce/find-entity node {:user/email email})))
 
 (defn create [node {:user/keys [name email admin? password-hash]}]
   (let [;; make the first user to sign up an admin
