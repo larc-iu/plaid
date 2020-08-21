@@ -32,7 +32,12 @@
   ;; as the server has captured output.
   )
 
-(defn start "Start the web server + services" [] (mount/start) (def node glam.server.crux/crux-node))
+(defn start "Start the web server + services" [] (mount/start)
+  (def node glam.server.crux/crux-node)
+  (def user1 (:user/id (usr/get-by-email node "b@b.com")))
+  (def user2 (:user/id (usr/get-by-email node "c@c.com")))
+  (def prj1 (:project/id (prj/get-by-name node "Project 1")))
+  )
 (defn stop "Stop the web server + services" [] (mount/stop))
 (defn restart
   "Stop, reload code, and restart the server. If there is a compile error, use:
