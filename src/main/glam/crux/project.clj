@@ -3,15 +3,34 @@
             [glam.crux.util :as cutil]
             [glam.crux.easy :as gce]))
 
+(defn crux->pathom [doc]
+  (when doc
+    doc))
+
 (defn create [node {:project/keys [name]}]
   (let [{:project/keys [id] :as record}
         (merge (cutil/new-record "project")
-               {:project/name name})]
+               {:project/name        name
+                :project/text-layers []})]
     (gce/put node record)
     id))
 
-(defn get-all [node] (gce/find-entities node {:project/id '_}))
+
+(defn get-all [node] (map crux->pathom (gce/find-entities node {:project/id '_})))
 (defn get-by-name [node name] (gce/find-entity node {:project/name name}))
+
+(def visible-rule
+  '[(visible ?project ?user)
+    (or [?user :user/reader ?project]
+        [?user :user/writer ?project])])
+(defn get-visible [node user-id]
+  (->> (crux/q (crux/db node)
+               {:find  '[?p]
+                :where [['?u :user/id user-id]
+                        '(visible ?p ?u)]
+                :rules [visible-rule]})
+       (gce/entities node)
+       (map crux->pathom)))
 
 (defn delete [node eid] (gce/delete node eid))
 
