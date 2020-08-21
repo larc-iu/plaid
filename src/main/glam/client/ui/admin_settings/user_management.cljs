@@ -188,43 +188,44 @@
       {:onSubmit (fn [e]
                    (.preventDefault e)
                    (uism/trigger! this ::add-user :event/create))}
-      (mui/vertical-grid
-        (forms/text-input-with-label this :user/name "Name" "Must have 2 to 40 characters"
-          {:fullWidth true
-           :disabled  busy?
-           :autoFocus true})
-        (forms/text-input-with-label this :user/email "Email" "Must be a valid email"
-          {:fullWidth true
-           :disabled  busy?})
-        (forms/text-input-with-label this :user/password "Password" "Must be 8 characters or longer"
-          {:type      "password"
-           :fullWidth true
-           :disabled  busy?
-           :onChange  (fn [e]
-                        (m/set-string!! this :user/password :event e)
-                        (forms/complete-field this :user/password))})
-        (forms/checkbox-input-with-label this :user/admin? "Admin"
-          {:checked  admin?
-           :color    "primary"
-           :disabled busy?}))
-      (mui/horizontal-grid
-        (mui/button
-          {:type      "submit"
-           :size      "large"
-           :color     "primary"
-           :variant   "contained"
-           :startIcon (muic/create)
-           :disabled  (not (and (fs/dirty? props)
-                                (fs/checked? props)
-                                (= :valid (validator props))
-                                (not busy?)))}
-          "Create User")
-        (mui/button
-          {:size      "large"
-           :variant   "outlined"
-           :onClick   close-cu-dialog
-           :startIcon (muic/cancel)}
-          "Cancel")))))
+      (mui/box {:width 400 :m 1 :p 1}
+        (mui/vertical-grid
+          (forms/text-input-with-label this :user/name "Name" "Must have 2 to 40 characters"
+            {:fullWidth true
+             :disabled  busy?
+             :autoFocus true})
+          (forms/text-input-with-label this :user/email "Email" "Must be a valid email"
+            {:fullWidth true
+             :disabled  busy?})
+          (forms/text-input-with-label this :user/password "Password" "Must be 8 characters or longer"
+            {:type      "password"
+             :fullWidth true
+             :disabled  busy?
+             :onChange  (fn [e]
+                          (m/set-string!! this :user/password :event e)
+                          (forms/complete-field this :user/password))})
+          (forms/checkbox-input-with-label this :user/admin? "Admin"
+            {:checked  admin?
+             :color    "primary"
+             :disabled busy?}))
+        (mui/horizontal-grid
+          (mui/button
+            {:type      "submit"
+             :size      "large"
+             :color     "primary"
+             :variant   "contained"
+             :startIcon (muic/create)
+             :disabled  (not (and (fs/dirty? props)
+                                  (fs/checked? props)
+                                  (= :valid (validator props))
+                                  (not busy?)))}
+            "Create User")
+          (mui/button
+            {:size      "large"
+             :variant   "outlined"
+             :onClick   close-cu-dialog
+             :startIcon (muic/cancel)}
+            "Cancel"))))))
 
 (def ui-add-user (c/factory AddUser))
 
