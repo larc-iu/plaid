@@ -63,7 +63,7 @@
     (field-valid field v)))
 
 (defn record-valid? [record]
-  (every? (fn [[k v]] (field-valid k v)) record))
+  (every? (fn [[k v]] (= :valid (field-valid k v))) record))
 
 (def validator (fs/make-validator user-valid))
 
