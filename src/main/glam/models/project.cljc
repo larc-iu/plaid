@@ -6,6 +6,7 @@
             #?(:clj [glam.crux.project :as prj])
             #?(:clj [glam.crux.easy :as gce])
             #?(:clj [glam.models.common :as mc])
+            #?(:clj [glam.models.auth :as ma])
             [com.fulcrologic.fulcro.mutations :as m]))
 
 (def project-keys [:project/name])
@@ -25,7 +26,7 @@
 #?(:clj
    (pc/defresolver visible-projects [{:keys [crux current-user]} _]
      {::pc/output    [{:all-projects [:project/id]}]
-      ::pc/transform mc/user-required}
+      ::pc/transform ma/user-required}
      ;; TODO: filter on visibility
      {:all-projects (prj/get-all crux)}))
 
@@ -35,19 +36,19 @@
    (pc/defresolver get-project [{:keys [crux]} {:project/keys [id]}]
      {::pc/input     #{:project/id}
       ::pc/output    [:project/id :project/name]
-      ::pc/transform mc/user-required}
+      ::pc/transform ma/user-required}
      (gce/entity crux id)))
 
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
    (pc/defresolver all-projects [{:keys [crux current-user]} _]
      {::pc/output    [{:all-projects [:project/id]}]
-      ::pc/transform mc/admin-required}
+      ::pc/transform ma/admin-required}
      {:all-projects (prj/get-all crux)}))
 
 #?(:clj
    (pc/defmutation create-project [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
-     {::pc/transform mc/admin-required
+     {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [{:project/keys [name] :as new-project} (-> {} (mc/apply-delta delta) (select-keys project-keys))]
        (cond

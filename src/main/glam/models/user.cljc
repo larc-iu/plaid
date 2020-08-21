@@ -9,6 +9,7 @@
             #?(:clj [cryptohash-clj.impl.argon2 :refer [chash verify]])
             [taoensso.timbre :as log]
             #?(:clj [glam.models.common :as mc :refer [server-error server-message]])
+            #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.crux.user :as user])
             #?(:clj [glam.crux.easy :as gce])))
 
@@ -63,7 +64,8 @@
     (field-valid field v)))
 
 (defn record-valid? [record]
-  (every? (fn [[k v]] (= :valid (field-valid k v))) record))
+  (every? (fn [[k v]]
+            (field-valid k v)) (log/spy record)))
 
 (def validator (fs/make-validator user-valid))
 
@@ -94,7 +96,7 @@
    (defresolver user-resolver [{:keys [crux]} {:user/keys [id]}]
      {::pc/input     #{:user/id}
       ::pc/output    [:user/email :user/name :user/admin?]
-      ::pc/transform mc/user-required}
+      ::pc/transform ma/user-required}
      (gce/entity crux id)))
 
 #?(:cljs
@@ -108,7 +110,7 @@
    :clj
    (pc/defmutation change-own-password
      [{:keys [crux] :as env} {:keys [current-password new-password]}]
-     {::pc/transform mc/user-required}
+     {::pc/transform ma/user-required}
      (let [id (get-current-user env)
            {:user/keys [password-hash]} (gce/entity crux id)]
        (cond
@@ -135,7 +137,7 @@
    :clj
    (pc/defmutation change-own-name
      [{:keys [crux] :as env} {:keys [name]}]
-     {::pc/transform mc/user-required}
+     {::pc/transform ma/user-required}
      (let [user-id (get-current-user env)
            same-names (gce/find-entities crux {:user/name name})]
        (cond
@@ -157,12 +159,12 @@
 #?(:clj
    (pc/defresolver all-users-resolver [{:keys [crux]} _]
      {::pc/output    [{:all-users [:user/id]}]
-      ::pc/transform mc/admin-required}
+      ::pc/transform ma/admin-required}
      {:all-users (user/get-all crux)}))
 
 #?(:clj
    (pc/defmutation delete-user [{:keys [crux]} {[_ id] :ident :as params}]
-     {::pc/transform mc/admin-required}
+     {::pc/transform ma/admin-required}
      (if-not (gce/entity crux id)
        (server-error (str "User not found by ID " id))
        (let [name (:user/name (gce/entity crux id))]
@@ -171,7 +173,7 @@
 
 #?(:clj
    (pc/defmutation save-user [{:keys [crux]} {delta :delta [_ id] :ident new-password :user/new-password :as params}]
-     {::pc/transform mc/admin-required
+     {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (log/info (str "id:" (:ident params)))
      (let [new-email (some-> delta :user/email :after)
@@ -199,7 +201,7 @@
            (gce/entity crux id))))))
 #?(:clj
    (pc/defmutation create-user [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
-     {::pc/transform mc/admin-required
+     {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [{:user/keys [email name password] :as new-user} (-> {} (mc/apply-delta delta) (select-keys user-keys))]
        (cond

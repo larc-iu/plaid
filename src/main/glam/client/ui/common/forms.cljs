@@ -176,12 +176,39 @@
              {:keys [form-fields]} (c/component-options FormClass)]
          (log/info "edit form: initialized")
          (-> env
-             (uism/apply-action fs/add-form-config* FormClass form-ident {:destructive? true})
-             (uism/apply-action fs/entity->pristine* form-ident)
-             (uism/apply-action mark-filled-fields-complete* {:entity-ident     form-ident
-                                                              :initialized-keys form-fields})
-             ;(uism/apply-action fs/mark-complete* form-ident)
-             (uism/activate :state/editing))))}
+             (uism/load-actor :actor/form {::uism/ok-event    :event/load-ok
+                                           ::uism/error-event :event/load-error})
+             (uism/assoc-aliased :busy? true)
+             (uism/activate :state/loading))))}
+
+    :state/loading
+    {::uism/events
+     {:event/load-ok
+      {::uism/handler
+       (fn [env]
+         (let [FormClass (uism/actor-class env :actor/form)
+               form-ident (uism/actor->ident env :actor/form)
+               {:keys [form-fields]} (c/component-options FormClass)]
+           (log/info "edit form: loaded")
+           (-> env
+               (uism/apply-action fs/add-form-config* FormClass form-ident {:destructive? true})
+               (uism/apply-action fs/entity->pristine* form-ident)
+               (uism/apply-action mark-filled-fields-complete* {:entity-ident     form-ident
+                                                                :initialized-keys form-fields})
+               ;(uism/apply-action fs/mark-complete* form-ident)
+               (uism/assoc-aliased :busy? false)
+               (uism/activate :state/editing))))}
+      :event/load-error
+      {::uism/handler
+       (fn [env]
+         (let [FormClass (uism/actor-class env :actor/form)
+               form-ident (uism/actor->ident env :actor/form)
+               {:keys [form-fields]} (c/component-options FormClass)]
+           (log/error "edit form: load error, exiting")
+           (js/alert "An error has occurred. Please refresh your tab and try again.")
+           (-> env
+               (uism/assoc-aliased :busy? false)
+               (uism/exit))))}}}
 
     :state/editing
     ;; editing: we can (1) exit, (2) begin a save, (3) restore pristine state
