@@ -56,7 +56,8 @@
 
 ;; Transactions --------------------------------------------------------------------------------
 (defn delete* [eid] (gce/delete* eid))
-(defn delete [node eid] (gce/submit! node [(delete* eid)]))
+(defn delete [node eid]
+  (gce/submit! node [(delete* eid)]))
 
 (defn add-reader* [project-id user-id] (gce/update* project-id :project/readers conj user-id))
 (defn add-writer* [project-id user-id] (gce/update* project-id :project/writers conj user-id))

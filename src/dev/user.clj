@@ -82,12 +82,15 @@
           project2 (prj/create node {:project/name "Project 2"})
           project3 (prj/create node {:project/name "Project 3"})
           project4 (prj/create node {:project/name "Project 4"})]
+
       (prj/add-writer node project1 admin-id)
       (prj/add-writer node project2 admin-id)
+
       (prj/add-writer node project1 user1)
       (prj/add-reader node project2 user1)
       (prj/add-reader node project1 user1)
-      (prj/add-writer node project2 user1)
-      (prj/add-writer node project3 user1)
+
+      (prj/add-writer node project2 user3)
+      (prj/add-writer node project3 user3)
       )))
 

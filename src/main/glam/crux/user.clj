@@ -1,7 +1,8 @@
 (ns glam.crux.user
   (:require [crux.api :as crux]
             [glam.crux.util :as cutil]
-            [glam.crux.easy :as gce])
+            [glam.crux.easy :as gce]
+            [glam.crux.project :as prj])
   (:refer-clojure :exclude [get merge]))
 
 
@@ -34,6 +35,16 @@
 (defn merge [node eid m]
   (gce/merge node eid (select-keys m [:user/name :user/email :user/password-hash :user/admin? :user/reader :user/writer])))
 
-(defn delete* [eid] (gce/delete* eid))
-(defn delete [node eid] (gce/submit! node [(delete* eid)]))
+
+(defn delete** [node eid]
+  "In addition to deleting the user record, we also need to remove it from projects' read and write lists.
+  It's OK to 'overgenerate' the removals since remove-reader*/writer* is powered by `disj` and `disj` doesn't
+  care if the item wasn't in the set to begin with: `(disj #{:a :b :c} :d)` => `#{:a :b :c}`"
+  (let [prj-ids (prj/get-visible-ids node eid)]
+    (into [(gce/delete* eid)]
+          (mapcat (fn [project-id]
+                    [(prj/remove-reader* project-id eid)
+                     (prj/remove-writer* project-id eid)])
+                  prj-ids))))
+(defn delete [node eid] (gce/submit! node [(delete** node eid)]))
 
