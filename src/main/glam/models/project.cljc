@@ -27,9 +27,11 @@
    (pc/defresolver visible-projects [{:keys [crux current-user]} _]
      {::pc/output    [{:visible-projects [:project/id]}]
       ::pc/transform ma/user-required}
+     ;; todo: should admins always see everything?
      {:visible-projects (map (fn [id] {:project/id id}) (prj/get-visible-ids crux (:user/id current-user)))}))
 
 #?(:clj
+   ;; todo: make this a batch resolver if needed (same for others)
    (pc/defresolver get-project [{:keys [crux]} {:project/keys [id]}]
      {::pc/input     #{:project/id}
       ::pc/output    [:project/id :project/name]

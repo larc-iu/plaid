@@ -34,9 +34,11 @@
 
 (defn start "Start the web server + services" [] (mount/start)
   (def node glam.server.crux/crux-node)
+  (def user0 (:user/id (usr/get-by-email node "a@b.com")))
   (def user1 (:user/id (usr/get-by-email node "b@b.com")))
   (def user2 (:user/id (usr/get-by-email node "c@c.com")))
   (def prj1 (:project/id (prj/get-by-name node "Project 1")))
+  (def prj2 (:project/id (prj/get-by-name node "Project 2")))
   )
 (defn stop "Stop the web server + services" [] (mount/stop))
 (defn restart
@@ -79,6 +81,13 @@
           project1 (prj/create node {:project/name "Project 1"})
           project2 (prj/create node {:project/name "Project 2"})
           project3 (prj/create node {:project/name "Project 3"})
-          project4 (prj/create node {:project/name "Project 4"})
-          ])))
+          project4 (prj/create node {:project/name "Project 4"})]
+      (prj/add-writer node project1 admin-id)
+      (prj/add-writer node project2 admin-id)
+      (prj/add-writer node project1 user1)
+      (prj/add-reader node project2 user1)
+      (prj/add-reader node project1 user1)
+      (prj/add-writer node project2 user1)
+      (prj/add-writer node project3 user1)
+      )))
 

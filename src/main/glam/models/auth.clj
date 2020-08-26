@@ -4,8 +4,6 @@
             [com.wsscode.pathom.connect :as pc]
             [glam.crux.easy :as gce]))
 
-
-
 ;; pathom security transforms
 (defn make-auth-transform [auth-fn failure-message]
   "Make a transform for a Pathom resolver that checks whether the user has sufficient
@@ -32,22 +30,24 @@
                     {:id-key id-key
                      :params params
                      :resolver-env env})))
-  (let [{user-id :user/id} (get-in env [:ring/request :session])
-        {:user/keys [reader writer]} (gce/entity crux user-id)
+  (let [{user-id :user/id admin? :user/admin?} (get-in env [:ring/request :session])
         id (id-key params)]
-    (case id-key
-      :project/id (or (contains? reader id) (contains? writer id)))))
+    (or admin?
+        (case id-key
+          :project/id (let [{:project/keys [writers readers]} (gce/entity crux id)]
+                        (or (contains? writers user-id)) (contains? readers user-id))))))
 (defn- project-writeable [id-key {:keys [crux] :as env} params]
   (when-not (id-key params)
     (throw (ex-info "Tried to determine if id-key was writeable for a user, but it was not present in params."
                     {:id-key id-key
                      :params params
                      :resolver-env env})))
-  (let [{user-id :user/id} (get-in env [:ring/request :session])
-        {:user/keys [writer]} (gce/entity crux user-id)
+  (let [{user-id :user/id admin? :user/admin?} (get-in env [:ring/request :session])
         id (id-key params)]
-    (case id-key
-      :project/id (contains? writer id))))
+    (or admin?
+        (case id-key
+          :project/id (let [{:project/keys [writers]} (gce/entity crux id)]
+                        (contains? writers user-id))))))
 (defn project-readable-required [id-key]
   (make-auth-transform (partial project-readable id-key) "current user cannot read the project involved in this query"))
 (defn project-writeable-required [id-key]

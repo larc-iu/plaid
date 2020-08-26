@@ -7,9 +7,7 @@
 
 (defn crux->pathom [doc]
   (when doc
-    (-> doc
-        (update :user/reader cutil/identize :project/id)
-        (update :user/writer cutil/identize :project/id))))
+    doc))
 
 (defn get [node eid]
   (-> (gce/entity node eid)
@@ -35,15 +33,6 @@
 
 (defn merge [node eid m]
   (gce/merge node eid (select-keys m [:user/name :user/email :user/password-hash :user/admin? :user/reader :user/writer])))
-
-(defn add-reader* [user-id project-id] (gce/update* user-id :user/reader conj project-id))
-(defn add-writer* [user-id project-id] (gce/update* user-id :user/writer conj project-id))
-(defn remove-reader* [user-id project-id] (gce/update* user-id :user/reader disj project-id))
-(defn remove-writer* [user-id project-id] (gce/update* user-id :user/writer disj project-id))
-(defn add-reader [node user-id project-id] (gce/submit! node [(add-reader* user-id project-id)]))
-(defn add-writer [node user-id project-id] (gce/submit! node [(add-writer* user-id project-id)]))
-(defn remove-reader [node user-id project-id] (gce/submit! node [(remove-reader* user-id project-id)]))
-(defn remove-writer [node user-id project-id] (gce/submit! node [(remove-writer* user-id project-id)]))
 
 (defn delete* [eid] (gce/delete* eid))
 (defn delete [node eid] (gce/submit! node [(delete* eid)]))
