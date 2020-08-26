@@ -19,14 +19,13 @@
 
 (def ui-project-item (c/factory ProjectListItem {:keyfn :project/id}))
 
-;; TODO replace :all-projects with user-friendly one
-(defsc ProjectList [this {:keys [all-projects]}]
+(defsc ProjectList [this {:keys [visible-projects]}]
   {:initial-state {}
    :ident         (fn [_] [:component/id :project-list])
-   :query         [{:all-projects (c/get-query ProjectListItem)}]}
+   :query         [{:visible-projects (c/get-query ProjectListItem)}]}
   (dom/div
     "This is the list of projects"
-    (map ui-project-item all-projects)))
+    (map ui-project-item visible-projects)))
 
 (def ui-project-list (c/factory ProjectList))
 
@@ -38,8 +37,8 @@
    :will-enter    (fn [app route-params]
                     (dr/route-deferred
                       [:component/id :projects-page]
-                      #(df/load! app :all-projects ProjectListItem
-                                 {:target               [:component/id :project-list :all-projects]
+                      #(df/load! app :visible-projects ProjectListItem
+                                 {:target               [:component/id :project-list :visible-projects]
                                   :post-mutation        `dr/target-ready
                                   :post-mutation-params {:target [:component/id :projects-page]}})))}
   (mui/page-container

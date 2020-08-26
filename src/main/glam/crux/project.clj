@@ -1,7 +1,8 @@
 (ns glam.crux.project
   (:require [crux.api :as crux]
             [glam.crux.util :as cutil]
-            [glam.crux.easy :as gce]))
+            [glam.crux.easy :as gce])
+  (:refer-clojure :exclude [get]))
 
 (defn crux->pathom [doc]
   (when doc
@@ -15,24 +16,43 @@
     (gce/put node record)
     id))
 
+;; Queries --------------------------------------------------------------------------------
+(defn get
+  [node id]
+  (crux->pathom (gce/find-entity node {:project/id id})))
 
-(defn get-all [node] (map crux->pathom (gce/find-entities node {:project/id '_})))
-(defn get-by-name [node name] (gce/find-entity node {:project/name name}))
+(defn get-all
+  [node]
+  (map crux->pathom (gce/find-entities node {:project/id '_})))
 
+(defn get-by-name
+  [node name]
+  (gce/find-entity node {:project/name name}))
+
+;; A project is considered visible if a user can read or write on it
 (def visible-rule
   '[(visible ?project ?user)
     (or [?user :user/reader ?project]
         [?user :user/writer ?project])])
-(defn get-visible [node user-id]
-  (->> (crux/q (crux/db node)
+
+(defn get-visible-ids [node user-id]
+  "Return a seq of uuids"
+  (map first
+       (crux/q (crux/db node)
                {:find  '[?p]
                 :where [['?u :user/id user-id]
                         '(visible ?p ?u)]
-                :rules [visible-rule]})
+                :rules [visible-rule]})))
+(defn get-visible [node user-id]
+  "Return full projects"
+  (->> (get-visible-ids node user-id)
+       (map vector)
        (gce/entities node)
        (map crux->pathom)))
 
-(defn delete [node eid] (gce/delete node eid))
+;; Transactions --------------------------------------------------------------------------------
+(defn delete* [eid] (gce/delete* eid))
+(defn delete [node eid] (gce/submit! node [(delete* eid)]))
 
 (comment
   (def node glam.server.crux/crux-node)

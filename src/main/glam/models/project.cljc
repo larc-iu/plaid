@@ -22,26 +22,23 @@
 
 (def validator (fs/make-validator project-valid))
 
-;; admin --------------------------------------------------------------------------------
+;; user --------------------------------------------------------------------------------
 #?(:clj
    (pc/defresolver visible-projects [{:keys [crux current-user]} _]
-     {::pc/output    [{:all-projects [:project/id]}]
+     {::pc/output    [{:visible-projects [:project/id]}]
       ::pc/transform ma/user-required}
-     ;; TODO: filter on visibility
-     {:all-projects (prj/get-all crux)}))
+     {:visible-projects (map (fn [id] {:project/id id}) (prj/get-visible-ids crux (:user/id current-user)))}))
 
-
-;; user --------------------------------------------------------------------------------
 #?(:clj
    (pc/defresolver get-project [{:keys [crux]} {:project/keys [id]}]
      {::pc/input     #{:project/id}
       ::pc/output    [:project/id :project/name]
-      ::pc/transform ma/user-required}
-     (gce/entity crux id)))
+      ::pc/transform (comp (ma/project-readable-required :project/id) ma/user-required)}
+     (prj/get crux id)))
 
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
-   (pc/defresolver all-projects [{:keys [crux current-user]} _]
+   (pc/defresolver all-projects [{:keys [crux]} _]
      {::pc/output    [{:all-projects [:project/id]}]
       ::pc/transform ma/admin-required}
      {:all-projects (prj/get-all crux)}))
@@ -59,5 +56,5 @@
          {:tempids {id (prj/create crux new-project)}}))))
 
 #?(:clj
-   (def project-resolvers [all-projects get-project create-project]))
+   (def project-resolvers [visible-projects all-projects get-project create-project]))
 

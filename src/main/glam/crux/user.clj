@@ -36,66 +36,15 @@
 (defn merge [node eid m]
   (gce/merge node eid (select-keys m [:user/name :user/email :user/password-hash :user/admin? :user/reader :user/writer])))
 
-(defn add-reader [node user-id project-id]
-  (gce/update node user-id :user/reader conj project-id))
-(defn add-writer [node user-id project-id]
-  (gce/update node user-id :user/writer conj project-id))
-(defn remove-reader [node user-id project-id]
-  (gce/update node user-id :user/reader disj project-id))
-(defn remove-writer [node user-id project-id]
-  (gce/update node user-id :user/writer disj project-id))
+(defn add-reader* [user-id project-id] (gce/update* user-id :user/reader conj project-id))
+(defn add-writer* [user-id project-id] (gce/update* user-id :user/writer conj project-id))
+(defn remove-reader* [user-id project-id] (gce/update* user-id :user/reader disj project-id))
+(defn remove-writer* [user-id project-id] (gce/update* user-id :user/writer disj project-id))
+(defn add-reader [node user-id project-id] (gce/submit! node [(add-reader* user-id project-id)]))
+(defn add-writer [node user-id project-id] (gce/submit! node [(add-writer* user-id project-id)]))
+(defn remove-reader [node user-id project-id] (gce/submit! node [(remove-reader* user-id project-id)]))
+(defn remove-writer [node user-id project-id] (gce/submit! node [(remove-writer* user-id project-id)]))
 
-(defn delete [node eid] (gce/delete node eid))
+(defn delete* [eid] (gce/delete* eid))
+(defn delete [node eid] (gce/submit! node [(delete* eid)]))
 
-(comment
-  (def node glam.server.crux/crux-node)
-  (set-admin? node (gce/find-entity-id node {:user/email "a@b.com"}) true)
-
-  (def node
-    (crux/start-node
-      {:crux.node/topology                 :crux.standalone/topology
-       :crux.node/kv-store                 "crux.kv.memdb/kv"
-       :crux.standalone/event-log-dir      "data/eventlog-1"
-       :crux.kv/db-dir                     "data/db-dir-1"
-       :crux.standalone/event-log-kv-store "crux.kv.memdb/kv"}))
-
-  (get-by-email node "a@a.com")
-  (get-all node)
-  (get node #uuid"8e005674-ce92-4b4d-a6a9-ddc99aa82040")
-  (crux/open-db)
-  )
-
-;;;; delete
-;;(defquery delete "MATCH (u:User) WHERE u.uuid = $uuid DELETE u")
-;;
-;;;; project -> user
-;;;; Projects depend on Users because when Projects are deleted
-;;;; all nodes pointing at the Project are recursively deleted
-;;(defquery set-reader
-;;          "MATCH (u:User), (p:Project)
-;;          WHERE u.uuid = $user_uuid AND p.uuid = $project_uuid
-;;          CREATE (p)-[r:READ_ACCESS]->(u)")
-;;
-;;(defquery set-writer
-;;          "MATCH (u:User), (p:Project)
-;;          WHERE u.uuid = $user_uuid AND p.uuid = $project_uuid
-;;          CREATE (p)-[r:WRITE_ACCESS]->(u)")
-;;
-;;(defquery revoke-reader
-;;          "MATCH (p:Project)-[r:READ_ACCESS]->(u:User)
-;;          WHERE u.uuid = $user_uuid AND p.uuid = $project_uuid
-;;          DELETE r")
-;;
-;;(defquery revoke-writer
-;;          "MATCH (p:Project)-[r:WRITE_ACCESS]->(u:User)
-;;          WHERE u.uuid = $user_uuid AND p.uuid = $project_uuid
-;;          DELETE r")
-;;
-;;(defquery readable-projects
-;;          "MATCH (p:Project)-[r:WRITE_ACCESS|READ_ACCESS]->(u:User {uuid: $uuid})
-;;          RETURN p.uuid")
-;;
-;;(defquery writeable-projects
-;;          "MATCH (p:Project)-[r:WRITE_ACCESS]->(u:User {uuid: $uuid})
-;;          RETURN p.uuid")
-;;
