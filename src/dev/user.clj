@@ -90,7 +90,7 @@
       (prj/add-reader node project2 user1)
       (prj/add-reader node project1 user1)
 
-      (prj/add-writer node project2 user3)
-      (prj/add-writer node project3 user3)
+      (prj/add-writer node project2 user2)
+      (prj/add-writer node project3 user2)
       )))
 
