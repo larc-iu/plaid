@@ -4,6 +4,11 @@
             [glam.crux.easy :as gce])
   (:refer-clojure :exclude [get]))
 
+(def attrs [:project/name
+            :project/readers
+            :project/writers
+            :project/text-layers])
+
 (defn crux->pathom [doc]
   (when doc
     (-> doc

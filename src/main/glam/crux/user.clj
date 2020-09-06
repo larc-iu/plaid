@@ -1,10 +1,13 @@
 (ns glam.crux.user
   (:require [crux.api :as crux]
+            [clojure.spec.alpha :as s]
             [glam.crux.util :as cutil]
             [glam.crux.easy :as gce]
             [glam.crux.project :as prj])
   (:refer-clojure :exclude [get merge]))
 
+;; just for documentation
+(def attrs [:user/id :user/name :user/email :user/password-hash :user/admin?])
 
 (defn crux->pathom [doc]
   (when doc
@@ -26,14 +29,12 @@
                             {:user/name          name
                              :user/email         email
                              :user/password-hash password-hash
-                             :user/admin?        (if first-signup? true (boolean admin?))
-                             :user/reader        #{}
-                             :user/writer        #{}})]
+                             :user/admin?        (if first-signup? true (boolean admin?))})]
     (gce/put node record)
     id))
 
 (defn merge [node eid m]
-  (gce/merge node eid (select-keys m [:user/name :user/email :user/password-hash :user/admin? :user/reader :user/writer])))
+  (gce/merge node eid (select-keys m [:user/name :user/email :user/password-hash :user/admin?])))
 
 
 (defn delete** [node eid]

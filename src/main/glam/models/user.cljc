@@ -21,9 +21,6 @@
                 :user/name
                 ;; boolean: user is an admin?
                 :user/admin?
-                ;; multi-joins to projects users can read/edit
-                :user/reader
-                :user/writer
                 ;; password fields--these keywords are NOT stored in the database but
                 ;; need to be present here so forms can rely on it when a new password
                 ;; needs to be validated. the crux
@@ -52,8 +49,6 @@
     :user/name (valid-name v)
     :user/admin? (valid-admin? v)
     :user/email (valid-email v)
-    :user/reader (valid-reader v)
-    :user/writer (valid-writer v)
     ;; remember that password is a special case: "password-hash" is what is stored,
     ;; but we need to validate passwords themselves
     :user/password (valid-password v)

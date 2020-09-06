@@ -1,4 +1,5 @@
 (ns glam.client.ui.admin-settings.project-settings
+  "The UI for admin settings on a single project."
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
@@ -30,4 +31,14 @@
       (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
       (mui/link {:color "inherit" :href (r/route-for :project-management) :key "project"} "Project Management")
       (mui/link {:color "textPrimary" :href (r/route-for :project-settings {:id id}) :key id} name))
+
+
+    ;; TODO: user needs to
+    ;; - see text-layers
+
+    (mui/grid {:container true :spacing 1}
+      (mui/grid {:item true :xs 3}
+        (mui/paper {:style {:minHeight "600px"}} "Foo"))
+      (mui/grid {:item true :xs 9}
+        (mui/paper {} "Bar")))
     "Hello, world!"))
