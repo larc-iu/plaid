@@ -60,15 +60,10 @@
        (map crux->pathom)))
 
 ;; Transactions --------------------------------------------------------------------------------
-(defn delete* [eid] (gce/delete* eid))
-(defn delete [node eid]
-  (gce/submit! node [(delete* eid)]))
-
-(defn add-reader* [project-id user-id] (gce/update* project-id :project/readers conj user-id))
-(defn add-writer* [project-id user-id] (gce/update* project-id :project/writers conj user-id))
-(defn remove-reader* [project-id user-id] (gce/update* project-id :project/readers disj user-id))
-(defn remove-writer* [project-id user-id] (gce/update* project-id :project/writers disj user-id))
-(defn add-reader [node project-id user-id] (gce/submit! node [(add-reader* project-id user-id)]))
-(defn add-writer [node project-id user-id] (gce/submit! node [(add-writer* project-id user-id)]))
-(defn remove-reader [node project-id user-id] (gce/submit! node [(remove-reader* project-id user-id)]))
-(defn remove-writer [node project-id user-id] (gce/submit! node [(remove-writer* project-id user-id)]))
+(gce/defmut delete [eid] (gce/delete* eid))
+(gce/defmut add-reader [project-id user-id] (gce/update* project-id :project/readers conj user-id))
+(gce/defmut add-writer [project-id user-id] (gce/update* project-id :project/writers conj user-id))
+(gce/defmut remove-reader [project-id user-id] (gce/update* project-id :project/readers disj user-id))
+(gce/defmut remove-writer [project-id user-id] (gce/update* project-id :project/writers disj user-id))
+(gce/defmut append-text-layer [project-id text-layer-id] (gce/update* project-id :project/text-layers conj text-layer-id))
+(gce/defmut remove-text-layer [project-id text-layer-id] (gce/update* project-id :project/text-layers disj text-layer-id))

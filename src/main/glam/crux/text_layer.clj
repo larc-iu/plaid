@@ -4,9 +4,13 @@
             [glam.crux.easy :as gce])
   (:refer-clojure :exclude [get]))
 
+(def attrs [:text-layer/name
+            ;; nyi
+            :text-layer/token-layers])
+
 (defn crux->pathom [doc]
   (when doc
-    doc)
-  )
+    doc))
 
+(defn create [node {:text-layer/keys [name]}])
 
