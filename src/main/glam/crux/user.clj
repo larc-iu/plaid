@@ -40,6 +40,8 @@
   "In addition to deleting the user record, we also need to remove it from projects' read and write lists.
   It's OK to 'overgenerate' the removals since remove-reader*/writer* is powered by `disj` and `disj` doesn't
   care if the item wasn't in the set to begin with: `(disj #{:a :b :c} :d)` => `#{:a :b :c}`"
+  ;; TODO: I think this actually should fail if in between the get-visible-ids and the transaction
+  ;; one of the projects gets deleted. Maybe consider going back to `deftx`?
   (let [prj-ids (prj/get-visible-ids node eid)]
     (into [(gce/delete* eid)]
           (mapcat (fn [project-id]
