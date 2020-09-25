@@ -22,7 +22,7 @@
                            :style   {:textAlign "center"}}
       (md-card-media {}
         (icon {:color "secondary"
-               :style {:fontSize 120
+               :style {:fontSize  120
                        :marginTop "10px"}}))
       (mui/card-content {}
         (mui/typography {:variant "h5"} text)))))
