@@ -1,6 +1,7 @@
 (ns glam.client.core
   (:require
     [com.fulcrologic.fulcro.application :as app]
+    [com.fulcrologic.fulcro.components :as comp]
     [com.fulcrologic.fulcro.ui-state-machines :as uism]
     [clojure.edn :as edn]
     [glam.client.ui.root :as root]
@@ -27,6 +28,7 @@
 (defn ^:export refresh []
   (log/info "Hot code Remount")
   (log/merge-config! log-config)
+  (comp/refresh-dynamic-queries! SPA)
   (app/mount! SPA root/Root "app"))
 
 (defn ^:export init []

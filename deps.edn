@@ -2,45 +2,49 @@
 
  :deps    {org.clojure/clojure                 {:mvn/version "1.10.1"}
            org.clojure/spec.alpha              {:mvn/version "0.2.187"}
-           com.taoensso/timbre                 {:mvn/version "4.10.0"}
-           com.taoensso/tufte                  {:mvn/version "2.1.0"}
-
-           com.fulcrologic/fulcro              {:mvn/version "3.2.11"
-                                                :exclusions  [com.cognitect/transit-cljs
-                                                              com.cognitect/transit-js]}
-
-           com.cognitect/transit-cljs          {:mvn/version "0.8.264"}
-
-           com.fulcrologic/semantic-ui-wrapper {:mvn/version "1.0.1"}
-           com.fulcrologic/guardrails          {:mvn/version "0.0.12"}
-
-           sablono                             {:mvn/version "0.8.6"}
            org.clojure/core.async              {:mvn/version "1.3.610"}
 
+           ;; common ---------------------------------------------------------------------------------
+           ;; logging
+           com.taoensso/timbre                 {:mvn/version "4.10.0"}
+           ;; profiler, haven't used so far
+           com.taoensso/tufte                  {:mvn/version "2.1.0"}
+
+           ;; frontend -------------------------------------------------------------------------------
+           ;; fulcro and fulcro-related deps
+           com.fulcrologic/fulcro              {:mvn/version "3.4.3"
+                                                :exclusions  [com.cognitect/transit-cljs
+                                                              com.cognitect/transit-js]}
+           com.cognitect/transit-cljs          {:mvn/version "0.8.264"}
+           com.fulcrologic/guardrails          {:mvn/version "0.0.12"}
+           com.wsscode/pathom                  {:mvn/version "2.2.31"}
+           sablono                             {:mvn/version "0.8.6"}
+           hiccup                              {:mvn/version "2.0.0-alpha2"}
+
+           ;; routing-related
            metosin/reitit                      {:mvn/version "0.5.2"}
            metosin/reitit-pedestal             {:mvn/version "0.5.2"}
            clj-commons/pushy                   {:mvn/version "0.3.10"}
-           com.wsscode/pathom                  {:mvn/version "2.2.31"}
-           hiccup                              {:mvn/version "2.0.0-alpha2"}
 
+           ;; backend --------------------------------------------------------------------------------
            mount                               {:mvn/version "0.1.16"}
 
+           ;; http
+           io.pedestal/pedestal.service        {:mvn/version "0.5.8"}
+           io.pedestal/pedestal.jetty          {:mvn/version "0.5.8"}
            ring/ring-core                      {:mvn/version "1.8.1"}
            ring/ring-defaults                  {:mvn/version "0.3.2"}
-           bk/ring-gzip                        {:mvn/version "0.3.0"}
 
            ;; crux
            juxt/crux-core                      {:mvn/version "20.07-1.10.0-beta"}
            juxt/crux-lmdb                      {:mvn/version "20.07-1.10.0-alpha"}
 
-           ;; Pedestal
-           io.pedestal/pedestal.service        {:mvn/version "0.5.8"}
-           io.pedestal/pedestal.jetty          {:mvn/version "0.5.8"}
-
            ;; Password hashing
            cryptohash-clj                      {:mvn/version "0.1.6"}}
 
- :aliases {:depstar {:extra-deps {seancorfield/depstar {:mvn/version "1.0.94"}}}
+ :aliases {:ancient {:main-opts  ["-m" "deps-ancient.deps-ancient"]
+                     :extra-deps {deps-ancient {:mvn/version "RELEASE"}}}
+           :depstar {:extra-deps {seancorfield/depstar {:mvn/version "1.0.94"}}}
            :test    {:extra-paths ["src/test"]
                      :main-opts   ["-m" "cognitect.test-runner"]
                      :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
@@ -50,16 +54,15 @@
 
                      :extra-deps  {org.clojure/clojurescript           {:mvn/version "1.10.773"}
                                    org.clojure/test.check              {:mvn/version "1.0.0"}
-                                   thheller/shadow-cljs                {:mvn/version "2.10.12"}
+                                   thheller/shadow-cljs                {:mvn/version "2.11.7"}
                                    com.fulcrologic/semantic-ui-wrapper {:mvn/version "1.0.0"}
                                    ;; Logging for pedestal, not sure if exclusion is necessary.
                                    ch.qos.logback/logback-classic      {:mvn/version "1.2.3"}
                                    ;com.wsscode/pathom-viz-connector    {:mvn/version "1.0.3"}
                                    org.clojure/tools.namespace         {:mvn/version "1.0.0"}
                                    devcards                            {:mvn/version "0.2.7"}
-                                   dv/cljs-emotion                     {:mvn/version "version-two"}
                                    ;; Formats spec explain.
-                                   expound                             {:mvn/version "0.8.4"}
-                                   fulcrologic/fulcro-spec             {:mvn/version "3.1.4"}
-                                   binaryage/devtools                  {:mvn/version "0.9.10"}
-                                   com.github.awkay/workspaces         {:mvn/version "1.0.0-RC3"}}}}}
+                                   expound                             {:mvn/version "0.8.6"}
+                                   fulcrologic/fulcro-spec             {:mvn/version "3.1.8"}
+                                   binaryage/devtools                  {:mvn/version "1.0.2"}
+                                   com.github.awkay/workspaces         {:mvn/version "1.0.2"}}}}}
