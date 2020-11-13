@@ -1,4 +1,4 @@
-{:paths   ["src/main" "resources"]
+{:paths   ["src/main" "src/test" "src/dev" "src/workspaces" "resources"]
 
  :deps    {org.clojure/clojure                 {:mvn/version "1.10.1"}
            org.clojure/spec.alpha              {:mvn/version "0.2.187"}
@@ -18,8 +18,6 @@
            com.cognitect/transit-cljs          {:mvn/version "0.8.264"}
            com.fulcrologic/guardrails          {:mvn/version "0.0.12"}
            com.wsscode/pathom                  {:mvn/version "2.2.31"}
-           sablono                             {:mvn/version "0.8.6"}
-           hiccup                              {:mvn/version "2.0.0-alpha2"}
 
            ;; routing-related
            metosin/reitit                      {:mvn/version "0.5.2"}
@@ -49,18 +47,16 @@
                      :main-opts   ["-m" "cognitect.test-runner"]
                      :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
                                                               :sha     "209b64504cb3bd3b99ecfec7937b358a879f55c1"}}}
-           :dev     {:extra-paths ["src/dev" "src/test" "src/workspaces" "src/devcards"]
+           :dev     {:extra-paths ["src/dev" "src/test" "src/workspaces"]
                      :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"]
 
                      :extra-deps  {org.clojure/clojurescript           {:mvn/version "1.10.773"}
                                    org.clojure/test.check              {:mvn/version "1.0.0"}
                                    thheller/shadow-cljs                {:mvn/version "2.11.7"}
-                                   com.fulcrologic/semantic-ui-wrapper {:mvn/version "1.0.0"}
-                                   ;; Logging for pedestal, not sure if exclusion is necessary.
+                                   ;; Logging for pedestal
                                    ch.qos.logback/logback-classic      {:mvn/version "1.2.3"}
                                    ;com.wsscode/pathom-viz-connector    {:mvn/version "1.0.3"}
                                    org.clojure/tools.namespace         {:mvn/version "1.0.0"}
-                                   devcards                            {:mvn/version "0.2.7"}
                                    ;; Formats spec explain.
                                    expound                             {:mvn/version "0.8.6"}
                                    fulcrologic/fulcro-spec             {:mvn/version "3.1.8"}

@@ -41,18 +41,6 @@
                :compiler-options {:static-fns false}        ; required for mocking to work
                :output-to        "target/ci.js"
                :ns-regexp        "-test$"}
-  :devcards   {:target           :browser
-               :output-dir       "resources/public/devcards/js"
-               :asset-path       "/js"
-
-               :modules          {:devcards {:entries [glam.devcards]
-                                             :init-fn glam.devcards/main}}
-
-               :devtools         {:http-port        4001
-                                  :http-root        "resources/public/devcards"
-                                  :push-state/index "devcards.html"
-                                  :after-load       glam.devcards/main}
-               :compiler-options {:devcards true}}
   :workspaces {:target     :browser
                :modules    {:workspaces {:entries [glam.main-ws]
                                          :init-fn glam.main-ws/main}}

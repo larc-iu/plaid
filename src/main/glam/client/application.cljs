@@ -3,7 +3,6 @@
     [com.fulcrologic.fulcro.application :as app]
     [com.fulcrologic.fulcro.networking.http-remote :as net]
     [com.fulcrologic.fulcro.algorithms.tx-processing :as txp]
-    [sablono.core :as html :refer-macros [html]]
     [taoensso.timbre :as log]
     [com.fulcrologic.fulcro.mutations :as m]))
 

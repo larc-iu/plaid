@@ -56,7 +56,7 @@ main() {
  http://localhost:8023
 '
 
-  yarn run shadow-cljs watch main  test devcards workspaces
+  yarn run shadow-cljs watch main test workspaces
 }
 
 main "$@"

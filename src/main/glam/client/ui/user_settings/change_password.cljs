@@ -3,7 +3,6 @@
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
             [com.fulcrologic.fulcro.dom :as dom]
-            [sablono.core :as html :refer [html]]
             [glam.client.ui.common.forms :as forms]
             [glam.client.router :as r]
             [glam.models.session :as sn]

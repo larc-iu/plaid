@@ -33,9 +33,6 @@ watch: watch-$(fe-module)
 watch-workspaces:
 > yarn shadow-cljs watch :workspaces
 
-watch-devcards:
-> yarn shadow-cljs watch :devcards
-
 watch-client-test:
 > yarn shadow-cljs watch :test
 

@@ -14,7 +14,6 @@
     [glam.client.router :as r]
     [glam.models.user :refer [valid-email valid-password]]
     [glam.models.session :refer [session-join Session get-session signup-ident signup]]
-    [sablono.util :as su]
     [taoensso.timbre :as log]
     [glam.client.ui.material-ui :as mui]
     [glam.client.ui.common.forms :as forms]))
