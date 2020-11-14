@@ -4,7 +4,7 @@ set -eo pipefail
 
 write_prn_file() {
   echo "(ns glam.client.prn-debug)(defn pprint-str [v])(defn pprint [v])" \
-    > src/main/com/lgessler/glam/client/prn_debug.cljs
+    > src/main/glam/client/prn_debug.cljs
 }
 
 main() {
