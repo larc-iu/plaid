@@ -29,11 +29,8 @@
   {:query         [:project/id :project/name :ui/active-tab]
    :ident         :project/id
    :pre-merge     (fn [{:keys [data-tree] :as m}]
-                    (println "A" (merge (comp/get-initial-state ProjectSettings)
-                                        (fm/sweep data-tree)))
-                    (merge (comp/get-initial-state ProjectSettings)
-                           (fm/sweep data-tree)))
-   :initial-state {:ui/active-tab "0"}
+                    (merge {:ui/active-tab "0"}
+                           data-tree))
    :route-segment (r/last-route-segment :project-settings)
    :will-enter    (fn [app {:keys [id]}]
                     (dr/route-deferred

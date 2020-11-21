@@ -14,7 +14,6 @@
   [this {:project/keys [id name] :as props}]
   {:query         [:project/id :project/name]
    :ident         :project/id
-   :initial-state {}
    :route-segment (r/last-route-segment :project)
    :will-enter    (fn [app {:keys [id] :as route-params}]
                     (log/info "Entering: " (pr-str route-params))
