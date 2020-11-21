@@ -12,7 +12,7 @@
 
 (defsc ProjectDetail
   [this {:project/keys [id name] :as props}]
-  {:query         [:project/id :project/name session/session-ident]
+  {:query         [:project/id :project/name]
    :ident         :project/id
    :initial-state {}
    :route-segment (r/last-route-segment :project)
@@ -25,7 +25,6 @@
                                    {:post-mutation        `dr/target-ready
                                     :post-mutation-params {:target [:project/id (uuid id)]}}))))}
   (dom/div
-    (dom/div "props" (pr-str props))
     (dom/div "id: " (pr-str id))
     (dom/div "name: " (pr-str name))
     (r/link :projects "Projects")))
