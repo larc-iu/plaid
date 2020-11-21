@@ -86,6 +86,7 @@
       {:remote-error? remote-error?
        :remotes       {:remote (api-remote)}
        ;; Modify the default result action so that it looks for :on-result, :on-ok and :on-error
+       ;; see, for an example, change_password.cljs
        :default-result-action!
        (fn [{:keys [transacted-ast result] ::txp/keys [options] :as env}]
          (js/console.log (pr-str options))
