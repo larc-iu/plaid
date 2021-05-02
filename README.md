@@ -5,6 +5,7 @@ An app for annotating linguistic data that's still under construction. It's buil
 # How do I run this? 
 There's not much to look at presently, but if you really want to:
 
+## Command Line
 ```bash
 # in one session
 $ make fe 
@@ -15,6 +16,36 @@ Clojure 1.10.1
 user=> (start)
 # navigate to localhost:8085
 ```
+
+## IntelliJ + Cursive
+On the terminal:
+```bash
+$ make fe
+```
+
+Clojure Server Profile:
+
+1. Make a new profile based on "Clojure REPL > Local"
+2. Select "Run with Deps"
+3. Put `dev` in Aliases
+4. Run and write (start)
+5. See `src/dev/user.clj` for development tools.
+
+ClojureScript Client Profile:
+
+1. Make a new profile based on "Clojure REPL > Remote"
+2. Connection type: `nREPL` 
+3. Connection details: "Use port from nREPL file" 
+4. Project: `glam`
+5. Make sure you're entered `(start)` in the server. 
+6. Navigate to `localhost:8085`
+7. Run your client profile and enter:
+```clojure
+(require '[shadow.cljs.devtools.api :as shadow])
+(shadow/repl :main)
+```
+8. Write (js/console.log "hi") and ensure that it was printed out to the console in your browser session
+
 
 # Architectural Overview
 - main code is in `src/main`
