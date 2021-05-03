@@ -9,10 +9,8 @@
   :ns-blacklist []}
 
  :glam.server.crux/config
- {:db-dir "crux_data/indexes"
-  :event-log-dir "crux_data/event-log"
-  :session {:db-dir "crux_session_data/indexes"
-            :event-log-dir "crux_session_data/event-log"}}
+ {:main-db-dir    "crux_data"
+  :session-db-dir "crux_session_data"}
 
  :glam.server.pathom/config
  {:connect-viz? false}

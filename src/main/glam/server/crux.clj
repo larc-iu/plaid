@@ -7,21 +7,19 @@
   (:import [crux.api ICruxAPI]))
 
 
-(defn ^ICruxAPI start-lmdb-node [{:keys [event-log-dir db-dir]}]
-  (crux/start-node
-    {:crux.node/topology                 '[crux.standalone/topology
-                                           crux.kv.lmdb/kv-store]
-     :crux.standalone/event-log-kv-store 'crux.kv.lmdb/kv
-     :crux.standalone/event-log-dir      (io/file event-log-dir)
-     :crux.kv/db-dir                     (io/file db-dir)}))
+
+(defn ^ICruxAPI start-lmdb-node [{:keys [db-dir]}]
+  (let [dirf #(.getPath (io/file db-dir %))]
+    (crux/start-node
+      {:crux/tx-log         {:kv-store {:crux/module `crux.lmdb/->kv-store, :db-dir (dirf "tx-log")}}
+       :crux/document-store {:kv-store {:crux/module `crux.lmdb/->kv-store, :db-dir (dirf "docs")}}
+       :crux/index-store    {:kv-store {:crux/module `crux.lmdb/->kv-store, :db-dir (dirf "indexes")}}})))
 
 (defn start-main-lmdb-node []
-  (start-lmdb-node {:event-log-dir (-> config ::config :event-log-dir)
-                    :db-dir        (-> config ::config :db-dir)}))
+  (start-lmdb-node {:db-dir (-> config ::config :main-db-dir)}))
 
 (defn start-session-lmdb-node []
-  (start-lmdb-node {:event-log-dir (-> config ::config :session :event-log-dir)
-                    :db-dir        (-> config ::config :session :db-dir)}))
+  (start-lmdb-node {:db-dir (-> config ::config :session-db-dir)}))
 
 (defstate crux-node
   :start (let [node (start-main-lmdb-node)]
