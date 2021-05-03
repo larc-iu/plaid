@@ -17,7 +17,7 @@
                                                               com.cognitect/transit-js]}
            com.cognitect/transit-cljs          {:mvn/version "0.8.264"}
            com.fulcrologic/guardrails          {:mvn/version "0.0.12"}
-           com.wsscode/pathom                  {:mvn/version "2.2.31"}
+           com.wsscode/pathom                  {:mvn/version "2.3.1"}
 
            ;; routing-related
            metosin/reitit                      {:mvn/version "0.5.2"}
