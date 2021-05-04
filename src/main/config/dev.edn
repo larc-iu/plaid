@@ -14,5 +14,10 @@
   :handle-errors?  false
   :sensitive-keys  [:password]}
 
+ :glam.server.crux/config
+ {:main-db-dir      "crux_data"
+  :session-db-dir   "crux_session_data"
+  :http-server-port 3035}
+
  :glam.server.service/config
  {:dev? true}}

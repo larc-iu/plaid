@@ -9,7 +9,7 @@
 
 (defstate http-server
   :start
-  (let [pedestal-config       (::http/config config)
+  (let [pedestal-config (::http/config config)
         service (merge (service/make-service-map) pedestal-config)
         port (::http/port pedestal-config)]
     (when (nil? port)
