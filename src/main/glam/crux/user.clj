@@ -49,5 +49,7 @@
                     [(prj/remove-reader* project-id eid)
                      (prj/remove-writer* project-id eid)])
                   prj-ids))))
-(defn delete [node eid] (gce/submit! node [(delete** node eid)]))
+(defn delete [node eid]
+  (let [tx (delete** node eid)]
+    (gce/submit! node tx)))
 

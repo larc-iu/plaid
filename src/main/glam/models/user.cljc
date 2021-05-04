@@ -160,11 +160,22 @@
 #?(:clj
    (pc/defmutation delete-user [{:keys [crux]} {[_ id] :ident :as params}]
      {::pc/transform ma/admin-required}
-     (if-not (gce/entity crux id)
+     (cond
+       ;; ensure the user to be deleted exists
+       (not (gce/entity crux id))
        (server-error (str "User not found by ID " id))
+
+       ;; ensure we're not deleting the last admin
+       (and (:user/admin? (user/get crux id))
+            (= 1 (count (filter :user/admin? (user/get-all crux)))))
+       (server-error (str "Cannot delete the last admin user (ID: " id ")"))
+
+       ;; otherwise, go ahead
+       :else
        (let [name (:user/name (gce/entity crux id))]
          (user/delete crux id)
-         (server-message (str "User " name " deleted"))))))
+         (server-message (str "User " name " deleted")))
+       )))
 
 #?(:clj
    (pc/defmutation save-user [{:keys [crux]} {delta :delta [_ id] :ident new-password :user/new-password :as params}]
@@ -211,8 +222,6 @@
          (server-error (str "Password is invalid"))
          :else
          {:tempids {id (user/create crux (merge new-user {:user/password-hash (hash-password password)}))}}))))
-
-
 
 #?(:clj
    (def resolvers [user-resolver
