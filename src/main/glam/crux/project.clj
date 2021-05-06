@@ -22,8 +22,8 @@
                 :project/readers     #{}
                 :project/writers     #{}
                 :project/text-layers []})]
-    (gce/put node record)
-    id))
+    {:success (gce/put node record)
+     :id      id}))
 
 ;; Queries --------------------------------------------------------------------------------
 (defn get
@@ -59,11 +59,44 @@
        (gce/entities node)
        (map crux->pathom)))
 
-;; Transactions --------------------------------------------------------------------------------
-(gce/defmut delete [eid] (gce/delete* eid))
-(gce/defmut add-reader [project-id user-id] (gce/update* project-id :project/readers conj user-id))
-(gce/defmut add-writer [project-id user-id] (gce/update* project-id :project/writers conj user-id))
-(gce/defmut remove-reader [project-id user-id] (gce/update* project-id :project/readers disj user-id))
-(gce/defmut remove-writer [project-id user-id] (gce/update* project-id :project/writers disj user-id))
-(gce/defmut append-text-layer [project-id text-layer-id] (gce/update* project-id :project/text-layers conj text-layer-id))
-(gce/defmut remove-text-layer [project-id text-layer-id] (gce/update* project-id :project/text-layers disj text-layer-id))
+;; Mutations --------------------------------------------------------------------------------
+(defn delete [node eid]
+  (gce/submit-tx-sync node [(gce/delete* eid)]))
+
+(defn add-reader** [node project-id user-id]
+  (let [user (gce/entity node user-id)
+        project (gce/entity node project-id)]
+    [(gce/match* user-id user)
+     (gce/match* project-id project)
+     (gce/put* (update project :project/readers conj user-id))]))
+(defn add-reader [node project-id user-id]
+  (gce/submit! node (add-reader** node project-id user-id)))
+
+(defn remove-reader** [node project-id user-id]
+  (let [user (gce/entity node user-id)
+        project (gce/entity node project-id)]
+    [(gce/match* user-id user)
+     (gce/match* project-id project)
+     (gce/put* (update project :project/readers disj user-id))]))
+(defn remove-reader [node project-id user-id]
+  (gce/submit! node (remove-reader** node project-id user-id)))
+
+(defn add-writer** [node project-id user-id]
+  (let [user (gce/entity node user-id)
+        project (gce/entity node project-id)]
+    [(gce/match* user-id user)
+     (gce/match* project-id project)
+     (gce/put* (update project :project/writers conj user-id))]))
+(defn add-writer [node project-id user-id]
+  (gce/submit! node (add-writer** node project-id user-id)))
+
+(defn remove-writer** [node project-id user-id]
+  (let [user (gce/entity node user-id)
+        project (gce/entity node project-id)]
+    [(gce/match* user-id user)
+     (gce/match* project-id project)
+     (gce/put* (update project :project/writers disj user-id))]))
+(defn remove-writer [node project-id user-id]
+  (gce/submit! node (remove-writer** node project-id user-id)))
+
+

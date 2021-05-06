@@ -80,7 +80,9 @@
 
 ;; mutations --------------------------------------------------------------------------------
 (defn submit-tx-sync [node tx]
-  (crux/await-tx node (crux/submit-tx node tx)))
+  (let [tx-map (crux/submit-tx node tx)]
+    (crux/await-tx node tx-map)
+    (crux/tx-committed? node tx-map)))
 (def submit! submit-tx-sync)
 
 ;; vanilla crux mutations
@@ -118,12 +120,3 @@
   "Updates some entity identified by eid in a transaction function. f can be any function"
   [node eid k f & args]
   `(submit-tx-sync ~node [(update* ~eid ~k ~f ~@args)]))
-
-(defmacro defmut
-  "Defines two variables: a transaction helper (named by \"name\" suffixed with *) that takes args and executes body,
-  and a transaction executor (named by \"name\") that takes node + args and submits the transaction helper synchronously"
-  [name args & body]
-  (let [name' (-> name (str "*") symbol)]
-    `(do
-       (defn ~name' ~args ~@body)
-       (defn ~name ~(into ['node] args) (submit! ~'node [(~name' ~@args)])))))

@@ -119,8 +119,8 @@
          (not (valid-password new-password))
          (server-error "New password is invalid")
          :else
-         (do
-           (user/merge crux id {:user/password-hash (hash-password new-password)})
+         (if-not (user/merge crux id {:user/password-hash (hash-password new-password)})
+           (server-error (str "Failed to change password. Please refresh and try again"))
            (server-message "Password change successful"))))))
 
 #?(:cljs
@@ -146,8 +146,8 @@
          (not (valid-name name))
          (server-error (str "Name \"" name "\" is invalid"))
          :else
-         (do
-           (user/merge crux user-id {:user/name name})
+         (if-not (user/merge crux user-id {:user/name name})
+           (server-error (str "Failed to change name to " name ". Please refresh and try again"))
            (server-message (str "Name changed to " name)))))))
 
 ;; admin level -------------------------------------------------------------------------------
@@ -164,18 +164,16 @@
        ;; ensure the user to be deleted exists
        (not (gce/entity crux id))
        (server-error (str "User not found by ID " id))
-
        ;; ensure we're not deleting the last admin
        (and (:user/admin? (user/get crux id))
             (= 1 (count (filter :user/admin? (user/get-all crux)))))
        (server-error (str "Cannot delete the last admin user (ID: " id ")"))
-
        ;; otherwise, go ahead
        :else
        (let [name (:user/name (gce/entity crux id))]
-         (user/delete crux id)
-         (server-message (str "User " name " deleted")))
-       )))
+         (if-not (user/delete crux id)
+           (server-error (str "Failed to delete user " name ". Please refresh and try again"))
+           (server-message (str "User " name " deleted")))))))
 
 #?(:clj
    (pc/defmutation save-user [{:keys [crux]} {delta :delta [_ id] :ident new-password :user/new-password :as params}]
@@ -200,10 +198,10 @@
          (and new-password? (not (valid-password new-password)))
          (server-error (str "New password is invalid"))
          :else
-         (do
-           (gce/merge crux id (-> (mc/apply-delta {} delta)
-                                  (cond-> (and new-password? (valid-password new-password))
-                                          (merge {:user/password-hash (hash-password new-password)}))))
+         (if-not (user/merge crux id (-> (mc/apply-delta {} delta)
+                                         (cond-> (and new-password? (valid-password new-password))
+                                                 (merge {:user/password-hash (hash-password new-password)}))))
+           (server-error (str "Failed to save user information, please refresh and try again"))
            (gce/entity crux id))))))
 #?(:clj
    (pc/defmutation create-user [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
@@ -221,7 +219,10 @@
          (not (valid-password password))
          (server-error (str "Password is invalid"))
          :else
-         {:tempids {id (user/create crux (merge new-user {:user/password-hash (hash-password password)}))}}))))
+         (let [{:keys [new-id success]} (user/create crux (merge new-user {:user/password-hash (hash-password password)}))]
+           (if-not success
+             (server-error (str "Failed to create user, please refresh and try again"))
+             {:tempids {id new-id}}))))))
 
 #?(:clj
    (def resolvers [user-resolver

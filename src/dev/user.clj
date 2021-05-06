@@ -62,26 +62,26 @@
 ;; crux stuff
 (defn init-db []
   (let [node glam.server.crux/crux-node]
-    (let [admin-id (usr/create
-                     node
-                     {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
-                      :user/name          "admin"
-                      :user/email         "a@b.com"})
-          user1 (usr/create
-                  node
-                  {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
-                   :user/name          "user"
-                   :user/email         "b@b.com"})
-          user2 (usr/create
-                  node
-                  {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
-                   :user/name          "user2"
-                   :user/email         "c@c.com"})
+    (let [admin-id (:id (usr/create
+                          node
+                          {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                           :user/name          "admin"
+                           :user/email         "a@b.com"}))
+          user1 (:id (usr/create
+                       node
+                       {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                        :user/name          "user"
+                        :user/email         "b@b.com"}))
+          user2 (:id (usr/create
+                       node
+                       {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
+                        :user/name          "user2"
+                        :user/email         "c@c.com"}))
 
-          project1 (prj/create node {:project/name "Project 1"})
-          project2 (prj/create node {:project/name "Project 2"})
-          project3 (prj/create node {:project/name "Project 3"})
-          project4 (prj/create node {:project/name "Project 4"})]
+          project1 (:id (prj/create node {:project/name "Project 1"}))
+          project2 (:id (prj/create node {:project/name "Project 2"}))
+          project3 (:id (prj/create node {:project/name "Project 3"}))
+          project4 (:id (prj/create node {:project/name "Project 4"}))]
 
       (prj/add-writer node project1 admin-id)
       (prj/add-writer node project2 admin-id)
