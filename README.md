@@ -46,6 +46,15 @@ ClojureScript Client Profile:
 ```
 8. Write (js/console.log "hi") and ensure that it was printed out to the console in your browser session
 
+## Updating dependencies
+
+```bash
+# clojure dependencies
+clojure -A:dev -Sdeps '{:deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}}' -m antq.core
+# js dependencies
+yarn outdated
+```
+
 
 # Architectural Overview
 - main code is in `src/main`
