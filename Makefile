@@ -52,7 +52,7 @@ deploy/$(server-jar-file):
 be-release: deploy/$(server-jar-file)
 
 clean:
-> rm deploy/$(server-jar-file)
+> rm -rf deploy/$(server-jar-file)
 
 start-dev-server:
 > clojure -A:dev

@@ -41,6 +41,7 @@
                :compiler-options {:static-fns false}        ; required for mocking to work
                :output-to        "target/ci.js"
                :ns-regexp        "-test$"}
+
   :workspaces {:target     :browser
                :modules    {:workspaces {:entries [glam.main-ws]
                                          :init-fn glam.main-ws/main}}
