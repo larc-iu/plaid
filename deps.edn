@@ -29,8 +29,7 @@
            mount/mount                       {:mvn/version "0.1.16"}
 
            ;; http
-           io.pedestal/pedestal.service      {:mvn/version "0.5.8"}
-           io.pedestal/pedestal.jetty        {:mvn/version "0.5.8"}
+           http-kit/http-kit                 {:mvn/version "2.3.0"}
            ring/ring-core                    {:mvn/version "1.9.3"}
            ring/ring-defaults                {:mvn/version "0.3.2"}
 

@@ -6,7 +6,7 @@
     [mount.core :as mount]
     [shadow.cljs.devtools.api :as shadow]
     ;; this is the top-level dependent component...mount will find the rest via ns requires
-    [glam.server.server :refer [http-server]]
+    [glam.server.http-server :refer [http-server]]
     [glam.crux.easy :as gce]
     [glam.crux.user :as usr]
     [glam.crux.project :as prj]))
@@ -56,8 +56,6 @@
   (shadow/repl :main)
   (stop)
   (restart))
-
-
 
 ;; crux stuff
 (defn init-db []

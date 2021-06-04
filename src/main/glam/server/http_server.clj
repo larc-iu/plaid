@@ -1,12 +1,12 @@
-(ns glam.server.server
+(ns glam.server.http-server
   (:require
     [clojure.pprint :refer [pprint]]
-    [io.pedestal.http :as http]
     [mount.core :refer [defstate]]
+    [org.httpkit.server :as http-kit]
     [com.fulcrologic.fulcro.server.api-middleware :refer [not-found-handler]]
     [com.fulcrologic.fulcro.networking.websockets :as fws]
     [glam.server.config :refer [config]]
-    [glam.server.service :as service]
+    [glam.server.middleware :refer [middleware]]
     [taoensso.timbre :as log]))
 
 ;; https://github.com/ptaoussanis/sente/blob/master/src/taoensso/sente/server_adapters/jetty9.clj
@@ -16,15 +16,12 @@
 
 (defstate http-server
   :start
-  (let [pedestal-config (::http/config config)
-        service (merge (service/make-service-map) pedestal-config)
-        port (::http/port pedestal-config)]
+  (let [http-kit-config (::http-kit/config config)
+        port (:port http-kit-config)]
     (when (nil? port)
       (throw (Exception. "You must set a port as the environment variable PORT.")))
-    (log/info "Final service config: ")
-    (pprint service)
     (log/info "Starting server on port" port)
-    (-> service http/create-server http/start))
+    (http-kit/run-server middleware http-kit-config))
 
   :stop
-  (http/stop http-server))
+  (http-server))

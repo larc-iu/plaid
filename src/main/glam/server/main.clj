@@ -1,7 +1,7 @@
-(ns glam.server.server-entry
+(ns glam.server.main
   (:require
     [mount.core :as mount]
-    glam.server.server)
+    glam.server.http-server)
   (:gen-class))
 
 (defn -main [& args]

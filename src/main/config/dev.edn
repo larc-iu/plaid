@@ -2,10 +2,6 @@
  {:level        :debug
   :ns-blacklist ["shadow.cljs.devtools.server.worker.impl"]}
 
- :io.pedestal.http/config
- {:env                    :dev
-  :io.pedestal.http/join? false}
-
  :glam.server.pathom-parser/config
  {:connect-viz?    true
   :index-explorer? true
@@ -17,7 +13,7 @@
  :glam.server.crux/config
  {:main-db-dir      "crux_data"
   :session-db-dir   "crux_session_data"
-  :http-server-port 3035}
+  :http-server-port 5128}
 
- :glam.server.service/config
+ :glam.server.middleware/config
  {:dev? true}}
