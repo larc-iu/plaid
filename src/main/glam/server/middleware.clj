@@ -158,6 +158,7 @@
 (mount/defstate middleware
   :start
   (let [defaults-config (:ring.middleware/defaults-config config)]
+    ;; TODO: CORS support? also need to verify csrf token works
     (-> not-found-handler
         (wrap-api parser "/api")
         wrap-transit-params

@@ -1,6 +1,4 @@
-{:io.pedestal.http/config
- {:io.pedestal.http/port            8080
-  :io.pedestal.http/allowed-origins ["localhost"]}
+{:org.httpkit.server/config            {:port 8080}
 
  :taoensso.timbre/logging-config
  {:level :info}}
