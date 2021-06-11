@@ -75,7 +75,7 @@
     {:name    :user-management
      :segment ["admin" "user"]}]
    ["/admin/project/"
-    {:name    :project-management
+    {:name    :project-overview
      :segment ["admin" "project" ""]}]
    ["/admin/project/:id"
     {:name    :project-settings

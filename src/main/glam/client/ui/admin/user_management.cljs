@@ -1,4 +1,4 @@
-(ns glam.client.ui.admin-settings.user-management
+(ns glam.client.ui.admin.user-management
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]

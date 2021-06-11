@@ -15,7 +15,7 @@
     [glam.client.ui.common.core :refer [loader]]
     [glam.client.ui.project.core :refer [ProjectRouter]]
     [glam.client.ui.user-settings.core :refer [UserSettings]]
-    [glam.client.ui.admin-settings.core :refer [AdminRouter]]
+    [glam.client.ui.admin.core :refer [AdminRouter]]
     [glam.client.ui.home :refer [Home]]
     [glam.client.ui.login :refer [logout-button Login]]
     [glam.client.ui.global-snackbar :refer [ui-global-snackbar GlobalSnackbar]]

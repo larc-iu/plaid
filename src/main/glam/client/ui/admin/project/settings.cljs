@@ -1,4 +1,4 @@
-(ns glam.client.ui.admin-settings.project-settings
+(ns glam.client.ui.admin.project.settings
   "The UI for admin settings on a single project."
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
@@ -42,7 +42,7 @@
     (mui/page-title name)
     (mui/arrow-breadcrumbs {}
       (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
-      (mui/link {:color "inherit" :href (r/route-for :project-management) :key "project"} "Project Management")
+      (mui/link {:color "inherit" :href (r/route-for :project-overview) :key "project"} "Project Management")
       (mui/link {:color "textPrimary" :href (r/route-for :project-settings {:id id}) :key id} name))
 
     (mui/tab-context {:value active-tab}

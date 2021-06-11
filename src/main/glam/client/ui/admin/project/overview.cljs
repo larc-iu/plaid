@@ -1,4 +1,4 @@
-(ns glam.client.ui.admin-settings.project-management
+(ns glam.client.ui.admin.project.overview
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.data-fetch :as df]
             [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
@@ -15,7 +15,7 @@
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
             [com.fulcrologic.fulcro.algorithms.normalized-state :as fns]))
 
-(def ident [:component/id :project-management])
+(def ident [:component/id :project-overview])
 
 (defn add-project* [state-map id]
   (let [project-ident [:project/id id]
@@ -86,7 +86,7 @@
     (mui/typography {:variant "h6"} name)))
 (def ui-project-list-item (c/factory ProjectListItem))
 
-(defsc ProjectManagement [this {:keys [all-projects add-project] :ui/keys [modal-open?] :as props}]
+(defsc ProjectOverview [this {:keys [all-projects add-project] :ui/keys [modal-open?] :as props}]
   {:ident         (fn [_] ident)
    :query         [{:all-projects (c/get-query ProjectListItem)}
                    {:add-project (c/get-query AddProject)}
@@ -94,7 +94,7 @@
    :initial-state (fn [_]
                     {:all-projects   []
                      :ui/modal-open? false})
-   :route-segment (r/last-route-segment :project-management)
+   :route-segment (r/last-route-segment :project-overview)
    :will-enter    (fn [app _]
                     (dr/route-deferred
                       ident
@@ -107,7 +107,7 @@
     (mui/page-title "Project Management")
     (mui/arrow-breadcrumbs {}
       (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
-      (mui/link {:color "textPrimary" :href (r/route-for :project-management) :key "project"} "Project Management"))
+      (mui/link {:color "textPrimary" :href (r/route-for :project-overview) :key "project"} "Project Management"))
 
     ;; add project button
     (mui/dialog {:open modal-open? :onClose #(uism/trigger! this ::add-project :event/cancel)}
@@ -124,7 +124,7 @@
                       (c/transact! this [(init-add-project {:id id})])
                       (uism/begin! this forms/create-form-machine ::add-project
                                    {:actor/form       (uism/with-actor-class [:project/id id] AddProject)
-                                    :actor/modal-host (uism/with-actor-class ident ProjectManagement)})))
+                                    :actor/modal-host (uism/with-actor-class ident ProjectOverviewt)})))
        :style     {:marginBottom "1em"}}
       "New Project")
 

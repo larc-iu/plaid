@@ -52,7 +52,7 @@
 (defn text-input-with-label
   "Text input based on mui/text-field for use with forms. Note: onBlur completes the field by default."
   [component field label validation-message {:keys [last-input] :as input-attrs}]
-  (let [validator (:validator (c/component-options component))
+  (let [validator (::validator (c/component-options component))
         {:keys [invalid?]} (field-attrs component field validator)]
     (mui/text-field
       (merge {:key        (str field)
