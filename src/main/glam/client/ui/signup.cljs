@@ -61,7 +61,7 @@
                                              :account/password       ""
                                              :account/password-again ""}))
    :form-fields       #{:account/email :account/password :account/password-again}
-   :validator         validator
+   ::forms/validator  validator
    :ident             (fn [] signup-ident)
    :componentDidMount (fn [this] (comp/transact! this [(clear-signup-form {})]))}
   (let [server-err (:session/server-error-msg (get-session props))

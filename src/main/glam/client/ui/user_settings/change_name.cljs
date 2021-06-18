@@ -19,12 +19,12 @@
 (def validator (fs/make-validator form-valid))
 
 (defsc ChangeNameForm [this {:keys [new-name] :as props}]
-  {:ident         (fn [_] ident)
-   :query         [sn/session-join fs/form-config-join :new-name]
-   :initial-state (fn [_] (fs/add-form-config ChangeNameForm
-                                              {:new-name ""}))
-   :validator     validator
-   :form-fields   #{:new-name}}
+  {:ident            (fn [_] ident)
+   :query            [sn/session-join fs/form-config-join :new-name]
+   :initial-state    (fn [_] (fs/add-form-config ChangeNameForm
+                                                 {:new-name ""}))
+   ::forms/validator validator
+   :form-fields      #{:new-name}}
   (let [submit (fn []
                  (c/transact! this [(fs/clear-complete! {})
                                     (fs/reset-form! {})])

@@ -39,7 +39,7 @@
    :query                   [fs/form-config-join :project/id :project/name :ui/busy?]
    :initial-state           {:ui/busy? false}
    :form-fields             #{:project/name}
-   :validator               validator
+   ::forms/validator        validator
    ::forms/create-mutation  'glam.models.project/create-project
    ::forms/create-message   "Project created"
    ::forms/create-append-to (conj ident :all-projects)}
@@ -93,6 +93,7 @@
                    :ui/modal-open?]
    :initial-state (fn [_]
                     {:all-projects   []
+                     :add-project    (c/get-initial-state AddProject)
                      :ui/modal-open? false})
    :route-segment (r/last-route-segment :project-overview)
    :will-enter    (fn [app _]
@@ -124,7 +125,7 @@
                       (c/transact! this [(init-add-project {:id id})])
                       (uism/begin! this forms/create-form-machine ::add-project
                                    {:actor/form       (uism/with-actor-class [:project/id id] AddProject)
-                                    :actor/modal-host (uism/with-actor-class ident ProjectOverviewt)})))
+                                    :actor/modal-host (uism/with-actor-class ident ProjectOverview)})))
        :style     {:marginBottom "1em"}}
       "New Project")
 

@@ -25,16 +25,16 @@
 
 ;; TODO: rewrite storing passwords in component-local state
 (defsc ChangePasswordForm [this {:keys [current-password new-password-confirm new-password busy?] :as props}]
-  {:ident         (fn [_] ident)
-   :query         [fs/form-config-join sn/session-join :current-password :new-password :new-password-confirm :busy?]
-   :initial-state (fn [_]
-                    (fs/add-form-config ChangePasswordForm
-                                        {:current-password     ""
-                                         :new-password         ""
-                                         :new-password-confirm ""
-                                         :busy?                false}))
-   :form-fields   #{:current-password :new-password :new-password-confirm}
-   :validator     validator}
+  {:ident            (fn [_] ident)
+   :query            [fs/form-config-join sn/session-join :current-password :new-password :new-password-confirm :busy?]
+   :initial-state    (fn [_]
+                       (fs/add-form-config ChangePasswordForm
+                                           {:current-password     ""
+                                            :new-password         ""
+                                            :new-password-confirm ""
+                                            :busy?                false}))
+   :form-fields      #{:current-password :new-password :new-password-confirm}
+   ::forms/validator validator}
   (let [on-result (fn [{:server/keys [error? message]}]
                     (m/set-value! this :busy? false)
                     (when-not error?

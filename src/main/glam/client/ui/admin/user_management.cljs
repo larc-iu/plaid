@@ -76,7 +76,7 @@
                               (update data-tree :user/new-password #(if (= % ::merge/not-found) "" %)))
    :ident                   :user/id
    :form-fields             #{:user/name :user/email :user/admin?}
-   :validator               validator
+   ::forms/validator        validator
    ::forms/save-mutation    'glam.models.user/save-user
    ::forms/save-message     "User saved"
    ::forms/save-extra-props [:user/new-password]
@@ -92,7 +92,7 @@
         (c/fragment
           (when admin?
             (admin-icon {:color (if (= expanded-id id) "primary" "disabled")}
-              (muic/gavel)))
+                        (muic/gavel)))
           (mui/typography {} (str name))
           (email-typography {:color "textSecondary"} (str email))))
 
@@ -177,7 +177,7 @@
    :query                   [fs/form-config-join :user/id :user/name :user/email :user/password :user/admin? :ui/busy?]
    :initial-state           {:ui/busy? false}
    :form-fields             #{:user/name :user/email :user/admin? :user/password}
-   :validator               validator
+   ::forms/validator        validator
    ::forms/create-mutation  'glam.models.user/create-user
    ::forms/create-message   "User created"
    ::forms/create-append-to (conj ident :users)}
@@ -241,6 +241,7 @@
    :initial-state (fn [_]
                     {:users          []
                      :expanded-id    {}
+                     :add-user       (c/get-initial-state AddUser)
                      :ui/modal-open? false})
    :route-segment (r/last-route-segment :user-management)
    :will-enter    (fn [app route-params]

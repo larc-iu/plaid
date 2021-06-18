@@ -74,7 +74,7 @@
                         [::sm/asm-id ::session/session]]
    :initial-state      {:user/email "" :ui/error ""}
    :ident              (fn [] [:component/id :login])
-   :validator          validator
+   ::forms/validator   validator
    :componentDidUpdate (fn [this pprops _]
                          ;; clear password input field after logging in.
                          (let [{curr-session-valid? :session/valid?} (get (comp/props this) [:component/id :session])
