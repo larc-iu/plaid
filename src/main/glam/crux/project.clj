@@ -1,27 +1,27 @@
 (ns glam.crux.project
   (:require [crux.api :as crux]
             [glam.crux.util :as cutil]
-            [glam.crux.easy :as gce])
+            [glam.crux.easy :as gce]
+            [glam.crux.access :as gca])
   (:refer-clojure :exclude [get]))
 
-(def attrs [:project/name
-            :project/readers
-            :project/writers
-            :project/text-layers])
+(def attr-keys [:project/id
+                :project/name
+                :project/readers
+                :project/writers
+                :project/text-layers])
 
 (defn crux->pathom [doc]
   (when doc
     (-> doc
         (update :project/readers cutil/identize :user/id)
-        (update :project/writers cutil/identize :user/id))))
+        (update :project/writers cutil/identize :user/id)
+        (update :project/text-layers cutil/identize :text-layer/id))))
 
-(defn create [node {:project/keys [name]}]
+(defn create [node {:project/keys [id] :as attrs}]
   (let [{:project/keys [id] :as record}
-        (merge (cutil/new-record "project")
-               {:project/name        name
-                :project/readers     #{}
-                :project/writers     #{}
-                :project/text-layers []})]
+        (merge (cutil/new-record "project" id)
+               (select-keys attrs attr-keys))]
     {:success (gce/put node record)
      :id      id}))
 
@@ -38,31 +38,40 @@
   [node name]
   (gce/find-entity node {:project/name name}))
 
-;; A project is considered visible if a user can read or write on it
-(def visible-rule
-  '[(visible ?project ?user)
-    (or [?project :project/readers ?user]
-        [?project :project/writers ?user])])
+(defn get-accessible-ids [node user-id]
+  (gca/get-accessible-ids node user-id :project/id))
 
-(defn get-visible-ids [node user-id]
-  "Return a seq of uuids"
-  (map first
-       (crux/q (crux/db node)
-               {:find  '[?p]
-                :where [['?u :user/id user-id]
-                        '(visible ?p ?u)]
-                :rules [visible-rule]})))
-(defn get-visible [node user-id]
-  "Return full projects"
-  (->> (get-visible-ids node user-id)
+(defn get-accessible-projects [node user-id]
+  "Return a seq of full projects accessible for a user"
+  (->> (get-accessible-ids node user-id)
        (map vector)
        (gce/entities node)
        (map crux->pathom)))
 
 ;; Mutations --------------------------------------------------------------------------------
 (defn delete [node eid]
+  ;; TODO: extend with deleting sublayers
   (gce/submit-tx-sync node [(gce/delete* eid)]))
 
+(defn add-text-layer** [node project-id text-layer-id]
+  (let [project (gce/entity node project-id)
+        text-layer (gce/entity node text-layer-id)]
+    [(gce/match* project-id project)
+     (gce/match* text-layer-id text-layer)
+     (gce/put* (update project :project/text-layers cutil/conj-unique text-layer-id))]))
+(defn add-text-layer [node project-id text-layer-id]
+  (gce/submit! node (add-text-layer** node project-id text-layer-id)))
+
+(defn remove-text-layer** [node project-id text-layer-id]
+  (let [project (gce/entity node project-id)
+        text-layer (gce/entity node text-layer-id)]
+    [(gce/match* project-id project)
+     (gce/match* text-layer-id text-layer)
+     (gce/put* (assoc project :project/text-layers (cutil/remove-id project :project/text-layers text-layer-id)))]))
+(defn remove-text-layer [node project-id text-layer-id]
+  (gce/submit! node (remove-text-layer** node project-id text-layer-id)))
+
+;; TODO: bottom four need to be rewritten like above two
 (defn add-reader** [node project-id user-id]
   (let [user (gce/entity node user-id)
         project (gce/entity node project-id)]
@@ -77,6 +86,7 @@
         project (gce/entity node project-id)]
     [(gce/match* user-id user)
      (gce/match* project-id project)
+     ;; TODO: I don't think this works!
      (gce/put* (update project :project/readers disj user-id))]))
 (defn remove-reader [node project-id user-id]
   (gce/submit! node (remove-reader** node project-id user-id)))
@@ -95,6 +105,7 @@
         project (gce/entity node project-id)]
     [(gce/match* user-id user)
      (gce/match* project-id project)
+     ;; TODO: I don't think this works!
      (gce/put* (update project :project/writers disj user-id))]))
 (defn remove-writer [node project-id user-id]
   (gce/submit! node (remove-writer** node project-id user-id)))

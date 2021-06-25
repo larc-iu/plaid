@@ -9,7 +9,9 @@
     [glam.server.http-server :refer [http-server]]
     [glam.crux.easy :as gce]
     [glam.crux.user :as usr]
-    [glam.crux.project :as prj]))
+    [glam.crux.project :as prj]
+    [glam.crux.text-layer :as tl]
+    ))
 
 ;; ==================== SERVER ====================
 (tools-ns/set-refresh-dirs "src/main" "src/dev" "src/test")
@@ -34,12 +36,14 @@
 
 (defn start "Start the web server + services" [] (mount/start)
   (def node glam.server.crux/crux-node)
-  (def user0 (:user/id (usr/get-by-email node "a@b.com")))
-  (def user1 (:user/id (usr/get-by-email node "b@b.com")))
-  (def user2 (:user/id (usr/get-by-email node "c@c.com")))
-  (def prj1 (:project/id (prj/get-by-name node "Project 1")))
-  (def prj2 (:project/id (prj/get-by-name node "Project 2")))
-  )
+  (def user0 :admin)
+  (def user1 :user1)
+  (def user2 :user2)
+  (def prj1 :project1)
+  (def prj2 :project2)
+  (def prj3 :project3)
+  (def prj4 :project4)
+  (def tl1 :tl1))
 (defn stop "Stop the web server + services" [] (mount/stop))
 (defn restart
   "Stop, reload code, and restart the server. If there is a compile error, use:
@@ -64,22 +68,28 @@
                           node
                           {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
                            :user/name          "admin"
-                           :user/email         "a@b.com"}))
+                           :user/email         "a@b.com"
+                           :user/id            :admin}))
           user1 (:id (usr/create
                        node
                        {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
                         :user/name          "user"
-                        :user/email         "b@b.com"}))
+                        :user/email         "b@b.com"
+                        :user/id            :user1}))
           user2 (:id (usr/create
                        node
                        {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
                         :user/name          "user2"
-                        :user/email         "c@c.com"}))
+                        :user/email         "c@c.com"
+                        :user/id            :user2}))
 
-          project1 (:id (prj/create node {:project/name "Project 1"}))
-          project2 (:id (prj/create node {:project/name "Project 2"}))
-          project3 (:id (prj/create node {:project/name "Project 3"}))
-          project4 (:id (prj/create node {:project/name "Project 4"}))]
+          project1 (:id (prj/create node {:project/name "Project 1" :project/id :project1}))
+          project2 (:id (prj/create node {:project/name "Project 2" :project/id :project2}))
+          project3 (:id (prj/create node {:project/name "Project 3" :project/id :project3}))
+          project4 (:id (prj/create node {:project/name "Project 4" :project/id :project4}))
+
+          tl1 (:id (tl/create node {:text-layer/name "Layer 1" :text-layer/id :tl1}))
+          ]
 
       (prj/add-writer node project1 admin-id)
       (prj/add-writer node project2 admin-id)
@@ -90,5 +100,8 @@
 
       (prj/add-writer node project2 user2)
       (prj/add-writer node project3 user2)
+
+      (prj/add-text-layer node project1 tl1)
+
       )))
 

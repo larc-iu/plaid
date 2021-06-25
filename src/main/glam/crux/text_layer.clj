@@ -4,13 +4,17 @@
             [glam.crux.easy :as gce])
   (:refer-clojure :exclude [get]))
 
-(def attrs [:text-layer/name
-            ;; nyi
-            :text-layer/token-layers])
+(def attr-keys [:text-layer/id
+                :text-layer/name
+                :text-layer/token-layers])
 
 (defn crux->pathom [doc]
   (when doc
     doc))
 
-(defn create [node {:text-layer/keys [name]}])
-
+(defn create [node {:text-layer/keys [id] :as attrs}]
+  (let [{:text-layer/keys [id] :as record} (merge (cutil/new-record "text-layer" id)
+                                                  (select-keys attrs attr-keys))
+        tx-status (gce/submit! node [[:crux.tx/put record]])]
+    {:success tx-status
+     :id      id}))

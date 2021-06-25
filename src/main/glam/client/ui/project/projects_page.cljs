@@ -19,13 +19,13 @@
 
 (def ui-project-item (c/factory ProjectListItem {:keyfn :project/id}))
 
-(defsc ProjectList [this {:keys [visible-projects]}]
+(defsc ProjectList [this {:keys [accessible-projects]}]
   {:initial-state {}
    :ident         (fn [_] [:component/id :project-list])
-   :query         [{:visible-projects (c/get-query ProjectListItem)}]}
+   :query         [{:accessible-projects (c/get-query ProjectListItem)}]}
   (dom/div
     "This is the list of projects"
-    (map ui-project-item visible-projects)))
+    (map ui-project-item accessible-projects)))
 
 (def ui-project-list (c/factory ProjectList))
 
@@ -37,8 +37,8 @@
    :will-enter    (fn [app route-params]
                     (dr/route-deferred
                       [:component/id :projects-page]
-                      #(df/load! app :visible-projects ProjectListItem
-                                 {:target               [:component/id :project-list :visible-projects]
+                      #(df/load! app :accessible-projects ProjectListItem
+                                 {:target               [:component/id :project-list :accessible-projects]
                                   :post-mutation        `dr/target-ready
                                   :post-mutation-params {:target [:component/id :projects-page]}})))}
   (mui/page-container

@@ -13,6 +13,7 @@
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.material-ui-icon :as muic]
             [glam.client.ui.common.core :as uic]
+            [glam.client.util :as gcu]
             [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
             [com.fulcrologic.fulcro.components :as comp]))
 
@@ -33,11 +34,12 @@
                            data-tree))
    :route-segment (r/last-route-segment :project-settings)
    :will-enter    (fn [app {:keys [id]}]
-                    (dr/route-deferred
-                      [:project/id (uuid id)]
-                      #(df/load! app [:project/id (uuid id)] ProjectSettings
-                                 {:post-mutation        `dr/target-ready
-                                  :post-mutation-params {:target [:project/id (uuid id)]}})))}
+                    (let [parsed-id (gcu/parse-id id)]
+                      (dr/route-deferred
+                        [:project/id parsed-id]
+                        #(df/load! app [:project/id parsed-id] ProjectSettings
+                                   {:post-mutation        `dr/target-ready
+                                    :post-mutation-params {:target [:project/id parsed-id]}}))))}
   (mui/container {:maxWidth "lg" :style {:position "relative"}}
     (mui/page-title name)
     (mui/arrow-breadcrumbs {}

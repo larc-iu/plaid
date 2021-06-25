@@ -24,11 +24,11 @@
 
 ;; user --------------------------------------------------------------------------------
 #?(:clj
-   (pc/defresolver visible-projects [{:keys [crux current-user]} _]
-     {::pc/output    [{:visible-projects [:project/id]}]
+   (pc/defresolver accessible-projects [{:keys [crux current-user]} _]
+     {::pc/output    [{:accessible-projects [:project/id]}]
       ::pc/transform ma/user-required}
      ;; todo: should admins always see everything?
-     {:visible-projects (map (fn [id] {:project/id id}) (prj/get-visible-ids crux (:user/id current-user)))}))
+     {:accessible-projects (map (fn [id] {:project/id id}) (prj/get-accessible-ids crux (:user/id current-user)))}))
 
 #?(:clj
    ;; todo: make this a batch resolver if needed (same for others)
@@ -46,7 +46,7 @@
      {:all-projects (prj/get-all crux)}))
 
 #?(:clj
-   (pc/defmutation create-project [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
+   (pc/defmutation create-project [{:keys [crux]} {delta :delta [_ temp-id] :ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [{:project/keys [name] :as new-project} (-> {} (mc/apply-delta delta) (select-keys project-keys))]
@@ -55,8 +55,11 @@
          (gce/find-entity crux {:project/name name})
          (mc/server-error (str "Project already exists with name " name))
          :else
-         {:tempids {id (prj/create crux new-project)}}))))
+         (let [{:keys [id success]} (prj/create crux new-project)]
+           (if success
+             {:tempids {temp-id id}}
+             (mc/server-error "Project creation failed, please refresh and try again")))))))
 
 #?(:clj
-   (def project-resolvers [visible-projects all-projects get-project create-project]))
+   (def project-resolvers [accessible-projects all-projects get-project create-project]))
 

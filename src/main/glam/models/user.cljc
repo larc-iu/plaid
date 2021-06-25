@@ -204,7 +204,7 @@
            (server-error (str "Failed to save user information, please refresh and try again"))
            (gce/entity crux id))))))
 #?(:clj
-   (pc/defmutation create-user [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
+   (pc/defmutation create-user [{:keys [crux]} {delta :delta [_ temp-id] :ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [{:user/keys [email name password] :as new-user} (-> {} (mc/apply-delta delta) (select-keys user-keys))]
@@ -219,10 +219,10 @@
          (not (valid-password password))
          (server-error (str "Password is invalid"))
          :else
-         (let [{:keys [new-id success]} (user/create crux (merge new-user {:user/password-hash (hash-password password)}))]
+         (let [{:keys [id success]} (user/create crux (merge new-user {:user/password-hash (hash-password password)}))]
            (if-not success
              (server-error (str "Failed to create user, please refresh and try again"))
-             {:tempids {id new-id}}))))))
+             {:tempids {temp-id id}}))))))
 
 #?(:clj
    (def resolvers [user-resolver

@@ -5,6 +5,7 @@
             [com.fulcrologic.fulcro.application :as app]
             [com.fulcrologic.fulcro.ui-state-machines :as sm]
             [glam.client.router :as r]
+            [glam.client.util :as gcu]
             [glam.models.session :as session :refer [Session]]
             [taoensso.timbre :as log]
             [com.fulcrologic.fulcro.dom :as dom]))
@@ -17,12 +18,13 @@
    :route-segment (r/last-route-segment :project)
    :will-enter    (fn [app {:keys [id] :as route-params}]
                     (log/info "Entering: " (pr-str route-params))
-                    (when (uuid id)
-                      (dr/route-deferred
-                        [:project/id (uuid id)]
-                        #(df/load! app [:project/id (uuid id)] ProjectDetail
-                                   {:post-mutation        `dr/target-ready
-                                    :post-mutation-params {:target [:project/id (uuid id)]}}))))}
+                    (let [parsed-id (gcu/parse-id id)]
+                      (when parsed-id
+                        (dr/route-deferred
+                          [:project/id parsed-id]
+                          #(df/load! app [:project/id parsed-id] ProjectDetail
+                                     {:post-mutation        `dr/target-ready
+                                      :post-mutation-params {:target [:project/id parsed-id]}})))))}
   (dom/div
     (dom/div "id: " (pr-str id))
     (dom/div "name: " (pr-str name))
