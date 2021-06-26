@@ -53,60 +53,47 @@
   ;; TODO: extend with deleting sublayers
   (gce/submit-tx-sync node [(gce/delete* eid)]))
 
-(defn add-text-layer** [node project-id text-layer-id]
+(defn- add-to-multi-join** [node project-id join-key entity-id]
   (let [project (gce/entity node project-id)
-        text-layer (gce/entity node text-layer-id)]
+        entity (gce/entity node entity-id)]
     [(gce/match* project-id project)
-     (gce/match* text-layer-id text-layer)
-     (gce/put* (update project :project/text-layers cutil/conj-unique text-layer-id))]))
+     (gce/match* entity-id entity)
+     (gce/put* (update project join-key cutil/conj-unique entity-id))]))
+
+(defn- remove-from-multi-join** [node project-id join-key entity-id]
+  (let [project (gce/entity node project-id)
+        text-layer (gce/entity node entity-id)]
+    [(gce/match* project-id project)
+     (gce/match* entity-id text-layer)
+     (gce/put* (assoc project join-key (cutil/remove-id project join-key entity-id)))]))
+
+(defn add-text-layer** [node project-id text-layer-id]
+  (add-to-multi-join** node project-id :project/text-layers text-layer-id))
 (defn add-text-layer [node project-id text-layer-id]
   (gce/submit! node (add-text-layer** node project-id text-layer-id)))
 
 (defn remove-text-layer** [node project-id text-layer-id]
-  (let [project (gce/entity node project-id)
-        text-layer (gce/entity node text-layer-id)]
-    [(gce/match* project-id project)
-     (gce/match* text-layer-id text-layer)
-     (gce/put* (assoc project :project/text-layers (cutil/remove-id project :project/text-layers text-layer-id)))]))
+  (remove-from-multi-join** node project-id :project/text-layers text-layer-id))
 (defn remove-text-layer [node project-id text-layer-id]
   (gce/submit! node (remove-text-layer** node project-id text-layer-id)))
 
-;; TODO: bottom four need to be rewritten like above two
 (defn add-reader** [node project-id user-id]
-  (let [user (gce/entity node user-id)
-        project (gce/entity node project-id)]
-    [(gce/match* user-id user)
-     (gce/match* project-id project)
-     (gce/put* (update project :project/readers conj user-id))]))
+  (add-to-multi-join** node project-id :project/readers user-id))
 (defn add-reader [node project-id user-id]
   (gce/submit! node (add-reader** node project-id user-id)))
 
 (defn remove-reader** [node project-id user-id]
-  (let [user (gce/entity node user-id)
-        project (gce/entity node project-id)]
-    [(gce/match* user-id user)
-     (gce/match* project-id project)
-     ;; TODO: I don't think this works!
-     (gce/put* (update project :project/readers disj user-id))]))
+  (remove-from-multi-join** node project-id :project/readers user-id))
 (defn remove-reader [node project-id user-id]
   (gce/submit! node (remove-reader** node project-id user-id)))
 
 (defn add-writer** [node project-id user-id]
-  (let [user (gce/entity node user-id)
-        project (gce/entity node project-id)]
-    [(gce/match* user-id user)
-     (gce/match* project-id project)
-     (gce/put* (update project :project/writers conj user-id))]))
+  (add-to-multi-join** node project-id :project/writers user-id))
 (defn add-writer [node project-id user-id]
   (gce/submit! node (add-writer** node project-id user-id)))
 
 (defn remove-writer** [node project-id user-id]
-  (let [user (gce/entity node user-id)
-        project (gce/entity node project-id)]
-    [(gce/match* user-id user)
-     (gce/match* project-id project)
-     ;; TODO: I don't think this works!
-     (gce/put* (update project :project/writers disj user-id))]))
+  (remove-from-multi-join** node project-id :project/writers user-id))
 (defn remove-writer [node project-id user-id]
   (gce/submit! node (remove-writer** node project-id user-id)))
 

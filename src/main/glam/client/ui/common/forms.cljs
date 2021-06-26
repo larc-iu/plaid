@@ -377,7 +377,7 @@
                props (fns/ui->props state-map FormClass form-ident)
                delta (fs/dirty-fields props true)]
            (if-not create-mutation
-             (log/info (str "Class " FormClass " must have a 'glam.client.common.forms/create-mutation"))
+             (log/error (str "Class " FormClass " must have a 'glam.client.common.forms/create-mutation"))
              (-> env
                  (uism/assoc-aliased :busy? true)
                  (uism/activate :state/creating)
