@@ -58,14 +58,17 @@
         entity (gce/entity node entity-id)]
     [(gce/match* project-id project)
      (gce/match* entity-id entity)
-     (gce/put* (update project join-key cutil/conj-unique entity-id))]))
+     (gce/put* (-> project
+                   (update join-key cutil/conj-unique entity-id)
+                   ;; in case this is the first assoc, turn the list into a vector
+                   (update join-key vec)))]))
 
 (defn- remove-from-multi-join** [node project-id join-key entity-id]
   (let [project (gce/entity node project-id)
         text-layer (gce/entity node entity-id)]
     [(gce/match* project-id project)
      (gce/match* entity-id text-layer)
-     (gce/put* (assoc project join-key (cutil/remove-id project join-key entity-id)))]))
+     (gce/put* (cutil/remove-id project join-key entity-id))]))
 
 (defn add-text-layer** [node project-id text-layer-id]
   (add-to-multi-join** node project-id :project/text-layers text-layer-id))
@@ -83,16 +86,19 @@
   (gce/submit! node (add-reader** node project-id user-id)))
 
 (defn remove-reader** [node project-id user-id]
-  (remove-from-multi-join** node project-id :project/readers user-id))
+  (remove-from-multi-join** node project-id :project/readers user-id)
+  (remove-from-multi-join** node project-id :project/writers user-id))
 (defn remove-reader [node project-id user-id]
   (gce/submit! node (remove-reader** node project-id user-id)))
 
 (defn add-writer** [node project-id user-id]
+  (add-to-multi-join** node project-id :project/readers user-id)
   (add-to-multi-join** node project-id :project/writers user-id))
 (defn add-writer [node project-id user-id]
   (gce/submit! node (add-writer** node project-id user-id)))
 
 (defn remove-writer** [node project-id user-id]
+  (remove-from-multi-join** node project-id :project/readers user-id)
   (remove-from-multi-join** node project-id :project/writers user-id))
 (defn remove-writer [node project-id user-id]
   (gce/submit! node (remove-writer** node project-id user-id)))

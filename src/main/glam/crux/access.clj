@@ -1,5 +1,6 @@
 (ns glam.crux.access
-  (:require [crux.api :as crux]))
+  (:require [crux.api :as crux]
+            [taoensso.timbre :as log]))
 
 (def key-symbol-map
   {:project/id    '?p
@@ -23,11 +24,12 @@
 
 (defn get-accessible-ids
   [node user-id target-key]
-  (map first (crux/q (crux/db node)
-                     (build-query {:find  [(target-key key-symbol-map)]
-                                   :where [['?u :user/id user-id]]
-                                   :rules []}
-                                  target-key))))
+  (let [query (build-query {:find  [(target-key key-symbol-map)]
+                            :where [['?u :user/id user-id]]
+                            :rules []}
+                           target-key)]
+    (clojure.pprint/pprint query)
+    (map first (crux/q (crux/db node) query))))
 
 (comment
   (build-query {:find '[?p] :where [['?u :user/id 1]] :rules []} :text-layer/id))

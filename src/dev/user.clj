@@ -62,8 +62,8 @@
   (restart))
 
 ;; crux stuff
-(defn init-db []
-  (let [node glam.server.crux/crux-node]
+(defn init-db [crux-node]
+  (let [node (or crux-node glam.server.crux/crux-node)]
     (let [admin-id (:id (usr/create
                           node
                           {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
