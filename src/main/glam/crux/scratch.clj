@@ -2,6 +2,7 @@
   (:require [crux.api :as crux]
             [glam.crux.easy :as gce]
             [glam.crux.user :as user]
+            [glam.crux.access :as access]
             [glam.crux.project :as prj]
             [glam.crux.text-layer :as tl]
             [user :refer [init-db]]
@@ -19,6 +20,26 @@
 
   (prj/get-accessible-ids node :user1)
 
+  (user/get node :admin)
+
+  (prj/get glam.server.crux/crux-node :project1)
+
+  (access/ident-readable? glam.server.crux/crux-node nil [:project/id :project1])
+  (access/ident-writeable? glam.server.crux/crux-node :user1 [:project/id :project2])
+
+  (crux/q (crux/db node) {:find  ['?u]
+                          :where [['?u :user/admin? true]]})
+
+  (crux/q (crux/db node) '{:find [?target],
+                           :where
+                                 [[?u :user/id :user1]
+                                  [?target :project/id :project1]
+                                  [(= ?target ?p)]
+                                  (project-accessible ?p ?u)],
+                           :rules
+                                 [[(project-accessible ?p ?u)
+                                   (or [?p :project/readers ?u]
+                                       [?p :project/writers ?u])]]})
 
   (prj/remove-reader node :project1 :user1)
 

@@ -27,7 +27,6 @@
    (pc/defresolver accessible-projects [{:keys [crux current-user]} _]
      {::pc/output    [{:accessible-projects [:project/id]}]
       ::pc/transform ma/user-required}
-     ;; todo: should admins always see everything?
      {:accessible-projects (map (fn [id] {:project/id id}) (prj/get-accessible-ids crux (:user/id current-user)))}))
 
 #?(:clj
@@ -35,7 +34,7 @@
    (pc/defresolver get-project [{:keys [crux]} {:project/keys [id]}]
      {::pc/input     #{:project/id}
       ::pc/output    [:project/id :project/name]
-      ::pc/transform (comp (ma/project-readable-required :project/id) ma/user-required)}
+      ::pc/transform (ma/readable-required :project/id)}
      (prj/get crux id)))
 
 ;; admin --------------------------------------------------------------------------------
