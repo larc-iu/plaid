@@ -21,6 +21,7 @@
 (defn create [node {:project/keys [id] :as attrs}]
   (let [{:project/keys [id] :as record}
         (merge (cutil/new-record "project" id)
+               {:project/readers [] :project/writers []}
                (select-keys attrs attr-keys))]
     {:success (gce/put node record)
      :id      id}))
@@ -53,53 +54,56 @@
   ;; TODO: extend with deleting sublayers
   (gce/submit-tx-sync node [(gce/delete* eid)]))
 
-(defn- add-to-multi-join** [node project-id join-key entity-id]
+(defn- add-to-multi-joins** [node project-id join-keys entity-id]
   (let [project (gce/entity node project-id)
         entity (gce/entity node entity-id)]
     [(gce/match* project-id project)
      (gce/match* entity-id entity)
-     (gce/put* (-> project
-                   (update join-key cutil/conj-unique entity-id)
-                   ;; in case this is the first assoc, turn the list into a vector
-                   (update join-key vec)))]))
+     (gce/put* (reduce (fn [project join-key]
+                         (-> project
+                             (update join-key cutil/conj-unique entity-id)
+                             ;; in case this is the first assoc, turn the list into a vector
+                             (update join-key vec)))
+                       project
+                       join-keys))]))
 
-(defn- remove-from-multi-join** [node project-id join-key entity-id]
+(defn- remove-from-multi-joins** [node project-id join-keys entity-id]
   (let [project (gce/entity node project-id)
         text-layer (gce/entity node entity-id)]
-    [(gce/match* project-id project)
-     (gce/match* entity-id text-layer)
-     (gce/put* (cutil/remove-id project join-key entity-id))]))
+    (into [(gce/match* project-id project)
+           (gce/match* entity-id text-layer)
+           (gce/put* (reduce (fn [project join-key]
+                               (cutil/remove-id project join-key entity-id))
+                             project
+                             join-keys))])))
 
 (defn add-text-layer** [node project-id text-layer-id]
-  (add-to-multi-join** node project-id :project/text-layers text-layer-id))
+  (add-to-multi-joins** node project-id [:project/text-layers] text-layer-id))
 (defn add-text-layer [node project-id text-layer-id]
   (gce/submit! node (add-text-layer** node project-id text-layer-id)))
 
 (defn remove-text-layer** [node project-id text-layer-id]
-  (remove-from-multi-join** node project-id :project/text-layers text-layer-id))
+  (remove-from-multi-joins** node project-id [:project/text-layers] text-layer-id))
 (defn remove-text-layer [node project-id text-layer-id]
   (gce/submit! node (remove-text-layer** node project-id text-layer-id)))
 
 (defn add-reader** [node project-id user-id]
-  (add-to-multi-join** node project-id :project/readers user-id))
+  (add-to-multi-joins** node project-id [:project/readers] user-id))
 (defn add-reader [node project-id user-id]
   (gce/submit! node (add-reader** node project-id user-id)))
 
 (defn remove-reader** [node project-id user-id]
-  (remove-from-multi-join** node project-id :project/readers user-id)
-  (remove-from-multi-join** node project-id :project/writers user-id))
+  (remove-from-multi-joins** node project-id [:project/readers :project/writers] user-id))
 (defn remove-reader [node project-id user-id]
   (gce/submit! node (remove-reader** node project-id user-id)))
 
 (defn add-writer** [node project-id user-id]
-  (add-to-multi-join** node project-id :project/readers user-id)
-  (add-to-multi-join** node project-id :project/writers user-id))
+  (add-to-multi-joins** node project-id [:project/readers :project/writers] user-id))
 (defn add-writer [node project-id user-id]
   (gce/submit! node (add-writer** node project-id user-id)))
 
 (defn remove-writer** [node project-id user-id]
-  (remove-from-multi-join** node project-id :project/readers user-id)
-  (remove-from-multi-join** node project-id :project/writers user-id))
+  (remove-from-multi-joins** node project-id [:project/writers] user-id))
 (defn remove-writer [node project-id user-id]
   (gce/submit! node (remove-writer** node project-id user-id)))
 
