@@ -47,8 +47,10 @@
                                   thheller/shadow-cljs        {:mvn/version "2.12.5"}}}
            :test    {:extra-paths ["src/test"]
                      :main-opts   ["-m" "cognitect.test-runner"]
+                     :exec-fn     cognitect.test-runner.api/test
                      :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                                                              :sha     "209b64504cb3bd3b99ecfec7937b358a879f55c1"}}}
+                                                              :sha     "705ad25bbf0228b1c38d0244a36001c2987d7337"}
+                                   thheller/shadow-cljs      {:mvn/version "2.12.5"}}}
            :dev     {:extra-paths ["src/dev" "src/test" "src/workspaces"]
                      :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"]
 
