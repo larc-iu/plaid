@@ -3,8 +3,10 @@
             [taoensso.timbre :as log]))
 
 (def key-symbol-map
-  {:project/id    '?p
-   :text-layer/id '?tl})
+  {:project/id     '?p
+   :text-layer/id  '?txtl
+   :token-layer/id '?tokl
+   :span-layer/id  '?sl})
 
 (defmulti build-query
   "Build up a query for finding whether a target piece of information is accessible for
@@ -24,12 +26,26 @@
                              '(or [?p :project/readers ?u]
                                   [?p :project/writers ?u]))])))
 
-(defmethod build-query :text-layer/id [query-map _ _]
+(defmethod build-query :text-layer/id [query-map opts _]
   (-> query-map
-      (update :where conj '(text-layer-accessible ?tl ?p))
-      (update :rules conj '[(text-layer-accessible ?tl ?p)
-                            [?p :project/text-layers ?tl]])
-      (build-query :project/id)))
+      (update :where conj '(text-layer-accessible ?txtl ?p))
+      (update :rules conj '[(text-layer-accessible ?txtl ?p)
+                            [?p :project/text-layers ?txtl]])
+      (build-query opts :project/id)))
+
+(defmethod build-query :token-layer/id [query-map opts _]
+  (-> query-map
+      (update :where conj '(token-layer-accessible ?tokl ?txtl))
+      (update :rules conj '[(token-layer-accessible ?tokl ?txtl)
+                            [?txtl :text-layer/token-layers ?tokl]])
+      (build-query opts :text-layer/id)))
+
+(defmethod build-query :span-layer/id [query-map opts _]
+  (-> query-map
+      (update :where conj '(span-layer-accessible ?sl ?tokl))
+      (update :rules conj '[(span-layer-accessible ?sl ?tokl)
+                            [?tokl :token-layer/span-layers ?sl]])
+      (build-query opts :token-layer/id)))
 
 (defn get-accessible-ids
   "Get all accessible IDs of a certain type given a user's privileges on projects.

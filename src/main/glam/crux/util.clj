@@ -1,4 +1,5 @@
 (ns glam.crux.util
+  (:require [glam.crux.easy :as gce])
   (:import (java.util UUID)))
 
 (defn identize [ids id-attr]
@@ -35,3 +36,47 @@
   (if (some (hash-set x) coll)
     coll
     (conj coll x)))
+
+;; join conveniences
+(defn add-to-multi-joins**
+  "Joins from e1 to e2 at all keys specified in `join-keys`. This function is idemponent:
+  if an e1->e2 join already exists at some join key on e1, nothing will change.
+  This function also includes match clauses for both entities, guarding against race
+  conditions."
+  [node e1-id join-keys e2-id]
+  (let [e1 (gce/entity node e1-id)
+        e2 (gce/entity node e2-id)]
+    [(gce/match* e1-id e1)
+     (gce/match* e2-id e2)
+     (gce/put* (reduce (fn [project join-key]
+                         (-> project
+                             (update join-key conj-unique e2-id)
+                             ;; in case this is the first assoc, turn the list into a vector
+                             (update join-key vec)))
+                       e1
+                       join-keys))]))
+
+(defn add-join**
+  "See `add-to-multi-joins**`"
+  [node e1-id join-key e2-id]
+  (add-to-multi-joins** node e1-id [join-key] e2-id))
+
+(defn remove-from-multi-joins**
+  "Remove joins from e1 to e2 at all keys specified in `join-keys`. This function is
+  idemponent: if an e1->e2 join does not exist at some join key on e1, nothing will change.
+  This function also includes match clauses for both entities, guarding against race
+  conditions."
+  [node e1-id join-keys e2-id]
+  (let [e1 (gce/entity node e1-id)
+        e2 (gce/entity node e2-id)]
+    (into [(gce/match* e1-id e1)
+           (gce/match* e2-id e2)
+           (gce/put* (reduce (fn [project join-key]
+                               (remove-id project join-key e2-id))
+                             e1
+                             join-keys))])))
+
+(defn remove-join**
+  "See `remove-from-multi-joins**`"
+  [node e1-id join-key e2-id]
+  (remove-from-multi-joins** node e1-id [join-key] e2-id))

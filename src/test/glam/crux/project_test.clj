@@ -36,7 +36,7 @@
     (f)
     (prj/delete crux-node project-id)))
 
-(use-fixtures :once with-crux with-users with-project)
+(use-fixtures :each with-crux with-users with-project)
 
 (deftest project-access
   (testing "Admin can always access all projects regardless of rights"

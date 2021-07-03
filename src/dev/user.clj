@@ -10,7 +10,9 @@
     [glam.crux.easy :as gce]
     [glam.crux.user :as usr]
     [glam.crux.project :as prj]
-    [glam.crux.text-layer :as tl]
+    [glam.crux.text-layer :as txtl]
+    [glam.crux.token-layer :as tokl]
+    [glam.crux.span-layer :as sl]
     ))
 
 ;; ==================== SERVER ====================
@@ -34,17 +36,13 @@
   ;; as the server has captured output.
   )
 
-(defn start "Start the web server + services" [] (mount/start)
-  (def node glam.server.crux/crux-node)
-  (def user0 :admin)
-  (def user1 :user1)
-  (def user2 :user2)
-  (def prj1 :project1)
-  (def prj2 :project2)
-  (def prj3 :project3)
-  (def prj4 :project4)
-  (def tl1 :tl1))
-(defn stop "Stop the web server + services" [] (mount/stop))
+(defn start "Start the web server + services" []
+  (mount/start)
+  (def node glam.server.crux/crux-node))
+
+(defn stop "Stop the web server + services" []
+  (mount/stop))
+
 (defn restart
   "Stop, reload code, and restart the server. If there is a compile error, use:
   ```
@@ -88,7 +86,9 @@
           project3 (:id (prj/create node {:project/name "Project 3" :project/id :project3}))
           project4 (:id (prj/create node {:project/name "Project 4" :project/id :project4}))
 
-          tl1 (:id (tl/create node {:text-layer/name "Layer 1" :text-layer/id :tl1}))
+          txtl1 (:id (txtl/create node {:text-layer/name "Layer 1" :text-layer/id :txtl1}))
+          tokl1 (:id (tokl/create node {:token-layer/name "Token Layer 1" :token-layer/id :tokl1}))
+          sl1 (:id (sl/create node {:span-layer/name "Span Layer 1" :span-layer/id :sl1}))
           ]
 
       (prj/add-writer node project1 admin-id)
@@ -101,7 +101,8 @@
       (prj/add-writer node project2 user2)
       (prj/add-writer node project3 user2)
 
-      (prj/add-text-layer node project1 tl1)
-
+      (prj/add-text-layer node project1 txtl1)
+      (txtl/add-token-layer node txtl1 tokl1)
+      (tokl/add-span-layer node tokl1 sl1)
       )))
 
