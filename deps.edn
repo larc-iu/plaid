@@ -12,13 +12,13 @@
 
            ;; frontend -------------------------------------------------------------------------------
            ;; fulcro and fulcro-related deps
-           com.fulcrologic/fulcro            {:mvn/version "3.4.21"
+           com.fulcrologic/fulcro            {:mvn/version "3.5.0"
                                               :exclusions  [com.cognitect/transit-cljs
                                                             com.cognitect/transit-js]}
            com.fulcrologic/fulcro-websockets {:mvn/version "3.3.0"}
            com.cognitect/transit-cljs        {:mvn/version "0.8.269"}
            com.fulcrologic/guardrails        {:mvn/version "1.1.4"}
-           com.wsscode/pathom                {:mvn/version "2.3.1"}
+           com.wsscode/pathom                {:mvn/version "2.4.0"}
 
            ;; routing-related
            metosin/reitit                    {:mvn/version "0.5.13"}
