@@ -36,9 +36,9 @@
       (mui/page-title {:style {:marginBottom "0.7em"}} "Admin Settings")
 
       (mui/grid {:container true :spacing 3}
-        (mui/grid {:item true :xs 3}
+        (mui/grid {:item true :xs 6 :md 3}
           (link-card :user-management "Manage Users" muic/supervised-user-circle-sharp))
-        (mui/grid {:item true :xs 3}
+        (mui/grid {:item true :xs 6 :md 3}
           (link-card :project-overview "Manage Projects" muic/work-outline-two-tone))))))
 
 (defrouter AdminRouter

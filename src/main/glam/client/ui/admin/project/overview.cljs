@@ -129,7 +129,7 @@
        :style     {:marginBottom "1em"}}
       "New Project")
 
-    (mui/box {:width 600}
+    (mui/box {}
       (mui/paper {}
         (mui/list {}
           (map ui-project-list-item (sort-by :project/name all-projects)))))))
