@@ -2,10 +2,15 @@
   (:require [glam.crux.easy :as gce])
   (:import (java.util UUID)))
 
-(defn identize [ids id-attr]
-  "Turn a seq of ids into a sorted vec of idents"
-  (vec (sort (for [id ids]
-               [id-attr id]))))
+(defn identize
+  "Turn a single id or seq of ids into a (Pathom-style) ident or vec of idents, respectively.
+  Note that this will look like {:foo/id 1} instead of [:foo/id 1] -- the latter is a Fulcroism,
+  the former is what Pathom needs."
+  [id-or-id-seq id-attr]
+  (if (coll? id-or-id-seq)
+    (vec (for [id id-or-id-seq]
+           {id-attr id}))
+    {id-attr id-or-id-seq}))
 
 ;; conveniences
 (defn new-record
@@ -20,9 +25,9 @@
   ([ns eid]
    (cond
      (nil? eid) (new-record ns)
-     (nil? ns)  {:crux.db/id eid}
-     :else      {:crux.db/id       eid
-                 (keyword ns "id") eid})))
+     (nil? ns) {:crux.db/id eid}
+     :else {:crux.db/id       eid
+            (keyword ns "id") eid})))
 
 (defn remove-id
   "Remove an ID from a to-many join"
