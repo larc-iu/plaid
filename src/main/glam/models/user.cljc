@@ -92,7 +92,7 @@
      {::pc/input     #{:user/id}
       ::pc/output    [:user/email :user/name :user/admin?]
       ::pc/transform ma/user-required}
-     (gce/entity crux id)))
+     (user/get crux id)))
 
 #?(:cljs
    (m/defmutation change-own-password

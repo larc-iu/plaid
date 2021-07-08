@@ -17,20 +17,36 @@
             [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
             [com.fulcrologic.fulcro.components :as comp]))
 
+
+(defsc TextLayerListItem
+  [this {:text-layer/keys [name token-layers]}]
+  {:query [:text-layer/name :text-layer/token-layers :text-layer/id]
+   :ident :text-layer/id}
+  (mui/list-item {} name)
+  )
+
+(def ui-text-layer-list-item (comp/factory TextLayerListItem))
+
 (defn layers
-  [this props]
+  [this {:project/keys [text-layers]}]
   (mui/grid {:container true :spacing 1}
-    (mui/grid {:item true :xs 3}
-      (mui/paper {:style {:minHeight "600px"}} "Foo"))
-    (mui/grid {:item true :xs 9}
+    (mui/grid {:item true :md 12 :lg 3}
+      (mui/paper {}
+        (mui/list {}
+          (map ui-text-layer-list-item text-layers))))
+    (mui/grid {:item true :md 12 :lg 9}
       (mui/paper {} "Bar"))))
 
 
-(defsc ProjectSettings [this {:project/keys [id name] :ui/keys [active-tab] :as props}]
-  {:query         [:project/id :project/name :ui/active-tab]
+(defsc ProjectSettings [this {:project/keys [id name text-layers] :ui/keys [active-tab] :as props}]
+  {:query         [:project/id
+                   :project/name
+                   {:project/text-layers (c/get-query TextLayerListItem)}
+                   :ui/active-tab]
    :ident         :project/id
    :pre-merge     (fn [{:keys [data-tree] :as m}]
-                    (merge {:ui/active-tab "0"}
+                    ;; initial-state doesn't work for some reason
+                    (merge {:ui/active-tab "layers"}
                            data-tree))
    :route-segment (r/last-route-segment :project-settings)
    :will-enter    (fn [app {:keys [id]}]
@@ -50,13 +66,13 @@
     (mui/tab-context {:value active-tab}
       (mui/tabs {:value    active-tab
                  :onChange #(m/set-value! this :ui/active-tab %2)}
-        (mui/tab {:label "Tab 1" :value "0"})
-        (mui/tab {:label "Tab 2" :value "1"}))
+        (mui/tab {:label "Layers" :value "layers"})
+        (mui/tab {:label "Access" :value "access"}))
 
-      (mui/tab-panel {:index "0"}
+      (mui/tab-panel {:value "layers"}
         "Hi World"
         (layers this props))
-      (mui/tab-panel {:index "1"}
+      (mui/tab-panel {:value "access"}
         "Hi World w"
         ))))
 

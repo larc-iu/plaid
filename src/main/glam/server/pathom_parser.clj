@@ -2,6 +2,7 @@
   (:require [com.wsscode.pathom.connect :as pc]
             [com.wsscode.pathom.core :as p]
             [glam.models.project :refer [project-resolvers]]
+            [glam.models.text-layer :refer [text-layer-resolvers]]
             [glam.models.session :as session]
             [glam.models.user :as user]
             [glam.models.common :refer [server-error]]
@@ -13,7 +14,8 @@
 (def all-resolvers
   [session/resolvers
    user/resolvers
-   project-resolvers])
+   project-resolvers
+   text-layer-resolvers])
 
 (def env-additions
   (fn [env]

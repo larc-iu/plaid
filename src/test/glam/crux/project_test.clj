@@ -60,9 +60,7 @@
     (is (access/ident-writeable? crux-node :user1 [:project/id :project1])))
 
   (testing "Removing read privileges also removes write privileges"
-    (spit "tmp.txt" (prj/get crux-node :project1))
     (prj/remove-reader crux-node :project1 :user1)
-    (spit "tmp.txt" (prj/get crux-node :project1) :append true)
     (is (not (access/ident-readable? crux-node :user1 [:project/id :project1])))
     (is (not (access/ident-writeable? crux-node :user1 [:project/id :project1]))))
 

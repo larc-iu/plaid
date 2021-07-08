@@ -22,7 +22,7 @@
 (defn create [node {:project/keys [id] :as attrs}]
   (let [{:project/keys [id] :as record}
         (merge (cutil/new-record "project" id)
-               {:project/readers [] :project/writers []}
+               {:project/readers [] :project/writers [] :project/text-layers []}
                (select-keys attrs attr-keys))]
     {:success (gce/put node record)
      :id      id}))

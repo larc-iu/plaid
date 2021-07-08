@@ -9,7 +9,7 @@
             #?(:clj [glam.models.auth :as ma])
             [com.fulcrologic.fulcro.mutations :as m]))
 
-(def project-keys [:project/name])
+(def project-keys [:project/name :project/text-layers])
 
 (defn valid-name [name] (and (string? name) (<= 2 (count name) 80)))
 (defn- field-valid [field v]
@@ -33,7 +33,7 @@
    ;; todo: make this a batch resolver if needed (same for others)
    (pc/defresolver get-project [{:keys [crux]} {:project/keys [id]}]
      {::pc/input     #{:project/id}
-      ::pc/output    [:project/id :project/name]
+      ::pc/output    [:project/id :project/name :project/readers :project/writers :project/text-layers]
       ::pc/transform (ma/readable-required :project/id)}
      (prj/get crux id)))
 

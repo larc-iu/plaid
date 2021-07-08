@@ -18,7 +18,6 @@
       (init-db node)
       node))
 
-
   (prj/get-accessible-ids node :user1)
 
   (user/get node :admin)
