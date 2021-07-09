@@ -328,9 +328,15 @@
 (defn styled-card-media [styles] (wrap-styles CardMedia styles))
 
 ;; theme
-(def default-theme (createMuiTheme #js {:spacing 8
-                                        :palette #js {:primary   purple
-                                                      :secondary blue}}))
+(def default-theme (createMuiTheme
+                     #js {:spacing   8
+                          :palette   #js {:primary   purple
+                                          :secondary blue}
+                          :overrides #js {:MuiTreeItem
+                                          #js {:iconContainer #js {:width  "18px"
+                                                                   "& svg" #js {:font-size "22px"}}
+                                               :label         #js {:line-height "2.0"
+                                                                   :font-size   "18px"}}}}))
 (def theme-provider (interop/react-factory ThemeProvider))
 
 ;; --------------------------------------------------------------------------------
@@ -382,4 +388,3 @@
                           :key  i}
                      child))
                  children)))
-

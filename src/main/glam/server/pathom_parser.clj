@@ -3,6 +3,8 @@
             [com.wsscode.pathom.core :as p]
             [glam.models.project :refer [project-resolvers]]
             [glam.models.text-layer :refer [text-layer-resolvers]]
+            [glam.models.token-layer :refer [token-layer-resolvers]]
+            [glam.models.span-layer :refer [span-layer-resolvers]]
             [glam.models.session :as session]
             [glam.models.user :as user]
             [glam.models.common :refer [server-error]]
@@ -15,7 +17,9 @@
   [session/resolvers
    user/resolvers
    project-resolvers
-   text-layer-resolvers])
+   text-layer-resolvers
+   token-layer-resolvers
+   span-layer-resolvers])
 
 (def env-additions
   (fn [env]
