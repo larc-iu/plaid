@@ -19,9 +19,6 @@
   (start-lmdb-node {:db-dir           (-> config ::config :main-db-dir)
                     :http-server-port (-> config ::config :http-server-port)}))
 
-(defn start-session-lmdb-node []
-  (start-lmdb-node {:db-dir (-> config ::config :session-db-dir)}))
-
 (defn extract-ids
   [seq]
   )
@@ -51,9 +48,3 @@
            ;; (setup-listener! node)
            node)
   :stop (.close crux-node))
-
-(defstate crux-session-node
-  :start (let [node (start-session-lmdb-node)]
-           (install-tx-fns! node)
-           node)
-  :stop (.close crux-session-node))

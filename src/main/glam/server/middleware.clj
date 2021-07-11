@@ -7,37 +7,21 @@
     [taoensso.timbre :as log]
     [mount.core :as mount]
     [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
-
     [com.fulcrologic.fulcro.server.api-middleware :refer [handle-api-request
                                                           wrap-transit-params
                                                           wrap-transit-response]]
     [ring.middleware.defaults :refer [wrap-defaults]]
     [ring.util.response :refer [response file-response resource-response]]
     [ring.util.response :as resp]
-    [ring.util.request :as ring-req]
-    [reitit.ring.middleware.exception :as exception]
-    [reitit.ring.middleware.multipart :as multipart]
-    [reitit.ring.middleware.muuntaja :as muuntaja]
-    [muuntaja.core :as muuc]
-    [muuntaja.middleware :as muum]
-    [reitit.ring.middleware.parameters :as parameters]
-    [reitit.http :as rhttp]
     [hiccup.page :refer [html5]]
-
-    [crux.api :as crux]
-
     ;; needed for specs
     ;reitit.http.coercion
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [make-parser]]
-    [glam.server.crux :refer [crux-node crux-session-node]]
-    [glam.crux.easy :as cutil])
-  (:import (java.io PushbackReader IOException)
-           (ring.middleware.session.store SessionStore)
-           (java.util UUID)))
+    [glam.server.crux :refer [crux-node]])
+  (:import (java.io PushbackReader IOException)))
 
 ;; crux ring session store, from dvingo
-
 (def anti-forgery-token-str "__anti-forgery-token")
 
 (defn make-session-data
@@ -47,41 +31,7 @@
       (dissoc anti-forgery-token-str)
       (assoc :crux.db/id key ::session? true)))
 
-(deftype CruxSessionStore [crux-node]
-  SessionStore
-
-  (read-session [this key]
-    (if (some? key)
-      (try
-        (let [sess (crux/entity (crux/db crux-node) (UUID/fromString key))]
-          (-> sess
-              (assoc anti-forgery-token-str (:__anti-forgery-token sess))
-              (dissoc :__anti-forgery-token)))
-        (catch Exception e
-          (log/error "Invalid session. Error reading crux/entity for key: " key)
-          {}))
-      {}))
-
-  (write-session [_ key data]
-    ;(log/info "writing session: at key: " key)
-    (let [key (try (cond-> key (some? key) UUID/fromString)
-                   (catch Exception e (UUID/randomUUID)))
-          key (or key (UUID/randomUUID))
-          tx-data (make-session-data key data)]
-      (log/trace "Writing session data: " tx-data)
-      (log/trace "At key : " key)
-      (cutil/put crux-node tx-data)
-      key))
-
-  (delete-session [_ key]
-    (log/info "Deleting session: " key)
-    (cutil/delete crux-node key)
-    nil))
-
-(defn crux-session-store [crux-node]
-  (CruxSessionStore. crux-node))
 ;; end ring session store
-
 (def manifest-file "public/js/main/manifest.edn")
 
 (defn load-edn

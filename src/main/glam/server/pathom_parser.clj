@@ -23,7 +23,7 @@
     (merge env (get-config-map env))))
 
 (defn remove-omissions
-  "Replaces black-listed keys from tx with ::omitted, meant for logging tx's
+  "Replaces black-listed keys from tx with :redacted, meant for logging tx's
   without logging sensitive details like passwords."
   [sensitive-keys tx]
   (walk/postwalk
