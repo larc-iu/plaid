@@ -17,7 +17,7 @@
           (assoc
             pathom-action-kwd
             (fn [env params]
-              (log/info (str "Hit resolver/mutator: " (pr-str (::pc/resolver-data env))))
+              ;;(log/info (str "Hit resolver/mutator: " (pr-str (::pc/resolver-data env))))
               (if (auth-fn env params)
                 (pathom-action env params)
                 (let [msg (str "Unauthorized pathom action: session " (get-in env [:ring/request :session])

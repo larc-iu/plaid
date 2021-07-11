@@ -29,7 +29,7 @@
     ;; needed for specs
     ;reitit.http.coercion
     [glam.server.config :refer [config]]
-    [glam.server.pathom-parser :refer [parser]]
+    [glam.server.pathom-parser :refer [make-parser]]
     [glam.server.crux :refer [crux-node crux-session-node]]
     [glam.crux.easy :as cutil])
   (:import (java.io PushbackReader IOException)
@@ -157,7 +157,8 @@
 
 (mount/defstate middleware
   :start
-  (let [defaults-config (:ring.middleware/defaults-config config)]
+  (let [defaults-config (:ring.middleware/defaults-config config)
+        parser (make-parser)]
     ;; TODO: CORS support? also need to verify csrf token works
     (-> not-found-handler
         (wrap-api parser "/api")

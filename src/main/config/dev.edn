@@ -4,16 +4,15 @@
 
  :glam.server.pathom-parser/config
  {:connect-viz?    true
+  :fail-fast?      true
   :index-explorer? true
   :trace?          true
   :log-responses?  true
+  :log-requests?   true
   :handle-errors?  false
-  :sensitive-keys  [:password]}
+  :sensitive-keys  [:password :user/password-hash]}
 
  :glam.server.crux/config
  {:main-db-dir      "crux_data"
   :session-db-dir   "crux_session_data"
-  :http-server-port 5128}
-
- :glam.server.middleware/config
- {:dev? true}}
+  :http-server-port 5128}}

@@ -80,7 +80,7 @@
      (when-let [session (:session request)]
        (when (:session/valid? session)
          (if-let [email (:user/email session)]
-           (do (log/info "HAVE A USER: " email)
+           (do (log/info "Resolved current user: " email)
                (gce/find-entity-id crux {:user/email email}))
            (do (log/info "no user")
                nil))))))

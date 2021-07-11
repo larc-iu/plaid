@@ -1,4 +1,5 @@
-{:org.httpkit.server/config            {:port 8085}
+{:org.httpkit.server/config
+ {:port 8085}
 
  ;; The ssl-redirect defaulted to off, but for security should probably be on in production.
  :ring.middleware/defaults-config
@@ -29,8 +30,15 @@
  {:main-db-dir    "crux_data"
   :session-db-dir "crux_session_data"}
 
- :glam.server.pathom/config
- {:connect-viz? false}
+ :glam.server.pathom-parser/config
+ {:connect-viz?    false
+  :fail-fast?      false
+  :index-explorer? false
+  :trace?          false
+  :log-responses?  true
+  :log-requests?   true
+  :handle-errors?  true
+  :sensitive-keys  [:password :user/password-hash]}
 
  :glam.server.service/config
  {:csp {:font-domains  ["cdnjs.cloudflare.com" "fonts.googleapis.com" "fonts.gstatic.com"]

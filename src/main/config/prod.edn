@@ -1,4 +1,2 @@
-{:org.httpkit.server/config            {:port 8080}
-
- :taoensso.timbre/logging-config
- {:level :info}}
+{:org.httpkit.server/config
+ {:port 8080}}
