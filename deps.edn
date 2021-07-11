@@ -54,16 +54,14 @@
            :dev     {:extra-paths ["src/dev" "src/test" "src/workspaces"]
                      :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"]
 
-                     :extra-deps  {org.clojure/clojurescript      {:mvn/version "1.10.844"}
-                                   org.clojure/test.check         {:mvn/version "1.0.0"}
-                                   thheller/shadow-cljs           {:mvn/version "2.12.5"}
-                                   ;; Logging for pedestal
-                                   ch.qos.logback/logback-classic {:mvn/version "1.2.3"}
-                                   ;com.wsscode/pathom-viz-connector    {:mvn/version "1.0.3"}
-                                   org.clojure/tools.namespace    {:mvn/version "1.0.0"}
+                     :extra-deps  {org.clojure/clojurescript        {:mvn/version "1.10.844"}
+                                   org.clojure/test.check           {:mvn/version "1.0.0"}
+                                   thheller/shadow-cljs             {:mvn/version "2.12.5"}
+                                   com.wsscode/pathom-viz-connector {:mvn/version "2021.07.04"}
+                                   org.clojure/tools.namespace      {:mvn/version "1.0.0"}
                                    ;; Formats spec explain.
-                                   expound/expound                {:mvn/version "0.8.9"}
-                                   fulcrologic/fulcro-spec        {:mvn/version "3.1.12"}
-                                   binaryage/devtools             {:mvn/version "1.0.3"}
-                                   com.github.awkay/workspaces    {:mvn/version "1.0.3"}
-                                   juxt/crux-http-server          {:mvn/version "21.05-1.17.0-alpha"}}}}}
+                                   expound/expound                  {:mvn/version "0.8.9"}
+                                   fulcrologic/fulcro-spec          {:mvn/version "3.1.12"}
+                                   binaryage/devtools               {:mvn/version "1.0.3"}
+                                   com.github.awkay/workspaces      {:mvn/version "1.0.3"}
+                                   juxt/crux-http-server            {:mvn/version "21.05-1.17.0-alpha"}}}}}
