@@ -44,7 +44,7 @@ ClojureScript Client Profile:
 (require '[shadow.cljs.devtools.api :as shadow])
 (shadow/repl :main)
 ```
-8. Write (js/console.log "hi") and ensure that it was printed out to the console in your browser session
+8. Write `(js/console.log "hi")` and ensure that it was printed out to the console in your browser session
 
 ## Release build
 ```bash
