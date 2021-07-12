@@ -38,7 +38,7 @@
   :log-responses?  true
   :log-requests?   true
   :handle-errors?  true
-  :sensitive-keys  [:password :user/password-hash]}
+  :sensitive-keys  [:password :user/password :user/password-hash]}
 
  :glam.server.service/config
  {:csp {:font-domains  ["cdnjs.cloudflare.com" "fonts.googleapis.com" "fonts.gstatic.com"]

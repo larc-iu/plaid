@@ -22,7 +22,7 @@
   (let [v (get form field)]
     (case field
       :user/email (valid-email v)
-      :password (valid-password v))))
+      :user/password (valid-password v))))
 
 (def validator (fs/make-validator form-valid))
 
@@ -44,11 +44,11 @@
              :disabled  loading?
              :onChange  #(m/set-string!! this :user/email :event %)}))
         (mui/grid {:item true}
-          (forms/text-input-with-label this :password "Password" "Password invalid"
+          (forms/text-input-with-label this :user/password "Password" "Password invalid"
             {:type      "password"
              :fullWidth true
              :disabled  loading?
-             :onChange  #(comp/set-state! this {:password (evt/target-value %)})}))
+             :onChange  #(m/set-string!! this :user/password :event %)}))
         (when-not (empty? error)
           (mui/grid {:item true}
             (mui/alert {:severity "error"}
@@ -67,25 +67,31 @@
        :color   "inherit"}
       "Log out")))
 
-(defsc Login [this {:user/keys [email]
+(defsc Login [this {:user/keys [email password]
                     :ui/keys   [error] :as props}]
-  {:query              [:ui/open? :ui/error :user/email
+  {:query              [:ui/open? :ui/error :user/email :user/password
                         session-join
+                        fs/form-config-join
                         [::sm/asm-id ::session/session]]
-   :initial-state      {:user/email "" :ui/error ""}
+   :initial-state      {:user/email "" :ui/error "" :user/password ""}
    :ident              (fn [] [:component/id :login])
+   :form-fields        #{:user/email :user/password}
+   :pre-merge          (fn [{:keys [data-tree]}]
+                         (fs/add-form-config Login data-tree))
    ::forms/validator   validator
    :componentDidUpdate (fn [this pprops _]
                          ;; clear password input field after logging in.
                          (let [{curr-session-valid? :session/valid?} (get (comp/props this) [:component/id :session])
                                {prev-session-valid? :session/valid?} (get pprops [:component/id :session])]
-                           (when (and curr-session-valid? (not prev-session-valid?))
-                             (comp/set-state! this {:password ""}))))}
+                           (when (or (and curr-session-valid? (not prev-session-valid?))
+                                     (and (not curr-session-valid?) prev-session-valid?))
+                             (comp/transact! this [(fs/reset-form! {:form-ident [:component/id :login]})]))))}
   (let [current-state (sm/get-active-state this ::session/session)
         session (get-session props)
         {session-valid? :session/valid?} session
         loading? (= :state/checking-session current-state)
-        password (or (comp/get-state this :password) "")    ; c.l. state for security
+        ;; TODO: it's claimed using fulcro DB for this is a security hazard, I'm not convinced it is. Look into it
+        ;;password (comp/get-state this :password)            ; c.l. state for security
         form-valid? (and (valid-email email) (valid-password password))]
     (when-not session-valid?
       (ui-login-form this {:error       error

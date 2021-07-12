@@ -51,27 +51,27 @@
 
 (defn text-input-with-label
   "Text input based on mui/text-field for use with forms. Note: onBlur completes the field by default."
-  [component field label validation-message {:keys [last-input] :as input-attrs}]
+  [component field-key label validation-message {:keys [last-input] :as input-attrs}]
   (let [validator (::validator (c/component-options component))]
     (when (nil? validator)
       (log/error "No validator provided for" component "! Make sure its options map has ::forms/validator"))
-    (let [{:keys [invalid?]} (field-attrs component field validator)]
+    (let [{:keys [invalid?]} (field-attrs component field-key validator)]
       (mui/text-field
-        (merge {:key        (str field)
+        (merge {:key        (str field-key)
                 :variant    "filled"
                 :error      invalid?
                 :helperText (if invalid? validation-message "")
                 :label      label
                 :onBlur     (fn [e]
                               (when (not= (.-value (.-target e)) "")
-                                (complete-field component field)))
+                                (complete-field component field-key)))
                 :onChange   (if last-input
                               (fn [e]
-                                (m/set-string!! component field :event e)
-                                (complete-field component field))
+                                (m/set-string!! component field-key :event e)
+                                (complete-field component field-key))
                               (fn [e]
-                                (m/set-string!! component field :event e)))
-                :value      (field (c/props component))}
+                                (m/set-string!! component field-key :event e)))
+                :value      (field-key (c/props component))}
                (dissoc input-attrs :last-input))))))
 
 (defn checkbox-input-with-label

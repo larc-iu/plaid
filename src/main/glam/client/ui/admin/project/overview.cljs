@@ -84,7 +84,7 @@
                   :button  true
                   :onClick #(r/route-to! :project-settings {:id id})}
     (mui/typography {:variant "h6"} name)))
-(def ui-project-list-item (c/factory ProjectListItem))
+(def ui-project-list-item (c/factory ProjectListItem {:keyfn :project/id}))
 
 (defsc ProjectOverview [this {:keys [all-projects add-project] :ui/keys [modal-open?] :as props}]
   {:ident         (fn [_] ident)
