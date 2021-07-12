@@ -10,7 +10,7 @@
   :log-responses?  true
   :log-requests?   true
   :handle-errors?  false
-  :sensitive-keys  [:password :user/password :user/password-hash]}
+  :sensitive-keys  [:password :user/password :user/new-password :user/password-hash]}
 
  :glam.server.crux/config
  {:main-db-dir      "crux_data"
