@@ -9,11 +9,11 @@
     "client/main": "yarn shadow-cljs watch :main",
     "client/cljs-repl": "shadow-cljs cljs-repl :main",
     "client/clj-repl": "shadow-cljs clj-repl",
-    "server": "clojure -A:dev",
+    "server": "clojure -A:dev -J-Dtrace -J-Dguardrails.enabled=true",
     "start": "yarn run-p client/server server",
     "clean": "rm -rf target resources/public/js",
     "client/release": "yarn shadow-cljs release main",
-    "server/release": "clojure -X:depstar",
+    "server/release": "clojure -X:uberjar",
     "release": "yarn clean && yarn client/release && yarn server/release"
   },
   "dependencies": {},

@@ -41,33 +41,27 @@
            cryptohash-clj/cryptohash-clj     {:mvn/version "0.1.10"}
 
            ;; Only actually used during dev, but it's annoying to take it out of prod builds
-           com.wsscode/pathom-viz-connector  {:mvn/version "2021.07.04"}
-
-           ;; TODO: this should not be necessary, but `outdated` and `depstar` fail without it
-           org.clojure/tools.namespace       {:mvn/version "1.0.0"}
-           }
+           com.wsscode/pathom-viz-connector  {:mvn/version "2021.07.04"}}
 
  :aliases {:outdated {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
                       :main-opts  ["-m" "antq.core"]}
-           :depstar  {:exec-fn    hf.depstar/uberjar
-                      :exec-args  {:aot        true
-                                   :main-class "glam.server.main"
-                                   :jar        "target/server.jar"}
-                      :extra-deps {org.clojure/tools.namespace     {:mvn/version "1.0.0"}
-                                   thheller/shadow-cljs            {:mvn/version "2.15.0"}
-                                   com.github.seancorfield/depstar {:mvn/version "2.1.253"}}}
+           :uberjar  {:exec-fn       hf.depstar/uberjar
+                      :exec-args     {:aot        true
+                                      :main-class "glam.server.main"
+                                      :jar        "target/server.jar"}
+                      :extra-deps    {com.github.seancorfield/depstar {:mvn/version "2.1.253"}}}
            :test     {:extra-paths ["src/test"]
                       :main-opts   ["-m" "cognitect.test-runner"]
                       :exec-fn     cognitect.test-runner.api/test
                       :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
                                                                :sha     "705ad25bbf0228b1c38d0244a36001c2987d7337"}
-                                    thheller/shadow-cljs      {:mvn/version "2.15.0"}}}
+                                    thheller/shadow-cljs      {:mvn/version "2.13.0"}}}
            :dev      {:extra-paths ["src/dev" "src/test"]
                       :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"]
 
                       :extra-deps  {org.clojure/clojurescript   {:mvn/version "1.10.844"}
                                     org.clojure/test.check      {:mvn/version "1.0.0"}
-                                    thheller/shadow-cljs        {:mvn/version "2.15.0"}
+                                    thheller/shadow-cljs        {:mvn/version "2.13.0"}
                                     org.clojure/tools.namespace {:mvn/version "1.0.0"}
                                     ;; Formats spec explain.
                                     expound/expound             {:mvn/version "0.8.9"}
