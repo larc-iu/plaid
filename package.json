@@ -12,9 +12,9 @@
     "server": "clojure -A:dev",
     "start": "yarn run-p client/server server",
     "clean": "rm -rf target resources/public/js",
-    "client/compile": "yarn shadow-cljs release main",
-    "server/compile": "clojure -X:depstar",
-    "compile": "yarn clean && yarn client/compile && yarn server/compile"
+    "client/release": "yarn shadow-cljs release main",
+    "server/release": "clojure -X:depstar",
+    "release": "yarn clean && yarn client/release && yarn server/release"
   },
   "dependencies": {},
   "devDependencies": {
