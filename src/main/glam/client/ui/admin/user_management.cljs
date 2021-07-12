@@ -114,7 +114,7 @@
               {:type      "password"
                :fullWidth true
                :onChange  (fn [e]
-                            (m/set-string!! this :user/new-password :event e)
+                            (m/set-string! this :user/new-password :event e)
                             (forms/complete-field this :user/new-password)
                             (when (= (.-value (.-target e)) "")
                               (c/transact! this [(fs/clear-complete! {:entity-ident [:user/id id]
@@ -202,7 +202,7 @@
              :fullWidth true
              :disabled  busy?
              :onChange  (fn [e]
-                          (m/set-string!! this :user/password :event e)
+                          (m/set-string! this :user/password :event e)
                           (forms/complete-field this :user/password))})
           (forms/checkbox-input-with-label this :user/admin? "Admin"
             {:checked  admin?
