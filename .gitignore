@@ -28,6 +28,4 @@ resources/public/devcards/*
 !resources/public/devcards/devcards.html
 crux-store
 builds/
-prn_debug.cljs
 crux_data/
-crux_session_data/

@@ -1,4 +1,4 @@
-{:paths   ["src/main" "src/test" "src/dev" "src/workspaces" "resources"]
+{:paths   ["src/main" "resources"]
 
  :deps    {org.clojure/clojure               {:mvn/version "1.10.3"}
            org.clojure/spec.alpha            {:mvn/version "0.2.194"}
@@ -38,30 +38,40 @@
            juxt/crux-lmdb                    {:mvn/version "21.05-1.17.0-alpha"}
 
            ;; Password hashing
-           cryptohash-clj/cryptohash-clj     {:mvn/version "0.1.10"}}
+           cryptohash-clj/cryptohash-clj     {:mvn/version "0.1.10"}
 
- :aliases {:ancient {:main-opts  ["-m" "deps-ancient.deps-ancient"]
-                     :extra-deps {deps-ancient/deps-ancient {:mvn/version "RELEASE"}}}
-           :depstar {:extra-deps {seancorfield/depstar        {:mvn/version "2.0.216"}
-                                  org.clojure/tools.namespace {:mvn/version "1.0.0"}
-                                  thheller/shadow-cljs        {:mvn/version "2.12.5"}}}
-           :test    {:extra-paths ["src/test"]
-                     :main-opts   ["-m" "cognitect.test-runner"]
-                     :exec-fn     cognitect.test-runner.api/test
-                     :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                                                              :sha     "705ad25bbf0228b1c38d0244a36001c2987d7337"}
-                                   thheller/shadow-cljs      {:mvn/version "2.12.5"}}}
-           :dev     {:extra-paths ["src/dev" "src/test" "src/workspaces"]
-                     :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"]
+           ;; Only actually used during dev, but it's annoying to take it out of prod builds
+           com.wsscode/pathom-viz-connector  {:mvn/version "2021.07.04"}
 
-                     :extra-deps  {org.clojure/clojurescript        {:mvn/version "1.10.844"}
-                                   org.clojure/test.check           {:mvn/version "1.0.0"}
-                                   thheller/shadow-cljs             {:mvn/version "2.12.5"}
-                                   com.wsscode/pathom-viz-connector {:mvn/version "2021.07.04"}
-                                   org.clojure/tools.namespace      {:mvn/version "1.0.0"}
-                                   ;; Formats spec explain.
-                                   expound/expound                  {:mvn/version "0.8.9"}
-                                   fulcrologic/fulcro-spec          {:mvn/version "3.1.12"}
-                                   binaryage/devtools               {:mvn/version "1.0.3"}
-                                   com.github.awkay/workspaces      {:mvn/version "1.0.3"}
-                                   juxt/crux-http-server            {:mvn/version "21.05-1.17.0-alpha"}}}}}
+           ;; TODO: this should not be necessary, but `outdated` and `depstar` fail without it
+           org.clojure/tools.namespace       {:mvn/version "1.0.0"}
+           }
+
+ :aliases {:outdated {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
+                      :main-opts  ["-m" "antq.core"]}
+           :depstar  {:exec-fn    hf.depstar/uberjar
+                      :exec-args  {:aot        true
+                                   :main-class "glam.server.main"
+                                   :jar        "target/server.jar"}
+                      :extra-deps {org.clojure/tools.namespace     {:mvn/version "1.0.0"}
+                                   thheller/shadow-cljs            {:mvn/version "2.15.0"}
+                                   com.github.seancorfield/depstar {:mvn/version "2.1.253"}}}
+           :test     {:extra-paths ["src/test"]
+                      :main-opts   ["-m" "cognitect.test-runner"]
+                      :exec-fn     cognitect.test-runner.api/test
+                      :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
+                                                               :sha     "705ad25bbf0228b1c38d0244a36001c2987d7337"}
+                                    thheller/shadow-cljs      {:mvn/version "2.15.0"}}}
+           :dev      {:extra-paths ["src/dev" "src/test"]
+                      :jvm-opts    ["-XX:-OmitStackTraceInFastThrow" "-J-Dtrace" "-J-Dguardrails.enabled=true"]
+
+                      :extra-deps  {org.clojure/clojurescript   {:mvn/version "1.10.844"}
+                                    org.clojure/test.check      {:mvn/version "1.0.0"}
+                                    thheller/shadow-cljs        {:mvn/version "2.15.0"}
+                                    org.clojure/tools.namespace {:mvn/version "1.0.0"}
+                                    ;; Formats spec explain.
+                                    expound/expound             {:mvn/version "0.8.9"}
+                                    fulcrologic/fulcro-spec     {:mvn/version "3.1.12"}
+                                    binaryage/devtools          {:mvn/version "1.0.3"}
+                                    com.github.awkay/workspaces {:mvn/version "1.0.3"}
+                                    juxt/crux-http-server       {:mvn/version "21.05-1.17.0-alpha"}}}}}

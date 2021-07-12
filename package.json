@@ -7,10 +7,13 @@
   "private": true,
   "scripts": {
     "client/main": "yarn shadow-cljs watch :main",
-    "client/cljs": "shadow-cljs cljs-repl :main",
-    "client/clj": "shadow-cljs clj-repl",
-    "server": "clojure -A:dev -J-Dtrace -J-Dguardrails.enabled=true",
-    "start": "yarn run-p client/server server"
+    "client/cljs-repl": "shadow-cljs cljs-repl :main",
+    "client/clj-repl": "shadow-cljs clj-repl",
+    "server": "clojure -A:dev",
+    "start": "yarn run-p client/server server",
+    "client/compile": "yarn shadow-cljs release main",
+    "server/compile": "clojure -X:depstar",
+    "compile": "yarn client/compile && yarn server/compile"
   },
   "dependencies": {},
   "devDependencies": {
