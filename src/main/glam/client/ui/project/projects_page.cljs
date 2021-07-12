@@ -25,7 +25,8 @@
    :query         [{:accessible-projects (c/get-query ProjectListItem)}]}
   (dom/div
     "This is the list of projects"
-    (map ui-project-item accessible-projects)))
+    (doall
+      (map ui-project-item accessible-projects))))
 
 (def ui-project-list (c/factory ProjectList))
 

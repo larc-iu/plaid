@@ -132,5 +132,6 @@
     (mui/box {}
       (mui/paper {}
         (mui/list {}
-          (map ui-project-list-item (sort-by :project/name all-projects)))))))
+          (doall
+            (map ui-project-list-item (sort-by :project/name all-projects))))))))
 

@@ -39,8 +39,9 @@
                   :icon    (muic/more-horiz)
                   :onClick #(set-active-layer [:token-layer/id id])}
     (when span-layers
-      (map ui-span-list-layer-item
-           (map #(comp/computed % {:set-active-layer set-active-layer}) span-layers)))))
+      (doall
+        (map ui-span-list-layer-item
+             (map #(comp/computed % {:set-active-layer set-active-layer}) span-layers))))))
 
 (def ui-token-list-layer-item (comp/computed-factory TokenLayerListItem {:keyfn :token-layer/id}))
 
@@ -53,8 +54,9 @@
                   :icon    (muic/description-outlined)
                   :onClick #(set-active-layer [:text-layer/id id])}
     (when token-layers
-      (map ui-token-list-layer-item
-           (map #(comp/computed % {:set-active-layer set-active-layer}) token-layers)))))
+      (doall
+        (map ui-token-list-layer-item
+             (map #(comp/computed % {:set-active-layer set-active-layer}) token-layers))))))
 
 (def ui-text-layer-list-item (comp/computed-factory TextLayerListItem {:keyfn :text-layer/id}))
 
@@ -151,8 +153,9 @@
             (mui/grid {:item true :xs 12 :md 3}
               (mui/padded-paper {}
                 (mui/tree-view {:expanded (reduce into [] (map all-ids text-layers))}
-                  (map ui-text-layer-list-item
-                       (map #(comp/computed % {:set-active-layer set-active-layer}) text-layers)))))
+                  (doall
+                    (map ui-text-layer-list-item
+                         (map #(comp/computed % {:set-active-layer set-active-layer}) text-layers))))))
             (mui/grid {:item true :xs 12 :md 9}
               (mui/padded-paper {}
                 (ui-layer-union (:ui/active-layer props))))))

@@ -277,11 +277,12 @@
       "New User")
 
     ;; user accordions
-    (for [user (sort-by (fn [u] [(if (:user/admin? u) 0 1) (:user/name u)]) users)]
-      (ui-user-accordion
-        (c/computed
-          user
-          {:expanded-id expanded-id
-           :expand      #(m/set-value! this :expanded-id %)})))))
+    (doall
+      (for [user (sort-by (fn [u] [(if (:user/admin? u) 0 1) (:user/name u)]) users)]
+        (ui-user-accordion
+          (c/computed
+            user
+            {:expanded-id expanded-id
+             :expand      #(m/set-value! this :expanded-id %)}))))))
 
 (def ui-user-management (c/factory UserManagement))
