@@ -8,7 +8,7 @@
            ;; logging
            com.taoensso/timbre               {:mvn/version "5.1.2"}
            ;; profiler, haven't used so far
-           com.taoensso/tufte                {:mvn/version "2.1.0"}
+           com.taoensso/tufte                {:mvn/version "2.2.0"}
 
            ;; frontend -------------------------------------------------------------------------------
            ;; fulcro and fulcro-related deps
@@ -17,7 +17,7 @@
                                                             com.cognitect/transit-js]}
            com.fulcrologic/fulcro-websockets {:mvn/version "3.3.0"}
            com.cognitect/transit-cljs        {:mvn/version "0.8.269"}
-           com.fulcrologic/guardrails        {:mvn/version "1.1.4"}
+           com.fulcrologic/guardrails        {:mvn/version "1.1.5"}
            com.wsscode/pathom                {:mvn/version "2.4.0"}
 
            ;; routing-related
@@ -29,13 +29,13 @@
            mount/mount                       {:mvn/version "0.1.16"}
 
            ;; http
-           http-kit/http-kit                 {:mvn/version "2.3.0"}
+           http-kit/http-kit                 {:mvn/version "2.5.3"}
            ring/ring-core                    {:mvn/version "1.9.3"}
-           ring/ring-defaults                {:mvn/version "0.3.2"}
+           ring/ring-defaults                {:mvn/version "0.3.3"}
 
            ;; crux
-           juxt/crux-core                    {:mvn/version "21.05-1.17.0-beta"}
-           juxt/crux-lmdb                    {:mvn/version "21.05-1.17.0-alpha"}
+           pro.juxt.crux/crux-core           {:mvn/version "1.17.1"}
+           pro.juxt.crux/crux-lmdb           {:mvn/version "1.17.1"}
 
            ;; Password hashing
            cryptohash-clj/cryptohash-clj     {:mvn/version "0.1.10"}
@@ -45,27 +45,27 @@
 
  :aliases {:outdated {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
                       :main-opts  ["-m" "antq.core"]}
-           :uberjar  {:exec-fn       hf.depstar/uberjar
-                      :exec-args     {:aot        true
-                                      :main-class "glam.server.main"
-                                      :jar        "target/server.jar"}
-                      :extra-deps    {com.github.seancorfield/depstar {:mvn/version "2.1.253"}}}
+           :uberjar  {:exec-fn    hf.depstar/uberjar
+                      :exec-args  {:aot        true
+                                   :main-class "glam.server.main"
+                                   :jar        "target/server.jar"}
+                      :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.253"}}}
            :test     {:extra-paths ["src/test"]
                       :main-opts   ["-m" "cognitect.test-runner"]
                       :exec-fn     cognitect.test-runner.api/test
                       :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                                                               :sha     "705ad25bbf0228b1c38d0244a36001c2987d7337"}
-                                    thheller/shadow-cljs      {:mvn/version "2.13.0"}}}
+                                                               :sha     "f597341b6ca7bb4cf027e0a34a6710ca9cb969da"}
+                                    thheller/shadow-cljs      {:mvn/version "2.15.0"}}}
            :dev      {:extra-paths ["src/dev" "src/test"]
                       :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"]
 
-                      :extra-deps  {org.clojure/clojurescript   {:mvn/version "1.10.844"}
-                                    org.clojure/test.check      {:mvn/version "1.0.0"}
-                                    thheller/shadow-cljs        {:mvn/version "2.13.0"}
-                                    org.clojure/tools.namespace {:mvn/version "1.0.0"}
+                      :extra-deps  {org.clojure/clojurescript      {:mvn/version "1.10.866"}
+                                    org.clojure/test.check         {:mvn/version "1.1.0"}
+                                    thheller/shadow-cljs           {:mvn/version "2.15.0"}
+                                    org.clojure/tools.namespace    {:mvn/version "1.1.0"}
                                     ;; Formats spec explain.
-                                    expound/expound             {:mvn/version "0.8.9"}
-                                    fulcrologic/fulcro-spec     {:mvn/version "3.1.12"}
-                                    binaryage/devtools          {:mvn/version "1.0.3"}
-                                    com.github.awkay/workspaces {:mvn/version "1.0.3"}
-                                    juxt/crux-http-server       {:mvn/version "21.05-1.17.0-alpha"}}}}}
+                                    expound/expound                {:mvn/version "0.8.9"}
+                                    fulcrologic/fulcro-spec        {:mvn/version "3.1.12"}
+                                    binaryage/devtools             {:mvn/version "1.0.3"}
+                                    com.github.awkay/workspaces    {:mvn/version "1.0.3"}
+                                    pro.juxt.crux/crux-http-server {:mvn/version "1.17.1"}}}}}
