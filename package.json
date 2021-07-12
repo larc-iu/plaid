@@ -5,12 +5,18 @@
   "version": "x.y.z",
   "description": "",
   "private": true,
-  "dependencies": {
+  "scripts": {
+    "client/main": "yarn shadow-cljs watch :main",
+    "client/cljs": "shadow-cljs cljs-repl :main",
+    "client/clj": "shadow-cljs clj-repl",
+    "server": "clojure -A:dev -J-Dtrace -J-Dguardrails.enabled=true",
+    "start": "yarn run-p client/server server"
+  },
+  "dependencies": {},
+  "devDependencies": {
     "@material-ui/core": "^4.11.0",
     "@material-ui/icons": "^4.9.1",
-    "@material-ui/lab": "^4.0.0-alpha.56"
-  },
-  "devDependencies": {
+    "@material-ui/lab": "^4.0.0-alpha.56",
     "highlight.js": "^10.4.1",
     "marked": "^2.0.0",
     "react": "^17.0.2",

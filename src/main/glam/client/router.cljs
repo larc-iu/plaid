@@ -1,6 +1,7 @@
 (ns glam.client.router
   (:require
     [cljs.spec.alpha :as s]
+    [cljs.pprint :refer [pprint]]
     [taoensso.timbre :as log]
     [clojure.string :as str]
     [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
@@ -15,7 +16,6 @@
     [reitit.frontend.easy :as rfe]
     [reitit.coercion.spec :as rss]
     [glam.client.application :refer [SPA]]
-    [glam.client.prn-debug :refer [pprint-str]]
     [com.fulcrologic.fulcro.data-fetch :as df]
     [com.fulcrologic.fulcro.components :as c :refer [defsc]]))
 
@@ -110,7 +110,7 @@
   (let [m (or m {:path (g/get js/location "pathname")})
         {:keys [path]} m
         has-match? (rf/match-by-path router path)]
-    (log/info "router, match: " (pprint-str m))
+    (log/info "router, match: " (with-out-str (pprint m)))
     (if-not has-match?
       ;; unknown page, redirect to root
       (do
