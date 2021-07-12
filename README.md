@@ -7,20 +7,20 @@ There's not much to look at presently, but if you really want to:
 
 ## Command Line
 ```bash
-# in one session
-$ make fe 
-# in another session
-$ make start-dev-server
+# install dependencies
+$ yarn
+# start compiling CLJS, and start a server repl--note you'll have to type `(start)`
+$ yarn start
 clojure -A:dev
 Clojure 1.10.1
 user=> (start)
-# navigate to localhost:8085
+# navigate to localhost:8085, and see package.json for more
 ```
 
 ## IntelliJ + Cursive
 On the terminal:
 ```bash
-$ make fe
+yarn client/main
 ```
 
 Clojure Server Profile:
@@ -46,11 +46,18 @@ ClojureScript Client Profile:
 ```
 8. Write (js/console.log "hi") and ensure that it was printed out to the console in your browser session
 
+## Release build
+```bash
+clojure -X:uberjar
+# to run:
+java -jar target/server.jar
+```
+
 ## Updating dependencies
 
 ```bash
 # clojure dependencies
-clojure -A:dev -Sdeps '{:deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}}' -m antq.core
+clojure -M:outdated
 # js dependencies
 yarn outdated
 ```
