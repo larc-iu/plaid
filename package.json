@@ -11,9 +11,10 @@
     "client/clj-repl": "shadow-cljs clj-repl",
     "server": "clojure -A:dev",
     "start": "yarn run-p client/server server",
+    "clean": "rm -rf target resources/public/js",
     "client/compile": "yarn shadow-cljs release main",
     "server/compile": "clojure -X:depstar",
-    "compile": "yarn client/compile && yarn server/compile"
+    "compile": "yarn clean && yarn client/compile && yarn server/compile"
   },
   "dependencies": {},
   "devDependencies": {
