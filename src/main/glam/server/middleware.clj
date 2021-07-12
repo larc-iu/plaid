@@ -80,12 +80,6 @@
       (-> (resp/response (index anti-forgery-token))
           (resp/content-type "text/html")))))
 
-(def ^:private not-found-handler
-  (fn [req]
-    {:status  404
-     :headers {"Content-Type" "text/plain"}
-     :body    "404"}))
-
 (defn wrap-api [parser]
   (fn [request]
     (handle-api-request
