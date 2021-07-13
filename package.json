@@ -6,13 +6,13 @@
   "description": "",
   "private": true,
   "scripts": {
-    "client/main": "yarn shadow-cljs watch :main",
-    "client/cljs-repl": "shadow-cljs cljs-repl :main",
-    "client/clj-repl": "shadow-cljs clj-repl",
+    "client/main": "yarn shadow-cljs -A:dev watch :main",
+    "client/cljs-repl": "shadow-cljs -A:dev cljs-repl :main",
+    "client/clj-repl": "shadow-cljs -A:dev clj-repl",
     "server": "clojure -A:dev -J-Dtrace -J-Dguardrails.enabled=true",
     "start": "yarn run-p client/main server",
-    "clean": "rm -rf target resources/public/js",
-    "client/release": "yarn shadow-cljs release main",
+    "clean": "rm -rf target resources/public/js resources/public/workspaces/js",
+    "client/release": "yarn shadow-cljs -A:shadow-cljs release main",
     "server/release": "clojure -X:uberjar",
     "release": "yarn clean && yarn client/release && yarn server/release"
   },

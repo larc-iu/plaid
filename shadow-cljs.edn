@@ -1,5 +1,5 @@
 {:deps
- {:aliases [:dev]}
+ true
 
  :nrepl
  {:port 9000}
@@ -24,8 +24,8 @@
                                                 ;; if using the electron app:
                                                 ;com.fulcrologic.fulcro.inspect.websocket-preload
 
-                                                glam.client.development-preload]
-                                   }}
+                                                glam.client.development-preload]}}
+
   :test       {:target           :browser-test
                :test-dir         "resources/public/js/test"
                :ns-regexp        "-test$"
