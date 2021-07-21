@@ -42,7 +42,7 @@
    ::forms/validator        validator
    ::forms/create-mutation  'glam.models.project/create-project
    ::forms/create-message   "Project created"
-   ::forms/create-append-to (conj ident :all-projects)}
+   ::forms/create-append-to :all-projects}
   (let [close-cu-dialog (fn []
                           (uism/trigger! this ::add-project :event/cancel)
                           (c/transact! this [(finish-add-project {:id id})]))]
@@ -132,6 +132,5 @@
     (mui/box {}
       (mui/paper {}
         (mui/list {}
-          (doall
-            (map ui-project-list-item (sort-by :project/name all-projects))))))))
+          (mapv ui-project-list-item (sort-by :project/name all-projects)))))))
 

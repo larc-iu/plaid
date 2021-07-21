@@ -7,6 +7,7 @@
             [com.fulcrologic.fulcro.ui-state-machines :as uism]
             [com.fulcrologic.fulcro.components :as c]
             [com.fulcrologic.fulcro.dom :as dom]
+            [glam.client.application :refer [SPA]]
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.global-snackbar :as snack]
             [com.fulcrologic.fulcro.mutations :as m]
@@ -373,6 +374,7 @@
          (log/info "edit form: handling create")
          (let [FormClass (uism/actor-class env :actor/form)
                form-ident (uism/actor->ident env :actor/form)
+               modal-ident (uism/actor->ident env :actor/modal-host)
                create-mutation (-> FormClass c/component-options ::create-mutation)
                props (fns/ui->props state-map FormClass form-ident)
                delta (fs/dirty-fields props true)]
@@ -387,6 +389,7 @@
                    {::uism/ok-event    :event/create-ok
                     ::uism/error-event :event/create-error
                     :ident             form-ident
+                    :parent-ident      modal-ident
                     :delta             (get delta form-ident)})))))}
       :event/cancel
       {::uism/handler
@@ -418,9 +421,10 @@
                  form-ident (uism/actor->ident env :actor/form)
                  modal-ident (uism/actor->ident env :actor/modal-host)
                  message (or (-> FormClass c/component-options ::create-message) "Created")
-                 target-list (-> FormClass c/component-options ::create-append-to)]
+                 target-list (conj modal-ident (-> FormClass c/component-options ::create-append-to))]
              (log/info "create ok")
              (log/info (str "ident: " (pr-str form-ident)))
+             (log/info (str "target list: " (pr-str target-list)))
              (snack/message! {:message message :severity "success"})
              (-> env
                  (cond->

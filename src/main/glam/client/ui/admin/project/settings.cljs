@@ -8,14 +8,19 @@
             [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.data-fetch :as df]
             [taoensso.timbre :as log]
+            [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
+            [com.fulcrologic.fulcro.components :as comp]
+            [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
+            [com.fulcrologic.fulcro.ui-state-machines :as uism]
             [glam.client.router :as r]
             [glam.models.session :as sn]
+            [glam.models.text-layer :as txtl]
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.material-ui-icon :as muic]
             [glam.client.ui.common.core :as uic]
             [glam.client.util :as gcu]
-            [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
-            [com.fulcrologic.fulcro.components :as comp]))
+            [glam.client.ui.common.forms :as forms]
+            [com.fulcrologic.fulcro.algorithms.normalized-state :as fns]))
 
 ;; Side panel components --------------------------------------------------------------------------------
 (defsc SpanLayerListItem
@@ -97,12 +102,75 @@
     (:text-layer/id props) (ui-text-layer-form props)
     (:token-layer/id props) (ui-token-layer-form props)
     (:span-layer/id props) (ui-span-layer-form props)
-    (nil? props) (dom/div "Select a layer")
+    (nil? props) (mui/typography {:variant "body1"} "Select a layer")
     :else (dom/div "Unrecognized layer type!")))
 
 (def ui-layer-union (comp/factory LayerUnion))
 
 ;; Top-level component --------------------------------------------------------------------------------
+
+;; create new text layer form
+(defn add-text-layer* [state-map id]
+  (let [text-layer-ident [:text-layer/id id]
+        text-layer {:text-layer/id id :text-layer/name ""}]
+    (assoc-in state-map text-layer-ident text-layer)))
+
+(defmutation init-add-text-layer [{:keys [id]}]
+  (action [{:keys [state ref]}]
+          (swap! state (fn [s]
+                         (-> s
+                             (add-text-layer* id)
+                             (assoc-in (conj ref :ui/add-text-layer) [:text-layer/id id]))))))
+
+(defmutation finish-add-text-layer [{:keys [id]}]
+  (action [{:keys [state ref]}]
+          (swap! state (fn [s]
+                         (fns/remove-entity s [:text-layer/id id])))))
+
+(defsc AddTextLayer [this {:text-layer/keys [id name] :ui/keys [busy?] :as props} {:keys [parent-id]}]
+  {:ident                   :text-layer/id
+   :query                   [fs/form-config-join :text-layer/id :text-layer/name :ui/busy?]
+   :intitial-state          {:ui/busy? false}
+   :form-fields             #{:text-layer/name}
+   ::forms/validator        txtl/validator
+   ::forms/create-mutation  'glam.models.text-layer/create-text-layer
+   ::forms/create-message   "Text layer added"
+   ::forms/create-append-to :project/text-layers}
+  (let [close-ctl-dialog (fn []
+                           (uism/trigger! this ::add-text-layer :event/cancel)
+                           (c/transact! this [(finish-add-text-layer {:id id})]))]
+    (dom/form
+      {:onSubmit (fn [e]
+                   (.preventDefault e)
+                   (uism/trigger! this ::add-text-layer :event/create))}
+      (mui/box {:width 400 :m 1 :p 1}
+        (mui/vertical-grid
+          (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
+            {:fullWidth  true
+             :disabled   busy?
+             :autoFocus  true
+             :last-input true}))
+        (mui/horizontal-grid
+          (mui/button
+            {:type      "submit"
+             :size      "large"
+             :color     "primary"
+             :variant   "contained"
+             :startIcon (muic/create)
+             :disabled  (not (and (fs/dirty? props)
+                                  (fs/checked? props)
+                                  (= :valid (txtl/validator props))
+                                  (not busy?)))}
+            "Create Text Layer")
+          (mui/button
+            {:size      "large"
+             :variant   "outlined"
+             :onClick   close-ctl-dialog
+             :startIcon (muic/cancel)}
+            "Cancel"))))))
+
+(def ui-add-text-layer (c/computed-factory AddTextLayer))
+
 (defn- all-ids
   "Helper function: we want all items to be expanded by default in the tree-view, and to do this we need to
   hand the tree-view all the IDs of our nodes."
@@ -114,13 +182,19 @@
         (some? slid) [slid]
         :else (log/error "Unknown layer type!" props)))
 
-(defsc ProjectSettings [this {:project/keys [id name text-layers] :ui/keys [active-tab] :as props}]
+(defsc ProjectSettings [this {:project/keys [id name text-layers]
+                              :ui/keys      [active-tab add-text-layer modal-open?] :as props}]
   {:query         [:project/id
                    :project/name
                    {:project/text-layers (c/get-query TextLayerListItem)}
+                   {:ui/active-layer (c/get-query LayerUnion)}
+                   {:ui/add-text-layer (c/get-query AddTextLayer)}
                    :ui/active-tab
-                   {:ui/active-layer (c/get-query LayerUnion)}]
+                   :ui/modal-open?]
    :ident         :project/id
+   :initial-state (fn [_]
+                    {:ui/modal-open?    false
+                     :ui/add-text-layer (c/get-initial-state AddTextLayer)})
    :pre-merge     (fn [{:keys [data-tree] :as m}]
                     ;; initial-state doesn't work for some reason
                     (merge {:ui/active-tab "layers"}
@@ -134,6 +208,7 @@
                                    {:post-mutation        `dr/target-ready
                                     :post-mutation-params {:target [:project/id parsed-id]}}))))}
   (let [set-active-layer (fn set-active-layer [ident] (m/set-value! this :ui/active-layer ident))]
+    (log/info add-text-layer)
     (mui/container {:maxWidth "lg" :style {:position "relative"}}
       (mui/page-title name)
       (mui/arrow-breadcrumbs {}
@@ -141,24 +216,53 @@
         (mui/link {:color "inherit" :href (r/route-for :project-overview) :key "project"} "Project Management")
         (mui/link {:color "textPrimary" :href (r/route-for :project-settings {:id id}) :key id} name))
 
+      ;; add text layer modal
+      (mui/dialog {:open modal-open? :onClose #(uism/trigger! this ::add-text-layer :event/cancel)}
+        (mui/dialog-title {} "Add Text Layer")
+        (mui/dialog-content {}
+          (when add-text-layer
+            (ui-add-text-layer (c/computed add-text-layer {:parent-id id})))))
+
+      ;; Tab 1: layer configuration
       (mui/tab-context {:value active-tab}
         (mui/tabs {:value    active-tab
                    :onChange #(m/set-value! this :ui/active-tab %2)}
           (mui/tab {:label "Layers" :value "layers"})
           (mui/tab {:label "Access" :value "access"}))
 
-        (log/info (flatten (map all-ids text-layers)))
         (mui/tab-panel {:value "layers"}
           (mui/grid {:container true :spacing 1}
+            ;; Layer list
             (mui/grid {:item true :xs 12 :md 3}
               (mui/padded-paper {}
-                (mui/tree-view {:expanded (reduce into [] (map all-ids text-layers))}
-                  (doall
-                    (map ui-text-layer-list-item
-                         (map #(comp/computed % {:set-active-layer set-active-layer}) text-layers))))))
+                (comp/fragment
+                  (if (empty? text-layers)
+                    (mui/typography {:variant "subtitle1"
+                                     :color   "textSecondary"} "No layers configured.")
+                    (mui/tree-view {:expanded (reduce into [] (map all-ids text-layers))}
+                      (mapv ui-text-layer-list-item
+                            (map #(comp/computed % {:set-active-layer set-active-layer}) text-layers))))
+                  (mui/button
+                    {:variant   "contained"
+                     :color     "primary"
+                     :startIcon (muic/add)
+                     :style     {:marginTop "1em"}
+                     :onClick   (fn []
+                                  (let [tempid (tempid/tempid)]
+                                    (c/transact! this [(init-add-text-layer {:id tempid})])
+                                    (uism/begin! this forms/create-form-machine ::add-text-layer
+                                                 {:actor/form       (uism/with-actor-class [:text-layer/id tempid] AddTextLayer)
+                                                  :actor/modal-host (uism/with-actor-class [:project/id id] ProjectSettings)})))}
+                    "New Text Layer"))))
+            ;; Layer configuration
             (mui/grid {:item true :xs 12 :md 9}
               (mui/padded-paper {}
-                (ui-layer-union (:ui/active-layer props))))))
+                (if (empty? text-layers)
+                  (mui/typography {:variant "body1"
+                                   :color   "textSecondary"} "No layers configured.")
+                  (ui-layer-union (:ui/active-layer props)))))))
+
+        ;; Tab 2: user permissions
         (mui/tab-panel {:value "access"}
           "Hi World w"
           )))))

@@ -180,7 +180,7 @@
    ::forms/validator        validator
    ::forms/create-mutation  'glam.models.user/create-user
    ::forms/create-message   "User created"
-   ::forms/create-append-to (conj ident :users)}
+   ::forms/create-append-to :users}
   (let [close-cu-dialog (fn []
                           (uism/trigger! this ::add-user :event/cancel)
                           (c/transact! this [(finish-add-user {:id id})]))]
