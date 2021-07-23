@@ -121,8 +121,7 @@
                                                                       :field        :user/new-password})])))
                :disabled  busy?})
             (forms/checkbox-input-with-label this :user/admin? "Admin"
-              {:checked  admin?
-               :color    "primary"
+              {:color    "primary"
                :disabled busy?}))
 
           (forms/form-buttons
@@ -205,8 +204,7 @@
                           (m/set-string! this :user/password :event e)
                           (forms/complete-field this :user/password))})
           (forms/checkbox-input-with-label this :user/admin? "Admin"
-            {:checked  admin?
-             :color    "primary"
+            {:color    "primary"
              :disabled busy?}))
         (mui/horizontal-grid
           (mui/button

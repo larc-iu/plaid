@@ -77,14 +77,15 @@
 
 (defn checkbox-input-with-label
   "Checkbox based on mui/checkbox for use with forms. Note: onChange completes the field by default."
-  [component field label input-attrs]
+  [component field-key label input-attrs]
   (mui/form-control-label
-    {:key     (str field)
+    {:key     (str field-key)
      :label   label
+     :checked (field-key (c/props component))
      :control (mui/checkbox
                 (merge {:onChange (fn [e]
-                                    (m/set-value!! component field (.-checked (.-target e)))
-                                    (complete-field component field))}
+                                    (m/set-value! component field-key (.-checked (.-target e)))
+                                    (complete-field component field-key))}
                        input-attrs))}))
 
 (def delete-button (mui/styled-button {#_#_:background-color "rgb(220, 0, 78)"}))
@@ -192,7 +193,7 @@
          (let [FormClass (uism/actor-class env :actor/form)
                form-ident (uism/actor->ident env :actor/form)
                {:keys [form-fields]} (c/component-options FormClass)]
-           (log/info "edit form: loaded")
+           (log/info "edit form: loaded " FormClass form-ident)
            (-> env
                (uism/apply-action fs/add-form-config* FormClass form-ident {:destructive? true})
                (uism/apply-action fs/entity->pristine* form-ident)
@@ -433,6 +434,8 @@
                  (uism/apply-action fs/entity->pristine* form-ident)
                  (uism/assoc-aliased :busy? false)
                  (uism/apply-action update-in target-list conj form-ident)
+                 ;; Ensure it's a vector of idents--if it was previously empty, it will be a list
+                 (uism/apply-action update-in target-list vec)
                  (uism/exit))))}
         :event/create-error
         {::uism/handler

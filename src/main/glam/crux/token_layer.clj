@@ -3,7 +3,7 @@
             [glam.crux.util :as cutil]
             [glam.crux.easy :as gce]
             [glam.crux.span-layer :as sl])
-  (:refer-clojure :exclude [get]))
+  (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:token-layer/id
                 :token-layer/name
@@ -15,9 +15,9 @@
         (update :token-layer/span-layers cutil/identize :span-layer/id))))
 
 (defn create [node {:token-layer/keys [id] :as attrs}]
-  (let [{:token-layer/keys [id] :as record} (merge (cutil/new-record "token-layer" id)
-                                                   {:token-layer/span-layers []}
-                                                   (select-keys attrs attr-keys))
+  (let [{:token-layer/keys [id] :as record} (clojure.core/merge (cutil/new-record "token-layer" id)
+                                                                {:token-layer/span-layers []}
+                                                                (select-keys attrs attr-keys))
         tx-status (gce/submit! node [[:crux.tx/put record]])]
     {:success tx-status
      :id      id}))
@@ -27,7 +27,21 @@
   [node id]
   (crux->pathom (gce/find-entity node {:token-layer/id id})))
 
+(defn parent-id [node id]
+  (-> (crux/q (crux/db node)
+              '{:find  [?txtl]
+                :where [[?txtl :text-layer/token-layers ?tokl]]
+                :in    [?tokl]}
+              id)
+      first
+      first))
+
 ;; Mutations ----------------------------------------------------------------------
+(defn merge
+  "Note: don't include the join"
+  [node eid m]
+  (gce/merge node eid (select-keys m [:token-layer/name])))
+
 (defn add-span-layer** [node token-layer-id span-layer-id]
   (cutil/add-join** node token-layer-id :token-layer/span-layers span-layer-id))
 (defn add-span-layer [node token-layer-id span-layer-id]

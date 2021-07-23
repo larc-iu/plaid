@@ -13,6 +13,7 @@
             [glam.client.router :as r]
             [glam.models.text-layer :as txtl]
             [glam.models.token-layer :as tokl]
+            [glam.models.span-layer :as sl]
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.material-ui-icon :as muic]
             [glam.client.ui.common.core :as uic]
@@ -22,6 +23,7 @@
 
 ;; Side panel components --------------------------------------------------------------------------------
 ;; ======================================================================================================
+(declare SpanLayerForm)
 (defsc SpanLayerListItem
   [this {:span-layer/keys [id name]} {:keys [set-active-layer]}]
   {:query [:span-layer/name :span-layer/id]
@@ -29,10 +31,14 @@
   (mui/tree-item {:label   name
                   :nodeId  (str id)
                   :icon    (muic/settings-ethernet)
-                  :onClick #(set-active-layer [:span-layer/id id])}))
+                  :onClick (fn []
+                             (set-active-layer [:span-layer/id id])
+                             (uism/begin! this forms/edit-form-machine ::edit-span-layer
+                                          {:actor/form (uism/with-actor-class [:span-layer/id id] SpanLayerForm)}))}))
 
-(def ui-span-list-layer-item (comp/computed-factory SpanLayerListItem {:keyfn :span-layer/id}))
+(def ui-span-layer-list-item (comp/computed-factory SpanLayerListItem {:keyfn :span-layer/id}))
 
+(declare TokenLayerForm)
 (defsc TokenLayerListItem
   [this {:token-layer/keys [id name span-layers]} {:keys [set-active-layer]}]
   {:query [:token-layer/id :token-layer/name
@@ -41,13 +47,16 @@
   (mui/tree-item {:label   name
                   :nodeId  (str id)
                   :icon    (muic/more-horiz)
-                  :onClick #(set-active-layer [:token-layer/id id])}
+                  :onClick (fn []
+                             (set-active-layer [:token-layer/id id])
+                             (uism/begin! this forms/edit-form-machine ::edit-token-layer
+                                          {:actor/form (uism/with-actor-class [:token-layer/id id] TokenLayerForm)}))}
     (when span-layers
       (doall
-        (map ui-span-list-layer-item
+        (map ui-span-layer-list-item
              (map #(comp/computed % {:set-active-layer set-active-layer}) span-layers))))))
 
-(def ui-token-list-layer-item (comp/computed-factory TokenLayerListItem {:keyfn :token-layer/id}))
+(def ui-token-layer-list-item (comp/computed-factory TokenLayerListItem {:keyfn :token-layer/id}))
 
 (declare TextLayerForm)
 (defsc TextLayerListItem
@@ -63,44 +72,41 @@
                                           {:actor/form (uism/with-actor-class [:text-layer/id id] TextLayerForm)}))}
     (when token-layers
       (doall
-        (map ui-token-list-layer-item
+        (map ui-token-layer-list-item
              (map #(comp/computed % {:set-active-layer set-active-layer}) token-layers))))))
 
 (def ui-text-layer-list-item (comp/computed-factory TextLayerListItem {:keyfn :text-layer/id}))
 
 ;; Modals for creating layers ---------------------------------------------------------------------------
 ;; ======================================================================================================
-(defmutation init-add-layer [{:keys [ident modal-join-key form-class]}]
+(defmutation prepare-layer-form
+  "Set up the modal component and the join before letting the UISM take over"
+  [{:keys [ident modal-join-key form-class]}]
   (action [{:keys [state ref]}]
           (swap! state (fn [s]
                          (-> s
                              (assoc-in ident (into (c/get-initial-state form-class) [ident]))
                              (assoc-in (conj ref modal-join-key) ident))))))
 
-(defmutation finish-add-layer [{:keys [ident]}]
-  (action [{:keys [state ref]}]
-          (swap! state (fn [s]
-                         (fns/remove-entity s ident)))))
 
-(defsc AddTextLayer [this {:text-layer/keys [id] :ui/keys [busy?] :as props}]
-  {:ident                   :text-layer/id
-   :query                   [fs/form-config-join :text-layer/id :text-layer/name :ui/busy?]
-   :initial-state           {:ui/busy? false}
-   :form-fields             #{:text-layer/name}
-   ::forms/validator        txtl/validator
-   ::forms/create-mutation  'glam.models.text-layer/create-text-layer
-   ::forms/create-message   "Text layer added"
-   ::forms/create-append-to :project/text-layers}
+(defsc AddSpanLayer [this {:span-layer/keys [id] :ui/keys [busy?] :as props}]
+  {:ident                   :span-layer/id
+   :query                   [fs/form-config-join :span-layer/id :span-layer/name :ui/busy?]
+   :initial-state           {:ui/busy? false :span-layer/name ""}
+   :form-fields             #{:span-layer/name}
+   ::forms/validator        sl/validator
+   ::forms/create-mutation  'glam.models.span-layer/create-span-layer
+   ::forms/create-message   "Span layer added"
+   ::forms/create-append-to :token-layer/span-layers}
   (let [close-ctl-dialog (fn []
-                           (uism/trigger! this ::add-text-layer :event/cancel)
-                           (c/transact! this [(finish-add-layer {:ident [:text-layer/id id]})]))]
+                           (uism/trigger! this ::add-span-layer :event/cancel))]
     (dom/form
       {:onSubmit (fn [e]
                    (.preventDefault e)
-                   (uism/trigger! this ::add-text-layer :event/create))}
+                   (uism/trigger! this ::add-span-layer :event/create))}
       (mui/box {:width 400 :m 1 :p 1}
         (mui/vertical-grid
-          (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
+          (forms/text-input-with-label this :span-layer/name "Name" "Must have 1 to 80 characters"
             {:fullWidth  true
              :disabled   busy?
              :autoFocus  true
@@ -114,9 +120,9 @@
              :startIcon (muic/create)
              :disabled  (not (and (fs/dirty? props)
                                   (fs/checked? props)
-                                  (= :valid (txtl/validator props))
+                                  (= :valid (sl/validator props))
                                   (not busy?)))}
-            "Create Text Layer")
+            "Create Span Layer")
           (mui/button
             {:size      "large"
              :variant   "outlined"
@@ -124,20 +130,19 @@
              :startIcon (muic/cancel)}
             "Cancel"))))))
 
-(def ui-add-text-layer (c/factory AddTextLayer))
+(def ui-add-span-layer (c/factory AddSpanLayer))
 
 (defsc AddTokenLayer [this {:token-layer/keys [id] :ui/keys [busy?] :as props}]
   {:ident                   :token-layer/id
    :query                   [fs/form-config-join :token-layer/id :token-layer/name :ui/busy?]
-   :initial-state           {:ui/busy? false}
+   :initial-state           {:ui/busy? false :token-layer/name ""}
    :form-fields             #{:token-layer/name}
    ::forms/validator        tokl/validator
    ::forms/create-mutation  'glam.models.token-layer/create-token-layer
    ::forms/create-message   "Token layer added"
    ::forms/create-append-to :text-layer/token-layers}
   (let [close-ctl-dialog (fn []
-                           (uism/trigger! this ::add-token-layer :event/cancel)
-                           (c/transact! this [(finish-add-layer {:ident [:token-layer/id id]})]))]
+                           (uism/trigger! this ::add-token-layer :event/cancel))]
     (dom/form
       {:onSubmit (fn [e]
                    (.preventDefault e)
@@ -170,6 +175,49 @@
 
 (def ui-add-token-layer (c/factory AddTokenLayer))
 
+(defsc AddTextLayer [this {:text-layer/keys [id] :ui/keys [busy?] :as props}]
+  {:ident                   :text-layer/id
+   :query                   [fs/form-config-join :text-layer/id :text-layer/name :ui/busy?]
+   :initial-state           {:ui/busy? false :text-layer/name ""}
+   :form-fields             #{:text-layer/name}
+   ::forms/validator        txtl/validator
+   ::forms/create-mutation  'glam.models.text-layer/create-text-layer
+   ::forms/create-message   "Text layer added"
+   ::forms/create-append-to :project/text-layers}
+  (let [close-ctl-dialog (fn []
+                           (uism/trigger! this ::add-text-layer :event/cancel))]
+    (dom/form
+      {:onSubmit (fn [e]
+                   (.preventDefault e)
+                   (uism/trigger! this ::add-text-layer :event/create))}
+      (mui/box {:width 400 :m 1 :p 1}
+        (mui/vertical-grid
+          (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
+            {:fullWidth  true
+             :disabled   busy?
+             :autoFocus  true
+             :last-input true}))
+        (mui/horizontal-grid
+          (mui/button
+            {:type      "submit"
+             :size      "large"
+             :color     "primary"
+             :variant   "contained"
+             :startIcon (muic/create)
+             :disabled  (not (and (fs/dirty? props)
+                                  (fs/checked? props)
+                                  (= :valid (txtl/validator props))
+                                  (not busy?)))}
+            "Create Text Layer")
+          (mui/button
+            {:size      "large"
+             :variant   "outlined"
+             :onClick   close-ctl-dialog
+             :startIcon (muic/cancel)}
+            "Cancel"))))))
+
+(def ui-add-text-layer (c/factory AddTextLayer))
+
 ;; Main panel components --------------------------------------------------------------------------------
 ;; ======================================================================================================
 (defn exit-layer-uism
@@ -189,23 +237,123 @@
       (let [components (c/ident->components this [id-kwd (id-kwd props)])
             form-component (first (filter #(clojure.string/includes? (c/component-name %) class-name)
                                           components))]
+        (log/info "Exiting uism: " id-kwd)
         (uism/trigger! form-component asm-id :event/reset)
         (uism/trigger! form-component asm-id :event/exit))
       (log/warn "Tried to exit a UISM, but didn't recognize the type. Props :" props))))
 
 (defsc SpanLayerForm
-  [this {:span-layer/keys [id name]}]
-  {:query [:span-layer/name :span-layer/id]
-   :ident :span-layer/id}
-  name)
+  [this {:span-layer/keys [id name overlap to-many] :ui/keys [busy?] :as props}]
+  {:query                  [:span-layer/name :span-layer/id :span-layer/overlap :span-layer/to-many
+                            fs/form-config-join :ui/busy?]
+   :ident                  :span-layer/id
+   :pre-merge              (fn [{:keys [data-tree] :as m}]
+                             (merge {:ui/busy? false}
+                                    data-tree))
+   :form-fields            #{:span-layer/name :span-layer/overlap :span-layer/to-many}
+   ::forms/validator       sl/validator
+   ::forms/save-mutation   'glam.models.span-layer/save-span-layer
+   ::forms/delete-mutation 'glam.models.span-layer/delete-span-layer
+   ::forms/delete-message  "Span layer deleted"}
+  (let [dirty (fs/dirty? props)]
+    (dom/form
+      {:onSubmit (fn [e]
+                   (.preventDefault e)
+                   (uism/trigger! this ::edit-span-layer :event/save)
+                   (c/transact! this [(fs/clear-complete! {:entity-ident [:span-layer/id id]})]))}
+      (mui/vertical-grid
+        {:spacing 2}
+        (mui/typography {:variant "h5"} "Span Layer: " name)
+        (forms/text-input-with-label this :span-layer/name "Name" "Must have 1 to 80 characters"
+          {:fullWidth true
+           :disabled  busy?})
+        (forms/checkbox-input-with-label this :span-layer/overlap "Overlap"
+          {:disabled busy?
+           :color "primary"})
+        (forms/checkbox-input-with-label this :span-layer/to-many "To-many"
+          {:disabled busy?
+           :color "primary"})
+        (forms/form-buttons
+          {:component       this
+           :validator       sl/validator
+           :props           props
+           :busy?           busy?
+           :submit-token    "Save Span Layer"
+           :reset-token     "Discard Changes"
+           :on-reset        (fn []
+                              (uism/trigger! this ::edit-span-layer :event/reset)
+                              (c/transact! this [(fs/clear-complete! {:entity-ident [:span-layer/id id]})]))
+           :on-delete       #(uism/trigger! this ::edit-span-layer :event/delete)
+           :submit-disabled (or (not dirty)
+                                (not= :valid (sl/validator props))
+                                (not (fs/checked? props))
+                                busy?)
+           :reset-disabled  (not (and dirty (not busy?)))})))))
 
 (def ui-span-layer-form (comp/factory SpanLayerForm))
 
 (defsc TokenLayerForm
-  [this {:token-layer/keys [id name]}]
-  {:query [:token-layer/id :token-layer/name]
-   :ident :token-layer/id}
-  name)
+  [this {:token-layer/keys [id name] :ui/keys [busy? modal-open? add-span-layer] :as props}]
+  {:query                  [:token-layer/id :token-layer/name fs/form-config-join :ui/busy? :ui/modal-open?
+                            {:ui/add-span-layer (c/get-query AddSpanLayer)}]
+   :ident                  :token-layer/id
+   :pre-merge              (fn [{:keys [data-tree] :as m}]
+                             (merge {:ui/modal-open? false
+                                     :ui/busy?       false}
+                                    data-tree))
+   :form-fields            #{:token-layer/name}
+   ::forms/validator       tokl/validator
+   ::forms/save-mutation   'glam.models.token-layer/save-token-layer
+   ::forms/delete-mutation 'glam.models.token-layer/delete-token-layer
+   ::forms/delete-message  "Token layer deleted"}
+  (let [dirty (fs/dirty? props)]
+    (c/fragment
+      (mui/dialog {:open (and (not busy?) modal-open?) :onClose #(uism/trigger! this ::add-span-layer :event/cancel)}
+        (mui/dialog-title {} "Add Span Layer")
+        (mui/dialog-content {}
+          (when add-span-layer
+            (ui-add-span-layer add-span-layer))))
+      (dom/form
+        {:onSubmit (fn [e]
+                     (.preventDefault e)
+                     (uism/trigger! this ::edit-token-layer :event/save)
+                     (c/transact! this [(fs/clear-complete! {:entity-ident [:token-layer/id id]})]))}
+        (mui/vertical-grid
+          {:spacing 2}
+          (mui/typography {:variant "h5"} "Token Layer: " name)
+          (forms/text-input-with-label this :token-layer/name "Name" "Must have 1 to 80 characters"
+            {:fullWidth true
+             :disabled  busy?})
+          (mui/button
+            {:variant   "outlined"
+             :color     "primary"
+             :startIcon (muic/add)
+             :style     {:marginTop "1em"}
+             :onClick   (fn []
+                          (let [tempid (tempid/tempid)]
+                            (c/transact! this [(prepare-layer-form {:ident          [:span-layer/id tempid]
+                                                                    :modal-join-key :ui/add-span-layer
+                                                                    :form-class     AddSpanLayer})])
+                            (uism/begin! this forms/create-form-machine ::add-span-layer
+                                         {:actor/form       (uism/with-actor-class [:span-layer/id tempid] AddSpanLayer)
+                                          :actor/modal-host (uism/with-actor-class [:token-layer/id id] TokenLayerForm)})))}
+            "Add Span Layer")
+          (forms/form-buttons
+            {:component       this
+             :validator       tokl/validator
+             :props           props
+             :busy?           busy?
+             :submit-token    "Save Span Layer"
+             :reset-token     "Discard Changes"
+             :on-reset        (fn []
+                                (uism/trigger! this ::edit-token-layer :event/reset)
+                                (c/transact! this [(fs/clear-complete! {:entity-ident [:token-layer/id id]})]))
+             :on-delete       #(uism/trigger! this ::edit-token-layer :event/delete)
+             :submit-disabled (or (not dirty)
+                                  (not= :valid (tokl/validator props))
+                                  (not (fs/checked? props))
+                                  busy?)
+             :reset-disabled  (not (and dirty (not busy?)))}))))))
 
 (def ui-token-layer-form (comp/factory TokenLayerForm))
 
@@ -229,7 +377,8 @@
       (mui/dialog {:open (and (not busy?) modal-open?) :onClose #(uism/trigger! this ::add-token-layer :event/cancel)}
         (mui/dialog-title {} "Add Token Layer")
         (mui/dialog-content {}
-          (ui-add-token-layer add-token-layer)))
+          (when add-token-layer
+            (ui-add-token-layer add-token-layer))))
       (dom/form
         {:onSubmit (fn [e]
                      (.preventDefault e)
@@ -248,9 +397,9 @@
              :style     {:marginTop "1em"}
              :onClick   (fn []
                           (let [tempid (tempid/tempid)]
-                            (c/transact! this [(init-add-layer {:ident          [:token-layer/id tempid]
-                                                                :modal-join-key :ui/add-token-layer
-                                                                :form-class     AddTokenLayer})])
+                            (c/transact! this [(prepare-layer-form {:ident          [:token-layer/id tempid]
+                                                                    :modal-join-key :ui/add-token-layer
+                                                                    :form-class     AddTokenLayer})])
                             (uism/begin! this forms/create-form-machine ::add-token-layer
                                          {:actor/form       (uism/with-actor-class [:token-layer/id tempid] AddTokenLayer)
                                           :actor/modal-host (uism/with-actor-class [:text-layer/id id] TextLayerForm)})))}
@@ -356,10 +505,13 @@
         (mui/link {:color "textPrimary" :href (r/route-for :project-settings {:id id}) :key id} name))
 
       ;; add text layer modal
-      (mui/dialog {:open modal-open? :onClose #(uism/trigger! this ::add-text-layer :event/cancel)}
+      (mui/dialog {:open    modal-open?
+                   :onClose (fn []
+                              (uism/trigger! this ::add-text-layer :event/cancel))}
         (mui/dialog-title {} "Add Text Layer")
         (mui/dialog-content {}
-          (ui-add-text-layer add-text-layer)))
+          (when add-text-layer
+            (ui-add-text-layer add-text-layer))))
 
       ;; Tab 1: layer configuration
       (mui/tab-context {:value active-tab}
@@ -388,9 +540,9 @@
                      :style     {:marginTop "1em"}
                      :onClick   (fn []
                                   (let [tempid (tempid/tempid)]
-                                    (c/transact! this [(init-add-layer {:ident          [:text-layer/id tempid]
-                                                                        :modal-join-key :ui/add-text-layer
-                                                                        :form-class     AddTextLayer})])
+                                    (c/transact! this [(prepare-layer-form {:ident          [:text-layer/id tempid]
+                                                                            :modal-join-key :ui/add-text-layer
+                                                                            :form-class     AddTextLayer})])
                                     (uism/begin! this forms/create-form-machine ::add-text-layer
                                                  {:actor/form       (uism/with-actor-class [:text-layer/id tempid] AddTextLayer)
                                                   :actor/modal-host (uism/with-actor-class [:project/id id] ProjectSettings)})))}

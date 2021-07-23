@@ -52,8 +52,7 @@
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (log/info (str "id:" (:ident params)))
-     (let [new-name (some-> delta :text-layer/name :after)
-           valid? (mc/validate-delta record-valid? delta)]
+     (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
          ;; must be valid
          (not valid?)
