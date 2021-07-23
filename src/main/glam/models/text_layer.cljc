@@ -20,6 +20,10 @@
   (let [v (get form field)]
     (field-valid field v)))
 
+(defn record-valid? [record]
+  (every? (fn [[k v]]
+            (field-valid k v)) (log/spy record)))
+
 (def validator (fs/make-validator text-layer-valid))
 
 ;; user --------------------------------------------------------------------------------
@@ -44,5 +48,35 @@
            {:tempids {temp-id id}})))))
 
 #?(:clj
-   (def text-layer-resolvers [get-text-layer create-text-layer]))
+   (pc/defmutation save-text-layer [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
+     {::pc/transform ma/admin-required
+      ::pc/output    [:server/error? :server/message]}
+     (log/info (str "id:" (:ident params)))
+     (let [new-name (some-> delta :text-layer/name :after)
+           valid? (mc/validate-delta record-valid? delta)]
+       (cond
+         ;; must be valid
+         (not valid?)
+         (server-error (str "Text layer delta invalid: " delta))
+         :else
+         (if-not (txtl/merge crux id (mc/apply-delta {} delta))
+           (server-error (str "Failed to save text-layer information, please refresh and try again"))
+           (gce/entity crux id))))))
+
+#?(:clj
+   (pc/defmutation delete-text-layer [{:keys [crux]} {[_ id] :ident :as params}]
+     {::pc/transform ma/admin-required}
+     (cond
+       ;; ensure the text layer to be deleted exists
+       (not (gce/entity crux id))
+       (server-error (str "Text layer not found by ID " id))
+       ;; otherwise, go ahead
+       :else
+       (let [name (:text-layer/name (gce/entity crux id))]
+         (if-not (txtl/delete crux id)
+           (server-error (str "Failed to delete text layer " name ". Please refresh and try again"))
+           (server-message (str "Text layer " name " deleted")))))))
+
+#?(:clj
+   (def text-layer-resolvers [get-text-layer create-text-layer save-text-layer delete-text-layer]))
 

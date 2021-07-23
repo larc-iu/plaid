@@ -3,7 +3,7 @@
             [glam.crux.util :as cutil]
             [glam.crux.easy :as gce]
             [glam.crux.token-layer :as tokl])
-  (:refer-clojure :exclude [get]))
+  (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:text-layer/id
                 :text-layer/name
@@ -15,9 +15,9 @@
         (update :text-layer/token-layers cutil/identize :token-layer/id))))
 
 (defn create [node {:text-layer/keys [id] :as attrs}]
-  (let [{:text-layer/keys [id] :as record} (merge (cutil/new-record "text-layer" id)
-                                                  {:text-layer/token-layers []}
-                                                  (select-keys attrs attr-keys))
+  (let [{:text-layer/keys [id] :as record} (clojure.core/merge (cutil/new-record "text-layer" id)
+                                                               {:text-layer/token-layers []}
+                                                               (select-keys attrs attr-keys))
         tx-status (gce/submit! node [[:crux.tx/put record]])]
     {:success tx-status
      :id      id}))
@@ -28,6 +28,11 @@
   (crux->pathom (gce/find-entity node {:text-layer/id id})))
 
 ;; Mutations ----------------------------------------------------------------------
+(defn merge
+  "Note: don't include the join"
+  [node eid m]
+  (gce/merge node eid (select-keys m [:text-layer/name])))
+
 (defn add-token-layer** [node text-layer-id token-layer-id]
   (cutil/add-join** node text-layer-id :text-layer/token-layers token-layer-id))
 (defn add-token-layer [node text-layer-id token-layer-id]

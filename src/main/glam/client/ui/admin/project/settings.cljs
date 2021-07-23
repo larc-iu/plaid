@@ -50,6 +50,7 @@
 
 (def ui-token-list-layer-item (comp/computed-factory TokenLayerListItem {:keyfn :token-layer/id}))
 
+(declare TextLayerForm)
 (defsc TextLayerListItem
   [this {:text-layer/keys [id name token-layers]} {:keys [set-active-layer]}]
   {:query [:text-layer/id :text-layer/name {:text-layer/token-layers (comp/get-query TokenLayerListItem)}]
@@ -57,7 +58,10 @@
   (mui/tree-item {:label   name
                   :nodeId  id
                   :icon    (muic/description-outlined)
-                  :onClick #(set-active-layer [:text-layer/id id])}
+                  :onClick (fn []
+                             (set-active-layer [:text-layer/id id])
+                             (uism/begin! this forms/edit-form-machine ::edit-text-layer
+                                          {:actor/form (uism/with-actor-class [:text-layer/id id] TextLayerForm)}))}
     (when token-layers
       (doall
         (map ui-token-list-layer-item
@@ -66,6 +70,27 @@
 (def ui-text-layer-list-item (comp/computed-factory TextLayerListItem {:keyfn :text-layer/id}))
 
 ;; Main panel components --------------------------------------------------------------------------------
+(defn exit-layer-uism
+  "Triggered when a new panel is activated--we need to use this function to close the current UISM.
+  It's a little complicated, because we need to get a ref to the component that needs to be closed, which
+  we don't easily have from the perspective of the thing being clicked. To get around this, we find all
+  components using the ident that needs to be closed, and "
+  [this props]
+  ;; See what the active layer is and note some information about it
+  ;; TODO: not a lovely solution to use class name... anything better?
+  (let [[id-kwd class-name asm-id] (cond
+                                     (:text-layer/id props) [:text-layer/id "TextLayerForm" ::edit-text-layer]
+                                     (:token-layer/id props) [:token-layer/id "TokenLayerForm" ::edit-token-layer]
+                                     (:span-layer/id props) [:span-layer/id "SpanLayerForm" ::edit-span-layer]
+                                     :else nil)]
+    (if id-kwd
+      (let [components (c/ident->components this [id-kwd (id-kwd props)])
+            form-component (first (filter #(clojure.string/includes? (c/component-name %) class-name)
+                                          components))]
+        (uism/trigger! form-component asm-id :event/reset)
+        (uism/trigger! form-component asm-id :event/exit))
+      (log/warn "Tried to exit a UISM, but didn't recognize the type. Props :" props))))
+
 (defsc SpanLayerForm
   [this {:span-layer/keys [id name]}]
   {:query [:span-layer/name :span-layer/id]
@@ -83,10 +108,42 @@
 (def ui-token-layer-form (comp/factory TokenLayerForm))
 
 (defsc TextLayerForm
-  [this {:text-layer/keys [id name]}]
-  {:query [:text-layer/id :text-layer/name]
-   :ident :text-layer/id}
-  name)
+  [this {:text-layer/keys [id name] :ui/keys [busy?] :as props}]
+  {:query                  [:text-layer/id :text-layer/name fs/form-config-join :ui/busy?]
+   :ident                  :text-layer/id
+   :form-fields            #{:text-layer/name}
+   ::forms/validator       txtl/validator
+   ::forms/save-mutation   'glam.models.text-layer/save-text-layer
+   ::forms/delete-mutation 'glam.models.text-layer/delete-text-layer
+   ::forms/delete-message  "Text layer deleted"}
+  (let [dirty (fs/dirty? props)]
+    (dom/form
+      {:onSubmit (fn [e]
+                   (.preventDefault e)
+                   (uism/trigger! this ::edit-text-layer :event/save)
+                   (c/transact! this [(fs/clear-complete! {:entity-ident [:text-layer/id id]})]))}
+      (mui/vertical-grid
+        {:spacing 2}
+        (mui/typography {:variant "h5"} "Text Layer: " name)
+        (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
+          {:fullWidth true
+           :disabled  busy?})
+        (forms/form-buttons
+          {:component       this
+           :validator       txtl/validator
+           :props           props
+           :busy?           busy?
+           :submit-text     "Save Text Layer"
+           :reset-text      "Discard Changes"
+           :on-reset        (fn []
+                              (uism/trigger! this ::edit-text-layer :event/reset)
+                              (c/transact! this [(fs/clear-complete! {:entity-ident [:text-layer/id id]})]))
+           :on-delete       #(uism/trigger! this ::edit-text-layer :event/delete)
+           :submit-disabled (or (not dirty)
+                                (not= :valid (txtl/validator props))
+                                (not (fs/checked? props))
+                                busy?)
+           :reset-disabled  (not (and dirty (not busy?)))})))))
 
 (def ui-text-layer-form (comp/factory TextLayerForm))
 
@@ -102,7 +159,7 @@
     (:text-layer/id props) (ui-text-layer-form props)
     (:token-layer/id props) (ui-token-layer-form props)
     (:span-layer/id props) (ui-span-layer-form props)
-    (nil? props) (mui/typography {:variant "body1"} "Select a layer")
+    (nil? props) (mui/typography {:variant "subtitle1" :component "h3"} "Select a layer")
     :else (dom/div "Unrecognized layer type!")))
 
 (def ui-layer-union (comp/factory LayerUnion))
@@ -183,7 +240,7 @@
         :else (log/error "Unknown layer type!" props)))
 
 (defsc ProjectSettings [this {:project/keys [id name text-layers]
-                              :ui/keys      [active-tab add-text-layer modal-open?] :as props}]
+                              :ui/keys      [active-tab add-text-layer modal-open? active-layer] :as props}]
   {:query         [:project/id
                    :project/name
                    {:project/text-layers (c/get-query TextLayerListItem)}
@@ -207,8 +264,10 @@
                         #(df/load! app [:project/id parsed-id] ProjectSettings
                                    {:post-mutation        `dr/target-ready
                                     :post-mutation-params {:target [:project/id parsed-id]}}))))}
-  (let [set-active-layer (fn set-active-layer [ident] (m/set-value! this :ui/active-layer ident))]
-    (log/info add-text-layer)
+  (let [set-active-layer (fn set-active-layer [ident]
+                           (when active-layer
+                             (exit-layer-uism this active-layer))
+                           (m/set-value! this :ui/active-layer ident))]
     (mui/container {:maxWidth "lg" :style {:position "relative"}}
       (mui/page-title name)
       (mui/arrow-breadcrumbs {}
@@ -237,8 +296,9 @@
               (mui/padded-paper {}
                 (comp/fragment
                   (if (empty? text-layers)
-                    (mui/typography {:variant "subtitle1"
-                                     :color   "textSecondary"} "No layers configured.")
+                    (mui/typography {:variant   "subtitle1"
+                                     :component "h3"
+                                     :color     "textSecondary"} "No layers configured.")
                     (mui/tree-view {:expanded (reduce into [] (map all-ids text-layers))}
                       (mapv ui-text-layer-list-item
                             (map #(comp/computed % {:set-active-layer set-active-layer}) text-layers))))
@@ -258,8 +318,9 @@
             (mui/grid {:item true :xs 12 :md 9}
               (mui/padded-paper {}
                 (if (empty? text-layers)
-                  (mui/typography {:variant "body1"
-                                   :color   "textSecondary"} "No layers configured.")
+                  (mui/typography {:variant   "subtitle1"
+                                   :component "h3"
+                                   :color     "textSecondary"} "No layers configured.")
                   (ui-layer-union (:ui/active-layer props)))))))
 
         ;; Tab 2: user permissions

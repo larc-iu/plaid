@@ -68,10 +68,10 @@
                                 (complete-field component field-key)))
                 :onChange   (if last-input
                               (fn [e]
-                                (m/set-string!! component field-key :event e)
+                                (m/set-string! component field-key :event e)
                                 (complete-field component field-key))
                               (fn [e]
-                                (m/set-string!! component field-key :event e)))
+                                (m/set-string! component field-key :event e)))
                 :value      (field-key (c/props component))}
                (dissoc input-attrs :last-input))))))
 

@@ -162,7 +162,8 @@
             ["@material-ui/lab/ToggleButtonGroup" :default ToggleButtonGroup]
             ["@material-ui/lab/TreeItem" :default TreeItem]
             ["@material-ui/lab/TreeView" :default TreeView]
-            [glam.client.ui.material-ui-icon :as muic]))
+            [glam.client.ui.material-ui-icon :as muic]
+            [taoensso.timbre :as log]))
 
 
 ;; BEGIN AUTO GEN
@@ -371,20 +372,26 @@
   (mb-breadcrumbs (merge {:separator (muic/navigate-next)} attrs)
     children))
 
-(defn vertical-grid [& children]
+(defn vertical-grid [& [maybe-attr-map & _ :as children]]
   "Only use with static seqs! (key function is just the position in the list)"
-  (grid {:container true :direction "column" :spacing 1}
-    (map-indexed (fn [i child]
-                   (grid {:item true
-                          :key  i}
-                     child))
-                 children)))
+  (let [have-map? (map? maybe-attr-map)
+        attrs (merge {:container true :direction "column" :spacing 1} (if have-map? maybe-attr-map {}))
+        children (if have-map? (rest children) children)]
+    (grid attrs
+      (map-indexed (fn [i child]
+                     (grid {:item true
+                            :key  i}
+                       child))
+                   children))))
 
-(defn horizontal-grid [& children]
+(defn horizontal-grid [& [maybe-attr-map & _ :as children]]
   "Only use with static seqs! (key function is just the position in the list)"
-  (grid {:container true :direction "row" :spacing 1}
-    (map-indexed (fn [i child]
-                   (grid {:item true
-                          :key  i}
-                     child))
-                 children)))
+  (let [have-map? (map? maybe-attr-map)
+        attrs (merge {:container true :direction "row" :spacing 1} (if have-map? maybe-attr-map {}))
+        children (if have-map? (rest children) children)]
+    (grid attrs
+      (map-indexed (fn [i child]
+                     (grid {:item true
+                            :key  i}
+                       child))
+                   children))))
