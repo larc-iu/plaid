@@ -27,6 +27,15 @@
   [node id]
   (crux->pathom (gce/find-entity node {:text-layer/id id})))
 
+(defn parent-id [node id]
+  (-> (crux/q (crux/db node)
+              '{:find  [?p]
+                :where [[?p :project/text-layers ?txtl]]
+                :in    [?txtl]}
+              id)
+      first
+      first))
+
 ;; Mutations ----------------------------------------------------------------------
 (defn merge
   "Note: don't include the join"

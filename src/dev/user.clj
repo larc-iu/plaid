@@ -67,6 +67,7 @@
                           {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"
                            :user/name          "admin"
                            :user/email         "a@b.com"
+                           :user/admin?        true
                            :user/id            :admin}))
           user1 (:id (usr/create
                        node

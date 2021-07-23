@@ -23,6 +23,7 @@
             [com.fulcrologic.fulcro.algorithms.normalized-state :as fns]))
 
 ;; Side panel components --------------------------------------------------------------------------------
+;; ======================================================================================================
 (defsc SpanLayerListItem
   [this {:span-layer/keys [id name]} {:keys [set-active-layer]}]
   {:query [:span-layer/name :span-layer/id]
@@ -69,7 +70,74 @@
 
 (def ui-text-layer-list-item (comp/computed-factory TextLayerListItem {:keyfn :text-layer/id}))
 
+;; Modals for creating layers ---------------------------------------------------------------------------
+;; ======================================================================================================
+(defmutation init-add-layer [{:keys [ident
+                                     modal-join-key
+                                     form-class]}]
+  (action [{:keys [state ref]}]
+          (log/info ident modal-join-key form-class)
+          (log/info (c/get-initial-state form-class))
+          (log/info (get-in @state [:project/id :project1]))
+          (log/info "props" (into (c/get-initial-state form-class)
+                                  [ident]))
+          (swap! state (fn [s]
+                         (-> s
+                             (assoc-in ident (into (c/get-initial-state form-class)
+                                                   [ident]))
+                             (assoc-in (conj ref modal-join-key) ident))))))
+
+(defmutation finish-add-layer [{:keys [ident]}]
+  (action [{:keys [state ref]}]
+          (swap! state (fn [s]
+                         (fns/remove-entity s ident)))))
+
+(defsc AddTextLayer [this {:text-layer/keys [id name] :ui/keys [busy?] :as props} {:keys [parent-id]}]
+  {:ident                   :text-layer/id
+   :query                   [fs/form-config-join :text-layer/id :text-layer/name :ui/busy?]
+   :initial-state           {:ui/busy? false :text-layer/name ""}
+   :form-fields             #{:text-layer/name}
+   ::forms/validator        txtl/validator
+   ::forms/create-mutation  'glam.models.text-layer/create-text-layer
+   ::forms/create-message   "Text layer added"
+   ::forms/create-append-to :project/text-layers}
+  (let [close-ctl-dialog (fn []
+                           (uism/trigger! this ::add-text-layer :event/cancel)
+                           (c/transact! this [(finish-add-layer {:ident [:text-layer/id id]})]))]
+    (dom/form
+      {:onSubmit (fn [e]
+                   (.preventDefault e)
+                   (uism/trigger! this ::add-text-layer :event/create))}
+      (mui/box {:width 400 :m 1 :p 1}
+        (mui/vertical-grid
+          (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
+            {:fullWidth  true
+             :disabled   busy?
+             :autoFocus  true
+             :last-input true}))
+        (mui/horizontal-grid
+          (mui/button
+            {:type      "submit"
+             :size      "large"
+             :color     "primary"
+             :variant   "contained"
+             :startIcon (muic/create)
+             :disabled  (not (and (fs/dirty? props)
+                                  (fs/checked? props)
+                                  (= :valid (txtl/validator props))
+                                  (not busy?)))}
+            "Create Text Layer")
+          (mui/button
+            {:size      "large"
+             :variant   "outlined"
+             :onClick   close-ctl-dialog
+             :startIcon (muic/cancel)}
+            "Cancel"))))))
+
+(def ui-add-text-layer (c/computed-factory AddTextLayer))
+
 ;; Main panel components --------------------------------------------------------------------------------
+;; ======================================================================================================
 (defn exit-layer-uism
   "Triggered when a new panel is activated--we need to use this function to close the current UISM.
   It's a little complicated, because we need to get a ref to the component that needs to be closed, which
@@ -128,6 +196,18 @@
         (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
           {:fullWidth true
            :disabled  busy?})
+        #_(mui/button
+            {:variant   "contained"
+             :color     "primary"
+             :startIcon (muic/add)
+             :style     {:marginTop "1em"}
+             :onClick   (fn []
+                          (let [tempid (tempid/tempid)]
+                            (c/transact! this [(init-add-token-layer {:id tempid})])
+                            (uism/begin! this forms/create-form-machine ::add-text-layer
+                                         {:actor/form       (uism/with-actor-class [:token-layer/id tempid] AddTokenLayer)
+                                          :actor/modal-host (uism/with-actor-class [:text-layer/id id] TextLayerForm)})))}
+            "Add Token Layer")
         (forms/form-buttons
           {:component       this
            :validator       txtl/validator
@@ -147,6 +227,8 @@
 
 (def ui-text-layer-form (comp/factory TextLayerForm))
 
+;; We need a union to account for the fact that we have one location that will have entities of
+;; potentially many types.
 (defsc LayerUnion [this props]
   {:ident (fn [] (cond (:text-layer/id props) [:text-layer/id (:text-layer/id props)]
                        (:token-layer/id props) [:token-layer/id (:token-layer/id props)]
@@ -164,70 +246,8 @@
 
 (def ui-layer-union (comp/factory LayerUnion))
 
-;; Top-level component --------------------------------------------------------------------------------
-
-;; create new text layer form
-(defn add-text-layer* [state-map id]
-  (let [text-layer-ident [:text-layer/id id]
-        text-layer {:text-layer/id id :text-layer/name ""}]
-    (assoc-in state-map text-layer-ident text-layer)))
-
-(defmutation init-add-text-layer [{:keys [id]}]
-  (action [{:keys [state ref]}]
-          (swap! state (fn [s]
-                         (-> s
-                             (add-text-layer* id)
-                             (assoc-in (conj ref :ui/add-text-layer) [:text-layer/id id]))))))
-
-(defmutation finish-add-text-layer [{:keys [id]}]
-  (action [{:keys [state ref]}]
-          (swap! state (fn [s]
-                         (fns/remove-entity s [:text-layer/id id])))))
-
-(defsc AddTextLayer [this {:text-layer/keys [id name] :ui/keys [busy?] :as props} {:keys [parent-id]}]
-  {:ident                   :text-layer/id
-   :query                   [fs/form-config-join :text-layer/id :text-layer/name :ui/busy?]
-   :intitial-state          {:ui/busy? false}
-   :form-fields             #{:text-layer/name}
-   ::forms/validator        txtl/validator
-   ::forms/create-mutation  'glam.models.text-layer/create-text-layer
-   ::forms/create-message   "Text layer added"
-   ::forms/create-append-to :project/text-layers}
-  (let [close-ctl-dialog (fn []
-                           (uism/trigger! this ::add-text-layer :event/cancel)
-                           (c/transact! this [(finish-add-text-layer {:id id})]))]
-    (dom/form
-      {:onSubmit (fn [e]
-                   (.preventDefault e)
-                   (uism/trigger! this ::add-text-layer :event/create))}
-      (mui/box {:width 400 :m 1 :p 1}
-        (mui/vertical-grid
-          (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
-            {:fullWidth  true
-             :disabled   busy?
-             :autoFocus  true
-             :last-input true}))
-        (mui/horizontal-grid
-          (mui/button
-            {:type      "submit"
-             :size      "large"
-             :color     "primary"
-             :variant   "contained"
-             :startIcon (muic/create)
-             :disabled  (not (and (fs/dirty? props)
-                                  (fs/checked? props)
-                                  (= :valid (txtl/validator props))
-                                  (not busy?)))}
-            "Create Text Layer")
-          (mui/button
-            {:size      "large"
-             :variant   "outlined"
-             :onClick   close-ctl-dialog
-             :startIcon (muic/cancel)}
-            "Cancel"))))))
-
-(def ui-add-text-layer (c/computed-factory AddTextLayer))
-
+;; Top-level components -------------------------------------------------------------------------------
+;; ====================================================================================================
 (defn- all-ids
   "Helper function: we want all items to be expanded by default in the tree-view, and to do this we need to
   hand the tree-view all the IDs of our nodes."
@@ -309,11 +329,13 @@
                      :style     {:marginTop "1em"}
                      :onClick   (fn []
                                   (let [tempid (tempid/tempid)]
-                                    (c/transact! this [(init-add-text-layer {:id tempid})])
+                                    (c/transact! this [(init-add-layer {:ident          [:text-layer/id tempid]
+                                                                        :modal-join-key :ui/add-text-layer
+                                                                        :form-class     AddTextLayer})])
                                     (uism/begin! this forms/create-form-machine ::add-text-layer
                                                  {:actor/form       (uism/with-actor-class [:text-layer/id tempid] AddTextLayer)
                                                   :actor/modal-host (uism/with-actor-class [:project/id id] ProjectSettings)})))}
-                    "New Text Layer"))))
+                    "Add Text Layer"))))
             ;; Layer configuration
             (mui/grid {:item true :xs 12 :md 9}
               (mui/padded-paper {}

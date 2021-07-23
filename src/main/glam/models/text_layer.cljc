@@ -72,8 +72,12 @@
        (server-error (str "Text layer not found by ID " id))
        ;; otherwise, go ahead
        :else
-       (let [name (:text-layer/name (gce/entity crux id))]
-         (if-not (txtl/delete crux id)
+       (let [name (:text-layer/name (gce/entity crux id))
+             parent-id (txtl/parent-id crux id)
+             tx (into (prj/remove-text-layer** crux parent-id id)
+                      (txtl/delete** crux id))
+             success (gce/submit! crux tx)]
+         (if-not success
            (server-error (str "Failed to delete text layer " name ". Please refresh and try again"))
            (server-message (str "Text layer " name " deleted")))))))
 
