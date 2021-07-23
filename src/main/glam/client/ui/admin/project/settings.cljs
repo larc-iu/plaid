@@ -3,8 +3,6 @@
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
-            [com.fulcrologic.fulcro.algorithms.denormalize :as fdn]
-            [com.fulcrologic.fulcro.algorithms.merge :as fm]
             [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.data-fetch :as df]
             [taoensso.timbre :as log]
@@ -13,8 +11,8 @@
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
             [com.fulcrologic.fulcro.ui-state-machines :as uism]
             [glam.client.router :as r]
-            [glam.models.session :as sn]
             [glam.models.text-layer :as txtl]
+            [glam.models.token-layer :as tokl]
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.material-ui-icon :as muic]
             [glam.client.ui.common.core :as uic]
@@ -29,7 +27,7 @@
   {:query [:span-layer/name :span-layer/id]
    :ident :span-layer/id}
   (mui/tree-item {:label   name
-                  :nodeId  id
+                  :nodeId  (str id)
                   :icon    (muic/settings-ethernet)
                   :onClick #(set-active-layer [:span-layer/id id])}))
 
@@ -41,7 +39,7 @@
            {:token-layer/span-layers (comp/get-query SpanLayerListItem)}]
    :ident :token-layer/id}
   (mui/tree-item {:label   name
-                  :nodeId  id
+                  :nodeId  (str id)
                   :icon    (muic/more-horiz)
                   :onClick #(set-active-layer [:token-layer/id id])}
     (when span-layers
@@ -57,7 +55,7 @@
   {:query [:text-layer/id :text-layer/name {:text-layer/token-layers (comp/get-query TokenLayerListItem)}]
    :ident :text-layer/id}
   (mui/tree-item {:label   name
-                  :nodeId  id
+                  :nodeId  (str id)
                   :icon    (muic/description-outlined)
                   :onClick (fn []
                              (set-active-layer [:text-layer/id id])
@@ -72,19 +70,11 @@
 
 ;; Modals for creating layers ---------------------------------------------------------------------------
 ;; ======================================================================================================
-(defmutation init-add-layer [{:keys [ident
-                                     modal-join-key
-                                     form-class]}]
+(defmutation init-add-layer [{:keys [ident modal-join-key form-class]}]
   (action [{:keys [state ref]}]
-          (log/info ident modal-join-key form-class)
-          (log/info (c/get-initial-state form-class))
-          (log/info (get-in @state [:project/id :project1]))
-          (log/info "props" (into (c/get-initial-state form-class)
-                                  [ident]))
           (swap! state (fn [s]
                          (-> s
-                             (assoc-in ident (into (c/get-initial-state form-class)
-                                                   [ident]))
+                             (assoc-in ident (into (c/get-initial-state form-class) [ident]))
                              (assoc-in (conj ref modal-join-key) ident))))))
 
 (defmutation finish-add-layer [{:keys [ident]}]
@@ -92,10 +82,10 @@
           (swap! state (fn [s]
                          (fns/remove-entity s ident)))))
 
-(defsc AddTextLayer [this {:text-layer/keys [id name] :ui/keys [busy?] :as props} {:keys [parent-id]}]
+(defsc AddTextLayer [this {:text-layer/keys [id] :ui/keys [busy?] :as props}]
   {:ident                   :text-layer/id
    :query                   [fs/form-config-join :text-layer/id :text-layer/name :ui/busy?]
-   :initial-state           {:ui/busy? false :text-layer/name ""}
+   :initial-state           {:ui/busy? false}
    :form-fields             #{:text-layer/name}
    ::forms/validator        txtl/validator
    ::forms/create-mutation  'glam.models.text-layer/create-text-layer
@@ -134,7 +124,51 @@
              :startIcon (muic/cancel)}
             "Cancel"))))))
 
-(def ui-add-text-layer (c/computed-factory AddTextLayer))
+(def ui-add-text-layer (c/factory AddTextLayer))
+
+(defsc AddTokenLayer [this {:token-layer/keys [id] :ui/keys [busy?] :as props}]
+  {:ident                   :token-layer/id
+   :query                   [fs/form-config-join :token-layer/id :token-layer/name :ui/busy?]
+   :initial-state           {:ui/busy? false}
+   :form-fields             #{:token-layer/name}
+   ::forms/validator        tokl/validator
+   ::forms/create-mutation  'glam.models.token-layer/create-token-layer
+   ::forms/create-message   "Token layer added"
+   ::forms/create-append-to :text-layer/token-layers}
+  (let [close-ctl-dialog (fn []
+                           (uism/trigger! this ::add-token-layer :event/cancel)
+                           (c/transact! this [(finish-add-layer {:ident [:token-layer/id id]})]))]
+    (dom/form
+      {:onSubmit (fn [e]
+                   (.preventDefault e)
+                   (uism/trigger! this ::add-token-layer :event/create))}
+      (mui/box {:width 400 :m 1 :p 1}
+        (mui/vertical-grid
+          (forms/text-input-with-label this :token-layer/name "Name" "Must have 1 to 80 characters"
+            {:fullWidth  true
+             :disabled   busy?
+             :autoFocus  true
+             :last-input true}))
+        (mui/horizontal-grid
+          (mui/button
+            {:type      "submit"
+             :size      "large"
+             :color     "primary"
+             :variant   "contained"
+             :startIcon (muic/create)
+             :disabled  (not (and (fs/dirty? props)
+                                  (fs/checked? props)
+                                  (= :valid (tokl/validator props))
+                                  (not busy?)))}
+            "Create Token Layer")
+          (mui/button
+            {:size      "large"
+             :variant   "outlined"
+             :onClick   close-ctl-dialog
+             :startIcon (muic/cancel)}
+            "Cancel"))))))
+
+(def ui-add-token-layer (c/factory AddTokenLayer))
 
 ;; Main panel components --------------------------------------------------------------------------------
 ;; ======================================================================================================
@@ -176,8 +210,13 @@
 (def ui-token-layer-form (comp/factory TokenLayerForm))
 
 (defsc TextLayerForm
-  [this {:text-layer/keys [id name] :ui/keys [busy?] :as props}]
-  {:query                  [:text-layer/id :text-layer/name fs/form-config-join :ui/busy?]
+  [this {:text-layer/keys [id name] :ui/keys [busy? modal-open? add-token-layer] :as props}]
+  {:query                  [:text-layer/id :text-layer/name fs/form-config-join :ui/busy? :ui/modal-open?
+                            {:ui/add-token-layer (c/get-query AddTokenLayer)}]
+   :pre-merge              (fn [{:keys [data-tree] :as m}]
+                             (merge {:ui/modal-open? false
+                                     :ui/busy?       false}
+                                    data-tree))
    :ident                  :text-layer/id
    :form-fields            #{:text-layer/name}
    ::forms/validator       txtl/validator
@@ -185,55 +224,71 @@
    ::forms/delete-mutation 'glam.models.text-layer/delete-text-layer
    ::forms/delete-message  "Text layer deleted"}
   (let [dirty (fs/dirty? props)]
-    (dom/form
-      {:onSubmit (fn [e]
-                   (.preventDefault e)
-                   (uism/trigger! this ::edit-text-layer :event/save)
-                   (c/transact! this [(fs/clear-complete! {:entity-ident [:text-layer/id id]})]))}
-      (mui/vertical-grid
-        {:spacing 2}
-        (mui/typography {:variant "h5"} "Text Layer: " name)
-        (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
-          {:fullWidth true
-           :disabled  busy?})
-        #_(mui/button
-            {:variant   "contained"
+    (c/fragment
+      ;; TODO: modal-open? is nil for a bit until pre-merge runs. Won't cause issues for now, but it is annoying.
+      (mui/dialog {:open (and (not busy?) modal-open?) :onClose #(uism/trigger! this ::add-token-layer :event/cancel)}
+        (mui/dialog-title {} "Add Token Layer")
+        (mui/dialog-content {}
+          (ui-add-token-layer add-token-layer)))
+      (dom/form
+        {:onSubmit (fn [e]
+                     (.preventDefault e)
+                     (uism/trigger! this ::edit-text-layer :event/save)
+                     (c/transact! this [(fs/clear-complete! {:entity-ident [:text-layer/id id]})]))}
+        (mui/vertical-grid
+          {:spacing 2}
+          (mui/typography {:variant "h5"} "Text Layer: " name)
+          (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
+            {:fullWidth true
+             :disabled  busy?})
+          (mui/button
+            {:variant   "outlined"
              :color     "primary"
              :startIcon (muic/add)
              :style     {:marginTop "1em"}
              :onClick   (fn []
                           (let [tempid (tempid/tempid)]
-                            (c/transact! this [(init-add-token-layer {:id tempid})])
-                            (uism/begin! this forms/create-form-machine ::add-text-layer
+                            (c/transact! this [(init-add-layer {:ident          [:token-layer/id tempid]
+                                                                :modal-join-key :ui/add-token-layer
+                                                                :form-class     AddTokenLayer})])
+                            (uism/begin! this forms/create-form-machine ::add-token-layer
                                          {:actor/form       (uism/with-actor-class [:token-layer/id tempid] AddTokenLayer)
                                           :actor/modal-host (uism/with-actor-class [:text-layer/id id] TextLayerForm)})))}
             "Add Token Layer")
-        (forms/form-buttons
-          {:component       this
-           :validator       txtl/validator
-           :props           props
-           :busy?           busy?
-           :submit-text     "Save Text Layer"
-           :reset-text      "Discard Changes"
-           :on-reset        (fn []
-                              (uism/trigger! this ::edit-text-layer :event/reset)
-                              (c/transact! this [(fs/clear-complete! {:entity-ident [:text-layer/id id]})]))
-           :on-delete       #(uism/trigger! this ::edit-text-layer :event/delete)
-           :submit-disabled (or (not dirty)
-                                (not= :valid (txtl/validator props))
-                                (not (fs/checked? props))
-                                busy?)
-           :reset-disabled  (not (and dirty (not busy?)))})))))
+          (forms/form-buttons
+            {:component       this
+             :validator       txtl/validator
+             :props           props
+             :busy?           busy?
+             :submit-text     "Save Text Layer"
+             :reset-text      "Discard Changes"
+             :on-reset        (fn []
+                                (uism/trigger! this ::edit-text-layer :event/reset)
+                                (c/transact! this [(fs/clear-complete! {:entity-ident [:text-layer/id id]})]))
+             :on-delete       #(uism/trigger! this ::edit-text-layer :event/delete)
+             :submit-disabled (or (not dirty)
+                                  (not= :valid (txtl/validator props))
+                                  (not (fs/checked? props))
+                                  busy?)
+             :reset-disabled  (not (and dirty (not busy?)))}))))))
 
 (def ui-text-layer-form (comp/factory TextLayerForm))
 
 ;; We need a union to account for the fact that we have one location that will have entities of
 ;; potentially many types.
 (defsc LayerUnion [this props]
-  {:ident (fn [] (cond (:text-layer/id props) [:text-layer/id (:text-layer/id props)]
-                       (:token-layer/id props) [:token-layer/id (:token-layer/id props)]
-                       (:span-layer/id props) [:span-layer/id (:span-layer/id props)]
-                       :else (log/error "Unrecognized layer type!" props)))
+  {:ident (fn []
+            (cond
+              (:text-layer/id props) [:text-layer/id (:text-layer/id props)]
+              (:token-layer/id props) [:token-layer/id (:token-layer/id props)]
+              (:span-layer/id props) [:span-layer/id (:span-layer/id props)]
+              :else (do
+                      (if (or (nil? props)
+                              (and (map? props)
+                                   (not (some #(= (name %) "id") (keys props)))))
+                        (log/warn "No layer selected")
+                        (log/error "Unrecognized layer type!" props))
+                      [:component/id ::no-layer])))
    :query (fn [] {:text-layer/id  (comp/get-query TextLayerForm)
                   :token-layer/id (comp/get-query TokenLayerForm)
                   :span-layer/id  (comp/get-query SpanLayerForm)})}
@@ -241,8 +296,13 @@
     (:text-layer/id props) (ui-text-layer-form props)
     (:token-layer/id props) (ui-token-layer-form props)
     (:span-layer/id props) (ui-span-layer-form props)
-    (nil? props) (mui/typography {:variant "subtitle1" :component "h3"} "Select a layer")
-    :else (dom/div "Unrecognized layer type!")))
+    (or (nil? props)
+        (and (map? props)
+             (not (some #(= (name %) "id") props)))) (mui/typography
+                                                       {:variant   "subtitle1"
+                                                        :component "h3"}
+                                                       "Select a layer")
+    :else (dom/div "Unknown layer type!")))
 
 (def ui-layer-union (comp/factory LayerUnion))
 
@@ -254,10 +314,11 @@
   [{txtid :text-layer/id
     tokid :token-layer/id
     slid  :span-layer/id :as props}]
-  (cond (some? txtid) (conj (flatten (map all-ids (:text-layer/token-layers props))) txtid)
-        (some? tokid) (conj (flatten (map all-ids (:token-layer/span-layers props))) tokid)
-        (some? slid) [slid]
-        :else (log/error "Unknown layer type!" props)))
+  (cond (some? txtid) (conj (flatten (map all-ids (:text-layer/token-layers props))) (str txtid))
+        (some? tokid) (conj (flatten (map all-ids (:token-layer/span-layers props))) (str tokid))
+        (some? slid) [(str slid)]
+        (nil? props) (log/warn "No layer selected")
+        :else (do (log/error "Unknown layer type!" props) [])))
 
 (defsc ProjectSettings [this {:project/keys [id name text-layers]
                               :ui/keys      [active-tab add-text-layer modal-open? active-layer] :as props}]
@@ -269,12 +330,11 @@
                    :ui/active-tab
                    :ui/modal-open?]
    :ident         :project/id
-   :initial-state (fn [_]
-                    {:ui/modal-open?    false
-                     :ui/add-text-layer (c/get-initial-state AddTextLayer)})
+   :initial-state {}
    :pre-merge     (fn [{:keys [data-tree] :as m}]
                     ;; initial-state doesn't work for some reason
-                    (merge {:ui/active-tab "layers"}
+                    (merge {:ui/active-tab  "layers"
+                            :ui/modal-open? false}
                            data-tree))
    :route-segment (r/last-route-segment :project-settings)
    :will-enter    (fn [app {:keys [id]}]
@@ -299,8 +359,7 @@
       (mui/dialog {:open modal-open? :onClose #(uism/trigger! this ::add-text-layer :event/cancel)}
         (mui/dialog-title {} "Add Text Layer")
         (mui/dialog-content {}
-          (when add-text-layer
-            (ui-add-text-layer (c/computed add-text-layer {:parent-id id})))))
+          (ui-add-text-layer add-text-layer)))
 
       ;; Tab 1: layer configuration
       (mui/tab-context {:value active-tab}
@@ -323,7 +382,7 @@
                       (mapv ui-text-layer-list-item
                             (map #(comp/computed % {:set-active-layer set-active-layer}) text-layers))))
                   (mui/button
-                    {:variant   "contained"
+                    {:variant   "outlined"
                      :color     "primary"
                      :startIcon (muic/add)
                      :style     {:marginTop "1em"}
