@@ -11,10 +11,12 @@
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
             [com.fulcrologic.fulcro.ui-state-machines :as uism]
             [glam.client.router :as r]
+            [glam.models.project :as prj]
             [glam.models.text-layer :as txtl]
             [glam.models.token-layer :as tokl]
             [glam.models.span-layer :as sl]
             [glam.client.ui.material-ui :as mui]
+            [glam.client.ui.global-snackbar :as snack]
             [glam.client.ui.material-ui-icon :as muic]
             [glam.client.ui.common.core :as uic]
             [glam.client.util :as gcu]
@@ -269,10 +271,10 @@
            :disabled  busy?})
         (forms/checkbox-input-with-label this :span-layer/overlap "Overlap"
           {:disabled busy?
-           :color "primary"})
+           :color    "primary"})
         (forms/checkbox-input-with-label this :span-layer/to-many "To-many"
           {:disabled busy?
-           :color "primary"})
+           :color    "primary"})
         (forms/form-buttons
           {:component       this
            :validator       sl/validator
@@ -455,6 +457,50 @@
 
 (def ui-layer-union (comp/factory LayerUnion))
 
+;; User permissions -----------------------------------------------------------------------------------
+;; ====================================================================================================
+(defsc UserPermissionListItem [this
+                               {:user/keys [id name email privileges] :ui/keys [busy?] :as props}
+                               {project-id :project/id}]
+  {:query     [:user/id :user/name :user/email :user/privileges :ui/busy?]
+   :ident     :user/id
+   :pre-merge (fn [{:keys [data-tree]}]
+                (merge {:ui/busy?            false
+                        :original-privileges (:user/privileges data-tree)}
+                       data-tree))}
+  (let [on-result (fn [{:server/keys [error? message]}]
+                    (m/set-value! this :ui/busy? false)
+                    (when error?
+                      (snack/message! {:severity "error" :message message})
+                      (m/set-value! this :user/privileges (:original-privileges props))))
+        on-change (fn [e]
+                    (let [v (.-value (.-target e))]
+                      (log/info "event" e)
+                      (log/info "value" v)
+                      (m/set-value! this :busy? true)
+                      (m/set-value! this :user/privileges v)
+                      (c/transact! this
+                                   [(prj/set-user-privileges
+                                      {:project/id      project-id
+                                       :user/id         id
+                                       :user/privileges v})]
+                                   {:on-result on-result})))]
+    (mui/list-item {}
+      (mui/list-item-text {:primary name :secondary email})
+      (mui/list-item-secondary-action
+        {}
+        ;; value, onChange
+        (mui/minw-100-select
+          {:variant  "filled"
+           :value    privileges
+           :disabled busy?
+           :onChange on-change}
+          (mui/menu-item {:value "none"} "None")
+          (mui/menu-item {:value "reader"} "Reader")
+          (mui/menu-item {:value "writer"} "Writer"))))))
+
+(def ui-user-permission-list-item (c/computed-factory UserPermissionListItem {:keyfn :user/id}))
+
 ;; Top-level components -------------------------------------------------------------------------------
 ;; ====================================================================================================
 (defn- all-ids
@@ -469,10 +515,11 @@
         (nil? props) (log/warn "No layer selected")
         :else (do (log/error "Unknown layer type!" props) [])))
 
-(defsc ProjectSettings [this {:project/keys [id name text-layers]
+(defsc ProjectSettings [this {:project/keys [id name text-layers users]
                               :ui/keys      [active-tab add-text-layer modal-open? active-layer] :as props}]
   {:query         [:project/id
                    :project/name
+                   {:project/users (c/get-query UserPermissionListItem)}
                    {:project/text-layers (c/get-query TextLayerListItem)}
                    {:ui/active-layer (c/get-query LayerUnion)}
                    {:ui/add-text-layer (c/get-query AddTextLayer)}
@@ -558,11 +605,10 @@
 
         ;; Tab 2: user permissions
         (mui/tab-panel {:value "access"}
-          "Hi World w"
-          )))))
-
-;; TODO: user needs to
-;; - configure name and other general info
-;; - see user read/write perms
-;; - see text-layers
-;; should probably do all this by introducing tabs that are put in correspondence with the url
+          (mui/box {:mx "auto" :width 600}
+            (mui/padded-paper
+              (when users
+                (mui/list
+                  {:subheading "Project Access Privileges"}
+                  (mapv ui-user-permission-list-item
+                        (map #(c/computed % {:project/id id}) users)))))))))))

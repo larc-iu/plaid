@@ -327,6 +327,7 @@
 (defn styled-typography [styles] (wrap-styles Typography styles))
 (defn styled-breadcrumbs [styles] (wrap-styles Breadcrumbs styles))
 (defn styled-card-media [styles] (wrap-styles CardMedia styles))
+(defn styled-select [styles] (wrap-styles Select styles))
 
 ;; theme
 (def default-theme (createMuiTheme
@@ -359,6 +360,8 @@
        child)))
   ([child]
    (padded-paper {} child)))
+
+(def minw-100-select (styled-select {:min-width "100px"}))
 
 (def mt-typography (styled-typography {:margin-top "0.7em"}))
 (defn page-title

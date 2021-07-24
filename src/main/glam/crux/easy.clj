@@ -2,6 +2,7 @@
   "A set of convenience functions for transactions with only one part and other common crux operations.
   Functions that end in * return a vector that can be used to build transactions incrementally."
   (:require [crux.api :as crux]
+            [clojure.pprint :as pprint]
             [taoensso.timbre :as log])
   (:refer-clojure :exclude [set update merge]))
 
@@ -80,6 +81,7 @@
 
 ;; mutations --------------------------------------------------------------------------------
 (defn submit-tx-sync [node tx]
+  (log/debug (with-out-str (pprint/pprint tx)))
   (let [tx-map (crux/submit-tx node tx)]
     (crux/await-tx node tx-map)
     (crux/tx-committed? node tx-map)))

@@ -32,6 +32,14 @@
   [node id]
   (crux->pathom (gce/find-entity node {:project/id id})))
 
+(defn reader-ids
+  [node id]
+  (:project/readers (gce/entity node id)))
+
+(defn writer-ids
+  [node id]
+  (:project/writers (gce/entity node id)))
+
 (defn get-all
   [node]
   (map crux->pathom (gce/find-entities node {:project/id '_})))
