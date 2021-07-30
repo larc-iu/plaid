@@ -3,7 +3,6 @@
             [com.wsscode.pathom.connect :as pc]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.mutations :as m]
-            [taoensso.timbre :as log]
             #?(:clj [glam.crux.project :as prj])
             #?(:clj [glam.crux.easy :as gce])
             #?(:clj [glam.models.common :as mc])
@@ -28,7 +27,7 @@
    (pc/defresolver accessible-projects [{:keys [crux current-user]} _]
      {::pc/output    [{:accessible-projects [:project/id]}]
       ::pc/transform ma/user-required}
-     {:accessible-projects (map (fn [id] {:project/id id}) (prj/get-accessible-ids crux (:user/id current-user)))}))
+     {:accessible-projects (map (fn [id] {:project/id id}) (prj/get-accessible-ids crux current-user))}))
 
 #?(:clj
    ;; todo: make this a batch resolver if needed (same for others)
