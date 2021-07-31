@@ -13,7 +13,7 @@
     [glam.crux.text-layer :as txtl]
     [glam.crux.token-layer :as tokl]
     [glam.crux.span-layer :as sl]
-    ))
+    [glam.crux.document :as doc]))
 
 ;; ==================== SERVER ====================
 (tools-ns/set-refresh-dirs "src/main" "src/dev" "src/test")
@@ -38,7 +38,8 @@
 
 (defn start "Start the web server + services" []
   (mount/start)
-  (def node glam.server.crux/crux-node))
+  (def node glam.server.crux/crux-node)
+  (def parser (glam.server.pathom-parser/make-parser)))
 
 (defn stop "Stop the web server + services" []
   (mount/stop))
@@ -90,6 +91,15 @@
           txtl1 (:id (txtl/create node {:text-layer/name "Layer 1" :text-layer/id :txtl1}))
           tokl1 (:id (tokl/create node {:token-layer/name "Token Layer 1" :token-layer/id :tokl1}))
           sl1 (:id (sl/create node {:span-layer/name "Span Layer 1" :span-layer/id :sl1}))
+
+          doc1 (:id (doc/create node {:document/name "Document 1" :document/id :doc1 :document/project :project1}))
+          doc2 (:id (doc/create node {:document/name "Document 2" :document/id :doc2 :document/project :project1}))
+          doc3 (:id (doc/create node {:document/name "Document 3" :document/id :doc3 :document/project :project1}))
+          doc4 (:id (doc/create node {:document/name "Document 4" :document/id :doc4 :document/project :project1}))
+
+          doc22 (:id (doc/create node {:document/name "Document 22" :document/id :doc22 :document/project :project2}))
+          doc33 (:id (doc/create node {:document/name "Document 33" :document/id :doc33 :document/project :project3}))
+          doc44 (:id (doc/create node {:document/name "Document 44" :document/id :doc44 :document/project :project4}))
           ]
 
       (prj/add-writer node project1 admin-id)

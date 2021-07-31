@@ -106,7 +106,7 @@
       {:onSubmit (fn [e]
                    (.preventDefault e)
                    (uism/trigger! this ::add-span-layer :event/create))}
-      (mui/box {:width 400 :m 1 :p 1}
+      (mui/box {:m 1 :p 1}
         (mui/vertical-grid
           (forms/text-input-with-label this :span-layer/name "Name" "Must have 1 to 80 characters"
             {:fullWidth  true
@@ -149,7 +149,7 @@
       {:onSubmit (fn [e]
                    (.preventDefault e)
                    (uism/trigger! this ::add-token-layer :event/create))}
-      (mui/box {:width 400 :m 1 :p 1}
+      (mui/box {:m 1 :p 1}
         (mui/vertical-grid
           (forms/text-input-with-label this :token-layer/name "Name" "Must have 1 to 80 characters"
             {:fullWidth  true
@@ -192,7 +192,7 @@
       {:onSubmit (fn [e]
                    (.preventDefault e)
                    (uism/trigger! this ::add-text-layer :event/create))}
-      (mui/box {:width 400 :m 1 :p 1}
+      (mui/box {:m 1 :p 1}
         (mui/vertical-grid
           (forms/text-input-with-label this :text-layer/name "Name" "Must have 1 to 80 characters"
             {:fullWidth  true
@@ -605,7 +605,7 @@
 
         ;; Tab 2: user permissions
         (mui/tab-panel {:value "access"}
-          (mui/box {:mx "auto" :width 360}
+          (mui/container {:maxWidth "sm"}
             (mui/padded-paper
               (when users
                 (mui/list

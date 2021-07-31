@@ -2,6 +2,7 @@
   (:require [com.wsscode.pathom.connect :as pc]
             [com.wsscode.pathom.core :as p]
             [glam.models.project :refer [project-resolvers]]
+            [glam.models.document :refer [document-resolvers]]
             [glam.models.text-layer :refer [text-layer-resolvers]]
             [glam.models.token-layer :refer [token-layer-resolvers]]
             [glam.models.span-layer :refer [span-layer-resolvers]]
@@ -63,6 +64,7 @@
   [session/resolvers
    user/resolvers
    project-resolvers
+   document-resolvers
    text-layer-resolvers
    token-layer-resolvers
    span-layer-resolvers])

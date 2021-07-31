@@ -5,6 +5,7 @@
             [com.fulcrologic.fulcro.mutations :as m]
             #?(:clj [glam.crux.project :as prj])
             #?(:clj [glam.crux.easy :as gce])
+            #?(:clj [glam.crux.util :as cutil])
             #?(:clj [glam.models.common :as mc])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.crux.user :as usr])))
@@ -33,9 +34,11 @@
    ;; todo: make this a batch resolver if needed (same for others)
    (pc/defresolver get-project [{:keys [crux]} {:project/keys [id]}]
      {::pc/input     #{:project/id}
-      ::pc/output    [:project/id :project/name :project/readers :project/writers :project/text-layers]
+      ::pc/output    [:project/id :project/name :project/readers :project/writers :project/text-layers :project/documents]
       ::pc/transform (ma/readable-required :project/id)}
-     (prj/get crux id)))
+     (let [doc-ids (cutil/identize (prj/get-document-ids crux id) :document/id)]
+       (-> (prj/get crux id)
+           (assoc :project/documents doc-ids)))))
 
 ;; admin --------------------------------------------------------------------------------
 #?(:clj

@@ -31,10 +31,11 @@
                                   :post-mutation        `dr/target-ready
                                   :post-mutation-params {:target [:component/id :projects-page]}})))}
   (log/info accessible-projects)
-  (mui/box {:mx "auto" :width 400}
+  (mui/container {:maxWidth "md"}
+    (mui/page-title {} "Projects")
     (if-not (empty? accessible-projects)
       (mui/padded-paper
-        (mui/list {:subheader (mui/list-subheader {:color "primary"} "Projects")}
+        (mui/list {}
           (mapv ui-project-list-item accessible-projects)))
       (mui/box {:my 4}
         (mui/typography

@@ -50,31 +50,30 @@
       {:onSubmit (fn [e]
                    (.preventDefault e)
                    (uism/trigger! this ::add-project :event/create))}
-      (mui/box {:width 400 :m 1 :p 1}
-        (mui/vertical-grid
-          (forms/text-input-with-label this :project/name "Name" "Must have 2 to 80 characters"
-            {:fullWidth  true
-             :disabled   busy?
-             :autoFocus  true
-             :last-input true}))
-        (mui/horizontal-grid
-          (mui/button
-            {:type      "submit"
-             :size      "large"
-             :color     "primary"
-             :variant   "contained"
-             :startIcon (muic/create)
-             :disabled  (not (and (fs/dirty? props)
-                                  (fs/checked? props)
-                                  (= :valid (validator props))
-                                  (not busy?)))}
-            "Create Project")
-          (mui/button
-            {:size      "large"
-             :variant   "outlined"
-             :onClick   close-cu-dialog
-             :startIcon (muic/cancel)}
-            "Cancel"))))))
+      (mui/vertical-grid
+        (forms/text-input-with-label this :project/name "Name" "Must have 2 to 80 characters"
+          {:fullWidth  true
+           :disabled   busy?
+           :autoFocus  true
+           :last-input true}))
+      (mui/horizontal-grid
+        (mui/button
+          {:type      "submit"
+           :size      "large"
+           :color     "primary"
+           :variant   "contained"
+           :startIcon (muic/create)
+           :disabled  (not (and (fs/dirty? props)
+                                (fs/checked? props)
+                                (= :valid (validator props))
+                                (not busy?)))}
+          "Create Project")
+        (mui/button
+          {:size      "large"
+           :variant   "outlined"
+           :onClick   close-cu-dialog
+           :startIcon (muic/cancel)}
+          "Cancel")))))
 (def ui-add-project (c/factory AddProject))
 
 (defsc ProjectListItem [this {:project/keys [id name] :as props}]
@@ -104,7 +103,7 @@
                                   :post-mutation        `dr/target-ready
                                   :post-mutation-params {:target ident}})))}
 
-  (mui/container {:maxWidth "lg" :style {:position "relative"}}
+  (mui/container {:maxWidth "md" :style {:position "relative"}}
     (mui/page-title "Project Management")
     (mui/arrow-breadcrumbs {}
       (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")

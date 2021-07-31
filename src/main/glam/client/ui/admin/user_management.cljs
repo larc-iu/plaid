@@ -183,11 +183,11 @@
   (let [close-cu-dialog (fn []
                           (uism/trigger! this ::add-user :event/cancel)
                           (c/transact! this [(finish-add-user {:id id})]))]
-    (dom/form
-      {:onSubmit (fn [e]
-                   (.preventDefault e)
-                   (uism/trigger! this ::add-user :event/create))}
-      (mui/box {:width 400 :m 1 :p 1}
+    (mui/container {:m 1 :p 1}
+      (dom/form
+        {:onSubmit (fn [e]
+                     (.preventDefault e)
+                     (uism/trigger! this ::add-user :event/create))}
         (mui/vertical-grid
           (forms/text-input-with-label this :user/name "Name" "Must have 2 to 40 characters"
             {:fullWidth true
@@ -249,7 +249,7 @@
                                  {:target               (conj ident :users)
                                   :post-mutation        `dr/target-ready
                                   :post-mutation-params {:target ident}})))}
-  (mui/container {:maxWidth "lg"}
+  (mui/container {:maxWidth "md"}
     (mui/page-title "User Management")
     (mui/arrow-breadcrumbs {}
       (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")

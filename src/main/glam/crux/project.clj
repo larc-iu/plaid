@@ -3,7 +3,8 @@
             [glam.crux.util :as cutil]
             [glam.crux.easy :as gce]
             [glam.crux.access :as gca]
-            [glam.crux.text-layer :as txtl])
+            [glam.crux.text-layer :as txtl]
+            [glam.crux.document :as doc])
   (:refer-clojure :exclude [get]))
 
 (def attr-keys [:project/id
@@ -28,6 +29,13 @@
      :id      id}))
 
 ;; Queries --------------------------------------------------------------------------------
+(defn get-document-ids [node id]
+  (map first (crux/q (crux/db node)
+                     '{:find  [?doc]
+                       :where [[?doc :document/project ?prj]]
+                       :in    [?prj]}
+                     id)))
+
 (defn get
   [node id]
   (crux->pathom (gce/find-entity node {:project/id id})))
@@ -60,11 +68,14 @@
 
 ;; Mutations --------------------------------------------------------------------------------
 (defn delete** [node eid]
-  (let [text-layers (:project/text-layers (gce/entity node eid))]
-    (into
-      (reduce into (map #(txtl/delete** node %) text-layers))
-      [(gce/match* eid (gce/entity node eid))
-       (gce/delete* eid)])))
+  (let [text-layers (:project/text-layers (gce/entity node eid))
+        documents (get-document-ids node eid)
+        txtl-txs (reduce into (map #(txtl/delete** node %) text-layers))
+        doc-txs (reduce into (map #(doc/delete** node %) documents))
+        project-txs [(gce/match* eid (gce/entity node eid))
+                     (gce/delete* eid)]
+        all-txs (reduce into [txtl-txs doc-txs project-txs])]
+    all-txs))
 (defn delete [node eid]
   ;; TODO: extend with deleting sublayers
   (gce/submit-tx-sync node (delete** node eid)))

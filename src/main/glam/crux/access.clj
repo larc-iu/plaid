@@ -4,6 +4,7 @@
 
 (def key-symbol-map
   {:project/id     '?p
+   :document/id    '?d
    :text-layer/id  '?txtl
    :token-layer/id '?tokl
    :span-layer/id  '?sl})
@@ -25,6 +26,13 @@
                              '[?p :project/writers ?u]
                              '(or [?p :project/readers ?u]
                                   [?p :project/writers ?u]))])))
+
+(defmethod build-query :document/id [query-map opts _]
+  (-> query-map
+      (update :where conj '(document-accessible ?d ?p))
+      (update :rules conj '[(document-accessible ?d ?p)
+                            [?d :document/project ?p]])
+      (build-query opts :project/id)))
 
 (defmethod build-query :text-layer/id [query-map opts _]
   (-> query-map

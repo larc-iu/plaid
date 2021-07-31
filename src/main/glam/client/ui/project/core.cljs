@@ -6,7 +6,7 @@
     [glam.client.router :as r]
     [glam.client.ui.common.core :refer [loader]]
     [glam.client.ui.project.projects-page :refer [ProjectsPage]]
-    [glam.client.ui.project.project-detail :refer [ProjectDetail]]
+    [glam.client.ui.project.project :refer [Project]]
     [taoensso.timbre :as log]))
 
 ;; top level --------------------------------------------------------------------------------
@@ -14,7 +14,7 @@
 (defrouter ProjectRouter
   [this {:keys [current-state route-factory route-props]}]
   {:route-segment  (r/router-segment :project-router)
-   :router-targets [ProjectsPage ProjectDetail]
+   :router-targets [ProjectsPage Project]
    :always-render-body? false}
   (loader))
 
