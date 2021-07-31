@@ -8,7 +8,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
+        os: [ubuntu-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -29,8 +29,8 @@ jobs:
 
       - name: Install node libs
         run: |
+          rm yarn.lock
           yarn
-          yarn upgrade
 
       - name: Run clj tests
         run: yarn test
