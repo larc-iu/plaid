@@ -605,7 +605,7 @@
 
         ;; Tab 2: user permissions
         (mui/tab-panel {:value "access"}
-          (mui/box {:mx "auto" :width 600}
+          (mui/box {:mx "auto" :width 360}
             (mui/padded-paper
               (when users
                 (mui/list
