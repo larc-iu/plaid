@@ -15,7 +15,7 @@
     "client/release": "yarn shadow-cljs -A:shadow-cljs release main",
     "server/release": "clojure -X:uberjar",
     "release": "yarn clean && yarn client/release && yarn server/release",
-    "test": "clj -M:test -d src/test"
+    "test": "clojure -M:test -d src/test"
   },
   "dependencies": {},
   "devDependencies": {
