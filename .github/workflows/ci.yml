@@ -28,7 +28,9 @@ jobs:
           cli: 1.10.3.855 # Clojure CLI based on tools.deps
 
       - name: Install node libs
-        run: yarn
+        run: |
+          yarn
+          yarn upgrade
 
       - name: Run clj tests
         run: yarn test
