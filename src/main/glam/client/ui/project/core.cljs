@@ -9,12 +9,10 @@
     [glam.client.ui.project.project :refer [Project]]
     [taoensso.timbre :as log]))
 
-;; top level --------------------------------------------------------------------------------
-;; router for all routes under "/project/" is contained in a container component, Projects
+
 (defrouter ProjectRouter
   [this {:keys [current-state route-factory route-props]}]
   {:route-segment  (r/router-segment :project-router)
    :router-targets [ProjectsPage Project]
    :always-render-body? false}
   (loader))
-

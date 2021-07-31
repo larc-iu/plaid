@@ -14,6 +14,7 @@
     [glam.client.ui.drawer :refer [ui-drawer Drawer]]
     [glam.client.ui.common.core :refer [loader]]
     [glam.client.ui.project.core :refer [ProjectRouter]]
+    [glam.client.ui.document.core :refer [DocumentRouter]]
     [glam.client.ui.user-settings.core :refer [UserSettings]]
     [glam.client.ui.admin.core :refer [AdminRouter]]
     [glam.client.ui.home :refer [Home]]
@@ -23,7 +24,7 @@
 
 (dr/defrouter TopRouter
   [this {:keys [current-state route-factory route-props]}]
-  {:router-targets      [Home ProjectRouter UserSettings AdminRouter]
+  {:router-targets      [Home ProjectRouter UserSettings AdminRouter DocumentRouter]
    :always-render-body? false}
   (loader))
 

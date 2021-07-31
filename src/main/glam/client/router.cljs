@@ -57,6 +57,7 @@
     :project-router ["project"]
     :project-admin-router ["project"]
     :admin-router ["admin"]
+    :document-router ["document"]
     (ex-info "unknown router: " name)))
 
 (def routes
@@ -88,6 +89,10 @@
    ["/project/:id"
     {:name    :project
      :segment ["project" :id]
+     :params  {:path {:id string?}}}]
+   ["/document/:id"
+    {:name    :document
+     :segment ["document" :id]
      :params  {:path {:id string?}}}]
 
    ])

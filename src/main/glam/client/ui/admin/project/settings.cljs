@@ -549,7 +549,7 @@
       (mui/arrow-breadcrumbs {}
         (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
         (mui/link {:color "inherit" :href (r/route-for :project-overview) :key "project"} "Project Management")
-        (mui/link {:color "textPrimary" :href (r/route-for :project-settings {:id id}) :key id} name))
+        (mui/link {:color "textPrimary" :underline "none" :key id} name))
 
       ;; add text layer modal
       (mui/dialog {:open    modal-open?

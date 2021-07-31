@@ -15,11 +15,13 @@
   [this {:document/keys [id name] :as props}]
   {:query [:document/id :document/name]
    :ident :document/id}
+
+  ;; todo: fix link once document view is implemented
   (mui/list-item {:button  true
                   :onClick #(r/route-to! :document {:id id})}
     (mui/list-item-text {:primary name :secondary id})))
 
-(def ui-document-list-item (c/factory DocumentListItem {:keyfn :document/id}))
+(def ui-document-list-item (c/computed-factory DocumentListItem {:keyfn :document/id}))
 
 (defsc Project
   [this {:project/keys [id name documents] :as props}]
@@ -44,7 +46,7 @@
     (mui/page-title name)
     (mui/arrow-breadcrumbs {}
       (mui/link {:color "inherit" :href (r/route-for :projects) :key "projects"} "Projects")
-      (mui/link {:color "textPrimary" :href (r/route-for :project {:id id}) :key "user"} name))
+      (mui/link {:color "textPrimary" :underline "none" :key "user"} name))
 
     (if-not (empty? documents)
       (mui/padded-paper
