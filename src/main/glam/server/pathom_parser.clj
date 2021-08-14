@@ -4,6 +4,7 @@
             [glam.models.project :refer [project-resolvers]]
             [glam.models.document :refer [document-resolvers]]
             [glam.models.text-layer :refer [text-layer-resolvers]]
+            [glam.models.text :refer [text-resolvers]]
             [glam.models.token-layer :refer [token-layer-resolvers]]
             [glam.models.span-layer :refer [span-layer-resolvers]]
             [glam.models.session :as session]
@@ -66,6 +67,7 @@
    project-resolvers
    document-resolvers
    text-layer-resolvers
+   text-resolvers
    token-layer-resolvers
    span-layer-resolvers])
 
@@ -105,6 +107,26 @@
     (fn wrapped-parser [env tx]
       (when-not (vector? tx) (throw (Exception. "You must pass a vector for the transaction.")))
       ;; Add trace - pathom-viz already adds it so only add if that's not included.
+      ;; TODO: due to concern about subtle and rare but consequential issues that could arise from concurrent
+      ;;       modification, consider using some kind of mutex for mutations, e.g. a ref? Performance hit should
+      ;;       not matter. Could even do more granular mutexes like per-doc or per-project
+      ;; A suggestion from souenzzo that I quite like:
+      ;;
+      ;;    (def single-parser
+      ;;      (let [in (async/chan)]
+      ;;        (async/thread
+      ;;          (loop []
+      ;;            (when-let [{:keys [env tx out]} (async/<!! in)]
+      ;;              (async/>!! out (parser env tx))
+      ;;              (recur))))
+      ;;        in))
+      ;;
+      ;;    (comment
+      ;;      (defn handler
+      ;;        [req]
+      ;;        (let [out (async/chan)]
+      ;;          (async/>!! single-parser {:env env :tx tx :out out})
+      ;;          (async/!! out))))
       (let [tx (if (and trace? (not connect-viz?))
                  (conj tx :com.wsscode.pathom/trace) tx)
             resp (parser env tx)]

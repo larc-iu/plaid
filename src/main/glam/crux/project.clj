@@ -59,8 +59,9 @@
 (defn get-accessible-ids [node user-id]
   (gca/get-accessible-ids node user-id :project/id))
 
-(defn get-accessible-projects [node user-id]
+(defn get-accessible-projects
   "Return a seq of full projects accessible for a user"
+  [node user-id]
   (->> (get-accessible-ids node user-id)
        (map vector)
        (gce/entities node)

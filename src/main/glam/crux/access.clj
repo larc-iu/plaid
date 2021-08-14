@@ -6,6 +6,7 @@
   {:project/id     '?p
    :document/id    '?d
    :text-layer/id  '?txtl
+   :text/id        '?txt
    :token-layer/id '?tokl
    :span-layer/id  '?sl})
 
@@ -40,6 +41,13 @@
       (update :rules conj '[(text-layer-accessible ?txtl ?p)
                             [?p :project/text-layers ?txtl]])
       (build-query opts :project/id)))
+
+(defmethod build-query :text/id [query-map opts _]
+  (-> query-map
+      (update :where conj '(text-accessible ?txt ?txtl))
+      (update :rules conj '[(text-accessible ?txt ?txtl)
+                            [?txt :text/layer ?txtl]])
+      (build-query opts :text-layer/id)))
 
 (defmethod build-query :token-layer/id [query-map opts _]
   (-> query-map

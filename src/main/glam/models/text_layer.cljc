@@ -35,7 +35,6 @@
      (txtl/get crux id)))
 
 ;; admin --------------------------------------------------------------------------------
-;;
 #?(:clj
    (pc/defmutation create-text-layer [{:keys [crux]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
      {::pc/transform ma/admin-required

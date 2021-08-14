@@ -10,6 +10,7 @@
     [glam.crux.easy :as gce]
     [glam.crux.user :as usr]
     [glam.crux.project :as prj]
+    [glam.crux.text :as txt]
     [glam.crux.text-layer :as txtl]
     [glam.crux.token-layer :as tokl]
     [glam.crux.span-layer :as sl]
@@ -100,6 +101,11 @@
           doc22 (:id (doc/create node {:document/name "Document 22" :document/id :doc22 :document/project :project2}))
           doc33 (:id (doc/create node {:document/name "Document 33" :document/id :doc33 :document/project :project3}))
           doc44 (:id (doc/create node {:document/name "Document 44" :document/id :doc44 :document/project :project4}))
+
+          txt1 (:id (txt/create node {:text/id       :txt1
+                                      :text/document :doc1
+                                      :text/layer    :txtl
+                                      :text/body     "This sentence is great, isn't it!"}))
           ]
 
       (prj/add-writer node project1 admin-id)

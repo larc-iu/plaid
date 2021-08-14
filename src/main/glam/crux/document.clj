@@ -25,6 +25,16 @@
   [node id]
   (crux->pathom (gce/find-entity node {:document/id id})))
 
+(defn get-texts
+  [node id]
+  (->> (crux/q (crux/db node)
+               '{:find  [?txt]
+                 :where [[?txt :text/document ?doc]]
+                 :in    [?doc]}
+               id)
+       first
+       (mapv #(hash-map :text/id %))))
+
 ;; Mutations ----------------------------------------------------------------------
 (defn merge
   [node eid m]
