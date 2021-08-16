@@ -18,6 +18,7 @@
   (mui/text-field
     {:multiline true
      :variant "outlined"
+     :fullWidth true
      :label text-layer-name
      :value body
      :onChange #(m/set-string! this :text/body :event %)}))
