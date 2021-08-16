@@ -37,7 +37,7 @@
     tx))
 
 (defn- log! [msg value]
-  (binding [*print-level* 4 *print-length* 4]
+  (binding [*print-level* 8 *print-length* 4]
     (log/info msg
               (try
                 (pr-str value)

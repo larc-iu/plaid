@@ -7,7 +7,8 @@
             #?(:clj [glam.crux.text-layer :as txtl])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.crux.easy :as gce])
-            #?(:clj [glam.models.common :as mc :refer [server-error server-message]])))
+            #?(:clj [glam.models.common :as mc :refer [server-error server-message]])
+            #?(:clj [crux.api :as crux])))
 
 (def text-layer-keys [:text-layer/name :text-layer/token-layers])
 
@@ -33,6 +34,29 @@
       ::pc/output    [:text-layer/id :text-layer/name :text-layer/token-layers]
       ::pc/transform (ma/readable-required :text-layer/id)}
      (txtl/get crux id)))
+
+#?(:clj
+   (pc/defresolver get-text [{:keys [crux] :as env} {:text-layer/keys [id]}]
+     {::pc/input     #{:text-layer/id}
+      ::pc/output    [:text-layer/text]
+      ::pc/transform (ma/readable-required :text-layer/id)}
+     (log/info (mc/try-get-document-ident env))
+     (when-let [[_ doc-id] (mc/try-get-document-ident env)]
+       (log/info doc-id)
+       (log/info (crux/q (crux/db crux)
+                         '{:find  [?txt]
+                           :where [[?txt :text/document ?doc]
+                                   [?txt :text/layer ?txtl]]
+                           :in    [[?txtl ?doc]]}
+                         [id doc-id]))
+
+       (when-let [text-id (ffirst (crux/q (crux/db crux)
+                                          '{:find  [?txt]
+                                            :where [[?txt :text/document ?doc]
+                                                    [?txt :text/layer ?txtl]]
+                                            :in    [[?txtl ?doc]]}
+                                          [id doc-id]))]
+         {:text-layer/text {:text/id text-id}}))))
 
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
@@ -80,5 +104,5 @@
            (server-message (str "Text layer " name " deleted")))))))
 
 #?(:clj
-   (def text-layer-resolvers [get-text-layer create-text-layer save-text-layer delete-text-layer]))
+   (def text-layer-resolvers [get-text-layer get-text create-text-layer save-text-layer delete-text-layer]))
 

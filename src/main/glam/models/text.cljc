@@ -11,7 +11,7 @@
 
 ;; user --------------------------------------------------------------------------------
 #?(:clj
-   (pc/defresolver get-text [{:keys [crux]} {:text/keys [id]}]
+   (pc/defresolver get-text [{:keys [crux] :as env} {:text/keys [id]}]
      {::pc/input     #{:text/id}
       ::pc/output    [:text/id :text/body :text/layer :text/document]
       ::pc/transform (ma/readable-required :text/id)}

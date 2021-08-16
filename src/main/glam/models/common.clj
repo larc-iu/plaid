@@ -23,3 +23,17 @@
     (println new-vals)
     (record-valid-fn new-vals)))
 
+(defn try-get-document-ident
+  "Use within a Pathom resolver to attempt to extract a document ID from the query.
+  Used to facilitate implementation of all document-level resolvers. Assumes that
+  the query will have a join on the document ident in the root of the first item in
+  the transaction, something like `[{[:document/id :doc1] ...}]`"
+  [env]
+  (->> env
+       :com.wsscode.pathom.core/root-query
+       first
+       keys
+       (filter #(and (= 2 (count %))
+                     (vector? %)
+                     (= :document/id (first %))))
+       first))

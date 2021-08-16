@@ -30,10 +30,10 @@
 #?(:clj
    (pc/defresolver get-document [{:keys [crux]} {:document/keys [id]}]
      {::pc/input     #{:document/id}
-      ::pc/output    [:document/id :document/name :document/texts]
+      ::pc/output    [:document/id :document/name :document/text-layers]
       ::pc/transform (ma/readable-required :document/id)}
      (-> (doc/get crux id)
-         (assoc :document/texts (doc/get-texts crux id)))))
+         (assoc :document/text-layers (doc/get-text-layers crux id)))))
 
 ;; admin --------------------------------------------------------------------------------
 

@@ -25,15 +25,16 @@
   [node id]
   (crux->pathom (gce/find-entity node {:document/id id})))
 
-(defn get-texts
+(defn get-text-layers
   [node id]
   (->> (crux/q (crux/db node)
-               '{:find  [?txt]
-                 :where [[?txt :text/document ?doc]]
+               '{:find  [?txtl]
+                 :where [[?doc :document/project ?prj]
+                         [?prj :project/text-layers ?txtl]]
                  :in    [?doc]}
                id)
        first
-       (mapv #(hash-map :text/id %))))
+       (mapv #(hash-map :text-layer/id %))))
 
 ;; Mutations ----------------------------------------------------------------------
 (defn merge
