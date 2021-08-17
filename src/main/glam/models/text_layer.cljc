@@ -40,16 +40,7 @@
      {::pc/input     #{:text-layer/id}
       ::pc/output    [:text-layer/text]
       ::pc/transform (ma/readable-required :text-layer/id)}
-     (log/info (mc/try-get-document-ident env))
      (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (log/info doc-id)
-       (log/info (crux/q (crux/db crux)
-                         '{:find  [?txt]
-                           :where [[?txt :text/document ?doc]
-                                   [?txt :text/layer ?txtl]]
-                           :in    [[?txtl ?doc]]}
-                         [id doc-id]))
-
        (when-let [text-id (ffirst (crux/q (crux/db crux)
                                           '{:find  [?txt]
                                             :where [[?txt :text/document ?doc]

@@ -8,7 +8,9 @@
    :text-layer/id  '?txtl
    :text/id        '?txt
    :token-layer/id '?tokl
-   :span-layer/id  '?sl})
+   :token/id       '?tok
+   :span-layer/id  '?sl
+   :span/id        '?s})
 
 (defmulti build-query
   "Build up a query for finding whether a target piece of information is accessible for
@@ -56,12 +58,26 @@
                             [?txtl :text-layer/token-layers ?tokl]])
       (build-query opts :text-layer/id)))
 
+(defmethod build-query :token/id [query-map opts _]
+  (-> query-map
+      (update :where conj '(token-accessible ?tok ?tokl))
+      (update :rules conj '[(token-accessible ?tok ?tokl)
+                            [?tok :token/layer ?tokl]])
+      (build-query opts :token-layer/id)))
+
 (defmethod build-query :span-layer/id [query-map opts _]
   (-> query-map
       (update :where conj '(span-layer-accessible ?sl ?tokl))
       (update :rules conj '[(span-layer-accessible ?sl ?tokl)
                             [?tokl :token-layer/span-layers ?sl]])
       (build-query opts :token-layer/id)))
+
+(defmethod build-query :span/id [query-map opts _]
+  (-> query-map
+      (update :where conj '(span-accessible ?s ?sl))
+      (update :rules conj '[(span-accessible ?s ?sl)
+                            [?s :span/layer ?sl]])
+      (build-query opts :span-layer/id)))
 
 (defn get-accessible-ids
   "Get all accessible IDs of a certain type given a user's privileges on projects.

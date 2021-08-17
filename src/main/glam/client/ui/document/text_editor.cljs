@@ -39,10 +39,11 @@
   {:query [:document/id :document/name
            {:document/text-layers (c/get-query TextLayer)}]
    :ident :document/id}
-  (dom/p
-    (str
-      name))
-  (when text-layers
-    (c/fragment (mapv ui-text-layer text-layers))))
+  (mui/container {:maxWidth "md"}
+    (dom/p
+      (str
+        name))
+    (when text-layers
+      (c/fragment (mapv ui-text-layer text-layers)))))
 
 (def ui-text-editor (c/factory TextEditor))

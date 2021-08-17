@@ -11,6 +11,7 @@
     [glam.crux.user :as usr]
     [glam.crux.project :as prj]
     [glam.crux.text :as txt]
+    [glam.crux.token :as tok]
     [glam.crux.text-layer :as txtl]
     [glam.crux.token-layer :as tokl]
     [glam.crux.span-layer :as sl]
@@ -106,6 +107,10 @@
                                       :text/document :doc1
                                       :text/layer    :txtl
                                       :text/body     "This sentence is great, isn't it!"}))
+          tok1 (:id (tok/create node {:token/id :tok1 :token/text :txt1 :token/layer :tokl1 :token/begin 0 :token/end 4}))
+          tok2 (:id (tok/create node {:token/id :tok2 :token/text :txt1 :token/layer :tokl1 :token/begin 5 :token/end 13}))
+          tok3 (:id (tok/create node {:token/id :tok3 :token/text :txt1 :token/layer :tokl1 :token/begin 14 :token/end 16}))
+          tok4 (:id (tok/create node {:token/id :tok4 :token/text :txt1 :token/layer :tokl1 :token/begin 17 :token/end 22}))
           ]
 
       (prj/add-writer node project1 admin-id)

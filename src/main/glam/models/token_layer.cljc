@@ -3,7 +3,7 @@
             [com.wsscode.pathom.connect :as pc]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [taoensso.timbre :as log]
-            #?(:clj [glam.crux.token-layer :as tokl])
+            #?(:clj [crux.api :as crux])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.models.common :as mc :refer [server-message server-error]])
             #?(:clj [glam.crux.text-layer :as txtl])
@@ -34,6 +34,21 @@
       ::pc/output    [:token-layer/id :token-layer/name :token-layer/span-layers]
       ::pc/transform (ma/readable-required :token-layer/id)}
      (tokl/get crux id)))
+
+#?(:clj
+   (pc/defresolver get-tokens [{:keys [crux] :as env} {:token-layer/keys [id]}]
+     {::pc/input     #{:token-layer/id}
+      ::pc/output    [:token-layer/tokens]
+      ::pc/transform (ma/readable-required :token-layer/id)}
+     (when-let [[_ doc-id] (mc/try-get-document-ident env)]
+       (when-let [tokens (mapv (fn [[id]] {:token/id id}) (crux/q (crux/db crux)
+                                                                  '{:find  [?tok]
+                                                                    :where [[?tok :token/layer ?tokl]
+                                                                            [?tok :token/text ?txt]
+                                                                            [?txt :text/document ?doc]]
+                                                                    :in    [[?tokl ?doc]]}
+                                                                  [id doc-id]))]
+         {:token-layer/tokens tokens}))))
 
 ;; admin --------------------------------------------------------------------------------
 ;;
@@ -83,5 +98,5 @@
 
 
 #?(:clj
-   (def token-layer-resolvers [get-token-layer create-token-layer save-token-layer delete-token-layer]))
+   (def token-layer-resolvers [get-token-layer get-tokens create-token-layer save-token-layer delete-token-layer]))
 

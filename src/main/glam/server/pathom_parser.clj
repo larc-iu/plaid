@@ -6,6 +6,7 @@
             [glam.models.text-layer :refer [text-layer-resolvers]]
             [glam.models.text :refer [text-resolvers]]
             [glam.models.token-layer :refer [token-layer-resolvers]]
+            [glam.models.token :refer [token-resolvers]]
             [glam.models.span-layer :refer [span-layer-resolvers]]
             [glam.models.session :as session]
             [glam.models.user :as user]
@@ -15,7 +16,6 @@
             [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
             [taoensso.timbre :as log]
             [clojure.walk :as walk]))
-
 
 ;; Helpers ================================================================================
 (defn mk-augment-env-request
@@ -69,6 +69,7 @@
    text-layer-resolvers
    text-resolvers
    token-layer-resolvers
+   token-resolvers
    span-layer-resolvers])
 
 (def env-additions
