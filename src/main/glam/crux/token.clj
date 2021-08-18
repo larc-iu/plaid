@@ -4,8 +4,6 @@
             [glam.crux.easy :as gce])
   (:refer-clojure :exclude [get merge]))
 
-;; TODO: do tokens as well, do resolvers, do
-
 (def attr-keys [:token/id
                 :token/text
                 :token/begin

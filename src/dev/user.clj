@@ -1,9 +1,9 @@
 (ns user
   (:require
-    [clojure.spec.alpha :as s]
     [clojure.tools.namespace.repl :as tools-ns]
     [expound.alpha :as expound]
     [mount.core :as mount]
+    [crux.api :as crux]
     [shadow.cljs.devtools.api :as shadow]
     ;; this is the top-level dependent component...mount will find the rest via ns requires
     [glam.server.http-server :refer [http-server]]
@@ -15,6 +15,7 @@
     [glam.crux.text-layer :as txtl]
     [glam.crux.token-layer :as tokl]
     [glam.crux.span-layer :as sl]
+    [glam.crux.span :as s]
     [glam.crux.document :as doc]
     [taoensso.timbre :as log]))
 
@@ -22,7 +23,7 @@
 (tools-ns/set-refresh-dirs "src/main" "src/dev" "src/test")
 
 ;; Change the default output of spec to be more readable
-(alter-var-root #'s/*explain-out* (constantly expound/printer))
+;; (alter-var-root #'s/*explain-out* (constantly expound/printer))
 
 (comment
   ;; For shadow: start the shadow-cljs server using ./scripts/start-dev.sh
@@ -113,6 +114,11 @@
           tok2 (:id (tok/create node {:token/id :tok2 :token/text :txt1 :token/layer :tokl1 :token/begin 5 :token/end 13}))
           tok3 (:id (tok/create node {:token/id :tok3 :token/text :txt1 :token/layer :tokl1 :token/begin 14 :token/end 16}))
           tok4 (:id (tok/create node {:token/id :tok4 :token/text :txt1 :token/layer :tokl1 :token/begin 17 :token/end 22}))
+
+          s1 (:id (s/create node {:span/id :s1 :span/tokens [:tok1] :span/value "DT" :span/layer :sl1}))
+          s2 (:id (s/create node {:span/id :s2 :span/tokens [:tok2] :span/value "NN" :span/layer :sl1}))
+          s3 (:id (s/create node {:span/id :s3 :span/tokens [:tok3] :span/value "VBZ" :span/layer :sl1}))
+          s4 (:id (s/create node {:span/id :s4 :span/tokens [:tok4] :span/value "JJ" :span/layer :sl1}))
           ]
 
       (prj/add-writer node project1 admin-id)

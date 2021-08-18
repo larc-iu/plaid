@@ -3,6 +3,7 @@
             [com.wsscode.pathom.connect :as pc]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [taoensso.timbre :as log]
+            #?(:clj [crux.api :as crux])
             #?(:clj [glam.crux.span-layer :as sl])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.models.common :as mc :refer [server-message server-error]])
@@ -39,6 +40,22 @@
       ::pc/output    [:span-layer/id :span-layer/name :span-layer/overlap :span-layer/to-many]
       ::pc/transform (ma/readable-required :span-layer/id)}
      (sl/get crux id)))
+
+#?(:clj
+   (pc/defresolver get-spans [{:keys [crux] :as env} {:span-layer/keys [id]}]
+     {::pc/input     #{:span-layer/id}
+      ::pc/output    [:span-layer/spans]
+      ::pc/transform (ma/readable-required :span-layer/id)}
+     (when-let [[_ doc-id] (mc/try-get-document-ident env)]
+       (when-let [spans (mapv (fn [[id]] {:span/id id}) (crux/q (crux/db crux)
+                                                                '{:find  [?s]
+                                                                  :where [[?s :span/layer ?sl]
+                                                                          [?s :span/tokens ?tok]
+                                                                          [?tok :token/text ?txt]
+                                                                          [?txt :text/document ?doc]]
+                                                                  :in    [[?sl ?doc]]}
+                                                                [id doc-id]))]
+         {:span-layer/spans spans}))))
 
 ;; admin --------------------------------------------------------------------------------
 ;;
@@ -88,4 +105,4 @@
            (server-message (str "Span layer " name " deleted")))))))
 
 #?(:clj
-   (def span-layer-resolvers [get-span-layer create-span-layer save-span-layer delete-span-layer]))
+   (def span-layer-resolvers [get-span-layer get-spans create-span-layer save-span-layer delete-span-layer]))

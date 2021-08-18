@@ -9,24 +9,46 @@
             [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.mutations :as m]))
 
-;; TODO: this is display only for now, make full stack
+;; Span --------------------------------------------------------------------------------
+(defsc Span
+  [this {:span/keys [id value]}]
+  {:query [:span/id :span/value]
+   :ident :span/id}
+  (dom/div value))
+
+(def ui-span (c/factory Span {:keyfn :span/id}))
+
+(defsc SpanLayer
+  [this {:span-layer/keys [id name spans]}]
+  {:query [:span-layer/id :span-layer/name
+           {:span-layer/spans (c/get-query Span)}]
+   :ident :span-layer/id}
+  (dom/div name (mapv ui-span spans)))
+
+(def ui-span-layer (c/factory SpanLayer {:keyfn :span-layer/id}))
+
+;; Token --------------------------------------------------------------------------------
 (defsc Token
   [this {:token/keys [id value]}]
   {:query [:token/id :token/value]
    :ident :token/id}
-  value)
+  (dom/div value))
 
 (def ui-token (c/factory Token {:keyfn :token/id}))
 
 (defsc TokenLayer
-  [this {:token-layer/keys [id name tokens]}]
+  [this {:token-layer/keys [id name tokens span-layers]}]
   {:query [:token-layer/id :token-layer/name
-           {:token-layer/tokens (c/get-query Token)}]
+           {:token-layer/tokens (c/get-query Token)}
+           {:token-layer/span-layers (c/get-query SpanLayer)}]
    :ident :token-layer/id}
-  (dom/div name (map ui-token tokens)))
+  (dom/div
+    (dom/div name (mapv ui-token tokens))
+    (mapv ui-span-layer span-layers)))
 
 (def ui-token-layer (c/factory TokenLayer {:keyfn :token-layer/id}))
 
+;; Text --------------------------------------------------------------------------------
 (defsc Text
   [this {:text/keys [id body]} {text-layer-name :text-layer/name}]
   {:query [:text/id :text/body]
@@ -43,7 +65,7 @@
    :ident :text-layer/id}
   (dom/div
     (ui-text (c/computed text {:text-layer/name name}))
-    (map ui-token-layer token-layers)))
+    (mapv ui-token-layer token-layers)))
 
 (def ui-text-layer (c/factory TextLayer {:keyfn :text-layer/id}))
 

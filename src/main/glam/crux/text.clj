@@ -5,8 +5,6 @@
             [glam.crux.token-layer :as tokl])
   (:refer-clojure :exclude [get merge]))
 
-;; TODO: do tokens as well, do resolvers, do
-
 (def attr-keys [:text/id
                 :text/document
                 :text/layer

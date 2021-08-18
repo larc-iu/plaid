@@ -8,6 +8,7 @@
             [glam.models.token-layer :refer [token-layer-resolvers]]
             [glam.models.token :refer [token-resolvers]]
             [glam.models.span-layer :refer [span-layer-resolvers]]
+            [glam.models.span :refer [span-resolvers]]
             [glam.models.session :as session]
             [glam.models.user :as user]
             [glam.models.common :refer [server-error]]
@@ -70,7 +71,8 @@
    text-resolvers
    token-layer-resolvers
    token-resolvers
-   span-layer-resolvers])
+   span-layer-resolvers
+   span-resolvers])
 
 (def env-additions
   (fn [env]
