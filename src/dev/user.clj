@@ -108,7 +108,7 @@
 
           txt1 (:id (txt/create node {:text/id       :txt1
                                       :text/document :doc1
-                                      :text/layer    :txtl
+                                      :text/layer    :txtl1
                                       :text/body     "This sentence is great, isn't it!"}))
           tok1 (:id (tok/create node {:token/id :tok1 :token/text :txt1 :token/layer :tokl1 :token/begin 0 :token/end 4}))
           tok2 (:id (tok/create node {:token/id :tok2 :token/text :txt1 :token/layer :tokl1 :token/begin 5 :token/end 13}))
