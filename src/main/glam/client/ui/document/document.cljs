@@ -24,11 +24,11 @@
 
 
 (defsc Document
-  [this {:document/keys [id name project] :ui/keys [active-tab text-editor grid-editor] :as props}]
+  [this {:document/keys [id name project] :ui/keys [active-tab] :>/keys [text-editor grid-editor] :as props}]
   {:query         [:document/id :document/name
                    {:document/project (c/get-query ProjectNameQuery)}
-                   {:ui/text-editor (c/get-query TextEditor)}
-                   {:ui/grid-editor (c/get-query GridEditor)}
+                   {:>/text-editor (c/get-query TextEditor)}
+                   {:>/grid-editor (c/get-query GridEditor)}
                    :ui/active-tab]
    :ident         :document/id
    :pre-merge     (fn [{:keys [data-tree]}]
@@ -41,10 +41,6 @@
                         (dr/route-deferred
                           [:document/id parsed-id]
                           (fn []
-                            (df/load! app [:document/id parsed-id] TextEditor
-                                      {:target [:document/id parsed-id :ui/text-editor]})
-                            (df/load! app [:document/id parsed-id] GridEditor
-                                      {:target [:document/id parsed-id :ui/grid-editor]})
                             (df/load! app [:document/id parsed-id] Document
                                       {:post-mutation        `dr/target-ready
                                        :post-mutation-params {:target [:document/id parsed-id]}}))))))}
