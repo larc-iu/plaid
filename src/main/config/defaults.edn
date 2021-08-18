@@ -22,7 +22,7 @@
                                :mode    :block}}}
 
  :taoensso.timbre/logging-config
- {:level        :info
+ {:min-level    :info
   :ns-whitelist []
   :ns-blacklist []}
 

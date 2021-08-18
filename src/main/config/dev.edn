@@ -1,5 +1,5 @@
 {:taoensso.timbre/logging-config
- {:level        :debug
+ {:min-level    :debug
   :ns-blacklist ["shadow.cljs.devtools.server.worker.impl"]}
 
  :glam.server.pathom-parser/config

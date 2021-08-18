@@ -15,7 +15,8 @@
     [glam.crux.text-layer :as txtl]
     [glam.crux.token-layer :as tokl]
     [glam.crux.span-layer :as sl]
-    [glam.crux.document :as doc]))
+    [glam.crux.document :as doc]
+    [taoensso.timbre :as log]))
 
 ;; ==================== SERVER ====================
 (tools-ns/set-refresh-dirs "src/main" "src/dev" "src/test")
@@ -39,9 +40,10 @@
   )
 
 (defn start "Start the web server + services" []
-  (mount/start)
-  (def node glam.server.crux/crux-node)
-  (def parser (glam.server.pathom-parser/make-parser)))
+  (let [result (mount/start)]
+    (def node glam.server.crux/crux-node)
+    (def parser (glam.server.pathom-parser/make-parser))
+    result))
 
 (defn stop "Stop the web server + services" []
   (mount/stop))
@@ -127,4 +129,3 @@
       (txtl/add-token-layer node txtl1 tokl1)
       (tokl/add-span-layer node tokl1 sl1)
       )))
-
