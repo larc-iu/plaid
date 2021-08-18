@@ -71,10 +71,6 @@
 (defn remote-error?
   [result]
   (let [status (:status-code result)
-        ;; todo add support for read errors if :server/error? is present in top level
-        ;; in pathom use similar helper as augment-session-resp in session to
-        ;; override the resp body to just be the map.
-        ;;
         resp   (or (not= status 200) (mutation-error? result)
                  (read-error? result))]
     (log/info "Remote error? " resp)
