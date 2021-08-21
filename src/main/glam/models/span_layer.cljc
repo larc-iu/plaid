@@ -12,16 +12,12 @@
             #?(:clj [glam.crux.easy :as gce])))
 
 (def span-layer-keys [:span-layer/name
-                      :span-layer/span-layers
-                      :span-layer/overlap
-                      :span-layer/to-many])
+                      :span-layer/span-layers])
 
 (defn valid-name [name] (and (string? name) (<= 1 (count name) 80)))
 (defn- field-valid [field v]
   (case field
-    :span-layer/name (valid-name v)
-    :span-layer/overlap (boolean? v)
-    :span-layer/to-many (boolean? v)))
+    :span-layer/name (valid-name v)))
 
 (defn span-layer-valid [form field]
   (let [v (get form field)]
@@ -37,7 +33,7 @@
 #?(:clj
    (pc/defresolver get-span-layer [{:keys [crux]} {:span-layer/keys [id]}]
      {::pc/input     #{:span-layer/id}
-      ::pc/output    [:span-layer/id :span-layer/name :span-layer/overlap :span-layer/to-many]
+      ::pc/output    [:span-layer/id :span-layer/name]
       ::pc/transform (ma/readable-required :span-layer/id)}
      (sl/get crux id)))
 

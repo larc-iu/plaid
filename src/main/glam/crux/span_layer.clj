@@ -5,9 +5,7 @@
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:span-layer/id
-                :span-layer/name
-                :span-layer/overlap
-                :span-layer/to-many])
+                :span-layer/name])
 
 (defn crux->pathom [doc]
   (when doc
@@ -15,8 +13,6 @@
 
 (defn create [node {:span-layer/keys [id] :as attrs}]
   (let [{:span-layer/keys [id] :as record} (clojure.core/merge (cutil/new-record "span-layer" id)
-                                                               {:span-layer/overlap false
-                                                                :span-layer/to-many false}
                                                                (select-keys attrs attr-keys))
         tx-status (gce/submit! node [[:crux.tx/put record]])]
     {:success tx-status
@@ -39,7 +35,7 @@
 ;; Mutations ----------------------------------------------------------------------
 (defn merge
   [node eid m]
-  (gce/merge node eid (select-keys m [:span-layer/name :span-layer/overlap :span-layer/to-many])))
+  (gce/merge node eid (select-keys m [:span-layer/name])))
 (defn delete** [node eid]
   [(gce/match* eid (gce/entity node eid))
    (gce/delete* eid)])

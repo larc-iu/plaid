@@ -245,14 +245,14 @@
       (log/warn "Tried to exit a UISM, but didn't recognize the type. Props :" props))))
 
 (defsc SpanLayerForm
-  [this {:span-layer/keys [id name overlap to-many] :ui/keys [busy?] :as props}]
-  {:query                  [:span-layer/name :span-layer/id :span-layer/overlap :span-layer/to-many
+  [this {:span-layer/keys [id name] :ui/keys [busy?] :as props}]
+  {:query                  [:span-layer/name :span-layer/id
                             fs/form-config-join :ui/busy?]
    :ident                  :span-layer/id
    :pre-merge              (fn [{:keys [data-tree] :as m}]
                              (merge {:ui/busy? false}
                                     data-tree))
-   :form-fields            #{:span-layer/name :span-layer/overlap :span-layer/to-many}
+   :form-fields            #{:span-layer/name}
    ::forms/validator       sl/validator
    ::forms/save-mutation   'glam.models.span-layer/save-span-layer
    ::forms/delete-mutation 'glam.models.span-layer/delete-span-layer
@@ -269,12 +269,6 @@
         (forms/text-input-with-label this :span-layer/name "Name" "Must have 1 to 80 characters"
           {:fullWidth true
            :disabled  busy?})
-        (forms/checkbox-input-with-label this :span-layer/overlap "Overlap"
-          {:disabled busy?
-           :color    "primary"})
-        (forms/checkbox-input-with-label this :span-layer/to-many "To-many"
-          {:disabled busy?
-           :color    "primary"})
         (forms/form-buttons
           {:component       this
            :validator       sl/validator
