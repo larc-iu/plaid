@@ -51,8 +51,8 @@
   [node e1-id join-keys e2-id]
   (let [e1 (gce/entity node e1-id)
         e2 (gce/entity node e2-id)]
-    [(gce/match* e1-id e1)
-     (gce/match* e2-id e2)
+    [;;(gce/match* e1-id e1)
+     ;;(gce/match* e2-id e2)
      (gce/put* (reduce (fn [project join-key]
                          (-> project
                              (update join-key conj-unique e2-id)
@@ -74,8 +74,8 @@
   [node e1-id join-keys e2-id]
   (let [e1 (gce/entity node e1-id)
         e2 (gce/entity node e2-id)]
-    (into [(gce/match* e1-id e1)
-           (gce/match* e2-id e2)
+    (into [;;(gce/match* e1-id e1)
+           ;;(gce/match* e2-id e2)
            (gce/put* (reduce (fn [project join-key]
                                (remove-id project join-key e2-id))
                              e1

@@ -2,7 +2,7 @@
   (:require [crux.api :as crux]
             [glam.crux.util :as cutil]
             [glam.crux.easy :as gce]
-            [glam.crux.token-layer :as tokl])
+            [glam.crux.token :as tok])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:text/id
@@ -28,13 +28,32 @@
   [node id]
   (crux->pathom (gce/find-entity node {:text/id id})))
 
+
 ;; Mutations ----------------------------------------------------------------------
-;;
-;;(defn delete** [node eid]
-;;  (let [token-layers (:text/token-layers (gce/entity node eid))]
-;;    (into
-;;      (reduce into (map #(tokl/delete** node %) token-layers))
-;;      [(gce/match* eid (gce/entity node eid))
-;;       (gce/delete* eid)])))
-;;(defn delete [node eid]
-;;  (gce/submit-tx-sync node (delete** node eid)))
+(defn- get-span-ids [node eid]
+  (map first (crux/q (crux/db node)
+                     '{:find  [?span]
+                       :where [[?span :span/tokens ?tok]
+                               [?tok :token/text ?txt]]
+                       :in    [?txt]}
+                     eid)))
+
+(defn- get-token-ids [node eid]
+  (map first (crux/q (crux/db node)
+                     '{:find  [?tok]
+                       :where [[?tok :token/text ?txt]]
+                       :in    [?txt]}
+                     eid)))
+
+;; We don't follow the usual pattern of relying on child nodes' delete** functions here because
+;; this would lead to children being included multiple times. Instead, we write a bespoke fn.
+(defn delete** [node eid]
+  (let [span-deletes (mapv gce/delete* (get-span-ids node eid))
+        token-deletes (mapv gce/delete* (get-token-ids node eid))
+        text-delete [(gce/delete* eid)]]
+    (reduce into
+            [span-deletes
+             token-deletes
+             text-delete])))
+(defn delete [node eid]
+  (gce/submit-tx-sync node (delete** node eid)))

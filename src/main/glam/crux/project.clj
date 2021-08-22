@@ -70,9 +70,10 @@
 ;; Mutations --------------------------------------------------------------------------------
 (defn delete** [node eid]
   (let [text-layers (:project/text-layers (gce/entity node eid))
-        documents (get-document-ids node eid)
         txtl-txs (reduce into (map #(txtl/delete** node %) text-layers))
-        doc-txs (reduce into (map #(doc/delete** node %) documents))
+        ;; note: do NOT use doc/delete since the layer deletions will take care of annos
+        documents (get-document-ids node eid)
+        doc-txs (map #(gce/delete* %) documents)
         project-txs [(gce/match* eid (gce/entity node eid))
                      (gce/delete* eid)]
         all-txs (reduce into [txtl-txs doc-txs project-txs])]

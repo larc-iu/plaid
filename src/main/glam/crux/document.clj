@@ -1,7 +1,8 @@
 (ns glam.crux.document
   (:require [crux.api :as crux]
             [glam.crux.util :as cutil]
-            [glam.crux.easy :as gce])
+            [glam.crux.easy :as gce]
+            [glam.crux.text :as text])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:document/id
@@ -41,8 +42,13 @@
   [node eid m]
   (gce/merge node eid (select-keys m [:document/name])))
 
-;; TODO: gotta delete all the data
 (defn delete** [node eid]
-  [(gce/delete* eid)])
+  (let [text-ids (map first (crux/q (crux/db node)
+                                    '{:find  [?txt]
+                                      :where [[?txt :text/document ?doc]]
+                                      :in    [?doc]}
+                                    eid))
+        text-deletes (reduce into (map #(text/delete** node %) text-ids))]
+    (conj text-deletes (gce/delete* eid))))
 (defn delete [node eid]
   (gce/submit-tx-sync node (delete** node eid)))

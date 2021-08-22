@@ -7,7 +7,10 @@
             [glam.crux.text-layer :as txtl]
             [glam.crux.token-layer :as tokl]
             [glam.crux.span-layer :as sl]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            [glam.crux.text :as txt]
+            [glam.crux.token :as tok]
+            [glam.crux.span :as s]))
 
 (log/set-level! :error)
 
@@ -90,7 +93,21 @@
 
         doc22 (:id (doc/create crux-node {:document/name "Document 22" :document/id :doc22 :document/project :project2}))
         doc33 (:id (doc/create crux-node {:document/name "Document 33" :document/id :doc33 :document/project :project3}))
-        doc44 (:id (doc/create crux-node {:document/name "Document 44" :document/id :doc44 :document/project :project4}))]
+        doc44 (:id (doc/create crux-node {:document/name "Document 44" :document/id :doc44 :document/project :project4}))
+
+        txt1 (:id (txt/create crux-node {:text/id       :txt1
+                                         :text/document :doc1
+                                         :text/layer    :txtl1
+                                         :text/body     "This sentence is great, isn't it!"}))
+        tok1 (:id (tok/create crux-node {:token/id :tok1 :token/text :txt1 :token/layer :tokl1 :token/begin 0 :token/end 4}))
+        tok2 (:id (tok/create crux-node {:token/id :tok2 :token/text :txt1 :token/layer :tokl1 :token/begin 5 :token/end 13}))
+        tok3 (:id (tok/create crux-node {:token/id :tok3 :token/text :txt1 :token/layer :tokl1 :token/begin 14 :token/end 16}))
+        tok4 (:id (tok/create crux-node {:token/id :tok4 :token/text :txt1 :token/layer :tokl1 :token/begin 17 :token/end 22}))
+
+        s1 (:id (s/create crux-node {:span/id :s1 :span/tokens [:tok1] :span/value "DT" :span/layer :sl1}))
+        s2 (:id (s/create crux-node {:span/id :s2 :span/tokens [:tok2] :span/value "NN" :span/layer :sl1}))
+        s3 (:id (s/create crux-node {:span/id :s3 :span/tokens [:tok3] :span/value "VBZ" :span/layer :sl1}))
+        s4 (:id (s/create crux-node {:span/id :s4 :span/tokens [:tok4] :span/value "JJ" :span/layer :sl1}))]
     (prj/add-writer crux-node project1 user1)
     (prj/add-reader crux-node project2 user1)
 
@@ -107,7 +124,5 @@
     (txtl/add-token-layer crux-node txtl4 tokl4)
     (tokl/add-span-layer crux-node tokl4 sl4)
     (f)
-    (prj/delete crux-node project1)
-    (prj/delete crux-node project2)
-    (prj/delete crux-node project3)
-    (prj/delete crux-node project4)))
+    ;; don't need to delete--we use this only with :each, and the with-crux cleanup will take care of deletions
+    ))

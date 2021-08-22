@@ -37,7 +37,13 @@
   [node eid m]
   (gce/merge node eid (select-keys m [:span-layer/name])))
 (defn delete** [node eid]
-  [(gce/match* eid (gce/entity node eid))
-   (gce/delete* eid)])
+  (let [span-ids (map first (crux/q (crux/db node) '{:find [?s]
+                                                     :where [[?s :span/layer ?sl]]
+                                                     :in [?sl]}
+                                    eid))
+        span-deletions (mapv gce/delete* span-ids)]
+    (into span-deletions
+          [(gce/match* eid (gce/entity node eid))
+           (gce/delete* eid)])))
 (defn delete [node eid]
   (gce/submit-tx-sync node (delete** node eid)))

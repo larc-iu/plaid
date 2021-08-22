@@ -53,10 +53,18 @@
   (gce/submit! node (remove-token-layer** node text-layer-id token-layer-id)))
 
 (defn delete** [node eid]
-  (let [token-layers (:text-layer/token-layers (gce/entity node eid))]
-    (into
-      (reduce into (map #(tokl/delete** node %) token-layers))
-      [(gce/match* eid (gce/entity node eid))
-       (gce/delete* eid)])))
+  (let [token-layers (:text-layer/token-layers (gce/entity node eid))
+        token-layer-deletions (reduce into (mapv #(tokl/delete** node %) token-layers))
+        text-ids (map first (crux/q (crux/db node) '{:find  [?txt]
+                                                     :where [[?txt :text/layer ?txtl]]
+                                                     :in    [?txtl]}
+                                    eid))
+        text-deletions (mapv gce/delete* text-ids)]
+    (reduce
+      into
+      [token-layer-deletions
+       text-deletions
+       [(gce/match* eid (gce/entity node eid))
+        (gce/delete* eid)]])))
 (defn delete [node eid]
   (gce/submit-tx-sync node (delete** node eid)))
