@@ -14,7 +14,7 @@
    :ident :project/id}
   (mui/list-item {:button  true
                   :onClick #(r/route-to! :project {:id id})}
-    (mui/list-item-text {:primary name :secondary id})))
+    (mui/list-item-text {:primary name})))
 
 (def ui-project-list-item (c/factory ProjectListItem {:keyfn :project/id}))
 
