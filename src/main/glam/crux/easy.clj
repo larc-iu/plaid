@@ -81,7 +81,6 @@
 
 ;; mutations --------------------------------------------------------------------------------
 (defn submit-tx-sync [node tx]
-  (log/debug (with-out-str (pprint/pprint tx)))
   (let [tx-map (crux/submit-tx node tx)]
     (crux/await-tx node tx-map)
     (crux/tx-committed? node tx-map)))

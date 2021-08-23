@@ -77,7 +77,6 @@
 (defn make-session-data
   [key data]
   (-> data
-      (dissoc "__anti-forgery-token")
       (assoc :crux.db/id key
              ::session? true)))
 
@@ -87,10 +86,7 @@
   (read-session [this key]
     (if (some? key)
       (try
-        (let [sess (crux/entity (crux/db crux-node) (UUID/fromString key))]
-          (-> sess
-              (assoc "__anti-forgery-token" (:anti-forgery-token sess))
-              (dissoc :anti-forgery-token)))
+        (crux/entity (crux/db crux-node) (UUID/fromString key))
         (catch Exception e
           (log/error "Invalid session. Error reading crux/entity for key: " key)
           {}))
@@ -102,14 +98,10 @@
                    (catch Exception e (UUID/randomUUID)))
           key (or key (UUID/randomUUID))
           tx-data (make-session-data key data)]
-      (log/info "data" data)
-      (log/info "Writing session data: " tx-data)
-      (log/info "At key : " key)
       (gce/put crux-node tx-data)
       key))
 
   (delete-session [_ key]
-    (log/info "Deleting session: " key)
     (gce/delete crux-node key)
     nil))
 
@@ -125,7 +117,6 @@
   routing setup will ensure that the proper components are displayed."
   [ring-handler]
   (fn [{:keys [uri anti-forgery-token] :as req}]
-    (log/info "Request" (with-out-str (pprint req)))
     (cond
       (re-matches #"^/api" uri)
       (ring-handler req)
@@ -147,7 +138,6 @@
     ;; In order, this middleware chain will first try to serve a static file (cf.
     ;; wrap-defaults), then it will serve the index page unless the request is
     ;; targeted at `/api`. There is no opportunity for a 404, so don't include a handler.
-    (log/info defaults-config)
     (-> (wrap-api parser)
         wrap-transit-params
         wrap-transit-response
