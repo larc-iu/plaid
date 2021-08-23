@@ -17,8 +17,10 @@ First, take care of dependencies. You will need to:
 ```bash
 # install dependencies
 $ yarn
-# start compiling CLJS, and start a server repl--note you'll have to type `(start)`
-$ yarn start
+# start compiling CLJS--leave this running in a terminal session...
+$ yarn client
+# and in a separate session, start a server repl--note you'll have to type `(start)`
+$ yarn server
 clojure -A:dev
 Clojure 1.10.1
 user=> (start)
@@ -56,7 +58,7 @@ ClojureScript Client Profile:
 
 ## Yarn Commands
 
-* **`client/main`**: Start the shadow-cljs ClojureScript compiler, which will compile code to JS and also hot reload any changes.
+* **`client`**: Start the shadow-cljs ClojureScript compiler, which will compile code to JS and also hot reload any changes.
 * `client/cljs-repl`: Get a client CLJS REPL (note: requires a running browser session).
 * `client/clj-repl`: Get a client CLJ REPL (note: this is only useful if you want to fiddle with shadow-cljs, which is rare).
 * **`server`**: Start a server REPL. (This will not start the server automatically--to do that, you need to type `(start)`.) 
