@@ -16,8 +16,8 @@
     "server/release": "clojure -X:uberjar",
     "release": "yarn clean && yarn client/release && yarn server/release",
     "test": "clojure -M:test -d src/test",
-    "server/outdated": "clojure -M:outdated",
-    "client/outdated": "yarn outdated"
+    "clojure-outdated": "clojure -M:outdated",
+    "npm-outdated": "yarn outdated"
   },
   "dependencies": {},
   "devDependencies": {
