@@ -71,7 +71,7 @@
   ;; todo: fix link once document view is implemented
   (mui/list-item {:button  true
                   :onClick #(r/route-to! :document {:id id})}
-    (mui/list-item-text {:primary name :secondary (str id)})))
+    (mui/list-item-text {:primary name})))
 
 (def ui-document-list-item (c/computed-factory DocumentListItem {:keyfn :document/id}))
 
@@ -129,7 +129,7 @@
 
     (if-not (empty? documents)
       (mui/padded-paper
-        (mui/list {:subheader (mui/list-subheader {:color "primary"} "Documents")}
+        (mui/list {:subheader (mui/list-subheader {:color "primary"} "Documents") :dense true}
           (mapv ui-document-list-item (sort-by :document/name documents))))
       (mui/box {:my 4}
         (mui/typography
