@@ -2,10 +2,18 @@
 
 An app for annotating linguistic data that's still under construction. It's built using [Clojure](https://clojure.org/)([Script](https://clojurescript.org/)), [Material-UI](https://material-ui.com/), [Fulcro](https://fulcro.fulcrologic.com/), and [Crux](https://opencrux.com/main/index.html). Check back soon 🚧
 
-# How do I run this? 
-There's not much to look at presently, but if you really want to:
+# Installation
+*Coming soon*
 
-## Command Line
+# Development
+
+First, take care of dependencies. You will need to:
+
+1. [Install Clojure CLI tools](https://clojure.org/guides/getting_started)
+2. [Install NPM and Node](https://nodejs.org/en/download/)
+3. [Install Yarn](https://yarnpkg.com/getting-started/install)
+
+## Running: Command Line
 ```bash
 # install dependencies
 $ yarn
@@ -17,7 +25,7 @@ user=> (start)
 # navigate to localhost:8085, and see package.json for more
 ```
 
-## IntelliJ + Cursive
+## Running: IntelliJ + Cursive
 On the terminal:
 ```bash
 yarn client/main
@@ -46,35 +54,17 @@ ClojureScript Client Profile:
 ```
 8. Write `(js/console.log "hi")` and ensure that it was printed out to the console in your browser session
 
-## Release build
-```bash
-clojure -X:uberjar
-# to run:
-java -jar target/server.jar
-```
+## Yarn Commands
 
-## Updating dependencies
-
-```bash
-# clojure dependencies
-clojure -M:outdated
-# js dependencies
-yarn outdated
-```
-
-
-# Architectural Overview
-- main code is in `src/main`
-- db-layer files are in `glam.crux`. `glam.crux.easy` contains some wrapper functions around `crux.api`, and every other 
-  file pertains to a single entity type, e.g. `user`, `project`, etc. All functions in this layer are concerned solely 
-  with doing things with the database and will assume that its callers will take care of orthogonal concerns such as
-  authorization, data integrity (e.g. enforcing uniqueness constraints)
-  - naming conventions: 
-    - a function suffixed with a single `*` returns a vector which describes a single crux operation and does NOT take
-      `node` as a first arg
-    - a function suffixed with a double `**` returns a vector which describes a crux transaction (which has operations)
-      and DOES take `node` as a first arg.
-- model code is under `glam.models`, again one file per entity type. This is where validation code, Pathom resolvers 
-  and mutations, and Fulcro mutations go. This is the layer that mediates the database and the UI. This is where 
-  business logic goes, and it is the responsibility of the resolvers and mutations to cover auth, integrity, etc.
-- ui code goes under `glam.ui`
+* **`client/main`**: Start the shadow-cljs ClojureScript compiler, which will compile code to JS and also hot reload any changes.
+* `client/cljs-repl`: Get a client CLJS REPL (note: requires a running browser session).
+* `client/clj-repl`: Get a client CLJ REPL (note: this is only useful if you want to fiddle with shadow-cljs, which is rare).
+* **`server`**: Start a server REPL. (This will not start the server automatically--to do that, you need to type `(start)`.) 
+* **`start`**: Convenience function for running `client/main` and `server`.
+* `clean`: Remove all compilation artefacts. 
+* `client/release`: Build the single `.js` bundle for a production release.
+* `server/release`: Build the single `.jar` file for a production release.
+* `release`: Convenience function for running `client/release` and `server/release`.
+* `test`: Run all Clojure tests. (Currently, there are no CLJS tests.)
+* `clojure-outdated`: Check Clojure dependencies for oudatedness.
+* `npm-outdated`: Check NPM dependencies for outdatedness.
