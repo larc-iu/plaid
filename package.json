@@ -6,7 +6,7 @@
   "description": "",
   "private": true,
   "scripts": {
-    "client/main": "yarn shadow-cljs -A:dev watch :main",
+    "client": "yarn shadow-cljs -A:dev watch :main",
     "client/cljs-repl": "shadow-cljs -A:dev cljs-repl :main",
     "client/clj-repl": "shadow-cljs -A:dev clj-repl",
     "server": "clojure -A:dev -J-Dtrace -J-Dguardrails.enabled=true",
