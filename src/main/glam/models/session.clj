@@ -17,12 +17,10 @@
    (augment-session-resp mutation-env new-session-data (or new-session-data {})))
   ([mutation-env new-session-data data]
    (let [existing-session (some-> mutation-env :ring/request :session)]
-     ;;(log/info "response-updating-session" new-session-data)
      (fmw/augment-response
        data
        (fn [resp]
          (let [new-session (cond->> new-session-data (some? new-session-data) (merge existing-session))]
-           ;;(log/info "Setting new session to " new-session)
            (assoc resp :session new-session)))))))
 
 (pc/defmutation signup

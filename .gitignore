@@ -29,3 +29,4 @@ resources/public/devcards/*
 crux-store
 builds/
 crux_data/
+crux_session_data/

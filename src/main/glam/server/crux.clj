@@ -19,27 +19,25 @@
   (start-lmdb-node {:db-dir           (-> config ::config :main-db-dir)
                     :http-server-port (-> config ::config :http-server-port)}))
 
-(defn extract-ids
-  [seq]
-  )
+(defn start-session-lmdb-node []
+  (start-lmdb-node {:db-dir (-> config ::config :session-db-dir)}))
 
-(defn setup-listener! [node]
-  (crux/listen
-    node
-    {:crux/event-type :crux/indexed-tx, :with-tx-ops? true}
-    (fn [ev]
-      (let [out (StringWriter.)]
-        (clojure.pprint/pprint ev out)
-        (println
-          (str
-            "\nevent received!\n\n"
-            (.toString out)
-            "\n\n\n")))
-      (when (:committed? ev)
-        (println (-> ev :crux/tx-ops first second type))
-        (println (-> ev :crux/tx-ops first second))
-
-        ))))
+;; (defn setup-listener! [node]
+;;   (crux/listen
+;;     node
+;;     {:crux/event-type :crux/indexed-tx, :with-tx-ops? true}
+;;     (fn [ev]
+;;       (let [out (StringWriter.)]
+;;         (clojure.pprint/pprint ev out)
+;;         (println
+;;           (str
+;;             "\nevent received!\n\n"
+;;             (.toString out)
+;;             "\n\n\n")))
+;;       (when (:committed? ev)
+;;         (println (-> ev :crux/tx-ops first second type))
+;;         (println (-> ev :crux/tx-ops first second))
+;;        ))))
 
 (defstate crux-node
   :start (let [node (start-main-lmdb-node)]
@@ -48,3 +46,8 @@
            ;; (setup-listener! node)
            node)
   :stop (.close crux-node))
+
+(defstate crux-session-node
+  :start (let [node (start-session-lmdb-node)]
+           node)
+  :stop (.close crux-session-node))
