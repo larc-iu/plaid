@@ -81,16 +81,6 @@
 
 ;; Modals for creating layers ---------------------------------------------------------------------------
 ;; ======================================================================================================
-(defmutation prepare-layer-form
-  "Set up the modal component and the join before letting the UISM take over"
-  [{:keys [ident modal-join-key form-class]}]
-  (action [{:keys [state ref]}]
-          (swap! state (fn [s]
-                         (-> s
-                             (assoc-in ident (into (c/get-initial-state form-class) [ident]))
-                             (assoc-in (conj ref modal-join-key) ident))))))
-
-
 (defsc AddSpanLayer [this {:span-layer/keys [id] :ui/keys [busy?] :as props}]
   {:ident                   :span-layer/id
    :query                   [fs/form-config-join :span-layer/id :span-layer/name :ui/busy?]
@@ -327,9 +317,9 @@
              :style     {:marginTop "1em"}
              :onClick   (fn []
                           (let [tempid (tempid/tempid)]
-                            (c/transact! this [(prepare-layer-form {:ident          [:span-layer/id tempid]
-                                                                    :modal-join-key :ui/add-span-layer
-                                                                    :form-class     AddSpanLayer})])
+                            (c/transact! this [(forms/prepare-for-create {:ident          [:span-layer/id tempid]
+                                                                          :modal-join-key :ui/add-span-layer
+                                                                          :form-class     AddSpanLayer})])
                             (uism/begin! this forms/create-form-machine ::add-span-layer
                                          {:actor/form       (uism/with-actor-class [:span-layer/id tempid] AddSpanLayer)
                                           :actor/modal-host (uism/with-actor-class [:token-layer/id id] TokenLayerForm)})))}
@@ -393,9 +383,9 @@
              :style     {:marginTop "1em"}
              :onClick   (fn []
                           (let [tempid (tempid/tempid)]
-                            (c/transact! this [(prepare-layer-form {:ident          [:token-layer/id tempid]
-                                                                    :modal-join-key :ui/add-token-layer
-                                                                    :form-class     AddTokenLayer})])
+                            (c/transact! this [(forms/prepare-for-create {:ident          [:token-layer/id tempid]
+                                                                          :modal-join-key :ui/add-token-layer
+                                                                          :form-class     AddTokenLayer})])
                             (uism/begin! this forms/create-form-machine ::add-token-layer
                                          {:actor/form       (uism/with-actor-class [:token-layer/id tempid] AddTokenLayer)
                                           :actor/modal-host (uism/with-actor-class [:text-layer/id id] TextLayerForm)})))}
@@ -581,9 +571,9 @@
                      :style     {:marginTop "1em"}
                      :onClick   (fn []
                                   (let [tempid (tempid/tempid)]
-                                    (c/transact! this [(prepare-layer-form {:ident          [:text-layer/id tempid]
-                                                                            :modal-join-key :ui/add-text-layer
-                                                                            :form-class     AddTextLayer})])
+                                    (c/transact! this [(forms/prepare-for-create {:ident          [:text-layer/id tempid]
+                                                                                  :modal-join-key :ui/add-text-layer
+                                                                                  :form-class     AddTextLayer})])
                                     (uism/begin! this forms/create-form-machine ::add-text-layer
                                                  {:actor/form       (uism/with-actor-class [:text-layer/id tempid] AddTextLayer)
                                                   :actor/modal-host (uism/with-actor-class [:project/id id] ProjectSettings)})))}

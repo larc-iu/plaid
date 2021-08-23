@@ -6,6 +6,7 @@
             [com.fulcrologic.fulcro.algorithms.data-targeting :as dt]
             [com.fulcrologic.fulcro.ui-state-machines :as uism]
             [com.fulcrologic.fulcro.components :as c]
+            [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
             [com.fulcrologic.fulcro.dom :as dom]
             [glam.client.application :refer [SPA]]
             [glam.client.ui.material-ui :as mui]
@@ -335,6 +336,14 @@
                  (uism/assoc-aliased :busy? false)
                  (uism/activate :state/editing))))}})}}})
 
+(defmutation prepare-for-create
+  "Set up the modal component and the join before letting the UISM take over"
+  [{:keys [ident modal-join-key form-class]}]
+  (action [{:keys [state ref]}]
+          (swap! state (fn [s]
+                         (-> s
+                             (assoc-in ident (into (c/get-initial-state form-class) [ident]))
+                             (assoc-in (conj ref modal-join-key) ident))))))
 
 (uism/defstatemachine create-form-machine
   {::uism/actor-names

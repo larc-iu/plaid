@@ -35,8 +35,21 @@
      (-> (doc/get crux id)
          (assoc :document/text-layers (doc/get-text-layers crux id)))))
 
+#?(:clj
+   (pc/defmutation create-document [{:keys [crux]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
+     {::pc/transform ma/parent-writeable-required
+      ::pc/output    [:server/error? :server/message]}
+     (let [new-document (-> {}
+                            (mc/apply-delta delta)
+                            (select-keys [:document/name])
+                            (assoc :document/project parent-id))]
+       (let [{:keys [id success]} (doc/create crux new-document)]
+         (if-not success
+           (server-error (str "Failed to create document, please refresh and try again"))
+           {:tempids {temp-id id}})))))
+
 ;; admin --------------------------------------------------------------------------------
 
 #?(:clj
-   (def document-resolvers [get-document]))
+   (def document-resolvers [get-document create-document]))
 

@@ -48,6 +48,14 @@
         id (id-key params)]
     (access/ident-writeable? crux user-id [id-key id])))
 
+(defn- parent-writeable-required-fn [{:keys [crux] :as env} params]
+  (when-not (:parent-ident params)
+    (throw (ex-info ":parent-ident not found in params."
+                    {:params       params
+                     :resolver-env env})))
+  (let [user-id (get-in env [:ring/request :session :user/id])]
+    (access/ident-writeable? crux user-id (:parent-ident params))))
+
 (defn readable-required [id-key]
   (make-auth-transform
     (partial readable-required-fn id-key)
@@ -55,6 +63,11 @@
 (defn writeable-required [id-key]
   (make-auth-transform
     (partial writeable-required-fn id-key)
+    "current user cannot modify the project involved in this query"))
+
+(def parent-writeable-required
+  (make-auth-transform
+    parent-writeable-required-fn
     "current user cannot modify the project involved in this query"))
 
 (defn- level-authorized
