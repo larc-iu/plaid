@@ -26,7 +26,7 @@
    :form-fields             #{:document/name}
    ::forms/validator        doc/validator
    ::forms/create-mutation  'glam.models.document/create-document
-   ::forms/create-message   "Text layer added"
+   ::forms/create-message   "Document added"
    ::forms/create-append-to :project/documents}
   (let [close-ctl-dialog (fn []
                            (uism/trigger! this ::add-document :event/cancel))]
