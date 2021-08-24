@@ -16,7 +16,8 @@
             [glam.server.crux :refer [crux-node]]
             [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
             [taoensso.timbre :as log]
-            [clojure.walk :as walk]))
+            [clojure.walk :as walk]
+            [clojure.core.async :as async]))
 
 ;; Helpers ================================================================================
 (defn mk-augment-env-request
@@ -80,6 +81,11 @@
      :config       config
      :current-user (user/get-current-user (assoc env :crux crux-node))}))
 
+(defn is-mutation? [tx]
+  (and (vector? tx)
+       (seq? (first tx))
+       (symbol? (ffirst tx))))
+
 (defn make-parser []
   (let [{:keys [trace?
                 fail-fast?
@@ -106,31 +112,30 @@
                                            ::p/placeholder-prefixes   #{">"}
                                            ::pc/mutation-join-globals [:tempids]}
                            ::p/plugins    plugins})
-                        connect-viz? (pathom-viz/connect-parser {::pathom-viz/parser-id ::parser}))]
+                        connect-viz? (pathom-viz/connect-parser {::pathom-viz/parser-id ::parser}))
+        ;; Ensure that writes happen one at a time GLOBALLY. This avoids certain race conditions.
+        ;; In the future, this can be fixed with more heavily relying on crux.tx/matching more, but
+        ;; doing things this way is cheaper for the moment.
+        ;; Thanks to Souenzzo for this implementation.
+        single-parser (let [in (async/chan)]
+                        (async/thread
+                          (loop []
+                            (when-let [{:keys [env tx out]} (async/<!! in)]
+                              (async/>!! out (parser env tx))
+                              (recur))))
+                        in)]
+
     (fn wrapped-parser [env tx]
       (when-not (vector? tx) (throw (Exception. "You must pass a vector for the transaction.")))
       ;; Add trace - pathom-viz already adds it so only add if that's not included.
-      ;; TODO: due to concern about subtle and rare but consequential issues that could arise from concurrent
-      ;;       modification, consider using some kind of mutex for mutations, e.g. a ref? Performance hit should
-      ;;       not matter. Could even do more granular mutexes like per-doc or per-project
-      ;; A suggestion from souenzzo that I quite like:
-      ;;
-      ;;    (def single-parser
-      ;;      (let [in (async/chan)]
-      ;;        (async/thread
-      ;;          (loop []
-      ;;            (when-let [{:keys [env tx out]} (async/<!! in)]
-      ;;              (async/>!! out (parser env tx))
-      ;;              (recur))))
-      ;;        in))
-      ;;
-      ;;    (comment
-      ;;      (defn handler
-      ;;        [req]
-      ;;        (let [out (async/chan)]
-      ;;          (async/>!! single-parser {:env env :tx tx :out out})
-      ;;          (async/!! out))))
       (let [tx (if (and trace? (not connect-viz?))
                  (conj tx :com.wsscode.pathom/trace) tx)
-            resp (parser env tx)]
-        resp))))
+            _ (log/debug (if (is-mutation? tx) "Pathom tx is a mutation--using global write lock"
+                                               "Pathom tx is a read--performing concurrently"))
+            result (if (is-mutation? tx)
+                     (let [out (async/chan)]
+                       (async/>!! single-parser {:env env :tx tx :out out})
+                       (let [resp (async/<!! out)]
+                         resp))
+                     (parser env tx))]
+        result))))
