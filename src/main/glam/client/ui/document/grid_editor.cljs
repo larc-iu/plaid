@@ -30,7 +30,6 @@
       :spans
       (for [{:span-layer/keys [id spans]} span-layers]
         (let [filtered-spans (filter (fn [{:span/keys [tokens]}]
-                                       (log/info "Tt" tokens)
                                        (some #(= (:token/id %) token-id) tokens))
                                      spans)]
           [id filtered-spans])))))
@@ -82,18 +81,18 @@
 ;; Text --------------------------------------------------------------------------------
 (defsc Text
   [this {:text/keys [id body]} {text-layer-name :text-layer/name}]
-  {:query [:text/id :text/body]
-   :ident :text/id}
+  {:query     [:text/id :text/body]
+   :ident     :text/id}
   body)
 
 (def ui-text (c/computed-factory Text {:keyfn :text/id}))
 
 (defsc TextLayer
   [this {:text-layer/keys [id name text token-layers]}]
-  {:query [:text-layer/name :text-layer/id
-           {:text-layer/text (c/get-query Text)}
-           {:text-layer/token-layers (c/get-query TokenLayer)}]
-   :ident :text-layer/id}
+  {:query     [:text-layer/name :text-layer/id
+               {:text-layer/text (c/get-query Text)}
+               {:text-layer/token-layers (c/get-query TokenLayer)}]
+   :ident     :text-layer/id}
   (dom/div
     ;; (ui-text (c/computed text {:text-layer/name name}))
     (mapv ui-token-layer token-layers)))
@@ -119,41 +118,41 @@
   (get-spans-for-token :tok1 (-> tl :token-layer/span-layers first :span-layer/spans))
 
   (def tl
-    {:token-layer/id :tokl1,
+    {:token-layer/id   :tokl1,
      :token-layer/name "Token Layer 1",
      :token-layer/tokens
-     [{:token/id :tok2,
-       :token/value "sentence",
-       :token/begin 5,
-       :token/end 13}
-      {:token/id :tok3,
-       :token/value "is",
-       :token/begin 14,
-       :token/end 16}
-      {:token/id :tok1,
-       :token/value "This",
-       :token/begin 0,
-       :token/end 4}
-      {:token/id :tok4,
-       :token/value "great",
-       :token/begin 17,
-       :token/end 22}],
+                       [{:token/id    :tok2,
+                         :token/value "sentence",
+                         :token/begin 5,
+                         :token/end   13}
+                        {:token/id    :tok3,
+                         :token/value "is",
+                         :token/begin 14,
+                         :token/end   16}
+                        {:token/id    :tok1,
+                         :token/value "This",
+                         :token/begin 0,
+                         :token/end   4}
+                        {:token/id    :tok4,
+                         :token/value "great",
+                         :token/begin 17,
+                         :token/end   22}],
      :token-layer/span-layers
-     [{:span-layer/id :sl1,
-       :span-layer/name "Span Layer 1",
-       :span-layer/spans
-       [{:span/id :s2,
-         :span/value "NN",
-         :span/tokens [{:token/id :tok2}]}
-        {:span/id :s1,
-         :span/value "DT",
-         :span/tokens [{:token/id :tok1}]}
-        {:span/id :s4,
-         :span/value "JJ",
-         :span/tokens [{:token/id :tok4}]}
-        {:span/id :s3,
-         :span/value "VBZ",
-         :span/tokens [{:token/id :tok3}]}]}]}
+                       [{:span-layer/id   :sl1,
+                         :span-layer/name "Span Layer 1",
+                         :span-layer/spans
+                                          [{:span/id     :s2,
+                                            :span/value  "NN",
+                                            :span/tokens [{:token/id :tok2}]}
+                                           {:span/id     :s1,
+                                            :span/value  "DT",
+                                            :span/tokens [{:token/id :tok1}]}
+                                           {:span/id     :s4,
+                                            :span/value  "JJ",
+                                            :span/tokens [{:token/id :tok4}]}
+                                           {:span/id     :s3,
+                                            :span/value  "VBZ",
+                                            :span/tokens [{:token/id :tok3}]}]}]}
     )
 
   )

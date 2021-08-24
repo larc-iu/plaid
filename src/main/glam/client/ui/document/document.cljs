@@ -22,6 +22,10 @@
 ;;   - how to do this? document has a :document/text-layers resolver
 ;;   - all layers gain a data point resolver
 
+(def editors
+  {"text" {:slug "text" :name "Text" :class TextEditor :join-key :>/text-editor}
+   "grid" {:slug "text" :name "Annotation" :class GridEditor :join-key :>/grid-editor}})
+(def editor-joins (set (map (comp :join-key second) editors)))
 
 (defsc Document
   [this {:document/keys [id name project] :ui/keys [active-tab] :>/keys [text-editor grid-editor] :as props}]
@@ -40,14 +44,19 @@
                              data-tree)))
    :route-segment (r/last-route-segment :document)
    :will-enter    (fn [app {:keys [id] :as route-params}]
-                    (let [parsed-id (gcu/parse-id id)]
+                    (let [parsed-id (gcu/parse-id id)
+                          tab (or (:tab (r/get-query-params)) "grid")
+                          editor-join-key (get-in editors [tab :join-key])]
+                      (log/info tab)
                       (when parsed-id
                         (dr/route-deferred
                           [:document/id parsed-id]
                           (fn []
+                            (log/info (disj editor-joins editor-join-key))
                             (df/load! app [:document/id parsed-id] Document
                                       {:post-mutation        `dr/target-ready
-                                       :post-mutation-params {:target [:document/id parsed-id]}}))))))}
+                                       :post-mutation-params {:target [:document/id parsed-id]}
+                                       :without              (disj editor-joins editor-join-key)}))))))}
 
   (mui/container {:maxWidth "xl"}
     (mui/page-title name)
@@ -56,15 +65,17 @@
       (mui/link {:color "inherit" :href (r/route-for :project {:id (:project/id project)}) :key "project"} (:project/name project))
       (mui/link {:color "textPrimary" :underline "none" :key "document"} name))
 
-    (mui/tab-context {:value active-tab}
-      (mui/tabs {:value    active-tab
-                 :onChange (fn [_ val]
-                             (m/set-value! this :ui/active-tab val)
-                             (r/assoc-query-param! :tab val))}
-        (mui/tab {:label "Text" :value "text"})
-        (mui/tab {:label "Annotation" :value "grid"}))
+    (mui/paper {}
+      (mui/tab-context {:value active-tab}
+        (mui/tabs {:value    active-tab
+                   :onChange (fn [_ val]
+                               (m/set-value! this :ui/active-tab val)
+                               (r/assoc-query-param! :tab val)
+                               (df/load! this [:document/id id] (get-in editors [val :class])))}
+          (mui/tab {:label (get-in editors ["text" :name]) :value "text"})
+          (mui/tab {:label (get-in editors ["grid" :name]) :value "grid"}))
 
-      (mui/tab-panel {:value "text"}
-        (ui-text-editor text-editor))
-      (mui/tab-panel {:value "grid"}
-        (ui-grid-editor grid-editor)))))
+        (mui/tab-panel {:value "text"}
+          (ui-text-editor text-editor))
+        (mui/tab-panel {:value "grid"}
+          (ui-grid-editor grid-editor))))))
