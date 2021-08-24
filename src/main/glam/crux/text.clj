@@ -2,7 +2,8 @@
   (:require [crux.api :as crux]
             [glam.crux.util :as cutil]
             [glam.crux.easy :as gce]
-            [glam.crux.token :as tok])
+            [glam.crux.token :as tok]
+            [taoensso.timbre :as log])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:text/id
@@ -30,6 +31,13 @@
 
 
 ;; Mutations ----------------------------------------------------------------------
+(defn update-body [node eid old-body new-body]
+  (let [text (gce/entity node eid)
+        tx [(gce/match* eid (assoc text :text/body old-body))
+            (gce/put* (assoc text :text/body new-body))]]
+    (let [success (gce/submit! node tx)]
+      success)))
+
 (defn- get-span-ids [node eid]
   (map first (crux/q (crux/db node)
                      '{:find  [?span]
