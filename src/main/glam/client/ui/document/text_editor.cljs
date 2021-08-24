@@ -29,8 +29,14 @@
      :value     body
      :onChange  #(m/set-string! this :text/body :event %)
      :onPaste   (fn [e]
-                  (log/info (js/window.getSelecton))
-                  (js/console.log e))}
+                  (if (> 0 (count (.toString (js/window.getSelection))))
+                    (do
+                      (.preventDefault e)
+                      (js/alert (str "Pasting while text is selected is not supported. "
+                                     "Please unselect the text and try pasting again.")))
+                    '...)
+
+                  )}
 
     ))
 
