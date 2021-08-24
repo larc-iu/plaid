@@ -259,6 +259,67 @@
     (partial on-match SPA router)
     {:use-fragment false}))
 
+;; query params --------------------------------------------------------------------------------
+(defn get-query-params
+  "Read search params into a map based on the current state of window.location.
+  For `window.location = /foo?a=1&b=c&many=val1&many=val2`, returns the following.
+  Note that all values are strings--no parsing is attempted.
+
+  {:a \"1\"
+   :b \"c\"
+   :many [\"val1\" \"val2\"}
+  "
+  []
+  (let [entries-iter (.entries (js/URLSearchParams. js/location.search))]
+    (loop [acc {}]
+      (let [elt (.next entries-iter)]
+        (if (.-done elt) ;; no more elements
+          acc
+          (let [[k v] (array-seq (.-value elt))]
+            (let [k (keyword k)]
+              (recur
+                (if (contains? acc k)
+                  (if-not (vector? (get acc k))
+                    (assoc acc (keyword k) [(get acc k) v])
+                    (update acc k conj v))
+                  (assoc acc k v))))))))))
+
+(defn write-query-params!
+  "Write search params back into the browser, creating a new HTML5 history entry"
+  [param-map]
+  (let [params (js/URLSearchParams. "?")]
+    (doseq [[k v] param-map]
+      (let [k (name k)]
+        (if (sequential? v)
+          (doseq [value v]
+            (.append params k (str value)))
+          (.append params k (str v)))))
+    (let [param-string (str "?" (.toString params))]
+      (log/debug "Writing query string:" param-string)
+      (.replaceState js/window.history nil nil param-string))))
+
+(defn assoc-query-param!
+  ""
+  [k v]
+  (let [params (get-query-params)]
+    (write-query-params! (assoc params k v))))
+
+;; not done yet: inverse of this
+(defn conj-query-param!
+  [k v]
+  (let [params (update (get-query-params)
+                       k
+                       (fn [coll v] (cond (nil? coll) [v]
+                                          (sequential? coll) (conj coll v)
+                                          :else [coll v]))
+                       v)]
+    (write-query-params! params)))
+
+(defn dissoc-query-param!
+  [k]
+  (let [params (get-query-params)]
+    (write-query-params! (dissoc params k))))
+
 (comment
   (rf/match-by-path router "/project")
   (rf/match-by-path router "/project/511f274e-1dbb-435e-bf82-296e16b603ff")
