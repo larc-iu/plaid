@@ -129,7 +129,9 @@
       "New Project")
 
     (mui/box {}
-      (mui/paper {}
-        (mui/list {}
-          (mapv ui-project-list-item (sort-by :project/name all-projects)))))))
+      (if (empty? all-projects)
+        (mui/zero-state "No projects exist. Create a project.")
+        (mui/paper {}
+          (mui/list {}
+            (mapv ui-project-list-item (sort-by :project/name all-projects))))))))
 

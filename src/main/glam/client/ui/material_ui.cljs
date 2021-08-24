@@ -398,3 +398,8 @@
                             :key  i}
                        child))
                    children))))
+
+(defn zero-state [message]
+  (typography {:variant   "subtitle1"
+               :component "h3"
+               :color     "textSecondary"} message))

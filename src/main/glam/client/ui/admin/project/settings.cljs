@@ -558,9 +558,7 @@
               (mui/padded-paper {}
                 (comp/fragment
                   (if (empty? text-layers)
-                    (mui/typography {:variant   "subtitle1"
-                                     :component "h3"
-                                     :color     "textSecondary"} "No layers configured.")
+                    (mui/zero-state "No layers configured.")
                     (mui/tree-view {:expanded (reduce into [] (map all-ids text-layers))}
                       (mapv ui-text-layer-list-item
                             (map #(comp/computed % {:set-active-layer set-active-layer}) text-layers))))
@@ -582,9 +580,7 @@
             (mui/grid {:item true :xs 12 :md 9}
               (mui/padded-paper {}
                 (if (empty? text-layers)
-                  (mui/typography {:variant   "subtitle1"
-                                   :component "h3"
-                                   :color     "textSecondary"} "No layers configured.")
+                  (mui/zero-state "No layers configured.")
                   (ui-layer-union (:ui/active-layer props)))))))
 
         ;; Tab 2: user permissions
