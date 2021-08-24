@@ -28,7 +28,12 @@
                            (if writeable
                              '[?p :project/writers ?u]
                              '(or [?p :project/readers ?u]
-                                  [?p :project/writers ?u]))])))
+                                  [?p :project/writers ?u]))])
+      (update :rules conj ['(project-accessible ?p ?u)
+                           '[?u :user/admin? true]
+                           ;; TODO: this is needed to avoid an "Or join variable never used", but is not needed.
+                           ;; Figuring out how to do this without the extra cause would be nice, but is OK for now
+                           '[?p :project/id _]])))
 
 (defmethod build-query :document/id [query-map opts _]
   (-> query-map
