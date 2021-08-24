@@ -17,7 +17,8 @@
     "release": "yarn clean && yarn client/release && yarn server/release",
     "test": "clojure -M:test -d src/test",
     "clojure-outdated": "clojure -M:outdated",
-    "npm-outdated": "yarn outdated"
+    "npm-outdated": "yarn outdated",
+    "loc": "cloc src/main"
   },
   "dependencies": {},
   "devDependencies": {

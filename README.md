@@ -70,3 +70,4 @@ ClojureScript Client Profile:
 * `test`: Run all Clojure tests. (Currently, there are no CLJS tests.)
 * `clojure-outdated`: Check Clojure dependencies for oudatedness.
 * `npm-outdated`: Check NPM dependencies for outdatedness.
+* `loc`: Count lines of code (requires `cloc`: `npm install -g cloc`).
