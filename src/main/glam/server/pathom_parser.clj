@@ -81,10 +81,9 @@
      :config       config
      :current-user (user/get-current-user (assoc env :crux crux-node))}))
 
-(defn is-mutation? [tx]
+(defn has-mutation? [tx]
   (and (vector? tx)
-       (seq? (first tx))
-       (symbol? (ffirst tx))))
+       (some #(and (seq? %) (symbol? (first %))) tx)))
 
 (defn make-parser []
   (let [{:keys [trace?
@@ -130,9 +129,10 @@
       ;; Add trace - pathom-viz already adds it so only add if that's not included.
       (let [tx (if (and trace? (not connect-viz?))
                  (conj tx :com.wsscode.pathom/trace) tx)
-            _ (log/debug (if (is-mutation? tx) "Pathom tx is a mutation--using global write lock"
-                                               "Pathom tx is a read--performing concurrently"))
-            result (if (is-mutation? tx)
+            use-serial-parser? (has-mutation? tx)
+            _ (log/debug (if use-serial-parser? "Pathom tx has a mutation--using global write lock"
+                                                "Pathom tx only has reads--performing concurrently"))
+            result (if use-serial-parser?
                      (let [out (async/chan)]
                        (async/>!! serial-parser {:env env :tx tx :out out})
                        (let [resp (async/<!! out)]
