@@ -32,8 +32,12 @@
                    :ui/active-tab]
    :ident         :document/id
    :pre-merge     (fn [{:keys [data-tree]}]
-                    (merge {:ui/active-tab "grid"}
-                           data-tree))
+                    (let [q-params (r/get-query-params)
+                          tab (or (:tab q-params) "grid")]
+                      (when (not= tab (:tab q-params))
+                        (r/assoc-query-param! :tab "grid"))
+                      (merge {:ui/active-tab tab}
+                             data-tree)))
    :route-segment (r/last-route-segment :document)
    :will-enter    (fn [app {:keys [id] :as route-params}]
                     (let [parsed-id (gcu/parse-id id)]
@@ -54,7 +58,9 @@
 
     (mui/tab-context {:value active-tab}
       (mui/tabs {:value    active-tab
-                 :onChange #(m/set-value! this :ui/active-tab %2)}
+                 :onChange (fn [_ val]
+                             (m/set-value! this :ui/active-tab val)
+                             (r/assoc-query-param! :tab val))}
         (mui/tab {:label "Text" :value "text"})
         (mui/tab {:label "Annotation" :value "grid"}))
 
