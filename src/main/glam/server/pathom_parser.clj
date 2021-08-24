@@ -117,7 +117,7 @@
         ;; In the future, this can be fixed with more heavily relying on crux.tx/matching more, but
         ;; doing things this way is cheaper for the moment.
         ;; Thanks to Souenzzo for this implementation.
-        single-parser (let [in (async/chan)]
+        serial-parser (let [in (async/chan)]
                         (async/thread
                           (loop []
                             (when-let [{:keys [env tx out]} (async/<!! in)]
@@ -134,7 +134,7 @@
                                                "Pathom tx is a read--performing concurrently"))
             result (if (is-mutation? tx)
                      (let [out (async/chan)]
-                       (async/>!! single-parser {:env env :tx tx :out out})
+                       (async/>!! serial-parser {:env env :tx tx :out out})
                        (let [resp (async/<!! out)]
                          resp))
                      (parser env tx))]
