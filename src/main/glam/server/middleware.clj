@@ -12,6 +12,7 @@
     [taoensso.sente.server-adapters.http-kit :refer [get-sch-adapter]]
     [ring.util.response :as resp :refer [response file-response resource-response]]
     [ring.middleware.defaults :refer [wrap-defaults]]
+    [ring.middleware.session.store :as store]
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser]]
     [glam.server.crux :refer [crux-node crux-session-node]]
@@ -104,6 +105,9 @@
 (defn crux-session-store [crux-node]
   (CruxSessionStore. crux-node))
 
+(mount/defstate session-store
+  :start (crux-session-store crux-session-node))
+
 ;; Route handling
 (defn wrap-html-routes
   "Allows all requests to `/chsk` to continue down the handler chain,
@@ -125,9 +129,14 @@
   "AJAX remote for Fulcro, registered on the client as the :remote remote"
   [parser]
   (fn [request]
-    (handle-api-request
-      (:transit-params request)
-      (fn [tx] (parser {:ring/request request} tx)))))
+    ;; It seems like when requests come in via websockets, they don't get hit by the request half of
+    ;; ring's wrap-session. To get around this, read session data directly from the store just before
+    ;; it goes into pathom. TODO: figure out whether this story is right
+    (let [{session :session session-key :session/key} :request
+          augmented-request (merge session (store/read-session session-store session-key))]
+      (handle-api-request
+        (:transit-params request)
+        (fn [tx] (parser {:ring/request augmented-request} tx))))))
 
 ;; websockets remote for fulcro, registered as :remote
 (mount/defstate websockets
@@ -152,4 +161,4 @@
         wrap-transit-response
         (fws/wrap-api websockets)
         wrap-html-routes
-        (wrap-defaults (assoc defaults-config :session {:store (crux-session-store crux-session-node)})))))
+        (wrap-defaults (assoc defaults-config :session {:store session-store})))))
