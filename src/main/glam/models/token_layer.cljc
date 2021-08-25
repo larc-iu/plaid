@@ -96,7 +96,6 @@
            (server-error (str "Failed to delete token layer " name ". Please refresh and try again"))
            (server-message (str "Token layer " name " deleted")))))))
 
-
 #?(:clj
    (def token-layer-resolvers [get-token-layer get-tokens create-token-layer save-token-layer delete-token-layer]))
 

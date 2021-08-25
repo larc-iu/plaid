@@ -17,7 +17,8 @@
             [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
             [taoensso.timbre :as log]
             [clojure.walk :as walk]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [mount.core :as mount]))
 
 ;; Helpers ================================================================================
 (defn mk-augment-env-request
@@ -139,3 +140,7 @@
                          resp))
                      (parser env tx))]
         result))))
+
+(mount/defstate parser
+  :start (make-parser))
+

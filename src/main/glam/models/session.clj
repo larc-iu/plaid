@@ -51,23 +51,23 @@
   (do
     (log/info "Authenticating" username)
     (if-let [{:user/keys [id password-hash admin?] :as user} (cuser/get-by-email crux username)]
-      (do (log/info "Successful login: " (dissoc user :user/password-hash))
-          (if (user/verify-password password password-hash)
-            (augment-session-resp env {:session/valid?           true
-                                       :session/server-error-msg nil
-                                       :user/email               username
-                                       :user/admin?              admin?
-                                       :user/id                  id})
-            (do
-              (log/error "Invalid credentials supplied for" username)
-              (server-error "Invalid credentials"))))
+      (if (user/verify-password password password-hash)
+        (do
+          (log/info "Successful login: " (dissoc user :user/password-hash))
+          (augment-session-resp env {:session/valid?           true
+                                     :session/server-error-msg nil
+                                     :user/email               username
+                                     :user/admin?              admin?
+                                     :user/id                  id}))
+        (do
+          (log/error "Invalid credentials supplied for" username)
+          (server-error "Invalid credentials")))
       (server-error "Invalid credentials"))))
 
 (defmutation logout [env params]
   {::pc/output [:session/valid?
                 :session/server-error-msg
                 :user/email :user/id :user/admin?]}
-  (log/info "in logout")
   (augment-session-resp env
                         {:session/valid?           false
                          :session/server-error-msg nil

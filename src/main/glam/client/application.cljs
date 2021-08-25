@@ -2,6 +2,7 @@
   (:require
     [com.fulcrologic.fulcro.application :as app]
     [com.fulcrologic.fulcro.networking.http-remote :as net]
+    [com.fulcrologic.fulcro.networking.websockets :as fws]
     [com.fulcrologic.fulcro.algorithms.tx-processing :as txp]
     [com.fulcrologic.fulcro.algorithms.tx-processing.synchronous-tx-processing :as stx]
     [taoensso.timbre :as log]
@@ -80,7 +81,8 @@
   (stx/with-synchronous-transactions
     (app/fulcro-app
       {:remote-error? remote-error?
-       :remotes       {:remote (api-remote)}
+       :remotes       {:remote (fws/fulcro-websocket-remote {})
+                       :session (api-remote)}
        ;; Modify the default result action so that it looks for :on-result, :on-ok and :on-error
        ;; see, for an example, change_password.cljs
        :default-result-action!

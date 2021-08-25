@@ -3,8 +3,6 @@
     [clojure.pprint :refer [pprint]]
     [mount.core :refer [defstate]]
     [org.httpkit.server :as http-kit]
-    [com.fulcrologic.fulcro.server.api-middleware :refer [not-found-handler]]
-    [com.fulcrologic.fulcro.networking.websockets :as fws]
     [glam.server.config :refer [config]]
     [glam.server.middleware :refer [middleware]]
     [taoensso.timbre :as log]))
@@ -21,7 +19,10 @@
     (when (nil? port)
       (throw (Exception. "You must set a port as the environment variable PORT.")))
     (log/info "Starting server on port" port)
-    (http-kit/run-server middleware http-kit-config))
+    (let [stop-server (http-kit/run-server middleware http-kit-config)]
+      (fn []
+        (stop-server))))
 
   :stop
   (http-server))
+

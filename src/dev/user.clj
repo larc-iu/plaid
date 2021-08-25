@@ -43,7 +43,7 @@
 (defn start "Start the web server + services" []
   (let [result (mount/start)]
     (def node glam.server.crux/crux-node)
-    (def parser (glam.server.pathom-parser/make-parser))
+    (def parser glam.server.pathom-parser/parser)
     result))
 
 (defn stop "Stop the web server + services" []

@@ -3,21 +3,18 @@
     [clojure.pprint :refer [pprint]]
     [clojure.java.io :as io]
     [clojure.tools.reader.edn :as edn]
-    [taoensso.timbre :as log]
     [mount.core :as mount]
-    [com.fulcrologic.guardrails.core :refer [>defn => | ?]]
-    [com.fulcrologic.fulcro.server.api-middleware :refer [handle-api-request
-                                                          wrap-transit-params
-                                                          wrap-transit-response]]
-    [ring.middleware.defaults :refer [wrap-defaults]]
-    [ring.middleware.session :refer [wrap-session]]
-    [ring.util.response :refer [response file-response resource-response]]
-    [ring.util.response :as resp]
+    [taoensso.timbre :as log]
     [hiccup.page :refer [html5]]
-    [glam.server.config :refer [config]]
-    [glam.server.pathom-parser :refer [make-parser]]
-    [glam.server.crux :refer [crux-node crux-session-node]]
     [crux.api :as crux]
+    [com.fulcrologic.fulcro.server.api-middleware :refer [handle-api-request wrap-transit-params wrap-transit-response]]
+    [com.fulcrologic.fulcro.networking.websockets :as fws]
+    [taoensso.sente.server-adapters.http-kit :refer [get-sch-adapter]]
+    [ring.util.response :as resp :refer [response file-response resource-response]]
+    [ring.middleware.defaults :refer [wrap-defaults]]
+    [glam.server.config :refer [config]]
+    [glam.server.pathom-parser :refer [parser]]
+    [glam.server.crux :refer [crux-node crux-session-node]]
     [glam.crux.easy :as gce])
   (:import (java.io PushbackReader IOException)
            (ring.middleware.session.store SessionStore)
@@ -93,7 +90,6 @@
       {}))
 
   (write-session [_ key data]
-    ;(log/info "writing session: at key: " key)
     (let [key (try (cond-> key (some? key) UUID/fromString)
                    (catch Exception e (UUID/randomUUID)))
           key (or key (UUID/randomUUID))
@@ -108,9 +104,9 @@
 (defn crux-session-store [crux-node]
   (CruxSessionStore. crux-node))
 
-;; Route handling --------------------------------------------------------------------------------
+;; Route handling
 (defn wrap-html-routes
-  "Allows all requests to `/api` to continue down the handler chain,
+  "Allows all requests to `/chsk` to continue down the handler chain,
   and otherwise terminates the handler chain by serving the index page. This
   allows page refresh to work 'right' from a user's perspective, as refreshing on
   e.g. `/projects/` will simply serve the index, after which the client-side
@@ -118,28 +114,42 @@
   [ring-handler]
   (fn [{:keys [uri anti-forgery-token] :as req}]
     (cond
-      (re-matches #"^/api" uri)
+      (re-matches #"^/chsk|^/api" uri)
       (ring-handler req)
 
       :else
       (-> (resp/response (index anti-forgery-token))
           (resp/content-type "text/html")))))
 
-(defn wrap-api [parser]
+(defn wrap-ajax-api
+  "AJAX remote for Fulcro, registered on the client as the :remote remote"
+  [parser]
   (fn [request]
     (handle-api-request
       (:transit-params request)
       (fn [tx] (parser {:ring/request request} tx)))))
 
+;; websockets remote for fulcro, registered as :remote
+(mount/defstate websockets
+  :start
+  (let [wrapped-parser (fn wrapped-parser [env tx]
+                         (let [response (parser {:ring/request (:request env)} tx)]
+                           response))]
+    (fws/start! (fws/make-websockets
+                  wrapped-parser
+                  {:http-server-adapter (get-sch-adapter)
+                   :parser-accepts-env? true
+                   ;; See Sente for CSRF instructions
+                   :sente-options       {:csrf-token-fn nil}})))
+  :stop
+  (fws/stop! websockets))
+
 (mount/defstate middleware
   :start
-  (let [defaults-config (:ring.middleware/defaults-config config)
-        parser (make-parser)]
-    ;; In order, this middleware chain will first try to serve a static file (cf.
-    ;; wrap-defaults), then it will serve the index page unless the request is
-    ;; targeted at `/api`. There is no opportunity for a 404, so don't include a handler.
-    (-> (wrap-api parser)
+  (let [defaults-config (:ring.middleware/defaults-config config)]
+    (-> (wrap-ajax-api parser)
         wrap-transit-params
         wrap-transit-response
+        (fws/wrap-api websockets)
         wrap-html-routes
         (wrap-defaults (assoc defaults-config :session {:store (crux-session-store crux-session-node)})))))
