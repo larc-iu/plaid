@@ -129,20 +129,21 @@
   "AJAX remote for Fulcro, registered on the client as the :remote remote"
   [parser]
   (fn [request]
-    ;; It seems like when requests come in via websockets, they don't get hit by the request half of
-    ;; ring's wrap-session. To get around this, read session data directly from the store just before
-    ;; it goes into pathom. TODO: figure out whether this story is right
-    (let [{session :session session-key :session/key} request
-          augmented-request (assoc request :session (merge session (store/read-session session-store session-key)))]
-      (handle-api-request
-        (:transit-params request)
-        (fn [tx] (parser {:ring/request augmented-request} tx))))))
+    (handle-api-request
+      (:transit-params request)
+      (fn [tx] (parser {:ring/request request} tx)))))
 
 ;; websockets remote for fulcro, registered as :remote
 (mount/defstate websockets
   :start
-  (let [wrapped-parser (fn wrapped-parser [env tx]
-                         (let [response (parser {:ring/request (:request env)} tx)]
+  (let [wrapped-parser (fn wrapped-parser [{:keys [request]} tx]
+                         ;; It seems like when requests come in via websockets, they don't always get hit by the
+                         ;; request half of ring's wrap-session. To get around this, read session data directly from
+                         ;; the store just before it goes into pathom. TODO: figure out whether this story is right
+                         (let [{session :session session-key :session/key} request
+                               augmented-session (merge session (store/read-session session-store session-key))
+                               augmented-request (assoc request :session augmented-session)
+                               response (parser {:ring/request augmented-request} tx)]
                            response))]
     (fws/start! (fws/make-websockets
                   wrapped-parser
