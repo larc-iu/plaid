@@ -132,8 +132,8 @@
     ;; It seems like when requests come in via websockets, they don't get hit by the request half of
     ;; ring's wrap-session. To get around this, read session data directly from the store just before
     ;; it goes into pathom. TODO: figure out whether this story is right
-    (let [{session :session session-key :session/key} :request
-          augmented-request (merge session (store/read-session session-store session-key))]
+    (let [{session :session session-key :session/key} request
+          augmented-request (assoc request :session (merge session (store/read-session session-store session-key)))]
       (handle-api-request
         (:transit-params request)
         (fn [tx] (parser {:ring/request augmented-request} tx))))))
