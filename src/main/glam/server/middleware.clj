@@ -140,7 +140,7 @@
                   {:http-server-adapter (get-sch-adapter)
                    :parser-accepts-env? true
                    ;; See Sente for CSRF instructions
-                   :sente-options       {:csrf-token-fn nil}})))
+                   :sente-options       {:csrf-token-fn :anti-forgery-token}})))
   :stop
   (fws/stop! websockets))
 

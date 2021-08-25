@@ -81,7 +81,7 @@
   (stx/with-synchronous-transactions
     (app/fulcro-app
       {:remote-error? remote-error?
-       :remotes       {:remote (fws/fulcro-websocket-remote {})
+       :remotes       {:remote (fws/fulcro-websocket-remote {:csrf-token (get-token)})
                        :session (api-remote)}
        ;; Modify the default result action so that it looks for :on-result, :on-ok and :on-error
        ;; see, for an example, change_password.cljs
