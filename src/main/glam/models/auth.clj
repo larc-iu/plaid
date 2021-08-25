@@ -28,47 +28,42 @@
 ;; TODO: this auth pattern might be unperformant--one idea: cache the auth check in the pathom environment
 ;; see https://blog.wsscode.com/pathom/#updating-env
 
-(defn- readable-required-fn [id-key {:keys [crux] :as env} params]
-  (when-not (id-key params)
+(defn- readable-required-fn [id-key param-key {:keys [crux] :as env} params]
+  (when-not (param-key params)
     (throw (ex-info "Tried to determine if id-key was writeable for a user, but it was not present in params."
                     {:id-key       id-key
+                     :param-key    param-key
                      :params       params
                      :resolver-env env})))
   (let [user-id (get-in env [:ring/request :session :user/id])
-        id (id-key params)]
+        id (param-key params)]
     (access/ident-readable? crux user-id [id-key id])))
 
-(defn- writeable-required-fn [id-key {:keys [crux] :as env} params]
-  (when-not (id-key params)
+(defn- writeable-required-fn [id-key param-key {:keys [crux] :as env} params]
+  (when-not (param-key params)
     (throw (ex-info "Tried to determine if id-key was writeable for a user, but it was not present in params."
                     {:id-key       id-key
+                     :param-key    param-key
                      :params       params
                      :resolver-env env})))
   (let [user-id (get-in env [:ring/request :session :user/id])
-        id (id-key params)]
+        id (param-key params)]
     (access/ident-writeable? crux user-id [id-key id])))
 
-(defn- parent-writeable-required-fn [{:keys [crux] :as env} params]
-  (when-not (:parent-ident params)
-    (throw (ex-info ":parent-ident not found in params."
-                    {:params       params
-                     :resolver-env env})))
-  (let [user-id (get-in env [:ring/request :session :user/id])]
-    (access/ident-writeable? crux user-id (:parent-ident params))))
-
-(defn readable-required [id-key]
-  (make-auth-transform
-    (partial readable-required-fn id-key)
-    "current user cannot read the project involved in this query"))
-(defn writeable-required [id-key]
-  (make-auth-transform
-    (partial writeable-required-fn id-key)
-    "current user cannot modify the project involved in this query"))
-
-(def parent-writeable-required
-  (make-auth-transform
-    parent-writeable-required-fn
-    "current user cannot modify the project involved in this query"))
+(defn readable-required
+  ([id-key]
+   (readable-required id-key id-key))
+  ([id-key param-key]
+   (make-auth-transform
+     (partial readable-required-fn id-key param-key)
+     "current user cannot read the project involved in this query")))
+(defn writeable-required
+  ([id-key]
+   (writeable-required id-key id-key))
+  ([id-key param-key]
+   (make-auth-transform
+     (partial writeable-required-fn id-key param-key)
+     "current user cannot modify the project involved in this query")))
 
 (defn- level-authorized
   "Given a resolver's environment, say whether it is authorized for a given level"

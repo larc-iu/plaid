@@ -37,7 +37,7 @@
 
 #?(:clj
    (pc/defmutation create-document [{:keys [crux]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
-     {::pc/transform ma/parent-writeable-required
+     {::pc/transform (ma/writeable-required :project/id :parent-id)
       ::pc/output    [:server/error? :server/message]}
      (let [new-document (-> {}
                             (mc/apply-delta delta)

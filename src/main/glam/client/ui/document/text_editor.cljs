@@ -17,32 +17,45 @@
 
 ;; TODO: this is display only for now, make full stack
 
+(m/defmutation save-text
+  [params]
+  (action [{:keys [state ref]}]
+          (swap! state #(assoc-in % (conj ref :ui/busy?) true)))
+  (remote [{:keys [ast]}]
+          (let [ast (assoc ast :key `txt/save-text)]
+            (log/info ast)
+            ast))
+  (result-action [{:keys [state ref] :as env}]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `txt/save-text])]
+                   (log/info message error?)
+                   (swap! state (fn [s]
+                                  (log/info (get-in s [ref]))
+                                  (cond-> (assoc-in s (conj ref :ui/busy?) false)
+                                          (not error?) (assoc-in (conj ref :ui/pristine-body)
+                                                                 (get-in s (conj ref :text/body))))))
+                   (when message
+                     (snack/message! {:message  message
+                                      :severity (if error? "error" "success")})))))
+
 (defsc Text
-  [this {:text/keys [id body] :ui/keys [pristine-body] :as props} {text-layer-name :text-layer/name
-                                                                   document-id     :document/id
-                                                                   text-layer-id   :text-layer/id}]
-  {:query     [:text/id :text/body :ui/pristine-body]
+  [this {:text/keys [id body] :ui/keys [pristine-body busy?] :as props} {text-layer-name :text-layer/name
+                                                                         document-id     :document/id
+                                                                         text-layer-id   :text-layer/id}]
+  {:query     [:text/id :text/body :ui/pristine-body :ui/busy?]
    :pre-merge (fn [{:keys [data-tree]}]
                 ;; TODO: if pristine does not match body, warn user before we clobber their changes
-                (merge {:ui/pristine-body (:text/body data-tree)}
+                (merge {:ui/pristine-body (:text/body data-tree)
+                        :ui/busy?         false}
                        data-tree))
    :ident     :text/id}
   (let [dirty? (not= pristine-body body)
-        on-result (fn [{:server/keys [error? message]}]
-                    (m/set-value! this :ui/busy? false)
-                    (when-not error?
-                      (m/set-value! this :ui/pristine-body body))
-                    (when message
-                      (snack/message! this {:message  message
-                                            :severity (if error? "error" "success")})))
         on-submit (fn [e]
                     (.preventDefault e)
-                    (c/transact! this [(txt/save-text {:text/id       id
-                                                       :text-layer/id text-layer-id
-                                                       :document/id   document-id
-                                                       :new-body      body
-                                                       :old-body      pristine-body})]
-                                 {:on-result on-result}))]
+                    (c/transact! this [(save-text {:text/id       id
+                                                   :text-layer/id text-layer-id
+                                                   :document/id   document-id
+                                                   :new-body      body
+                                                   :old-body      pristine-body})]))]
     (dom/form {:onSubmit on-submit}
               (mui/vertical-grid
                 (mui/text-field
@@ -51,6 +64,7 @@
                    :fullWidth true
                    :label     text-layer-name
                    :value     body
+                   :disabled  busy?
                    :onChange  #(m/set-string! this :text/body :event %)
                    :onPaste   (fn [e]
                                 (if (< 0 (count (.toString (js/window.getSelection))))
@@ -66,14 +80,14 @@
                   (mui/button
                     {:type      "submit"
                      :size      "large"
-                     :disabled  (not dirty?)
+                     :disabled  (or busy? (not dirty?))
                      :color     "primary"
                      :variant   "contained"
                      :startIcon (muic/save)}
                     "Save Changes")
                   (mui/button
                     {:size      "large"
-                     :disabled  (not dirty?)
+                     :disabled  (or busy? (not dirty?))
                      :variant   "outlined"
                      :onClick   (fn []
                                   (m/set-string! this :text/body :value pristine-body))

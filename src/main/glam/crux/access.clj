@@ -121,6 +121,7 @@
                               :rules []}
                              {:writeable true}
                              target-key)]
+      (log/info query)
       (not (empty? (crux/q (crux/db node) query))))))
 
 (comment
