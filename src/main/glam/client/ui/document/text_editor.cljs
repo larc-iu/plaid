@@ -23,19 +23,17 @@
           (swap! state #(assoc-in % (conj ref :ui/busy?) true)))
   (remote [{:keys [ast]}]
           (let [ast (assoc ast :key `txt/save-text)]
-            (log/info ast)
             ast))
-  (result-action [{:keys [state ref] :as env}]
+  (result-action [{:keys [state ref app] :as env}]
                  (let [{:server/keys [message error?]} (get-in env [:result :body `txt/save-text])]
-                   (log/info message error?)
                    (swap! state (fn [s]
-                                  (log/info (get-in s [ref]))
                                   (cond-> (assoc-in s (conj ref :ui/busy?) false)
                                           (not error?) (assoc-in (conj ref :ui/pristine-body)
                                                                  (get-in s (conj ref :text/body))))))
                    (when message
                      (snack/message! {:message  message
-                                      :severity (if error? "error" "success")})))))
+                                      :severity (if error? "error" "success")}))
+                   (tempid/resolve-tempids! app (get-in env [:result :body])))))
 
 (defsc Text
   [this {:text/keys [id body] :ui/keys [pristine-body busy?] :as props} {text-layer-name :text-layer/name
