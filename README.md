@@ -30,7 +30,7 @@ user=> (start)
 ## Running: IntelliJ + Cursive
 On the terminal:
 ```bash
-yarn client/main
+yarn client
 ```
 
 Clojure Server Profile:
