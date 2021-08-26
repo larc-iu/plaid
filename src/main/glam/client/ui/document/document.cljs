@@ -49,12 +49,10 @@
                     (let [parsed-id (gcu/parse-id id)
                           tab (or (:tab (r/get-query-params)) "grid")
                           editor-join-key (get-in editors [tab :join-key])]
-                      (log/info tab)
                       (when parsed-id
                         (dr/route-deferred
                           [:document/id parsed-id]
                           (fn []
-                            (log/info (disj editor-joins editor-join-key))
                             (df/load! app [:document/id parsed-id] Document
                                       {:post-mutation        `dr/target-ready
                                        :post-mutation-params {:target [:document/id parsed-id]}
