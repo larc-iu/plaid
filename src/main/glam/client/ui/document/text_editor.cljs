@@ -72,26 +72,15 @@
            :value     body
            :disabled  busy?
            :onChange  (fn [e]
-                        (if (< 0 (count (.toString (js/window.getSelection))))
-                          (do
-                            (js/alert (str "Pasting while text is selected is not supported. "
-                                           "Please unselect the text and try pasting again."))
-                            (.preventDefault e))
-                          (let [ref (gobj/get this "input-ref")
-                                end-index (.-selectionStart ref)
-                                new-body (.-value (.-target e))
-                                diff-result (ta/diff body new-body)
-                                insertion? (string? diff-result)]
-                            (log/info end-index)
-                            (m/set-value!
-                              this
-                              :ui/ops
-                              (conj ops
-                                    (if insertion?
-                                      (ta/insert-op (- end-index (count diff-result)) diff-result)
-                                      (ta/delete-op end-index diff-result))))
-
-                            (m/set-string! this :text/body :event e))))})
+                        (let [ref (gobj/get this "input-ref")
+                              end-index (.-selectionStart ref)
+                              new-body (.-value (.-target e))
+                              diff-result (ta/diff body new-body end-index)]
+                          (m/set-value!
+                            this
+                            :ui/ops
+                            (into ops diff-result))
+                          (m/set-string! this :text/body :event e)))})
 
         (mui/horizontal-grid
           (mui/button
@@ -151,20 +140,67 @@
 
 (def ui-token (c/computed-factory Token {:keyfn :token/id}))
 
+(defn separate-into-lines [tokens-and-strings body]
+  (let [token-text (fn [{:token/keys [begin end] :as token}]
+                     (subs body begin end))]
+    (loop [accum-lines []
+           current-line []
+           head (first tokens-and-strings)
+           tail (rest tokens-and-strings)]
+      (cond
+        (nil? head)
+        (conj accum-lines current-line)
+
+        ;; string with newline
+        (and (string? head) (clojure.string/index-of head "\n"))
+        (let [newline-index (clojure.string/index-of head "\n")
+              current-line (conj current-line (subs head 0 newline-index))]
+          (recur (conj accum-lines current-line)
+                 []
+                 (subs head (inc newline-index))
+                 tail))
+
+        ;; token with newline
+        (and (map? head) (clojure.string/index-of (token-text head) "\n"))
+        (let [newline-index (clojure.string/index-of (token-text head) "\n")
+              current-line (conj current-line (assoc head :token/end (+ newline-index (:token/begin head))))
+              new-head (assoc head :token/begin (+ (:token/begin head) (inc newline-index)))
+              new-head-text (token-text new-head)]
+          (recur (conj accum-lines current-line)
+                 []
+                 (if-not (empty? new-head-text) new-head (first tail))
+                 (if-not (empty? new-head-text) tail (rest tail))))
+
+        ;; plain string
+        (and (string? head) (not (empty? head)))
+        (recur accum-lines
+               (conj current-line head)
+               (first tail)
+               (rest tail))
+
+        ;; plain token
+        :else
+        (recur accum-lines
+               (conj current-line head)
+               (first tail)
+               (rest tail))))))
+
 (defsc TokenLayer [this {:token-layer/keys [id name tokens]} {:keys [text]}]
   {:query [:token-layer/id :token-layer/name
            {:token-layer/tokens (c/get-query Token)}]
    :ident :token-layer/id}
   (let [{:keys [tokens text] :as output} (ta/apply-text-edits (:ui/ops text)
                                                               (assoc text :text/body (:ui/pristine-body text))
-                                                              tokens)]
+                                                              tokens)
+        tokens-and-strings (add-untokenized-substrings tokens text)]
+    (log/info text)
     (dom/div {}
       (mui/typography {:component "h6" :gutterBottom true :variant "subtitle1"} name)
-      (dom/div (mapv (fn [e] (if (string? e)
-                               (inline-span e false)
-                               (ui-token (c/computed e {:text text}))))
-                     (add-untokenized-substrings tokens text)))
-      )))
+      (for [line (separate-into-lines tokens-and-strings (:text/body text))]
+        (dom/div (mapv (fn [e] (if (string? e)
+                                 (inline-span e false)
+                                 (ui-token (c/computed e {:text text}))))
+                       line))))))
 
 (def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
 

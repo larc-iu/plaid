@@ -1,29 +1,8 @@
 (ns glam.algos.text
-  (:require [taoensso.timbre :as log]))
+  (:require [taoensso.timbre :as log]
+            #?(:cljs ["fast-diff" :as fd])))
 
-(defn diff
-  "Compare two strings after a SINGLE insertion/deletion has been made to them.
-  For insertions, return the new string value, and for deletions, return the number of items that were deleted."
-  [old new]
-  (let [insertion? (> (count new) (count old))]
-    (if insertion?
-      (loop [i 0
-             j 0
-             s ""]
-        (cond
-          ;; we're done
-          (>= j (count new))
-          s
 
-          ;; the chars are identical, do nothing and keep going
-          (= (get old i) (get new j))
-          (recur (inc i) (inc j) s)
-
-          ;; we have a char difference--record the new char and inc only the index for new
-          :else
-          (recur i (inc j) (str s (get new j)))))
-      ;; deletion--it's just insertion in reverse!
-      (count (diff new old)))))
 
 (defn delete-op [index value]
   {:type  :delete
@@ -34,6 +13,43 @@
   {:type  :insert
    :index index
    :value value})
+
+#?(:cljs
+   (defn diff
+     ([old new cursor]
+      (let [results (array-seq (fd old new cursor))]
+        (loop [head (first results)
+               tail (rest results)
+               ops []
+               i 0]
+          (let [code (if-not (nil? head) (aget head 0))
+                value (if-not (nil? head) (aget head 1))]
+            (cond
+              (nil? head)
+              ops
+
+              ;; equality
+              (= 0 code)
+              (recur (first tail)
+                     (rest tail)
+                     ops
+                     (+ i (count value)))
+
+              ;; insertion
+              (= 1 code)
+              (recur (first tail)
+                     (rest tail)
+                     (conj ops (insert-op i value))
+                     (+ i (count value)))
+
+              ;; deletion
+              (= -1 code)
+              (recur (first tail)
+                     (rest tail)
+                     (conj ops (delete-op i (count value)))
+                     i))))))
+     ([old new]
+      (diff old new nil))))
 
 (defn- insert-str [s i v]
   (str (subs s 0 i) v (subs s i)))
