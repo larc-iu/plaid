@@ -193,7 +193,6 @@
                                                               (assoc text :text/body (:ui/pristine-body text))
                                                               tokens)
         tokens-and-strings (add-untokenized-substrings tokens text)]
-    (log/info text)
     (dom/div {}
       (mui/typography {:component "h6" :gutterBottom true :variant "subtitle1"} name)
       (for [line (separate-into-lines tokens-and-strings (:text/body text))]
