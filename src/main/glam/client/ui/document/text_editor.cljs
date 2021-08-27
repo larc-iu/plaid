@@ -18,14 +18,15 @@
             [glam.client.ui.material-ui-icon :as muic]
             [glam.client.ui.global-snackbar :as snack]))
 
+(declare TextEditor)
 (m/defmutation save-text
-  [params]
+  [{doc-id :document/id :as params}]
   (action [{:keys [state ref]}]
           (swap! state #(assoc-in % (conj ref :ui/busy?) true)))
   (remote [{:keys [ast]}]
           (let [ast (assoc ast :key `txt/save-text)]
             ast))
-  (result-action [{:keys [state ref app] :as env}]
+  (result-action [{:keys [state ref app component] :as env}]
                  (let [{:server/keys [message error?]} (get-in env [:result :body `txt/save-text])]
                    (swap! state (fn [s]
                                   (cond-> (assoc-in s (conj ref :ui/busy?) false)
@@ -35,7 +36,9 @@
                    (when message
                      (snack/message! {:message  message
                                       :severity (if error? "error" "success")}))
-                   (tempid/resolve-tempids! app (get-in env [:result :body])))))
+                   (tempid/resolve-tempids! app (get-in env [:result :body]))
+                   ;; we may need new token offsets--trigger a load
+                   (df/load! app [:document/id doc-id] TextEditor))))
 
 (defsc Text
   [this {:text/keys [id body] :ui/keys [busy? pristine-body ops] :as props} {text-layer-name :text-layer/name
