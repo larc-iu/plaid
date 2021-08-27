@@ -36,8 +36,6 @@
    (pc/defmutation create-span
      [{:keys [crux] :as env} {:span/keys [id value layer tokens] :as span}]
      {::pc/transform (ma/writeable-required :span-layer/id :span/layer)}
-     (log/info (tok/get crux (first tokens)))
-     (log/info (some #(if (= nil (tok/get crux %)) true false) tokens))
      (cond
        (not (string? value))
        (server-error "Value must be a string.")
