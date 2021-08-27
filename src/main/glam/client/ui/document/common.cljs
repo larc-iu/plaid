@@ -4,9 +4,9 @@
 
 (defn inline-span [body token?]
   (mui/box {:style      (cond-> {:display       "inline-block"
-                                 :border-radius (if token? "3px" "0px")
-                                 :white-space   "pre"}
+                                 :borderRadius (if token? "3px" "0px")
+                                 :whiteSpace   "pre"}
                                 token? (merge {:border "1px solid black"})
-                                (not token?) (merge {:border-bottom "1px dotted black"}))
+                                (not token?) (merge {:borderBottom "1px dotted black"}))
             :fontFamily "Monospace"}
            body))

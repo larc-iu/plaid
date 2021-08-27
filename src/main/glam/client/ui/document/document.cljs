@@ -7,7 +7,7 @@
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.document.text-editor :refer [TextEditor ui-text-editor]]
             [glam.client.ui.document.token-editor :refer [TokenEditor ui-token-editor]]
-            [glam.client.ui.document.grid-editor :refer [GridEditor ui-grid-editor]]
+            [glam.client.ui.document.interlinear-editor :refer [InterlinearEditor ui-interlinear-editor]]
             [taoensso.timbre :as log]
             [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.mutations :as m]))
@@ -26,32 +26,32 @@
 (def editors
   {"text" {:slug "text" :name "Text" :class TextEditor :join-key :>/text-editor}
    "token" {:slug "token" :name "Tokens" :class TokenEditor :join-key :>/token-editor}
-   "grid" {:slug "text" :name "Glosses" :class GridEditor :join-key :>/grid-editor}})
+   "interlinear" {:slug "interlinear" :name "Interlinear" :class InterlinearEditor :join-key :>/interlinear-editor}})
 (def editor-joins (set (map (comp :join-key second) editors)))
 
 (defsc Document
   [this {:document/keys [id name project] :ui/keys [active-tab busy?]
-         :>/keys [text-editor token-editor grid-editor] :as props}]
+         :>/keys [text-editor token-editor interlinear-editor] :as props}]
   {:query         [:document/id :document/name
                    {:document/project (c/get-query ProjectNameQuery)}
                    {:>/text-editor (c/get-query TextEditor)}
                    {:>/token-editor (c/get-query TokenEditor)}
-                   {:>/grid-editor (c/get-query GridEditor)}
+                   {:>/interlinear-editor (c/get-query InterlinearEditor)}
                    :ui/active-tab
                    :ui/busy?]
    :ident         :document/id
    :pre-merge     (fn [{:keys [data-tree]}]
                     (let [q-params (r/get-query-params)
-                          tab (or (:tab q-params) "grid")]
+                          tab (or (:tab q-params) "interlinear")]
                       (when (not= tab (:tab q-params))
-                        (r/assoc-query-param! :tab "grid"))
+                        (r/assoc-query-param! :tab "interlinear"))
                       (merge {:ui/active-tab tab
                               :ui/busy?      false}
                              data-tree)))
    :route-segment (r/last-route-segment :document)
    :will-enter    (fn [app {:keys [id] :as route-params}]
                     (let [parsed-id (gcu/parse-id id)
-                          tab (or (:tab (r/get-query-params)) "grid")
+                          tab (or (:tab (r/get-query-params)) "interlinear")
                           editor-join-key (get-in editors [tab :join-key])]
                       (when parsed-id
                         (dr/route-deferred
@@ -81,7 +81,7 @@
                                           :post-action #(m/set-value! this :ui/busy? false)}))}
           (mui/tab {:label (get-in editors ["text" :name]) :value "text"})
           (mui/tab {:label (get-in editors ["token" :name]) :value "token"})
-          (mui/tab {:label (get-in editors ["grid" :name]) :value "grid"}))
+          (mui/tab {:label (get-in editors ["interlinear" :name]) :value "interlinear"}))
 
         (if busy?
           (glam.client.ui.common.core/loader)
@@ -90,5 +90,5 @@
               (ui-text-editor text-editor))
             (mui/tab-panel {:value "token"}
               (ui-token-editor token-editor))
-            (mui/tab-panel {:value "grid"}
-              (ui-grid-editor grid-editor))))))))
+            (mui/tab-panel {:value "interlinear"}
+              (ui-interlinear-editor interlinear-editor))))))))

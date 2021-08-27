@@ -61,10 +61,6 @@
                        data-tree))
    :ident     :token-layer/id}
   (let [tokens-and-strings (ta/add-untokenized-substrings tokens text)
-        _ (log/info text)
-        _ (log/info name)
-        _ (doseq [s tokens-and-strings]
-            (log/info s))
         on-submit (fn [e]
                     (.preventDefault e)
                     (c/transact! this [(whitespace-tokenize {:document/id    doc-id
@@ -73,7 +69,7 @@
     (mui/box {:my 2}
       (dom/form {:onSubmit on-submit}
         (mui/typography {:component "h6" :gutterBottom true :variant "subtitle1"} name)
-        (for [line (ta/separate-into-lines tokens-and-strings (:text/body text))]
+        (for [line (ta/separate-into-lines tokens-and-strings text)]
           (dom/div (mapv (fn [e] (if (string? e)
                                    (dc/inline-span e false)
                                    (ui-token (c/computed e {:text text}))))

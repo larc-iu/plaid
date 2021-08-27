@@ -170,7 +170,7 @@
   it contains a newline character in the output of this function, even though
   all copies will have the same ID, in order to facilitate display. (Newlines in
   tokens are virtually unheard of, so this shouldn't be a big deal.)"
-  [tokens-and-strings body]
+  [tokens-and-strings {:text/keys [body]}]
   (let [token-text (fn [{:token/keys [begin end] :as token}]
                      (subs body begin end))]
     (loop [accum-lines []

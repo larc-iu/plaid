@@ -122,7 +122,7 @@
         tokens-and-strings (ta/add-untokenized-substrings tokens text)]
     (mui/box {:my 2}
       (mui/typography {:component "h6" :gutterBottom true :variant "subtitle1"} name)
-      (for [line (ta/separate-into-lines tokens-and-strings (:text/body text))]
+      (for [line (ta/separate-into-lines tokens-and-strings text)]
         (dom/div (mapv (fn [e] (if (string? e)
                                  (dc/inline-span e false)
                                  (ui-token (c/computed e {:text text}))))

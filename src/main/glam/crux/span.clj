@@ -27,6 +27,10 @@
   [node id]
   (crux->pathom (gce/find-entity node {:span/id id})))
 
+;; Mutations
+(defn merge [node eid m]
+  (gce/merge node eid (select-keys m [:span/value])))
+
 (defn delete** [node eid]
   [;;(gce/match* eid (gce/entity node eid))
    (gce/delete* eid)])

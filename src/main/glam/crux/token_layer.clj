@@ -77,6 +77,8 @@
                                                                :where [[?prj :project/text-layers ?txtl]
                                                                        [?doc :document/project ?prj]
                                                                        [?txtl :text-layer/token-layers ?tokl]
+                                                                       [?txt :text/document ?doc]
+                                                                       [?tok :token/text ?txt]
                                                                        [?tok :token/layer ?tokl]]
                                                                :in    [[?tokl ?doc]]}
                                               [eid document-id]))
