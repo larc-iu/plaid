@@ -3,6 +3,7 @@
             [glam.crux.util :as cutil]
             [glam.crux.easy :as gce]
             [glam.crux.token :as tok]
+            [glam.algos.text :as ta]
             [taoensso.timbre :as log])
   (:refer-clojure :exclude [get merge]))
 
@@ -31,13 +32,6 @@
 
 
 ;; Mutations ----------------------------------------------------------------------
-(defn update-body [node eid old-body new-body]
-  (let [text (gce/entity node eid)
-        tx [(gce/match* eid (assoc text :text/body old-body))
-            (gce/put* (assoc text :text/body new-body))]]
-    (let [success (gce/submit! node tx)]
-      success)))
-
 (defn- get-span-ids [node eid]
   (map first (crux/q (crux/db node)
                      '{:find  [?span]
@@ -52,6 +46,21 @@
                        :where [[?tok :token/text ?txt]]
                        :in    [?txt]}
                      eid)))
+
+(defn update-body [node eid old-body ops]
+  (let [text (gce/entity node eid)
+        tokens (map #(gce/entity node %) (get-token-ids node eid))
+        indexed-tokens (reduce #(assoc %1 (:token/id %2) %2) {} tokens)
+        {new-text :text new-tokens :tokens deleted-token-ids :deleted} (ta/apply-text-edits ops text tokens)
+        needs-update? (fn [{:token/keys [begin end id]}] (or (not= begin (:token/begin (clojure.core/get indexed-tokens id)))
+                                                             (not= end (:token/end (clojure.core/get indexed-tokens id)))))
+        deletion-tx (map #(tok/delete** node %) deleted-token-ids)
+        update-tx (map #(gce/put* %) (filter needs-update? new-tokens))
+        text-tx [(gce/match* eid (assoc text :text/body old-body))
+                 (gce/put* (assoc text :text/body (:text/body new-text)))]
+        tx (reduce into [text-tx deletion-tx update-tx])]
+    (let [success (gce/submit! node tx)]
+      success)))
 
 ;; We don't follow the usual pattern of relying on child nodes' delete** functions here because
 ;; this would lead to children being included multiple times. Instead, we write a bespoke fn.

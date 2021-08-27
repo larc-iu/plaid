@@ -1,5 +1,6 @@
 (ns glam.client.ui.document.text-editor
-  (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
+  (:require [goog.object :as gobj]
+            [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.mutations :as m]
             [com.fulcrologic.fulcro.algorithms.merge :as merge]
             [com.fulcrologic.fulcro.data-fetch :as df]
@@ -9,13 +10,13 @@
             [glam.client.router :as r]
             [glam.client.util :as gcu]
             [glam.models.text :as txt]
+            [glam.models.token :as tok]
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.common.forms :as forms]
+            [glam.algos.text :as ta]
             [taoensso.timbre :as log]
             [glam.client.ui.material-ui-icon :as muic]
             [glam.client.ui.global-snackbar :as snack]))
-
-;; TODO: this is display only for now, make full stack
 
 (m/defmutation save-text
   [params]
@@ -29,75 +30,149 @@
                    (swap! state (fn [s]
                                   (cond-> (assoc-in s (conj ref :ui/busy?) false)
                                           (not error?) (assoc-in (conj ref :ui/pristine-body)
-                                                                 (get-in s (conj ref :text/body))))))
+                                                                 (get-in s (conj ref :text/body)))
+                                          (not error?) (assoc-in (conj ref :ui/ops) []))))
                    (when message
                      (snack/message! {:message  message
                                       :severity (if error? "error" "success")}))
                    (tempid/resolve-tempids! app (get-in env [:result :body])))))
 
 (defsc Text
-  [this {:text/keys [id body] :ui/keys [pristine-body busy?] :as props} {text-layer-name :text-layer/name
-                                                                         document-id     :document/id
-                                                                         text-layer-id   :text-layer/id}]
-  {:query     [:text/id :text/body :ui/pristine-body :ui/busy?]
-   :pre-merge (fn [{:keys [data-tree]}]
-                ;; TODO: if pristine does not match body, warn user before we clobber their changes
-                (merge {:ui/pristine-body (:text/body data-tree)
-                        :ui/busy?         false}
-                       data-tree))
-   :ident     :text/id}
-  (let [dirty? (not= pristine-body body)
+  [this {:text/keys [id body] :ui/keys [busy? pristine-body ops] :as props} {text-layer-name :text-layer/name
+                                                                             document-id     :document/id
+                                                                             text-layer-id   :text-layer/id}]
+  {:query          [:text/id :text/body :ui/busy? :ui/pristine-body :ui/ops]
+   :pre-merge      (fn [{:keys [data-tree]}]
+                     ;; TODO: if pristine does not match body, warn user before we clobber their changes
+                     (merge {:ui/busy?         false
+                             :ui/pristine-body (:text/body data-tree)
+                             :ui/ops           []}
+                            data-tree))
+   :initLocalState (fn [this _] {:save-ref (fn [r] (gobj/set this "input-ref" r))})
+   :ident          :text/id}
+  (let [save-ref (c/get-state this :save-ref)
         on-submit (fn [e]
                     (.preventDefault e)
                     (c/transact! this [(save-text {:text/id       id
                                                    :text-layer/id text-layer-id
                                                    :document/id   document-id
+                                                   :old-body      pristine-body
                                                    :new-body      body
-                                                   :old-body      pristine-body})]))]
-    (dom/form {:onSubmit on-submit}
-              (mui/vertical-grid
-                (mui/text-field
-                  {:multiline true
-                   :variant   "outlined"
-                   :fullWidth true
-                   :label     text-layer-name
-                   :value     body
-                   :disabled  busy?
-                   :onChange  #(m/set-string! this :text/body :event %)
-                   :onPaste   (fn [e]
-                                (if (< 0 (count (.toString (js/window.getSelection))))
-                                  (do
-                                    (js/alert (str "Pasting while text is selected is not supported. "
-                                                   "Please unselect the text and try pasting again."))
-                                    (.preventDefault e))
-                                  (do
-                                    ;;apparently don't need anything here
-                                    )))})
+                                                   :ops           ops})]))
+        dirty? (not= body pristine-body)]
+    (dom/form
+      {:onSubmit on-submit}
+      (mui/vertical-grid
+        (mui/text-field
+          {:inputRef  save-ref
+           :multiline true
+           :variant   "outlined"
+           :fullWidth true
+           :label     text-layer-name
+           :value     body
+           :disabled  busy?
+           :onChange  (fn [e]
+                        (if (< 0 (count (.toString (js/window.getSelection))))
+                          (do
+                            (js/alert (str "Pasting while text is selected is not supported. "
+                                           "Please unselect the text and try pasting again."))
+                            (.preventDefault e))
+                          (let [ref (gobj/get this "input-ref")
+                                end-index (.-selectionStart ref)
+                                new-body (.-value (.-target e))
+                                diff-result (ta/diff body new-body)
+                                insertion? (string? diff-result)]
+                            (log/info end-index)
+                            (m/set-value!
+                              this
+                              :ui/ops
+                              (conj ops
+                                    (if insertion?
+                                      (ta/insert-op (- end-index (count diff-result)) diff-result)
+                                      (ta/delete-op end-index diff-result))))
 
-                (mui/horizontal-grid
-                  (mui/button
-                    {:type      "submit"
-                     :size      "large"
-                     :disabled  (or busy? (not dirty?))
-                     :color     "primary"
-                     :variant   "contained"
-                     :startIcon (muic/save)}
-                    "Save Changes")
-                  (mui/button
-                    {:size      "large"
-                     :disabled  (or busy? (not dirty?))
-                     :variant   "outlined"
-                     :onClick   (fn []
-                                  (m/set-string! this :text/body :value pristine-body))
-                     :startIcon (muic/restore)}
-                    "Discard Changes"))))))
+                            (m/set-string! this :text/body :event e))))})
+
+        (mui/horizontal-grid
+          (mui/button
+            {:type      "submit"
+             :size      "large"
+             :disabled  (or busy? (not dirty?))
+             :color     "primary"
+             :variant   "contained"
+             :startIcon (muic/save)}
+            "Save Changes")
+          (mui/button
+            {:size      "large"
+             :disabled  (or busy? (not dirty?))
+             :variant   "outlined"
+             :onClick   (fn []
+                          (m/set-value! this :text/body pristine-body)
+                          (m/set-value! this :ui/ops []))
+             :startIcon (muic/restore)}
+            "Discard Changes"))))))
 
 (def ui-text (c/computed-factory Text {:keyfn :text/id}))
 
+(defn add-untokenized-substrings [tokens {:text/keys [body]}]
+  (let [tokens (sort-by :token/id tokens)]
+    (loop [extended []
+           last-end 0
+           {:token/keys [begin end] :as token} (first tokens)
+           remaining-tokens (rest tokens)]
+      (cond (and (nil? token) (not= last-end (count body)))
+            (conj extended (subs body last-end))
+
+            (nil? token)
+            extended
+
+            :else
+            (let [additions (if (= last-end begin)
+                              [token]
+                              [(subs body last-end begin) token])]
+              (recur (into extended additions)
+                     end
+                     (first remaining-tokens)
+                     (rest remaining-tokens)))))))
+
+(defn inline-span [body token?]
+  (mui/box {:style      (cond-> {:display       "inline-block"
+                                 :border-radius (if token? "3px" "0px")
+                                 :white-space   "pre"}
+                                token? (merge {:border "1px solid black"})
+                                (not token?) (merge {:border-bottom "1px dotted black"}))
+            :fontFamily "Monospace"}
+    body))
+
+(defsc Token [this {:token/keys [id begin end]} {:keys [text]}]
+  {:query [:token/id :token/begin :token/end]
+   :ident :token/id}
+  (inline-span (subs (:text/body text) begin end) true))
+
+(def ui-token (c/computed-factory Token {:keyfn :token/id}))
+
+(defsc TokenLayer [this {:token-layer/keys [id name tokens]} {:keys [text]}]
+  {:query [:token-layer/id :token-layer/name
+           {:token-layer/tokens (c/get-query Token)}]
+   :ident :token-layer/id}
+  (let [{:keys [tokens text] :as output} (ta/apply-text-edits (:ui/ops text)
+                                                              (assoc text :text/body (:ui/pristine-body text))
+                                                              tokens)]
+    (dom/div {}
+      (mui/typography {:component "h6" :gutterBottom true :variant "subtitle1"} name)
+      (dom/div (mapv (fn [e] (if (string? e)
+                               (inline-span e false)
+                               (ui-token (c/computed e {:text text}))))
+                     (add-untokenized-substrings tokens text)))
+      )))
+
+(def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
+
 (defsc TextLayer
-  [this {:text-layer/keys [id name text]} {document-id :document/id}]
+  [this {:text-layer/keys [id name text token-layers]} {document-id :document/id}]
   {:query     [:text-layer/name :text-layer/id
-               {:text-layer/text (c/get-query Text)}]
+               {:text-layer/text (c/get-query Text)}
+               {:text-layer/token-layers (c/get-query TokenLayer)}]
    :pre-merge (fn [{:keys [data-tree query current-normalized]}]
                 ;; If we don't have a text, make a tempid and chug along
                 (merge
@@ -107,9 +182,24 @@
                     data-tree)))
    :ident     :text-layer/id}
   (dom/div
-    (ui-text (c/computed text {:text-layer/name name
-                               :text-layer/id   id
-                               :document/id     document-id}))))
+    (mui/box {:my 2}
+      (mui/typography {:component "h5" :gutterBottom true :variant "h5"} "Token Preview "
+                      (mui/tooltip {:interactive true
+                                    :title       "This display-only area shows how tokens are affected by changes you
+                                                  make to text. To edit tokens, go to the Tokens tab."}
+                                   (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
+      (mapv ui-token-layer (map #(c/computed % {:text text})
+                                token-layers)))
+    (mui/box {:my 2}
+      (mui/typography {:component "h5" :gutterBottom true :variant "h5"} "Text Edit "
+                      (mui/tooltip {:interactive true
+                                    :title       "Enter text however you like, with one exception: each sentence
+                                                  (or equivalent) should have one line. Also note that currently
+                                                  only whitespace tokenization is supported (this will change soon)."}
+                                   (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
+      (ui-text (c/computed text {:text-layer/name name
+                                 :text-layer/id   id
+                                 :document/id     document-id})))))
 
 (def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 
@@ -118,10 +208,6 @@
            {:document/text-layers (c/get-query TextLayer)}]
    :ident :document/id}
   (mui/container {:maxWidth "md"}
-    (mui/box {:m 1}
-      (mui/alert {:severity "info"}
-        "Enter text however you like, with one exception: each sentence (or equivalent) should have one sentence.
-        Also note that currently only whitespace tokenization is supported (this will change soon)."))
     (if (empty? text-layers)
       (mui/zero-state "No text layers exist.")
       (mapv ui-text-layer (map #(c/computed % {:document/id id}) text-layers)))))

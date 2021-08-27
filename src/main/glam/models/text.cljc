@@ -8,6 +8,7 @@
             #?(:clj [glam.crux.text-layer :as text-layer])
             #?(:clj [glam.crux.document :as doc])
             #?(:clj [glam.models.auth :as ma])
+            #?(:clj [glam.models.token :as tok])
             #?(:clj [glam.models.common :as mc :refer [server-error server-message]])
             ))
 
@@ -19,6 +20,7 @@
       ::pc/transform (ma/readable-required :text/id)}
      (text/get crux id)))
 
+;; TODO probably best to refactor this into two
 #?(:cljs
    (m/defmutation save-text
      [params]
@@ -26,12 +28,12 @@
      (remote [env] true))
    :clj
    (pc/defmutation save-text
-     [{:keys [crux] :as env} {:text/keys [id] :keys [new-body old-body] document-id :document/id tl-id :text-layer/id}]
+     [{:keys [crux] :as env} {:text/keys [id] :keys [new-body old-body ops] document-id :document/id tl-id :text-layer/id}]
      {::pc/transform (ma/writeable-required :document/id)}
      (cond (not (string? new-body))
            (server-error "Text body must be a string")
 
-           (nil? old-body)
+           (and (not (tempid/tempid? id)) (nil? old-body))
            (server-error "Old value of text body must be supplied")
 
            (nil? (doc/get crux document-id))
@@ -49,7 +51,7 @@
                (if-not success
                  (server-error "Failed to create text, please try again")
                  (merge {:tempids {id new-id}} (server-message "Text created"))))
-             (if (text/update-body crux id old-body new-body)
+             (if (text/update-body crux id old-body ops)
                (server-message "Update successful")
                (server-error "Failed to create text, please try again"))))))
 

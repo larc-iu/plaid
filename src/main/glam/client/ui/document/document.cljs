@@ -6,6 +6,7 @@
             [glam.client.util :as gcu]
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.document.text-editor :refer [TextEditor ui-text-editor]]
+            [glam.client.ui.document.token-editor :refer [TokenEditor ui-token-editor]]
             [glam.client.ui.document.grid-editor :refer [GridEditor ui-grid-editor]]
             [taoensso.timbre :as log]
             [com.fulcrologic.fulcro.dom :as dom]
@@ -24,14 +25,17 @@
 
 (def editors
   {"text" {:slug "text" :name "Text" :class TextEditor :join-key :>/text-editor}
-   "grid" {:slug "text" :name "Annotation" :class GridEditor :join-key :>/grid-editor}})
+   "token" {:slug "token" :name "Tokens" :class TokenEditor :join-key :>/token-editor}
+   "grid" {:slug "text" :name "Annotations" :class GridEditor :join-key :>/grid-editor}})
 (def editor-joins (set (map (comp :join-key second) editors)))
 
 (defsc Document
-  [this {:document/keys [id name project] :ui/keys [active-tab busy?] :>/keys [text-editor grid-editor] :as props}]
+  [this {:document/keys [id name project] :ui/keys [active-tab busy?]
+         :>/keys [text-editor token-editor grid-editor] :as props}]
   {:query         [:document/id :document/name
                    {:document/project (c/get-query ProjectNameQuery)}
                    {:>/text-editor (c/get-query TextEditor)}
+                   {:>/token-editor (c/get-query TokenEditor)}
                    {:>/grid-editor (c/get-query GridEditor)}
                    :ui/active-tab
                    :ui/busy?]
@@ -76,6 +80,7 @@
                                          {:target      [:document/id id (get-in editors [val :join-key])]
                                           :post-action #(m/set-value! this :ui/busy? false)}))}
           (mui/tab {:label (get-in editors ["text" :name]) :value "text"})
+          (mui/tab {:label (get-in editors ["token" :name]) :value "token"})
           (mui/tab {:label (get-in editors ["grid" :name]) :value "grid"}))
 
         (if busy?
@@ -83,5 +88,7 @@
           (c/fragment
             (mui/tab-panel {:value "text"}
               (ui-text-editor text-editor))
+            (mui/tab-panel {:value "token"}
+              (ui-token-editor token-editor))
             (mui/tab-panel {:value "grid"}
               (ui-grid-editor grid-editor))))))))
