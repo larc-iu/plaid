@@ -26,7 +26,7 @@
 (def editors
   {"text" {:slug "text" :name "Text" :class TextEditor :join-key :>/text-editor}
    "token" {:slug "token" :name "Tokens" :class TokenEditor :join-key :>/token-editor}
-   "grid" {:slug "text" :name "Annotations" :class GridEditor :join-key :>/grid-editor}})
+   "grid" {:slug "text" :name "Glosses" :class GridEditor :join-key :>/grid-editor}})
 (def editor-joins (set (map (comp :join-key second) editors)))
 
 (defsc Document

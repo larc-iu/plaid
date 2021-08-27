@@ -34,8 +34,7 @@
                          [?prj :project/text-layers ?txtl]]
                  :in    [?doc]}
                id)
-       first
-       (mapv #(hash-map :text-layer/id %))))
+       (mapv #(hash-map :text-layer/id (first %)))))
 
 ;; Mutations ----------------------------------------------------------------------
 (defn merge

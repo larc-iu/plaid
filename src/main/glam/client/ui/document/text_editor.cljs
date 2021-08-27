@@ -13,6 +13,7 @@
             [glam.models.token :as tok]
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.common.forms :as forms]
+            [glam.client.ui.document.common :as dc]
             [glam.algos.text :as ta]
             [taoensso.timbre :as log]
             [glam.client.ui.material-ui-icon :as muic]
@@ -41,8 +42,7 @@
                    (df/load! app [:document/id doc-id] TextEditor))))
 
 (defsc Text
-  [this {:text/keys [id body] :ui/keys [busy? pristine-body ops] :as props} {text-layer-name :text-layer/name
-                                                                             document-id     :document/id
+  [this {:text/keys [id body] :ui/keys [busy? pristine-body ops] :as props} {document-id     :document/id
                                                                              text-layer-id   :text-layer/id}]
   {:query          [:text/id :text/body :ui/busy? :ui/pristine-body :ui/ops]
    :pre-merge      (fn [{:keys [data-tree]}]
@@ -71,7 +71,6 @@
            :multiline true
            :variant   "outlined"
            :fullWidth true
-           :label     text-layer-name
            :value     body
            :disabled  busy?
            :onChange  (fn [e]
@@ -106,87 +105,12 @@
 
 (def ui-text (c/computed-factory Text {:keyfn :text/id}))
 
-(defn add-untokenized-substrings [tokens {:text/keys [body]}]
-  (let [tokens (sort-by :token/id tokens)]
-    (loop [extended []
-           last-end 0
-           {:token/keys [begin end] :as token} (first tokens)
-           remaining-tokens (rest tokens)]
-      (cond (and (nil? token) (not= last-end (count body)))
-            (conj extended (subs body last-end))
-
-            (nil? token)
-            extended
-
-            :else
-            (let [additions (if (= last-end begin)
-                              [token]
-                              [(subs body last-end begin) token])]
-              (recur (into extended additions)
-                     end
-                     (first remaining-tokens)
-                     (rest remaining-tokens)))))))
-
-(defn inline-span [body token?]
-  (mui/box {:style      (cond-> {:display       "inline-block"
-                                 :border-radius (if token? "3px" "0px")
-                                 :white-space   "pre"}
-                                token? (merge {:border "1px solid black"})
-                                (not token?) (merge {:border-bottom "1px dotted black"}))
-            :fontFamily "Monospace"}
-    body))
-
 (defsc Token [this {:token/keys [id begin end]} {:keys [text]}]
   {:query [:token/id :token/begin :token/end]
    :ident :token/id}
-  (inline-span (subs (:text/body text) begin end) true))
+  (dc/inline-span (subs (:text/body text) begin end) true))
 
 (def ui-token (c/computed-factory Token {:keyfn :token/id}))
-
-(defn separate-into-lines [tokens-and-strings body]
-  (let [token-text (fn [{:token/keys [begin end] :as token}]
-                     (subs body begin end))]
-    (loop [accum-lines []
-           current-line []
-           head (first tokens-and-strings)
-           tail (rest tokens-and-strings)]
-      (cond
-        (nil? head)
-        (conj accum-lines current-line)
-
-        ;; string with newline
-        (and (string? head) (clojure.string/index-of head "\n"))
-        (let [newline-index (clojure.string/index-of head "\n")
-              current-line (conj current-line (subs head 0 newline-index))]
-          (recur (conj accum-lines current-line)
-                 []
-                 (subs head (inc newline-index))
-                 tail))
-
-        ;; token with newline
-        (and (map? head) (clojure.string/index-of (token-text head) "\n"))
-        (let [newline-index (clojure.string/index-of (token-text head) "\n")
-              current-line (conj current-line (assoc head :token/end (+ newline-index (:token/begin head))))
-              new-head (assoc head :token/begin (+ (:token/begin head) (inc newline-index)))
-              new-head-text (token-text new-head)]
-          (recur (conj accum-lines current-line)
-                 []
-                 (if-not (empty? new-head-text) new-head (first tail))
-                 (if-not (empty? new-head-text) tail (rest tail))))
-
-        ;; plain string
-        (and (string? head) (not (empty? head)))
-        (recur accum-lines
-               (conj current-line head)
-               (first tail)
-               (rest tail))
-
-        ;; plain token
-        :else
-        (recur accum-lines
-               (conj current-line head)
-               (first tail)
-               (rest tail))))))
 
 (defsc TokenLayer [this {:token-layer/keys [id name tokens]} {:keys [text]}]
   {:query [:token-layer/id :token-layer/name
@@ -195,12 +119,12 @@
   (let [{:keys [tokens text] :as output} (ta/apply-text-edits (:ui/ops text)
                                                               (assoc text :text/body (:ui/pristine-body text))
                                                               tokens)
-        tokens-and-strings (add-untokenized-substrings tokens text)]
-    (dom/div {}
+        tokens-and-strings (ta/add-untokenized-substrings tokens text)]
+    (mui/box {:my 2}
       (mui/typography {:component "h6" :gutterBottom true :variant "subtitle1"} name)
-      (for [line (separate-into-lines tokens-and-strings (:text/body text))]
+      (for [line (ta/separate-into-lines tokens-and-strings (:text/body text))]
         (dom/div (mapv (fn [e] (if (string? e)
-                                 (inline-span e false)
+                                 (dc/inline-span e false)
                                  (ui-token (c/computed e {:text text}))))
                        line))))))
 
@@ -220,24 +144,26 @@
                     data-tree)))
    :ident     :text-layer/id}
   (dom/div
-    (mui/box {:my 2}
-      (mui/typography {:component "h5" :gutterBottom true :variant "h5"} "Token Preview "
-                      (mui/tooltip {:interactive true
-                                    :title       "This display-only area shows how tokens are affected by changes you
+    (mui/box {:my 3}
+      (mui/typography {:component "h4" :gutterBottom true :variant "h4"} name)
+      (mui/box {:my 2}
+        (mui/typography {:component "h5" :gutterBottom true :variant "h5"} "Token Preview "
+                        (mui/tooltip {:interactive true
+                                      :title       "This display-only area shows how tokens are affected by changes you
                                                   make to text. To edit tokens, go to the Tokens tab."}
-                                   (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
-      (mapv ui-token-layer (map #(c/computed % {:text text})
-                                token-layers)))
-    (mui/box {:my 2}
-      (mui/typography {:component "h5" :gutterBottom true :variant "h5"} "Text Edit "
-                      (mui/tooltip {:interactive true
-                                    :title       "Enter text however you like, with one exception: each sentence
+                                     (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
+        (mapv ui-token-layer (map #(c/computed % {:text text})
+                                  token-layers)))
+      (mui/box {:my 2}
+        (mui/typography {:component "h5" :gutterBottom true :variant "h5"} "Text Edit "
+                        (mui/tooltip {:interactive true
+                                      :title       "Enter text however you like, with one exception: each sentence
                                                   (or equivalent) should have one line. Also note that currently
                                                   only whitespace tokenization is supported (this will change soon)."}
-                                   (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
-      (ui-text (c/computed text {:text-layer/name name
-                                 :text-layer/id   id
-                                 :document/id     document-id})))))
+                                     (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
+        (ui-text (c/computed text {:text-layer/name name
+                                   :text-layer/id   id
+                                   :document/id     document-id}))))))
 
 (def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 

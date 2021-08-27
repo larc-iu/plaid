@@ -3,6 +3,7 @@
             [com.wsscode.pathom.connect :as pc]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [taoensso.timbre :as log]
+            [com.fulcrologic.fulcro.mutations :as m]
             #?(:clj [crux.api :as crux])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.models.common :as mc :refer [server-message server-error]])
@@ -49,6 +50,16 @@
                                                                     :in    [[?tokl ?doc]]}
                                                                   [id doc-id]))]
          {:token-layer/tokens tokens}))))
+
+#?(:clj
+   (pc/defmutation whitespace-tokenize [{:keys [crux] :as env} {:token-layer/keys [id]
+                                                                doc-id :document/id
+                                                                text-id :text/id}]
+     {::pc/transform (ma/writeable-required :token-layer/id)}
+     (let [success (tokl/whitespace-tokenize crux id doc-id text-id)]
+       (if success
+         (server-message "Tokenization successful")
+         (server-error "Tokenization failed")))))
 
 ;; admin --------------------------------------------------------------------------------
 ;;
@@ -97,5 +108,6 @@
            (server-message (str "Token layer " name " deleted")))))))
 
 #?(:clj
-   (def token-layer-resolvers [get-token-layer get-tokens create-token-layer save-token-layer delete-token-layer]))
+   (def token-layer-resolvers [get-token-layer get-tokens create-token-layer save-token-layer delete-token-layer
+                               whitespace-tokenize]))
 

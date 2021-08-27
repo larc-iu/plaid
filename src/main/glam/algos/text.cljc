@@ -163,3 +163,78 @@
                           (assoc :tokens (:tokens result))
                           (update :deleted into (:deleted result)))]
         (recur new-accum (first ops) (rest ops))))))
+
+(defn separate-into-lines
+  "Given a sequence of token maps and strings, separate them into lines
+  based on the occurrence of the newline character. A token will be split if
+  it contains a newline character in the output of this function, even though
+  all copies will have the same ID, in order to facilitate display. (Newlines in
+  tokens are virtually unheard of, so this shouldn't be a big deal.)"
+  [tokens-and-strings body]
+  (let [token-text (fn [{:token/keys [begin end] :as token}]
+                     (subs body begin end))]
+    (loop [accum-lines []
+           current-line []
+           head (first tokens-and-strings)
+           tail (rest tokens-and-strings)]
+      (cond
+        (nil? head)
+        (conj accum-lines current-line)
+
+        ;; string with newline
+        (and (string? head) (clojure.string/index-of head "\n"))
+        (let [newline-index (clojure.string/index-of head "\n")
+              current-line (conj current-line (subs head 0 newline-index))]
+          (recur (conj accum-lines current-line)
+                 []
+                 (subs head (inc newline-index))
+                 tail))
+
+        ;; token with newline
+        (and (map? head) (clojure.string/index-of (token-text head) "\n"))
+        (let [newline-index (clojure.string/index-of (token-text head) "\n")
+              current-line (conj current-line (assoc head :token/end (+ newline-index (:token/begin head))))
+              new-head (assoc head :token/begin (+ (:token/begin head) (inc newline-index)))
+              new-head-text (token-text new-head)]
+          (recur (conj accum-lines current-line)
+                 []
+                 (if-not (empty? new-head-text) new-head (first tail))
+                 (if-not (empty? new-head-text) tail (rest tail))))
+
+        ;; plain string
+        (and (string? head) (not (empty? head)))
+        (recur accum-lines
+               (conj current-line head)
+               (first tail)
+               (rest tail))
+
+        ;; plain token
+        :else
+        (recur accum-lines
+               (conj current-line head)
+               (first tail)
+               (rest tail))))))
+
+(defn add-untokenized-substrings
+  "Takes a sequence of tokens, finds which parts of the text aren't covered by the tokens, and inserts
+  strings into the token sequence where no token was able to include the text."
+  [tokens {:text/keys [body]}]
+  (let [tokens (sort-by :token/begin tokens)]
+    (loop [extended []
+           last-end 0
+           {:token/keys [begin end] :as token} (first tokens)
+           remaining-tokens (rest tokens)]
+      (cond (and (nil? token) (not= last-end (count body)))
+            (conj extended (subs body last-end))
+
+            (nil? token)
+            extended
+
+            :else
+            (let [additions (if (= last-end begin)
+                              [token]
+                              [(subs body last-end begin) token])]
+              (recur (into extended additions)
+                     end
+                     (first remaining-tokens)
+                     (rest remaining-tokens)))))))
