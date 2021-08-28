@@ -8,7 +8,7 @@
            (java.io StringWriter)))
 
 (defn ^ICruxAPI start-lmdb-node [{:keys [db-dir http-server-port]}]
-  (let [dirf #(.getPath (io/file db-dir %))]
+  (let [dirf #(str db-dir "/" %)]
     (crux/start-node
       (-> {:crux/tx-log         {:kv-store {:crux/module `crux.lmdb/->kv-store, :db-dir (dirf "tx-log")}}
            :crux/document-store {:kv-store {:crux/module `crux.lmdb/->kv-store, :db-dir (dirf "docs")}}
