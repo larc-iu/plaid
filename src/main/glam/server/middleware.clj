@@ -9,12 +9,13 @@
     [crux.api :as crux]
     [com.fulcrologic.fulcro.server.api-middleware :refer [handle-api-request wrap-transit-params wrap-transit-response]]
     [com.fulcrologic.fulcro.networking.websockets :as fws]
+    [com.fulcrologic.fulcro.networking.websocket-protocols :refer [WSListener WSNet] :as fwsp]
     [taoensso.sente.server-adapters.http-kit :refer [get-sch-adapter]]
     [ring.util.response :as resp :refer [response file-response resource-response]]
     [ring.middleware.defaults :refer [wrap-defaults]]
     [ring.middleware.session.store :as store]
     [glam.server.config :refer [config]]
-    [glam.server.pathom-parser :refer [parser]]
+    [glam.server.pathom-parser :refer [parser mutation?]]
     [glam.server.crux :refer [crux-node crux-session-node]]
     [glam.crux.easy :as gce])
   (:import (java.io PushbackReader IOException)
@@ -110,7 +111,7 @@
 
 ;; Route handling
 (defn wrap-html-routes
-  "Allows all requests to `/chsk` to continue down the handler chain,
+  "Allows all requests to `/chsk` and `/api` to continue down the handler chain,
   and otherwise terminates the handler chain by serving the index page. This
   allows page refresh to work 'right' from a user's perspective, as refreshing on
   e.g. `/projects/` will simply serve the index, after which the client-side
@@ -133,10 +134,28 @@
       (:transit-params request)
       (fn [tx] (parser {:ring/request request} tx)))))
 
+(mount/defstate client-ids
+  :start
+  (atom #{}))
+
+(defrecord ClientListener []
+  WSListener
+  (client-added [this ws-net cid]
+    (swap! client-ids conj cid))
+  (client-dropped [this ws-net cid]
+    (swap! client-ids disj cid)))
+
 ;; websockets remote for fulcro, registered as :remote
 (mount/defstate websockets
   :start
   (let [wrapped-parser (fn wrapped-parser [{:keys [request]} tx]
+                         ;; broadcast the body of all mutations to all clients so that they can
+                         ;; ask for updates in response
+                         (doseq [item tx]
+                           (when (mutation? item)
+                             (log/info "Notifying all clients of mutation:" item)
+                             (doseq [cid @client-ids]
+                               (fwsp/push websockets cid :glam/transaction item))))
                          ;; It seems like when requests come in via websockets, they don't always get hit by the
                          ;; request half of ring's wrap-session. To get around this, read session data directly from
                          ;; the store just before it goes into pathom. TODO: figure out whether this story is right
@@ -145,12 +164,20 @@
                                augmented-request (assoc request :session augmented-session)
                                response (parser {:ring/request augmented-request} tx)]
                            response))]
-    (fws/start! (fws/make-websockets
-                  wrapped-parser
-                  {:http-server-adapter (get-sch-adapter)
-                   :parser-accepts-env? true
-                   ;; See Sente for CSRF instructions
-                   :sente-options       {:csrf-token-fn :anti-forgery-token}})))
+    (let [ws (fws/start! (fws/make-websockets
+                           wrapped-parser
+                           {:http-server-adapter (get-sch-adapter)
+                            :parser-accepts-env? true
+                            ;; See Sente for CSRF instructions
+                            :sente-options       {:csrf-token-fn :anti-forgery-token
+                                                  ;; todo: revisit this implementation if we ever want to do targeted push
+                                                  ;; current problem is that login makes the read of :session stale
+                                                  ;; maybe rely on using a client-id that can be mapped to session
+                                                  ;; actually, :session/key looks right
+                                                  #_#_:user-id-fn (fn [r]
+                                                                    [(:client-id r) (get-in r [:session :user/id])])}}))]
+      (fwsp/add-listener ws (->ClientListener))
+      ws))
   :stop
   (fws/stop! websockets))
 

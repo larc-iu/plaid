@@ -77,11 +77,15 @@
     (log/info "Remote error? " resp)
     resp))
 
+(defn push-handler [{:keys [topic msg]}]
+  (log/info topic msg))
+
 (defonce SPA
   (stx/with-synchronous-transactions
     (app/fulcro-app
       {:remote-error? remote-error?
-       :remotes       {:remote (fws/fulcro-websocket-remote {:csrf-token (get-token)})
+       :remotes       {:remote (fws/fulcro-websocket-remote {:csrf-token (get-token)
+                                                             :push-handler push-handler})
                        :session (api-remote)}
        ;; Modify the default result action so that it looks for :on-result, :on-ok and :on-error
        ;; see, for an example, change_password.cljs

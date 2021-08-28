@@ -82,9 +82,14 @@
      :config       config
      :current-user (user/get-current-user (assoc env :crux crux-node))}))
 
+(defn mutation?
+  [tx-item]
+  (and
+    (-> tx-item first symbol?)
+    (-> tx-item second map?)))
+
 (defn has-mutation? [tx]
-  (and (vector? tx)
-       (some #(and (seq? %) (symbol? (first %))) tx)))
+  (some mutation? tx))
 
 (defn make-parser []
   (let [{:keys [trace?
