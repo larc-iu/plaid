@@ -17,7 +17,9 @@
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser mutation?]]
     [glam.server.crux :refer [crux-node crux-session-node]]
-    [glam.crux.easy :as gce])
+    [glam.crux.easy :as gce]
+    [glam.crux.common :as gcc]
+    [com.fulcrologic.fulcro.algorithms.tempid :as tempid])
   (:import (java.io PushbackReader IOException)
            (ring.middleware.session.store SessionStore)
            (java.util UUID)))
@@ -149,13 +151,6 @@
 (mount/defstate websockets
   :start
   (let [wrapped-parser (fn wrapped-parser [{:keys [request]} tx]
-                         ;; broadcast the body of all mutations to all clients so that they can
-                         ;; ask for updates in response
-                         (doseq [item tx]
-                           (when (mutation? item)
-                             (log/info "Notifying all clients of mutation:" item)
-                             (doseq [cid @client-ids]
-                               (fwsp/push websockets cid :glam/transaction item))))
                          ;; It seems like when requests come in via websockets, they don't always get hit by the
                          ;; request half of ring's wrap-session. To get around this, read session data directly from
                          ;; the store just before it goes into pathom. TODO: figure out whether this story is right
@@ -163,6 +158,14 @@
                                augmented-session (merge session (store/read-session session-store session-key))
                                augmented-request (assoc request :session augmented-session)
                                response (parser {:ring/request augmented-request} tx)]
+                           ;; broadcast the body of all mutations to all clients so that they can
+                           ;; ask for updates in response
+                           (doseq [item tx]
+                             (when (and (mutation? item) (gcc/document-mutation? item))
+                               (when-some [doc-ident (gcc/get-affected-doc crux-node item response)]
+                                 (log/info "Notifying clients of document modification:" doc-ident)
+                                 (doseq [cid @client-ids]
+                                   (fwsp/push websockets cid :glam/document-changed doc-ident)))))
                            response))]
     (let [ws (fws/start! (fws/make-websockets
                            wrapped-parser

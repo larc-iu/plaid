@@ -77,8 +77,22 @@
     (log/info "Remote error? " resp)
     resp))
 
+;; realtime sync stuff
+(def ^:private subscriptions (atom {}))
 (defn push-handler [{:keys [topic msg]}]
-  (log/info topic msg))
+  (log/info topic msg)
+  (when (= topic :glam/document-changed)
+    (log/info "Executing subscription load")
+    (doseq [[_ load-fn] (get @subscriptions msg)]
+      (load-fn))))
+
+(defn register-subscription! [ident load-fn]
+  (let [sub-id (random-uuid)]
+    (log/info "Registering subscription on" ident)
+    (swap! subscriptions assoc-in [ident sub-id] load-fn)
+    (fn unregister []
+      (log/info "Unregistering subscription on" ident)
+      sub-id)))
 
 (defonce SPA
   (stx/with-synchronous-transactions

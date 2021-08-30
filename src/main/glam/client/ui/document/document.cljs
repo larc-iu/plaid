@@ -5,6 +5,7 @@
             [glam.client.router :as r]
             [glam.client.util :as gcu]
             [glam.client.ui.material-ui :as mui]
+            [glam.client.application :as gca]
             [glam.client.ui.document.text-editor :refer [TextEditor ui-text-editor]]
             [glam.client.ui.document.token-editor :refer [TokenEditor ui-token-editor]]
             [glam.client.ui.document.interlinear-editor :refer [InterlinearEditor ui-interlinear-editor]]
@@ -32,35 +33,43 @@
 (defsc Document
   [this {:document/keys [id name project] :ui/keys [active-tab busy?]
          :>/keys [text-editor token-editor interlinear-editor] :as props}]
-  {:query         [:document/id :document/name
-                   {:document/project (c/get-query ProjectNameQuery)}
-                   {:>/text-editor (c/get-query TextEditor)}
-                   {:>/token-editor (c/get-query TokenEditor)}
-                   {:>/interlinear-editor (c/get-query InterlinearEditor)}
-                   :ui/active-tab
-                   :ui/busy?]
-   :ident         :document/id
-   :pre-merge     (fn [{:keys [data-tree]}]
-                    (let [q-params (r/get-query-params)
-                          tab (or (:tab q-params) "interlinear")]
-                      (when (not= tab (:tab q-params))
-                        (r/assoc-query-param! :tab "interlinear"))
-                      (merge {:ui/active-tab tab
-                              :ui/busy?      false}
-                             data-tree)))
-   :route-segment (r/last-route-segment :document)
-   :will-enter    (fn [app {:keys [id] :as route-params}]
-                    (let [parsed-id (gcu/parse-id id)
-                          tab (or (:tab (r/get-query-params)) "interlinear")
-                          editor-join-key (get-in editors [tab :join-key])]
-                      (when parsed-id
-                        (dr/route-deferred
-                          [:document/id parsed-id]
-                          (fn []
-                            (df/load! app [:document/id parsed-id] Document
-                                      {:post-mutation        `dr/target-ready
-                                       :post-mutation-params {:target [:document/id parsed-id]}
-                                       :without              (disj editor-joins editor-join-key)}))))))}
+  {:query                [:document/id :document/name
+                          {:document/project (c/get-query ProjectNameQuery)}
+                          {:>/text-editor (c/get-query TextEditor)}
+                          {:>/token-editor (c/get-query TokenEditor)}
+                          {:>/interlinear-editor (c/get-query InterlinearEditor)}
+                          :ui/active-tab
+                          :ui/busy?]
+   :ident                :document/id
+   :pre-merge            (fn [{:keys [data-tree]}]
+                           (let [q-params (r/get-query-params)
+                                 tab (or (:tab q-params) "interlinear")]
+                             (when (not= tab (:tab q-params))
+                               (r/assoc-query-param! :tab "interlinear"))
+                             (merge {:ui/active-tab tab
+                                     :ui/busy?      false}
+                                    data-tree)))
+   :route-segment        (r/last-route-segment :document)
+   :will-enter           (fn [app {:keys [id] :as route-params}]
+                           (let [parsed-id (gcu/parse-id id)
+                                 tab (or (:tab (r/get-query-params)) "interlinear")
+                                 editor-join-key (get-in editors [tab :join-key])]
+                             (when parsed-id
+                               (dr/route-deferred
+                                 [:document/id parsed-id]
+                                 (fn []
+                                   (df/load! app [:document/id parsed-id] Document
+                                             {:post-mutation        `dr/target-ready
+                                              :post-mutation-params {:target [:document/id parsed-id]}
+                                              :without              (disj editor-joins editor-join-key)}))))))
+   :componentDidMount    (fn [this]
+                           (log/info (c/props this))
+                           (let [ident [:document/id (:document/id (c/props this))]]
+                             (let [unregister! (gca/register-subscription! ident #(df/load! this ident Document))]
+                               (c/set-state! this {:unregister-fn unregister!}))))
+   :componentWillUnmount (fn [this]
+                           (when-let [unregister! (:unregister-fn (c/get-state this))]
+                             (unregister!)))}
 
   (mui/container {:maxWidth "xl"}
     (mui/page-title name)

@@ -116,29 +116,33 @@
   {:query [:token/id :token/value :token/begin :token/end]
    :ident :token/id})
 
+(defn cell [props & children]
+  (dom/div (merge {:style {:min-height "12pt"}} props)
+    children))
+
 ;; note that this is NOT included in our query tree, we just need a component here to fire mutations
 (defsc SpanCell [this {:span/keys [id value] :as props} {token-id :token/id span-layer-id :span-layer/id :as cp}]
   {:ident :span/id
    :query [:span/id :span/value]}
-  (ui-autosize-input {:type       "text"
-                      :key        id
-                      :value      value
-                      :onChange   #(m/set-string! this :span/value :event %)
-                      :onBlur     #(when-not (= 0 (count value))
-                                     (if (tempid/tempid? id)
-                                       (c/transact! this [(create-span {:span/id     id
-                                                                        :span/value  value
-                                                                        :span/tokens [token-id]
-                                                                        :span/layer  span-layer-id})])
-                                       (c/transact! this [(save-span {:span/id    id
-                                                                      :span/value value})])))
-                      :inputStyle {:minWidth         (str "30px")
-                                   :display          "inline-block"
-                                   :outline          "none"
-                                   :border           "none"
-                                   :min-width        "none"
-                                   :background-color "transparent"}}))
-(def ui-span-cell (c/computed-factory SpanCell {:keyfn :span/id}))
+  (cell {}
+        (ui-autosize-input {:type       "text"
+                            :value      value
+                            :onChange   #(m/set-string! this :span/value :event %)
+                            :onBlur     #(when-not (= 0 (count value))
+                                           (if (tempid/tempid? id)
+                                             (c/transact! this [(create-span {:span/id     id
+                                                                              :span/value  value
+                                                                              :span/tokens [token-id]
+                                                                              :span/layer  span-layer-id})])
+                                             (c/transact! this [(save-span {:span/id    id
+                                                                            :span/value value})])))
+                            :inputStyle {:minWidth         (str "30px")
+                                         :display          "inline-block"
+                                         :outline          "none"
+                                         :border           "none"
+                                         :min-width        "none"
+                                         :background-color "transparent"}})))
+(def ui-span-cell (c/computed-factory SpanCell {:keyfn (comp str :span/id)}))
 
 ;; Here is where the real UI begins
 (defn ui-token [{:token/keys [id value] spans :spans}]
@@ -173,6 +177,15 @@
       (map-indexed (fn [i line]
                      (dom/div {:style {:background-color (if (even? i) "#0055ff17" "white")
                                        :border-radius    4}}
+
+                       ;; todo: pull out a cell component
+                       (dom/div {:style {:display "inline-block"}}
+                         (cell {}  (dom/div {} ent/nbsp))
+                         (mapv
+                           (fn [sl]
+                             (cell {}
+                               (:span-layer/name sl)))
+                           span-layers))
                        (map ui-token line)))
                    lines))))
 

@@ -47,8 +47,7 @@
        (server-error "Not all tokens exist for this span")
 
        :else
-       (let [{:keys [success] new-id :id} (s/create crux {:span/id     id
-                                                          :span/value  value
+       (let [{:keys [success] new-id :id} (s/create crux {:span/value  value
                                                           :span/layer  layer
                                                           :span/tokens (into [] tokens)})]
          (if-not success
