@@ -7,7 +7,9 @@
             #?(:clj [crux.api :as crux])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.models.common :as mc :refer [server-message server-error]])
+            #?(:clj [glam.crux.document :as doc])
             #?(:clj [glam.crux.text-layer :as txtl])
+            #?(:clj [glam.crux.text :as txt])
             #?(:clj [glam.crux.token-layer :as tokl])
             #?(:clj [glam.crux.easy :as gce])))
 
@@ -56,10 +58,21 @@
                                                                 doc-id :document/id
                                                                 text-id :text/id}]
      {::pc/transform (ma/writeable-required :token-layer/id)}
-     (let [success (tokl/whitespace-tokenize crux id doc-id text-id)]
-       (if success
-         (server-message "Tokenization successful")
-         (server-error "Tokenization failed")))))
+     (cond
+       (nil? (tokl/get crux id))
+       (server-error (str "Token layer does not exist:" id))
+
+       (nil? (txt/get crux text-id))
+       (server-error (str "Text does not exist:" text-id))
+
+       (nil? (doc/get crux doc-id))
+       (server-error (str "Doc does not exist:" doc-id))
+
+       :else
+       (let [success (tokl/whitespace-tokenize crux id doc-id text-id)]
+         (if success
+           (server-message "Tokenization successful")
+           (server-error "Tokenization failed"))))))
 
 ;; admin --------------------------------------------------------------------------------
 ;;
