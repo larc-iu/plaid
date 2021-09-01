@@ -41,7 +41,7 @@
 
 (deftest span-deletion
   (testing "Spans can be deleted"
-    (sl/delete crux-node :s1)
+    (s/delete crux-node :s1)
     (is (nil? (gce/entity crux-node :s1)))))
 
 (deftest token-deletion
