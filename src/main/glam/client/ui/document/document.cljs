@@ -11,28 +11,34 @@
             [glam.client.ui.document.interlinear-editor :refer [InterlinearEditor ui-interlinear-editor]]
             [taoensso.timbre :as log]
             [com.fulcrologic.fulcro.dom :as dom]
-            [com.fulcrologic.fulcro.mutations :as m]))
+            [com.fulcrologic.fulcro.mutations :as m]
+            [com.fulcrologic.fulcro.application :as app]))
 
 (defsc ProjectNameQuery
   [this props]
   {:query [:project/id :project/name]
    :ident :project/id})
 
-;; plan:
-;; - seems like we need to make a component for each layer
-;; - each layer should have the data points in addition to the layer's regular stuff.
-;;   - how to do this? document has a :document/text-layers resolver
-;;   - all layers gain a data point resolver
-
 (def editors
-  {"text" {:slug "text" :name "Text" :class TextEditor :join-key :>/text-editor}
-   "token" {:slug "token" :name "Tokens" :class TokenEditor :join-key :>/token-editor}
-   "interlinear" {:slug "interlinear" :name "Interlinear" :class InterlinearEditor :join-key :>/interlinear-editor}})
+  {"text"        {:slug "text" :name "Text" :join-key :>/text-editor}
+   "token"       {:slug "token" :name "Tokens" :join-key :>/token-editor}
+   "interlinear" {:slug "interlinear" :name "Interlinear" :join-key :>/interlinear-editor}})
 (def editor-joins (set (map (comp :join-key second) editors)))
+
+(declare Document)
+(defn do-load!
+  ([app-or-comp doc-id tab]
+   (do-load! app-or-comp doc-id tab {}))
+  ([app-or-comp doc-id tab load-opts]
+   (let [editor-join-key (get-in editors [tab :join-key])]
+     (when doc-id
+       (df/load! app-or-comp [:document/id doc-id] Document
+                 (merge load-opts
+                        {:without (disj editor-joins editor-join-key)}))))))
 
 (defsc Document
   [this {:document/keys [id name project] :ui/keys [active-tab busy?]
-         :>/keys [text-editor token-editor interlinear-editor] :as props}]
+         :>/keys        [text-editor token-editor interlinear-editor] :as props}]
   {:query                [:document/id :document/name
                           {:document/project (c/get-query ProjectNameQuery)}
                           {:>/text-editor (c/get-query TextEditor)}
@@ -52,20 +58,28 @@
    :route-segment        (r/last-route-segment :document)
    :will-enter           (fn [app {:keys [id] :as route-params}]
                            (let [parsed-id (gcu/parse-id id)
-                                 tab (or (:tab (r/get-query-params)) "interlinear")
-                                 editor-join-key (get-in editors [tab :join-key])]
+                                 tab (or (:tab (r/get-query-params)) "interlinear")]
                              (when parsed-id
                                (dr/route-deferred
                                  [:document/id parsed-id]
                                  (fn []
-                                   (df/load! app [:document/id parsed-id] Document
-                                             {:post-mutation        `dr/target-ready
-                                              :post-mutation-params {:target [:document/id parsed-id]}
-                                              :without              (disj editor-joins editor-join-key)}))))))
+                                   (do-load! app parsed-id tab
+                                             {:post-mutation `dr/target-ready
+                                              :post-mutation-params {:target [:document/id parsed-id]}})
+                                   ;; TODO: here (and in tab onclick, and in refresh lambda) is where I should
+                                   ;; call a function defined in interlinear  which scans the state that was just
+                                   ;; loaded and triggers any maintenance that might need to happen, e.g. realigning
+                                   ;; spans with sentences. The route shouldn't be completed until all of this is over.
+                                   ;; Pass a lambda that will call target ready, perhaps?
+                                   ;; (c/transact! this [(do-corrections {:target-ready-fn ...})])
+                                   )))))
    :componentDidMount    (fn [this]
-                           (log/info (c/props this))
-                           (let [ident [:document/id (:document/id (c/props this))]]
-                             (let [unregister! (gca/register-subscription! ident #(df/load! this ident Document))]
+                           (let [props (c/props this)
+                                 doc-id (:document/id props)
+                                 tab (:ui/active-tab props)]
+                             (let [unregister! (gca/register-subscription!
+                                                 [:document/id doc-id]
+                                                 #(do-load! this doc-id tab))]
                                (c/set-state! this {:unregister-fn unregister!}))))
    :componentWillUnmount (fn [this]
                            (when-let [unregister! (:unregister-fn (c/get-state this))]
@@ -85,9 +99,7 @@
                                (m/set-value! this :ui/active-tab val)
                                (m/set-value! this :ui/busy? true)
                                (r/assoc-query-param! :tab val)
-                               (df/load! this [:document/id id] (get-in editors [val :class])
-                                         {:target      [:document/id id (get-in editors [val :join-key])]
-                                          :post-action #(m/set-value! this :ui/busy? false)}))}
+                               (do-load! this id val {:post-action #(m/set-value! this :ui/busy? false)}))}
           (mui/tab {:label (get-in editors ["text" :name]) :value "text"})
           (mui/tab {:label (get-in editors ["token" :name]) :value "token"})
           (mui/tab {:label (get-in editors ["interlinear" :name]) :value "interlinear"}))

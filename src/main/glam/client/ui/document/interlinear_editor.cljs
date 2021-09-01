@@ -18,28 +18,6 @@
 
 (def ui-autosize-input (interop/react-factory AutosizeInput))
 
-(defn ensure-span-for-each-token [{data :data-tree}]
-  (let [span-layers (:token-layer/span-layers data)
-        new-span-layers (let [tokens (:token-layer/tokens data)]
-                          (for [{spans :span-layer/spans :as sl} span-layers]
-                            (do
-                              (log/info sl)
-                              (let [no-span (filter (fn [{:token/keys [id]}]
-                                                      (not
-                                                        (some
-                                                          #(some (fn [{token-id :token/id}] (= token-id id)) (:span/tokens %))
-                                                          spans)))
-                                                    tokens)
-                                    new-spans (mapv (fn [{:token/keys [id]}]
-                                                      {:span/id     (tempid/tempid)
-                                                       :span/value  ""
-                                                       :span/tokens [{:token/id id}]})
-                                                    no-span)
-                                    combined-spans (into (:span-layer/spans sl) new-spans)]
-                                (assoc sl :span-layer/spans combined-spans)))))
-        new-tree (assoc data :token-layer/span-layers (vec new-span-layers))]
-    new-tree))
-
 (m/defmutation save-span
   [{doc-id :document/id :as params}]
   (action [{:keys [state]}]
@@ -72,6 +50,31 @@
                                         :severity (if error? "error" "success")})
                        (log/info message)))
                    (tempid/resolve-tempids! app (get-in env [:result :body])))))
+
+(defn ensure-span-for-each-token
+  "Given a data-tree from a pre-merge, modify it so that any tokens without at least one span will have a tempid span
+   associated with it. Note that this alone does not cause any server-side changes."
+  [{data :data-tree}]
+  (let [span-layers (:token-layer/span-layers data)
+        new-span-layers (let [tokens (:token-layer/tokens data)]
+                          (for [{spans :span-layer/spans :as sl} span-layers]
+                            (do
+                              (log/info sl)
+                              (let [no-span (filter (fn [{:token/keys [id]}]
+                                                      (not
+                                                        (some
+                                                          #(some (fn [{token-id :token/id}] (= token-id id)) (:span/tokens %))
+                                                          spans)))
+                                                    tokens)
+                                    new-spans (mapv (fn [{:token/keys [id]}]
+                                                      {:span/id     (tempid/tempid)
+                                                       :span/value  ""
+                                                       :span/tokens [{:token/id id}]})
+                                                    no-span)
+                                    combined-spans (into (:span-layer/spans sl) new-spans)]
+                                (assoc sl :span-layer/spans combined-spans)))))
+        new-tree (assoc data :token-layer/span-layers (vec new-span-layers))]
+    new-tree))
 
 ;; components --------------------------------------------------------------------------------
 (defn reshape-into-token-grid
@@ -161,17 +164,24 @@
             spans))))
 
 (defsc TokenLayer
-  [this {:token-layer/keys [id name tokens span-layers] :as token-layer} {:keys [text]}]
+  [this {:token-layer/keys [id name tokens span-layers] :as token-layer} {:keys [text config]}]
   {:query     [:token-layer/id :token-layer/name
                {:token-layer/tokens (c/get-query Token)}
                {:token-layer/span-layers (c/get-query SpanLayer)}]
-   :pre-merge ensure-span-for-each-token
+   :pre-merge (fn [{:keys [data-tree] :as args}]
+                (log/info data-tree)
+                (ensure-span-for-each-token args))
    :ident     :token-layer/id}
   (let [tokens (sort-by :token/begin (reshape-into-token-grid token-layer))
         lines-with-strings (-> tokens
                                (ta/add-untokenized-substrings text)
                                (ta/separate-into-lines text))
-        lines (map #(filter :token/id %) lines-with-strings)]
+        lines (map #(filter :token/id %) lines-with-strings)
+        sentence-span-layer-ids (set (get-in config [:editors :interlinear :sentence-level-span-layers]))
+        token-span-layers (filter #(not (sentence-span-layer-ids (:span-layer/id %))) span-layers)
+        sentence-span-layers (filter #(sentence-span-layer-ids (:span-layer/id %)) span-layers)]
+    (log/info token-span-layers)
+    (log/info sentence-span-layers)
     (dom/div
       (mui/typography {:variant "h5"} name)
       (map-indexed (fn [i line]
@@ -180,11 +190,11 @@
 
                        ;; todo: pull out a cell component
                        (dom/div {:style {:display "inline-block"}}
-                         (cell {}  (dom/div {} ent/nbsp))
+                         (cell {} (dom/div {} ent/nbsp))
                          (mapv
                            (fn [sl]
                              (cell {}
-                               (:span-layer/name sl)))
+                                   (:span-layer/name sl)))
                            span-layers))
                        (map ui-token line)))
                    lines))))
@@ -201,25 +211,27 @@
 (def ui-text (c/computed-factory Text {:keyfn :text/id}))
 
 (defsc TextLayer
-  [this {:text-layer/keys [id name text token-layers]}]
+  [this {:text-layer/keys [id name text token-layers]} {:keys [config]}]
   {:query [:text-layer/name :text-layer/id
            {:text-layer/text (c/get-query Text)}
            {:text-layer/token-layers (c/get-query TokenLayer)}]
    :ident :text-layer/id}
   (dom/div
     ;; (ui-text (c/computed text {:text-layer/name name}))
-    (mapv ui-token-layer (map #(c/computed % {:text text}) token-layers))))
+    (mapv ui-token-layer (map #(c/computed % {:text text :config config}) token-layers))))
 
-(def ui-text-layer (c/factory TextLayer {:keyfn :text-layer/id}))
+(def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 
-(defsc InterlinearEditor [this {:document/keys [id name text-layers] :as props}]
+(defsc ProjectQuery [_ _] {:ident :project/id :query [:project/config :project/id]})
+(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :as props}]
   {:query [:document/id :document/name
-           {:document/text-layers (c/get-query TextLayer)}]
+           {:document/text-layers (c/get-query TextLayer)}
+           {:document/project (c/get-query ProjectQuery)}]
    :ident :document/id}
   (dom/p
     (str name))
   (when text-layers
-    (c/fragment (mapv ui-text-layer text-layers))))
+    (c/fragment (mapv ui-text-layer (map #(c/computed % {:config (:project/config project)}) text-layers)))))
 
 (def ui-interlinear-editor (c/factory InterlinearEditor))
 
