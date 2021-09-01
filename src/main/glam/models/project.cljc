@@ -4,6 +4,7 @@
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.mutations :as m]
             #?(:clj [glam.crux.project :as prj])
+            #?(:clj [glam.crux.project-config :as prjc])
             #?(:clj [glam.crux.easy :as gce])
             #?(:clj [glam.crux.util :as cutil])
             #?(:clj [glam.models.common :as mc])
@@ -109,7 +110,31 @@
            (mc/server-message "Updated privileges")
            (mc/server-error "Failed to update user privileges, please refresh and try again"))))))
 
+#?(:cljs
+   (m/defmutation set-interlinear-span-layer
+     [args]
+     (remote [_] true))
+   :clj
+   (pc/defmutation set-interlinear-span-layer [{:keys [crux]} {add-sentence-level-sl    :add-sentence-level-span-layer
+                                                               remove-sentence-level-sl :remove-sentence-level-span-layer}]
+     {::pc/transform ma/admin-required}
+     (let [span-layer-id (or add-sentence-level-sl remove-sentence-level-sl)]
+       (cond
+         (nil? span-layer-id)
+         (mc/server-error "Must supply a span layer ID")
+
+         (not (gce/entity crux span-layer-id))
+         (mc/server-error (str "Span layer doesn't exist:" span-layer-id))
+
+         :else
+         (let [add? add-sentence-level-sl
+               success (if add?
+                         (prjc/add-span-layer-to-config crux span-layer-id)
+                         (prjc/remove-span-layer-from-config crux span-layer-id))]
+           (if success
+             (mc/server-message (str "Span layer marked as " (if add? "sentence" "token") "-level"))
+             (mc/server-error "Failed to update span layer, please refresh and try again")))))))
 #?(:clj
    (def project-resolvers [accessible-projects all-projects get-project create-project
-                           get-users-for-project set-user-privileges]))
+                           get-users-for-project set-user-privileges set-interlinear-span-layer]))
 

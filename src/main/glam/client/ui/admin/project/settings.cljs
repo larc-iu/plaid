@@ -485,6 +485,74 @@
 
 (def ui-user-permission-list-item (c/computed-factory UserPermissionListItem {:keyfn :user/id}))
 
+;; Interface configuration ----------------------------------------------------------------------------
+;; ====================================================================================================
+(declare ProjectSettings)
+(defmutation toggle-sentence-level
+  [_]
+  (action [{:keys [state ref]}]
+          (swap! state (fn [s]
+                         (-> s
+                             (assoc-in (conj ref :ui/busy?) true)))))
+  (remote [{:keys [ast]}]
+          (let [ast (assoc ast :key `prj/set-interlinear-span-layer)]
+            ast))
+  (result-action [{:keys [state ref app component] :as env}]
+                 (swap! state (fn [s] (assoc-in s (conj ref :ui/busy?) false)))
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `prj/set-interlinear-span-layer])]
+                   (when message
+                     (if error?
+                       (snack/message! {:message  message
+                                        :severity (if error? "error" "success")})
+                       )))
+                 (df/load! app ref ProjectSettings)))
+(defsc SpanLayerQuery [this props]
+  {:ident :span-layer/id
+   :query [:span-layer/id :span-layer/name]})
+(defsc TokenLayerQuery [this props]
+  {:ident :token-layer/id
+   :query [:token-layer/id :token-layer/name {:token-layer/span-layers (c/get-query SpanLayerQuery)}]})
+(defsc TextLayerQuery [this props]
+  {:ident :text-layer/id
+   :query [:text-layer/id :text-layer/name
+           {:text-layer/token-layers (c/get-query TokenLayerQuery)}]})
+(defsc InterfaceConfiguration [this {:project/keys [id config text-layers] :ui/keys [busy?] :as props}]
+  {:ident     :project/id
+   :pre-merge (fn [{:keys [data-tree]}]
+                (merge {:ui/busy? false}
+                       data-tree))
+   :query     [:project/id :project/config {:project/text-layers (c/get-query TextLayerQuery)}
+               :ui/busy?]}
+  (let [span-layers (flatten (for [text-layer text-layers]
+                               (for [token-layer (:text-layer/token-layers text-layer)]
+                                 (:token-layer/span-layers token-layer))))
+        sentence-level-ids (set (get-in config [:editors :interlinear :sentence-level-span-layers]))]
+    (dom/div
+      (mui/typography {:variant "h5"} "Interlinear Interface")
+      (dom/p "Select the span layers that represent sentence-level information (e.g. a free translation)
+              instead of token-level information (like a gloss).")
+      (dom/p (dom/strong "Warning: ") "changing the layer's type will result in all existing spans "
+             "on that layer being deleted.")
+      (mui/list {}
+        (mapv (fn [{:span-layer/keys [id name]}]
+                (mui/list-item {:key (str id)}
+                  (mui/list-item-text {:primary name})
+                  (mui/list-item-secondary-action
+                    {}
+                    (mui/checkbox
+                      {:color    "primary"
+                       :onChange (fn [e]
+                                   (let [v (.-checked (.-target e))]
+                                     (c/transact! this [(toggle-sentence-level
+                                                          (if v
+                                                            {:add-sentence-level-span-layer id}
+                                                            {:remove-sentence-level-span-layer id}))])))
+                       :checked  (some? (sentence-level-ids id))
+                       :disabled busy?}))))
+              span-layers)))))
+
+(def ui-interface-configuration (c/factory InterfaceConfiguration))
+
 ;; Top-level components -------------------------------------------------------------------------------
 ;; ====================================================================================================
 (defn- all-ids
@@ -500,21 +568,24 @@
         :else (do (log/error "Unknown layer type!" props) [])))
 
 (defsc ProjectSettings [this {:project/keys [id name text-layers users]
-                              :ui/keys      [active-tab add-text-layer modal-open? active-layer] :as props}]
+                              :ui/keys      [active-tab add-text-layer modal-open? active-layer] :as props
+                              :>/keys       [interfaces]}]
   {:query         [:project/id
                    :project/name
                    {:project/users (c/get-query UserPermissionListItem)}
                    {:project/text-layers (c/get-query TextLayerListItem)}
                    {:ui/active-layer (c/get-query LayerUnion)}
                    {:ui/add-text-layer (c/get-query AddTextLayer)}
+                   {:>/interfaces (c/get-query InterfaceConfiguration)}
                    :ui/active-tab
                    :ui/modal-open?]
    :ident         :project/id
    :initial-state {}
-   :pre-merge     (fn [{:keys [data-tree] :as m}]
+   :pre-merge     (fn [{:keys [data-tree current-normalized] :as m}]
                     ;; initial-state doesn't work for some reason
                     (merge {:ui/active-tab  "layers"
                             :ui/modal-open? false}
+                           current-normalized
                            data-tree))
    :route-segment (r/last-route-segment :project-settings)
    :will-enter    (fn [app {:keys [id]}]
@@ -547,9 +618,12 @@
       ;; Tab 1: layer configuration
       (mui/tab-context {:value active-tab}
         (mui/tabs {:value    active-tab
-                   :onChange #(m/set-value! this :ui/active-tab %2)}
+                   :onChange (fn [_ tab]
+                               (df/load! this [:project/id id] ProjectSettings)
+                               (m/set-value! this :ui/active-tab tab))}
           (mui/tab {:label "Layers" :value "layers"})
-          (mui/tab {:label "Access" :value "access"}))
+          (mui/tab {:label "Access" :value "access"})
+          (mui/tab {:label "Interfaces" :value "interfaces"}))
 
         (mui/tab-panel {:value "layers"}
           (mui/grid {:container true :spacing 1}
@@ -591,4 +665,9 @@
                 (mui/list
                   {:subheading "Project Access Privileges"}
                   (mapv ui-user-permission-list-item
-                        (map #(c/computed % {:project/id id}) users)))))))))))
+                        (map #(c/computed % {:project/id id}) users)))))))
+
+        (mui/tab-panel {:value "interfaces"}
+          (mui/container {:maxWidth "sm"}
+            (mui/padded-paper
+              (ui-interface-configuration interfaces))))))))

@@ -11,7 +11,8 @@
                 :project/name
                 :project/readers
                 :project/writers
-                :project/text-layers])
+                :project/text-layers
+                :project/config])
 
 (defn crux->pathom [doc]
   (when doc
@@ -20,10 +21,16 @@
         (update :project/writers cutil/identize :user/id)
         (update :project/text-layers cutil/identize :text-layer/id))))
 
+;; This is used to hold on to interface-specific information that can't be known in advance,
+;; e.g. which span-layer ought to be used for free translation in the interlinear editing
+;; interface.
+(def base-config
+  {:editors {:interlinear {:sentence-level-span-layers []}}})
+
 (defn create [node {:project/keys [id] :as attrs}]
   (let [{:project/keys [id] :as record}
         (merge (cutil/new-record "project" id)
-               {:project/readers [] :project/writers [] :project/text-layers []}
+               {:project/readers [] :project/writers [] :project/text-layers [] :project/config base-config}
                (select-keys attrs attr-keys))]
     {:success (gce/put node record)
      :id      id}))
