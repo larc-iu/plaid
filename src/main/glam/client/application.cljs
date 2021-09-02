@@ -5,6 +5,7 @@
     [com.fulcrologic.fulcro.networking.websockets :as fws]
     [com.fulcrologic.fulcro.algorithms.tx-processing :as txp]
     [com.fulcrologic.fulcro.algorithms.tx-processing.synchronous-tx-processing :as stx]
+    [com.fulcrologic.fulcro.rendering.keyframe-render :as kfr]
     [taoensso.timbre :as log]
     [com.fulcrologic.fulcro.mutations :as m]))
 
@@ -39,7 +40,7 @@
 
 (defn response-middleware []
   (cond-> (net/wrap-fulcro-response)
-    LOG-RESPONSES resp-logger))
+          LOG-RESPONSES resp-logger))
 
 (defn api-remote []
   (net/fulcro-http-remote
@@ -54,12 +55,12 @@
     (-> body keys first symbol?)))
 
 (defn mutation-error? [result]
-  (let [body         (:body result)
+  (let [body (:body result)
         is-mutation? (mutation? body)]
     (if is-mutation?
-      (let [mutation-sym    (-> body keys first)
+      (let [mutation-sym (-> body keys first)
             response-error? (-> body mutation-sym :server/error?)
-            pathom-error    (-> body mutation-sym :com.wsscode.pathom.core/reader-error)]
+            pathom-error (-> body mutation-sym :com.wsscode.pathom.core/reader-error)]
         (log/info "Result body: " body)
         (boolean (or response-error? pathom-error)))
       false)))
@@ -67,12 +68,12 @@
 (defn read-error? [result]
   (let [body (:body result)]
     (and (map? body)
-      (= (-> body keys first body) :com.wsscode.pathom.core/reader-error))))
+         (= (-> body keys first body) :com.wsscode.pathom.core/reader-error))))
 
 (defn remote-error?
   [result]
   (let [status (:status-code result)
-        resp   (or (not= status 200) (mutation-error? result)
+        resp (or (not= status 200) (mutation-error? result)
                  (read-error? result))]
     (log/info "Remote error? " resp)
     resp))
@@ -97,10 +98,11 @@
 (defonce SPA
   (stx/with-synchronous-transactions
     (app/fulcro-app
-      {:remote-error? remote-error?
-       :remotes       {:remote (fws/fulcro-websocket-remote {:csrf-token (get-token)
-                                                             :push-handler push-handler})
-                       :session (api-remote)}
+      {:remote-error?     remote-error?
+       :remotes           {:remote  (fws/fulcro-websocket-remote {:csrf-token   (get-token)
+                                                                  :push-handler push-handler})
+                           :session (api-remote)}
+       :optimized-render! kfr/render!
        ;; Modify the default result action so that it looks for :on-result, :on-ok and :on-error
        ;; see, for an example, change_password.cljs
        :default-result-action!
@@ -115,4 +117,3 @@
              (on-error (get-in result [:body (:dispatch-key transacted-ast)])))
            (when-let [on-ok (:on-ok options)]
              (on-ok (get-in result [:body (:dispatch-key transacted-ast)])))))})))
-
