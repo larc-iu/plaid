@@ -185,8 +185,8 @@
     (dom/div
       (mui/typography {:variant "h5"} name)
       (map-indexed (fn [i line]
-                     (dom/div {:style {:background-color (if (even? i) "#0055ff17" "white")
-                                       :border-radius    4}}
+                     (dom/div {:style {:backgroundColor (if (even? i) "#0055ff17" "white")
+                                       :borderRadius    4}}
 
                        ;; todo: pull out a cell component
                        (dom/div {:style {:display "inline-block"}}
