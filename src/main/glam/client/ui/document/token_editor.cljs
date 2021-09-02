@@ -48,7 +48,7 @@
 (defsc Token [this {:token/keys [id begin end]} {:keys [text]}]
   {:query [:token/id :token/begin :token/end]
    :ident :token/id}
-  (dc/inline-span (subs (:text/body text) begin end) true))
+  (dc/inline-span (str id) (subs (:text/body text) begin end) true))
 
 (def ui-token (c/computed-factory Token {:keyfn :token/id}))
 
@@ -66,24 +66,26 @@
                     (c/transact! this [(whitespace-tokenize {:document/id    doc-id
                                                              :text/id        (:text/id text)
                                                              :token-layer/id id})]))]
-    (mui/box {:my 2}
-      (dom/form {:onSubmit on-submit}
-        (mui/typography {:component "h6" :gutterBottom true :variant "subtitle1"} name)
-        (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
-          (dom/div (map-indexed (fn [tok-num e] (if (string? e)
-                                                  ;; This is bad react practice but we don't have an easy alternative
-                                                  ^{:key (str line-num "-" tok-num)} (dc/inline-span e false)
-                                                  (ui-token (c/computed e {:text text}))))
-                                line)))
-        (mui/button
-          {:type      "submit"
-           :size      "large"
-           :disabled  busy?
-           :color     "primary"
-           :variant   "outlined"
-           :startIcon (muic/more-horiz)
-           :style     {:marginTop "0.3em"}}
-          "Whitespace Tokenize")))))
+    (when-not (empty? tokens)
+      (mui/box {:my 2}
+        (dom/form {:onSubmit on-submit}
+          (mui/typography {:key "title" :component "h6" :gutterBottom true :variant "subtitle1"} name)
+          (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
+            (dom/div (map-indexed (fn [tok-num e] (if (string? e)
+                                                    ;; This is bad react practice but we don't have an easy alternative
+                                                    (dc/inline-span (str line-num "-" tok-num) e false)
+                                                    (ui-token (c/computed e {:text text}))))
+                                  line)))
+          (mui/button
+            {:key       "tokenize-button"
+             :type      "submit"
+             :size      "large"
+             :disabled  busy?
+             :color     "primary"
+             :variant   "outlined"
+             :startIcon (muic/more-horiz)
+             :style     {:marginTop "0.3em"}}
+            "Whitespace Tokenize"))))))
 
 (def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
 

@@ -64,7 +64,7 @@
                                  [:document/id parsed-id]
                                  (fn []
                                    (do-load! app parsed-id tab
-                                             {:post-mutation `dr/target-ready
+                                             {:post-mutation        `dr/target-ready
                                               :post-mutation-params {:target [:document/id parsed-id]}})
                                    ;; TODO: here (and in tab onclick, and in refresh lambda) is where I should
                                    ;; call a function defined in interlinear  which scans the state that was just
@@ -93,19 +93,19 @@
       (mui/link {:color "textPrimary" :underline "none" :key "document"} name))
 
     (mui/paper {}
-      (mui/tab-context {:value active-tab}
-        (mui/tabs {:value    active-tab
-                   :onChange (fn [_ val]
-                               (m/set-value! this :ui/active-tab val)
-                               (m/set-value! this :ui/busy? true)
-                               (r/assoc-query-param! :tab val)
-                               (do-load! this id val {:post-action #(m/set-value! this :ui/busy? false)}))}
-          (mui/tab {:label (get-in editors ["text" :name]) :value "text"})
-          (mui/tab {:label (get-in editors ["token" :name]) :value "token"})
-          (mui/tab {:label (get-in editors ["interlinear" :name]) :value "interlinear"}))
+      (if busy?
+        (glam.client.ui.common.core/loader)
+        (mui/tab-context {:value active-tab}
+          (mui/tabs {:value    active-tab
+                     :onChange (fn [_ val]
+                                 (m/set-value! this :ui/active-tab val)
+                                 (m/set-value! this :ui/busy? true)
+                                 (r/assoc-query-param! :tab val)
+                                 (do-load! this id val {:post-action #(m/set-value! this :ui/busy? false)}))}
+            (mui/tab {:label (get-in editors ["text" :name]) :value "text"})
+            (mui/tab {:label (get-in editors ["token" :name]) :value "token"})
+            (mui/tab {:label (get-in editors ["interlinear" :name]) :value "interlinear"}))
 
-        (if busy?
-          (glam.client.ui.common.core/loader)
           (c/fragment
             (mui/tab-panel {:value "text"}
               (ui-text-editor text-editor))

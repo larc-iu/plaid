@@ -120,7 +120,7 @@
    :ident :token/id})
 
 (defn cell [props & children]
-  (dom/div (merge {:style {:min-height "12pt"}} props)
+  (dom/div (merge {:style {:minHeight "12pt"}} props)
     children))
 
 ;; note that this is NOT included in our query tree, we just need a component here to fire mutations
@@ -139,12 +139,11 @@
                                                                               :span/layer  span-layer-id})])
                                              (c/transact! this [(save-span {:span/id    id
                                                                             :span/value value})])))
-                            :inputStyle {:minWidth         (str "30px")
-                                         :display          "inline-block"
-                                         :outline          "none"
-                                         :border           "none"
-                                         :min-width        "none"
-                                         :background-color "transparent"}})))
+                            :inputStyle {:minWidth        (str "30px")
+                                         :display         "inline-block"
+                                         :outline         "none"
+                                         :border          "none"
+                                         :backgroundColor "transparent"}})))
 (def ui-span-cell (c/computed-factory SpanCell {:keyfn (comp str :span/id)}))
 
 ;; Here is where the real UI begins
@@ -190,10 +189,10 @@
 
                        ;; todo: pull out a cell component
                        (dom/div {:style {:display "inline-block"}}
-                         (cell {} (dom/div {} ent/nbsp))
+                         (cell {:key "space"} (dom/div {} ent/nbsp))
                          (mapv
                            (fn [sl]
-                             (cell {}
+                             (cell {:key (str (:span-layer/id sl))}
                                    (:span-layer/name sl)))
                            span-layers))
                        (map ui-token line)))

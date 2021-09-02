@@ -42,8 +42,8 @@
                    (df/load! app [:document/id doc-id] TextEditor))))
 
 (defsc Text
-  [this {:text/keys [id body] :ui/keys [busy? pristine-body ops] :as props} {document-id     :document/id
-                                                                             text-layer-id   :text-layer/id}]
+  [this {:text/keys [id body] :ui/keys [busy? pristine-body ops] :as props} {document-id   :document/id
+                                                                             text-layer-id :text-layer/id}]
   {:query          [:text/id :text/body :ui/busy? :ui/pristine-body :ui/ops]
    :pre-merge      (fn [{:keys [data-tree]}]
                      ;; TODO: if pristine does not match body, warn user before we clobber their changes
@@ -108,7 +108,7 @@
 (defsc Token [this {:token/keys [id begin end]} {:keys [text]}]
   {:query [:token/id :token/begin :token/end]
    :ident :token/id}
-  (dc/inline-span (subs (:text/body text) begin end) true))
+  (dc/inline-span (str id) (subs (:text/body text) begin end) true))
 
 (def ui-token (c/computed-factory Token {:keyfn :token/id}))
 
@@ -125,7 +125,7 @@
       (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
         (dom/div (map-indexed (fn [tok-num e] (if (string? e)
                                                 ;; This is bad react practice but we don't have an easy alternative
-                                                ^{:key (str line-num "-" tok-num)} (dc/inline-span e false)
+                                                (dc/inline-span (str line-num "-" tok-num) e false)
                                                 (ui-token (c/computed e {:text text}))))
                               line))))))
 
