@@ -1,7 +1,7 @@
 # What's this?
 
 An app for annotating linguistic data that's still under construction. It's built using [Clojure](https://clojure.org/)([Script](https://clojurescript.org/)), [Material-UI](https://material-ui.com/), [Fulcro](https://fulcro.fulcrologic.com/), and [Crux](https://opencrux.com/main/index.html). 
-For a short summary of this app's goals and vision, see [this post](https://forum.docling.net/t/glam-a-new-linguistic-annotation-app/606/9).
+For a short summary of this app's goals and vision, see [this post](https://forum.docling.net/t/glam-a-new-linguistic-annotation-app/606).
 Check back soon 🚧
 
 # Installation
