@@ -3,13 +3,13 @@
             [com.wsscode.pathom.connect :as pc]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [taoensso.timbre :as log]
-            #?(:clj [crux.api :as crux])
-            #?(:clj [glam.crux.span-layer :as sl])
+            #?(:clj [xtdb.api :as xt])
+            #?(:clj [glam.xtdb.span-layer :as sl])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.models.common :as mc :refer [server-message server-error]])
-            #?(:clj [glam.crux.token-layer :as tokl])
-            #?(:clj [glam.crux.span-layer :as sl])
-            #?(:clj [glam.crux.easy :as gce])))
+            #?(:clj [glam.xtdb.token-layer :as tokl])
+            #?(:clj [glam.xtdb.span-layer :as sl])
+            #?(:clj [glam.xtdb.easy :as gxe])))
 
 (def span-layer-keys [:span-layer/name
                       :span-layer/span-layers])
@@ -31,44 +31,44 @@
 
 ;; user --------------------------------------------------------------------------------
 #?(:clj
-   (pc/defresolver get-span-layer [{:keys [crux]} {:span-layer/keys [id]}]
+   (pc/defresolver get-span-layer [{:keys [node]} {:span-layer/keys [id]}]
      {::pc/input     #{:span-layer/id}
       ::pc/output    [:span-layer/id :span-layer/name]
       ::pc/transform (ma/readable-required :span-layer/id)}
-     (sl/get crux id)))
+     (sl/get node id)))
 
 #?(:clj
-   (pc/defresolver get-spans [{:keys [crux] :as env} {:span-layer/keys [id]}]
+   (pc/defresolver get-spans [{:keys [node] :as env} {:span-layer/keys [id]}]
      {::pc/input     #{:span-layer/id}
       ::pc/output    [:span-layer/spans]
       ::pc/transform (ma/readable-required :span-layer/id)}
      (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (when-let [spans (mapv (fn [[id]] {:span/id id}) (crux/q (crux/db crux)
-                                                                '{:find  [?s]
-                                                                  :where [[?s :span/layer ?sl]
-                                                                          [?s :span/tokens ?tok]
-                                                                          [?tok :token/text ?txt]
-                                                                          [?txt :text/document ?doc]]
-                                                                  :in    [[?sl ?doc]]}
-                                                                [id doc-id]))]
+       (when-let [spans (mapv (fn [[id]] {:span/id id}) (xt/q (xt/db node)
+                                                              '{:find  [?s]
+                                                                :where [[?s :span/layer ?sl]
+                                                                        [?s :span/tokens ?tok]
+                                                                        [?tok :token/text ?txt]
+                                                                        [?txt :text/document ?doc]]
+                                                                :in    [[?sl ?doc]]}
+                                                              [id doc-id]))]
          {:span-layer/spans spans}))))
 
 ;; admin --------------------------------------------------------------------------------
 ;;
 
 #?(:clj
-   (pc/defmutation create-span-layer [{:keys [crux]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
+   (pc/defmutation create-span-layer [{:keys [node]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [new-span-layer (-> {} (mc/apply-delta delta) (select-keys span-layer-keys))]
-       (let [{:keys [id success]} (sl/create crux new-span-layer)]
-         (tokl/add-span-layer crux parent-id id)
+       (let [{:keys [id success]} (sl/create node new-span-layer)]
+         (tokl/add-span-layer node parent-id id)
          (if-not success
            (server-error (str "Failed to create span-layer, please refresh and try again"))
            {:tempids {temp-id id}})))))
 
 #?(:clj
-   (pc/defmutation save-span-layer [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
+   (pc/defmutation save-span-layer [{:keys [node]} {delta :delta [_ id] :ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (log/info (str "id:" (:ident params)))
@@ -78,24 +78,24 @@
          (not valid?)
          (server-error (str "Span layer delta invalid: " delta))
          :else
-         (if-not (sl/merge crux id (mc/apply-delta {} delta))
+         (if-not (sl/merge node id (mc/apply-delta {} delta))
            (server-error (str "Failed to save span-layer information, please refresh and try again"))
-           (gce/entity crux id))))))
+           (gxe/entity node id))))))
 
 #?(:clj
-   (pc/defmutation delete-span-layer [{:keys [crux]} {[_ id] :ident :as params}]
+   (pc/defmutation delete-span-layer [{:keys [node]} {[_ id] :ident :as params}]
      {::pc/transform ma/admin-required}
      (cond
        ;; ensure the span layer to be deleted exists
-       (not (gce/entity crux id))
+       (not (gxe/entity node id))
        (server-error (str "Span layer not found by ID " id))
        ;; otherwise, go ahead
        :else
-       (let [name (:span-layer/name (gce/entity crux id))
-             parent-id (sl/parent-id crux id)
-             tx (into (tokl/remove-span-layer** crux parent-id id)
-                      (sl/delete** crux id))
-             success (gce/submit! crux tx)]
+       (let [name (:span-layer/name (gxe/entity node id))
+             parent-id (sl/parent-id node id)
+             tx (into (tokl/remove-span-layer** node parent-id id)
+                      (sl/delete** node id))
+             success (gxe/submit! node tx)]
          (if-not success
            (server-error (str "Failed to delete span layer " name ". Please refresh and try again"))
            (server-message (str "Span layer " name " deleted")))))))

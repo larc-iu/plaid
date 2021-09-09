@@ -1,19 +1,19 @@
-(ns glam.server.crux
-  (:require [crux.api :as crux]
+(ns glam.server.xtdb
+  (:require [xtdb.api :as xt]
             [mount.core :refer [defstate]]
-            [glam.crux.easy :refer [install-tx-fns!]]
+            [glam.xtdb.easy :refer [install-tx-fns!]]
             [glam.server.config :refer [config]]
             [clojure.java.io :as io])
-  (:import [crux.api ICruxAPI]
+  (:import [xtdb.api IXtdb]
            (java.io StringWriter)))
 
-(defn ^ICruxAPI start-lmdb-node [{:keys [db-dir http-server-port]}]
+(defn ^IXtdb start-lmdb-node [{:keys [db-dir http-server-port]}]
   (let [dirf #(str db-dir "/" %)]
-    (crux/start-node
-      (-> {:crux/tx-log         {:kv-store {:crux/module `crux.lmdb/->kv-store, :db-dir (dirf "tx-log")}}
-           :crux/document-store {:kv-store {:crux/module `crux.lmdb/->kv-store, :db-dir (dirf "docs")}}
-           :crux/index-store    {:kv-store {:crux/module `crux.lmdb/->kv-store, :db-dir (dirf "indexes")}}}
-          (cond-> http-server-port (assoc :crux.http-server/server {:port http-server-port}))))))
+    (xt/start-node
+      (-> {:xtdb/tx-log         {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "tx-log")}}
+           :xtdb/document-store {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "docs")}}
+           :xtdb/index-store    {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "indexes")}}}
+          (cond-> http-server-port (assoc :xtdb.http-server/server {:port http-server-port}))))))
 
 (defn start-main-lmdb-node []
   (start-lmdb-node {:db-dir           (-> config ::config :main-db-dir)
@@ -23,9 +23,9 @@
   (start-lmdb-node {:db-dir (-> config ::config :session-db-dir)}))
 
 ;; (defn setup-listener! [node]
-;;   (crux/listen
+;;   (xt/listen
 ;;     node
-;;     {:crux/event-type :crux/indexed-tx, :with-tx-ops? true}
+;;     {:xt/event-type :xt/indexed-tx, :with-tx-ops? true}
 ;;     (fn [ev]
 ;;       (let [out (StringWriter.)]
 ;;         (clojure.pprint/pprint ev out)
@@ -35,19 +35,19 @@
 ;;             (.toString out)
 ;;             "\n\n\n")))
 ;;       (when (:committed? ev)
-;;         (println (-> ev :crux/tx-ops first second type))
-;;         (println (-> ev :crux/tx-ops first second))
+;;         (println (-> ev :xt/tx-ops first second type))
+;;         (println (-> ev :xt/tx-ops first second))
 ;;        ))))
 
-(defstate crux-node
+(defstate xtdb-node
   :start (let [node (start-main-lmdb-node)]
            (install-tx-fns! node)
            ;; TODO: keep going with this for websocket sync
            ;; (setup-listener! node)
            node)
-  :stop (.close crux-node))
+  :stop (.close xtdb-node))
 
-(defstate crux-session-node
+(defstate xtdb-session-node
   :start (let [node (start-session-lmdb-node)]
            node)
-  :stop (.close crux-session-node))
+  :stop (.close xtdb-session-node))

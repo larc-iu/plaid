@@ -2,8 +2,8 @@
   (:require [taoensso.timbre :as log]
             [glam.models.common :as mc]
             [com.wsscode.pathom.connect :as pc]
-            [glam.crux.easy :as gce]
-            [glam.crux.access :as access]))
+            [glam.xtdb.easy :as gxe]
+            [glam.xtdb.access :as access]))
 
 ;; pathom security transforms
 (defn make-auth-transform [auth-fn failure-message]
@@ -28,7 +28,7 @@
 ;; TODO: this auth pattern might be unperformant--one idea: cache the auth check in the pathom environment
 ;; see https://blog.wsscode.com/pathom/#updating-env
 
-(defn- readable-required-fn [id-key param-key {:keys [crux] :as env} params]
+(defn- readable-required-fn [id-key param-key {:keys [node] :as env} params]
   (when-not (param-key params)
     (throw (ex-info "Tried to determine if id-key was writeable for a user, but it was not present in params."
                     {:id-key       id-key
@@ -37,9 +37,9 @@
                      :resolver-env env})))
   (let [user-id (get-in env [:ring/request :session :user/id])
         id (param-key params)]
-    (access/ident-readable? crux user-id [id-key id])))
+    (access/ident-readable? node user-id [id-key id])))
 
-(defn- writeable-required-fn [id-key param-key {:keys [crux] :as env} params]
+(defn- writeable-required-fn [id-key param-key {:keys [node] :as env} params]
   (when-not (param-key params)
     (throw (ex-info "Tried to determine if id-key was writeable for a user, but it was not present in params."
                     {:id-key       id-key
@@ -48,7 +48,7 @@
                      :resolver-env env})))
   (let [user-id (get-in env [:ring/request :session :user/id])
         id (param-key params)]
-    (access/ident-writeable? crux user-id [id-key id])))
+    (access/ident-writeable? node user-id [id-key id])))
 
 (defn readable-required
   ([id-key]

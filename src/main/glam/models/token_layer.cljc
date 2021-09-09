@@ -4,14 +4,14 @@
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [taoensso.timbre :as log]
             [com.fulcrologic.fulcro.mutations :as m]
-            #?(:clj [crux.api :as crux])
+            #?(:clj [xtdb.api :as xt])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.models.common :as mc :refer [server-message server-error]])
-            #?(:clj [glam.crux.document :as doc])
-            #?(:clj [glam.crux.text-layer :as txtl])
-            #?(:clj [glam.crux.text :as txt])
-            #?(:clj [glam.crux.token-layer :as tokl])
-            #?(:clj [glam.crux.easy :as gce])))
+            #?(:clj [glam.xtdb.document :as doc])
+            #?(:clj [glam.xtdb.text-layer :as txtl])
+            #?(:clj [glam.xtdb.text :as txt])
+            #?(:clj [glam.xtdb.token-layer :as tokl])
+            #?(:clj [glam.xtdb.easy :as gxe])))
 
 (def token-layer-keys [:token-layer/name :token-layer/span-layers])
 
@@ -32,19 +32,19 @@
 
 ;; user --------------------------------------------------------------------------------
 #?(:clj
-   (pc/defresolver get-token-layer [{:keys [crux]} {:token-layer/keys [id]}]
+   (pc/defresolver get-token-layer [{:keys [node]} {:token-layer/keys [id]}]
      {::pc/input     #{:token-layer/id}
       ::pc/output    [:token-layer/id :token-layer/name :token-layer/span-layers]
       ::pc/transform (ma/readable-required :token-layer/id)}
-     (tokl/get crux id)))
+     (tokl/get node id)))
 
 #?(:clj
-   (pc/defresolver get-tokens [{:keys [crux] :as env} {:token-layer/keys [id]}]
+   (pc/defresolver get-tokens [{:keys [node] :as env} {:token-layer/keys [id]}]
      {::pc/input     #{:token-layer/id}
       ::pc/output    [:token-layer/tokens]
       ::pc/transform (ma/readable-required :token-layer/id)}
      (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (when-let [tokens (mapv (fn [[id]] {:token/id id}) (crux/q (crux/db crux)
+       (when-let [tokens (mapv (fn [[id]] {:token/id id}) (xt/q (xt/db node)
                                                                   '{:find  [?tok]
                                                                     :where [[?tok :token/layer ?tokl]
                                                                             [?tok :token/text ?txt]
@@ -54,22 +54,22 @@
          {:token-layer/tokens tokens}))))
 
 #?(:clj
-   (pc/defmutation whitespace-tokenize [{:keys [crux] :as env} {:token-layer/keys [id]
+   (pc/defmutation whitespace-tokenize [{:keys [node] :as env} {:token-layer/keys [id]
                                                                 doc-id :document/id
                                                                 text-id :text/id}]
      {::pc/transform (ma/writeable-required :token-layer/id)}
      (cond
-       (nil? (tokl/get crux id))
+       (nil? (tokl/get node id))
        (server-error (str "Token layer does not exist:" id))
 
-       (nil? (txt/get crux text-id))
+       (nil? (txt/get node text-id))
        (server-error (str "Text does not exist:" text-id))
 
-       (nil? (doc/get crux doc-id))
+       (nil? (doc/get node doc-id))
        (server-error (str "Doc does not exist:" doc-id))
 
        :else
-       (let [success (tokl/whitespace-tokenize crux id doc-id text-id)]
+       (let [success (tokl/whitespace-tokenize node id doc-id text-id)]
          (if success
            (server-message "Tokenization successful")
            (server-error "Tokenization failed"))))))
@@ -77,18 +77,18 @@
 ;; admin --------------------------------------------------------------------------------
 ;;
 #?(:clj
-   (pc/defmutation create-token-layer [{:keys [crux]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
+   (pc/defmutation create-token-layer [{:keys [node]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [new-token-layer (-> {} (mc/apply-delta delta) (select-keys token-layer-keys))]
-       (let [{:keys [id success]} (tokl/create crux new-token-layer)]
-         (txtl/add-token-layer crux parent-id id)
+       (let [{:keys [id success]} (tokl/create node new-token-layer)]
+         (txtl/add-token-layer node parent-id id)
          (if-not success
            (server-error (str "Failed to create token-layer, please refresh and try again"))
            {:tempids {temp-id id}})))))
 
 #?(:clj
-   (pc/defmutation save-token-layer [{:keys [crux]} {delta :delta [_ id] :ident :as params}]
+   (pc/defmutation save-token-layer [{:keys [node]} {delta :delta [_ id] :ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (log/info (str "id:" (:ident params)))
@@ -98,24 +98,24 @@
          (not valid?)
          (server-error (str "Token layer delta invalid: " delta))
          :else
-         (if-not (tokl/merge crux id (mc/apply-delta {} delta))
+         (if-not (tokl/merge node id (mc/apply-delta {} delta))
            (server-error (str "Failed to save token-layer information, please refresh and try again"))
-           (gce/entity crux id))))))
+           (gxe/entity node id))))))
 
 #?(:clj
-   (pc/defmutation delete-token-layer [{:keys [crux]} {[_ id] :ident :as params}]
+   (pc/defmutation delete-token-layer [{:keys [node]} {[_ id] :ident :as params}]
      {::pc/transform ma/admin-required}
      (cond
        ;; ensure the token layer to be deleted exists
-       (not (gce/entity crux id))
+       (not (gxe/entity node id))
        (server-error (str "Token layer not found by ID " id))
        ;; otherwise, go ahead
        :else
-       (let [name (:token-layer/name (gce/entity crux id))
-             parent-id (tokl/parent-id crux id)
-             tx (into (txtl/remove-token-layer** crux parent-id id)
-                      (tokl/delete** crux id))
-             success (gce/submit! crux tx)]
+       (let [name (:token-layer/name (gxe/entity node id))
+             parent-id (tokl/parent-id node id)
+             tx (into (txtl/remove-token-layer** node parent-id id)
+                      (tokl/delete** node id))
+             success (gxe/submit! node tx)]
          (if-not success
            (server-error (str "Failed to delete token layer " name ". Please refresh and try again"))
            (server-message (str "Token layer " name " deleted")))))))

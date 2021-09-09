@@ -13,7 +13,7 @@
             [glam.models.user :as user]
             [glam.models.common :refer [server-error]]
             [glam.server.config :refer [config]]
-            [glam.server.crux :refer [crux-node]]
+            [glam.server.xtdb :refer [xtdb-node]]
             [com.wsscode.pathom.viz.ws-connector.core :as pathom-viz]
             [taoensso.timbre :as log]
             [clojure.walk :as walk]
@@ -78,9 +78,9 @@
 
 (def env-additions
   (fn [env]
-    {:crux         crux-node
+    {:node         xtdb-node
      :config       config
-     :current-user (user/get-current-user (assoc env :crux crux-node))}))
+     :current-user (user/get-current-user (assoc env :node xtdb-node))}))
 
 (defn mutation?
   [tx-item]

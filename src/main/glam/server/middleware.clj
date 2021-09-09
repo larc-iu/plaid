@@ -6,7 +6,7 @@
     [mount.core :as mount]
     [taoensso.timbre :as log]
     [hiccup.page :refer [html5]]
-    [crux.api :as crux]
+    [xtdb.api :as xt]
     [com.fulcrologic.fulcro.server.api-middleware :refer [handle-api-request wrap-transit-params wrap-transit-response]]
     [com.fulcrologic.fulcro.networking.websockets :as fws]
     [com.fulcrologic.fulcro.networking.websocket-protocols :refer [WSListener WSNet] :as fwsp]
@@ -16,9 +16,9 @@
     [ring.middleware.session.store :as store]
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser mutation?]]
-    [glam.server.crux :refer [crux-node crux-session-node]]
-    [glam.crux.easy :as gce]
-    [glam.crux.common :as gcc]
+    [glam.server.xtdb :refer [xtdb-node xtdb-session-node]]
+    [glam.xtdb.easy :as gxe]
+    [glam.xtdb.common :as gcc]
     [com.fulcrologic.fulcro.algorithms.tempid :as tempid])
   (:import (java.io PushbackReader IOException)
            (ring.middleware.session.store SessionStore)
@@ -70,7 +70,7 @@
     The filename is nil, you probably need to wait for the shadow-cljs build to complete or start it again.
     Check manifest.edn in the shadow-cljs build directory.")))))
 
-;; Crux session store --------------------------------------------------------------------------------
+;; Xtdb session store --------------------------------------------------------------------------------
 ;; Replace the default in-memory session store with this. Makes it so you don't need to log in every time
 ;; you restart your server.
 
@@ -78,18 +78,18 @@
 (defn make-session-data
   [key data]
   (-> data
-      (assoc :crux.db/id key
+      (assoc :xt/id key
              ::session? true)))
 
-(deftype CruxSessionStore [crux-node]
+(deftype XtdbSessionStore [xtdb-node]
   SessionStore
 
   (read-session [this key]
     (if (some? key)
       (try
-        (crux/entity (crux/db crux-node) (UUID/fromString key))
+        (xt/entity (xt/db xtdb-node) (UUID/fromString key))
         (catch Exception e
-          (log/error "Invalid session. Error reading crux/entity for key: " key)
+          (log/error "Invalid session. Error reading xt/entity for key: " key)
           {}))
       {}))
 
@@ -98,18 +98,18 @@
                    (catch Exception e (UUID/randomUUID)))
           key (or key (UUID/randomUUID))
           tx-data (make-session-data key data)]
-      (gce/put crux-node tx-data)
+      (gxe/put xtdb-node tx-data)
       key))
 
   (delete-session [_ key]
-    (gce/delete crux-node key)
+    (gxe/delete xtdb-node key)
     nil))
 
-(defn crux-session-store [crux-node]
-  (CruxSessionStore. crux-node))
+(defn xtdb-session-store [xtdb-node]
+  (XtdbSessionStore. xtdb-node))
 
 (mount/defstate session-store
-  :start (crux-session-store crux-session-node))
+  :start (xtdb-session-store xtdb-session-node))
 
 ;; Route handling
 (defn wrap-html-routes
@@ -162,7 +162,7 @@
                            ;; ask for updates in response
                            (doseq [item tx]
                              (when (and (mutation? item) (gcc/document-mutation? item))
-                               (when-some [doc-ident (gcc/get-affected-doc crux-node item response)]
+                               (when-some [doc-ident (gcc/get-affected-doc xtdb-node item response)]
                                  (log/info "Notifying clients of document modification:" doc-ident)
                                  (doseq [cid @client-ids]
                                    (fwsp/push websockets cid :glam/document-changed doc-ident)))))

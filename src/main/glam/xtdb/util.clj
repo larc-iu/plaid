@@ -1,5 +1,5 @@
-(ns glam.crux.util
-  (:require [glam.crux.easy :as gce])
+(ns glam.xtdb.util
+  (:require [glam.xtdb.easy :as gxe])
   (:import (java.util UUID)))
 
 (defn identize
@@ -14,7 +14,7 @@
 
 ;; conveniences
 (defn new-record
-  "Create a blank record with a UUID in :crux.db/id. If ns is provided,
+  "Create a blank record with a UUID in :xt/id. If ns is provided,
   will also assoc this id with (keyword ns \"id\"), e.g. :person/id.
   If ns and eid are both provided, will use the eid for both keys instead
   of a random UUID. If eid is passed but is nil, will fall back to a UUID."
@@ -25,8 +25,8 @@
   ([ns eid]
    (cond
      (nil? eid) (new-record ns)
-     (nil? ns) {:crux.db/id eid}
-     :else {:crux.db/id       eid
+     (nil? ns) {:xt/id eid}
+     :else {:xt/id            eid
             (keyword ns "id") eid})))
 
 (defn remove-id
@@ -49,11 +49,11 @@
   This function also includes match clauses for both entities, guarding against race
   conditions."
   [node e1-id join-keys e2-id]
-  (let [e1 (gce/entity node e1-id)
-        e2 (gce/entity node e2-id)]
-    [;;(gce/match* e1-id e1)
-     ;;(gce/match* e2-id e2)
-     (gce/put* (reduce (fn [project join-key]
+  (let [e1 (gxe/entity node e1-id)
+        e2 (gxe/entity node e2-id)]
+    [;;(gxe/match* e1-id e1)
+     ;;(gxe/match* e2-id e2)
+     (gxe/put* (reduce (fn [project join-key]
                          (-> project
                              (update join-key conj-unique e2-id)
                              ;; in case this is the first assoc, turn the list into a vector
@@ -72,11 +72,11 @@
   This function also includes match clauses for both entities, guarding against race
   conditions."
   [node e1-id join-keys e2-id]
-  (let [e1 (gce/entity node e1-id)
-        e2 (gce/entity node e2-id)]
-    (into [;;(gce/match* e1-id e1)
-           ;;(gce/match* e2-id e2)
-           (gce/put* (reduce (fn [project join-key]
+  (let [e1 (gxe/entity node e1-id)
+        e2 (gxe/entity node e2-id)]
+    (into [;;(gxe/match* e1-id e1)
+           ;;(gxe/match* e2-id e2)
+           (gxe/put* (reduce (fn [project join-key]
                                (remove-id project join-key e2-id))
                              e1
                              join-keys))])))

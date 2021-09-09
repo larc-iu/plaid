@@ -26,7 +26,7 @@ resources/public/workspaces/*
 !resources/public/workspaces/workspaces.html
 resources/public/devcards/*
 !resources/public/devcards/devcards.html
-crux-store
+xtdb-store
 builds/
-crux_data/
-crux_session_data/
+xtdb_data/
+xtdb_session_data/

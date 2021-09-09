@@ -1,5 +1,5 @@
-(ns glam.crux.access
-  (:require [crux.api :as crux]
+(ns glam.xtdb.access
+  (:require [xtdb.api :as xt]
             [taoensso.timbre :as log]))
 
 (def key-symbol-map
@@ -17,7 +17,7 @@
   a given user. In the base case, the target is a project, and we inspect whether the user
   id is contained in :project/readers or :project/writers. Otherwise, we need to walk the
   graph from the target until we reach its associated project. This multimethod implements
-  the crux rules necessary to support this traversal."
+  the xtdb rules necessary to support this traversal."
   (fn [query-map opts target-id] target-id))
 
 (defmethod build-query :project/id [query-map {:keys [writeable]} _]
@@ -93,13 +93,13 @@
                             :rules []}
                            {:writeable false}
                            target-key)]
-    (map first (crux/q (crux/db node) query))))
+    (map first (xt/q (xt/db node) query))))
 
 (defn ident-readable?
   "Test whether a given ident is readable for a given user."
   [node user-id [target-key target-id]]
   (or
-    (-> node crux/db (crux/entity user-id) :user/admin?)
+    (-> node xt/db (xt/entity user-id) :user/admin?)
     (let [query (build-query {:find  ['?target]
                               :where [['?u :user/id user-id]
                                       ['?target target-key target-id]
@@ -107,13 +107,13 @@
                               :rules []}
                              {:writeable false}
                              target-key)]
-      (not (empty? (crux/q (crux/db node) query))))))
+      (not (empty? (xt/q (xt/db node) query))))))
 
 (defn ident-writeable?
   "Test whether a given ident is writeable for a given user."
   [node user-id [target-key target-id]]
   (or
-    (-> node crux/db (crux/entity user-id) :user/admin?)
+    (-> node xt/db (xt/entity user-id) :user/admin?)
     (let [query (build-query {:find  ['?target]
                               :where [['?u :user/id user-id]
                                       ['?target target-key target-id]
@@ -122,7 +122,7 @@
                              {:writeable true}
                              target-key)]
       (log/info query)
-      (not (empty? (crux/q (crux/db node) query))))))
+      (not (empty? (xt/q (xt/db node) query))))))
 
 (comment
   (build-query {:find '[?p] :where [['?u :user/id 1]] :rules []} :text-layer/id))

@@ -3,20 +3,20 @@
     [clojure.tools.namespace.repl :as tools-ns]
     [expound.alpha :as expound]
     [mount.core :as mount]
-    [crux.api :as crux]
+    [xtdb.api :as xt]
     [shadow.cljs.devtools.api :as shadow]
     ;; this is the top-level dependent component...mount will find the rest via ns requires
     [glam.server.http-server :refer [http-server]]
-    [glam.crux.easy :as gce]
-    [glam.crux.user :as usr]
-    [glam.crux.project :as prj]
-    [glam.crux.text :as txt]
-    [glam.crux.token :as tok]
-    [glam.crux.text-layer :as txtl]
-    [glam.crux.token-layer :as tokl]
-    [glam.crux.span-layer :as sl]
-    [glam.crux.span :as s]
-    [glam.crux.document :as doc]
+    [glam.xtdb.easy :as gxe]
+    [glam.xtdb.user :as usr]
+    [glam.xtdb.project :as prj]
+    [glam.xtdb.text :as txt]
+    [glam.xtdb.token :as tok]
+    [glam.xtdb.text-layer :as txtl]
+    [glam.xtdb.token-layer :as tokl]
+    [glam.xtdb.span-layer :as sl]
+    [glam.xtdb.span :as s]
+    [glam.xtdb.document :as doc]
     [taoensso.timbre :as log]))
 
 ;; ==================== SERVER ====================
@@ -42,7 +42,7 @@
 
 (defn start "Start the web server + services" []
   (let [result (mount/start)]
-    (def node glam.server.crux/crux-node)
+    (def node glam.server.xtdb/xtdb-node)
     (def parser glam.server.pathom-parser/parser)
     result))
 
@@ -65,9 +65,9 @@
   (stop)
   (restart))
 
-;; crux stuff
-(defn init-db [crux-node]
-  (let [node (or crux-node glam.server.crux/crux-node)]
+;; xtdb stuff
+(defn init-db [xtdb-node]
+  (let [node (or xtdb-node glam.server.xtdb/xtdb-node)]
     (let [admin-id (:id (usr/create
                           node
                           {:user/password-hash "100$12$argon2id$v13$u6JYj16Ize35J1uuTN6KwQ$SblXBBHdyMZ5K52RwCcO41/SNL6XqoY1JBouP/V01uQ$$$"

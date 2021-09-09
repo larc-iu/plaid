@@ -10,8 +10,8 @@
             [taoensso.timbre :as log]
             #?(:clj [glam.models.common :as mc :refer [server-error server-message]])
             #?(:clj [glam.models.auth :as ma])
-            #?(:clj [glam.crux.user :as user])
-            #?(:clj [glam.crux.easy :as gce])))
+            #?(:clj [glam.xtdb.user :as user])
+            #?(:clj [glam.xtdb.easy :as gxe])))
 
 
 ;; common --------------------------------------------------------------------------------
@@ -76,23 +76,23 @@
 #?(:clj
    (defn get-current-user
      "Reads username (email) from the ring session and returns the ID"
-     [{:keys [crux] :ring/keys [request] :as env}]
+     [{:keys [node] :ring/keys [request] :as env}]
      (when-let [session (:session request)]
        (when (:session/valid? session)
          (if-let [email (:user/email session)]
            (do (log/info "Resolved current user: " email)
-               (gce/find-entity-id crux {:user/email email}))
+               (gxe/find-entity-id node {:user/email email}))
            (do (log/info "no user")
                nil))))))
 
 ;; user level --------------------------------------------------------------------------------
 ;; todo: should this only work for the user's own id?
 #?(:clj
-   (defresolver user-resolver [{:keys [crux]} {:user/keys [id]}]
+   (defresolver user-resolver [{:keys [node]} {:user/keys [id]}]
      {::pc/input     #{:user/id}
       ::pc/output    [:user/email :user/name :user/admin?]
       ::pc/transform ma/user-required}
-     (user/get crux id)))
+     (user/get node id)))
 
 #?(:cljs
    (m/defmutation change-own-password
@@ -104,10 +104,10 @@
      (remote [{:keys [ast]}] true))
    :clj
    (pc/defmutation change-own-password
-     [{:keys [crux] :as env} {:keys [current-password new-password]}]
+     [{:keys [node] :as env} {:keys [current-password new-password]}]
      {::pc/transform ma/user-required}
      (let [id (get-current-user env)
-           {:user/keys [password-hash]} (gce/entity crux id)]
+           {:user/keys [password-hash]} (gxe/entity node id)]
        (cond
          ;; user must be valid
          (nil? id)
@@ -119,7 +119,7 @@
          (not (valid-password new-password))
          (server-error "New password is invalid")
          :else
-         (if-not (user/merge crux id {:user/password-hash (hash-password new-password)})
+         (if-not (user/merge node id {:user/password-hash (hash-password new-password)})
            (server-error (str "Failed to change password. Please refresh and try again"))
            (server-message "Password change successful"))))))
 
@@ -131,10 +131,10 @@
      (remote [{:keys [ast]}] true))
    :clj
    (pc/defmutation change-own-name
-     [{:keys [crux] :as env} {:keys [name]}]
+     [{:keys [node] :as env} {:keys [name]}]
      {::pc/transform ma/user-required}
      (let [user-id (get-current-user env)
-           same-names (gce/find-entities crux {:user/name name})]
+           same-names (gxe/find-entities node {:user/name name})]
        (cond
          ;; user must be valid
          (nil? user-id)
@@ -146,37 +146,37 @@
          (not (valid-name name))
          (server-error (str "Name \"" name "\" is invalid"))
          :else
-         (if-not (user/merge crux user-id {:user/name name})
+         (if-not (user/merge node user-id {:user/name name})
            (server-error (str "Failed to change name to " name ". Please refresh and try again"))
            (server-message (str "Name changed to " name)))))))
 
 ;; admin level -------------------------------------------------------------------------------
 #?(:clj
-   (pc/defresolver all-users-resolver [{:keys [crux]} _]
+   (pc/defresolver all-users-resolver [{:keys [node]} _]
      {::pc/output    [{:all-users [:user/id]}]
       ::pc/transform ma/admin-required}
-     {:all-users (user/get-all crux)}))
+     {:all-users (user/get-all node)}))
 
 #?(:clj
-   (pc/defmutation delete-user [{:keys [crux]} {[_ id] :ident :as params}]
+   (pc/defmutation delete-user [{:keys [node]} {[_ id] :ident :as params}]
      {::pc/transform ma/admin-required}
      (cond
        ;; ensure the user to be deleted exists
-       (not (gce/entity crux id))
+       (not (gxe/entity node id))
        (server-error (str "User not found by ID " id))
        ;; ensure we're not deleting the last admin
-       (and (:user/admin? (user/get crux id))
-            (= 1 (count (filter :user/admin? (user/get-all crux)))))
+       (and (:user/admin? (user/get node id))
+            (= 1 (count (filter :user/admin? (user/get-all node)))))
        (server-error (str "Cannot delete the last admin user (ID: " id ")"))
        ;; otherwise, go ahead
        :else
-       (let [name (:user/name (gce/entity crux id))]
-         (if-not (user/delete crux id)
+       (let [name (:user/name (gxe/entity node id))]
+         (if-not (user/delete node id)
            (server-error (str "Failed to delete user " name ". Please refresh and try again"))
            (server-message (str "User " name " deleted")))))))
 
 #?(:clj
-   (pc/defmutation save-user [{:keys [crux]} {delta :delta [_ id] :ident new-password :user/new-password :as params}]
+   (pc/defmutation save-user [{:keys [node]} {delta :delta [_ id] :ident new-password :user/new-password :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (log/info (str "id:" (:ident params)))
@@ -186,10 +186,10 @@
            new-password? (and (some? new-password) (> (count new-password) 0))]
        (cond
          ;; email must be unique if it's being changed
-         (and new-email (gce/find-entity crux {:user/email new-email}))
+         (and new-email (gxe/find-entity node {:user/email new-email}))
          (server-error (str "User already exists with email " new-email))
          ;; name must be unique if it's being changed
-         (and new-name (gce/find-entity crux {:user/name new-name}))
+         (and new-name (gxe/find-entity node {:user/name new-name}))
          (server-error (str "User already exists with name " new-name))
          ;; must be valid
          (not valid?)
@@ -198,28 +198,28 @@
          (and new-password? (not (valid-password new-password)))
          (server-error (str "New password is invalid"))
          :else
-         (if-not (user/merge crux id (-> (mc/apply-delta {} delta)
+         (if-not (user/merge node id (-> (mc/apply-delta {} delta)
                                          (cond-> (and new-password? (valid-password new-password))
                                                  (merge {:user/password-hash (hash-password new-password)}))))
            (server-error (str "Failed to save user information, please refresh and try again"))
-           (gce/entity crux id))))))
+           (gxe/entity node id))))))
 #?(:clj
-   (pc/defmutation create-user [{:keys [crux]} {delta :delta [_ temp-id] :ident :as params}]
+   (pc/defmutation create-user [{:keys [node]} {delta :delta [_ temp-id] :ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [{:user/keys [email name password] :as new-user} (-> {} (mc/apply-delta delta) (select-keys user-keys))]
        (cond
          ;; email must be unique
-         (gce/find-entity crux {:user/email email})
+         (gxe/find-entity node {:user/email email})
          (server-error (str "User already exists with email " email))
          ;; name must be unique
-         (gce/find-entity crux {:user/name name})
+         (gxe/find-entity node {:user/name name})
          (server-error (str "User already exists with name " name))
          ;; password must be valid
          (not (valid-password password))
          (server-error (str "Password is invalid"))
          :else
-         (let [{:keys [id success]} (user/create crux (merge new-user {:user/password-hash (hash-password password)}))]
+         (let [{:keys [id success]} (user/create node (merge new-user {:user/password-hash (hash-password password)}))]
            (if-not success
              (server-error (str "Failed to create user, please refresh and try again"))
              {:tempids {temp-id id}}))))))
