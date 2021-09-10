@@ -21,12 +21,7 @@
      (text/get node id)))
 
 ;; TODO probably best to refactor this into two
-#?(:cljs
-   (m/defmutation save-text
-     [params]
-     (action [{:keys [app]}] (log/info "Beginning save text"))
-     (remote [env] true))
-   :clj
+#?(:clj
    (pc/defmutation save-text
      [{:keys [node] :as env} {:text/keys [id] :keys [new-body old-body ops] document-id :document/id tl-id :text-layer/id}]
      {::pc/transform (ma/writeable-required :document/id)}
