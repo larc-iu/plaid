@@ -69,9 +69,8 @@
 ;; macro for transactions to avoid race conditions: https://clojurians-log.clojureverse.org/crux/2020-03-24
 (defmacro deftx [name bindings & body]
   "Defines a function used for mutations that uses a Crux transaction function under the hood.
-  body must return a valid Crux transaction vector, with any non-clojure.core variables fully
-  qualified. `install-tx-fns` must be called on namespaces where deftx is used for the function
-  to work.
+  Body must return a valid Crux transaction vector (or return false, error, etc.)
+  `install-tx-fns` must be called on the node before the deftx function can work.
 
   NOTE: XTDB tx fns require all symbols to be fully qualified. This macro will attempt to resolve
   them for you, with the following restriction: you MAY NOT use :refer'd symbols--instead, you must
