@@ -48,6 +48,51 @@
   ([eid doc valid-time]
    [:xtdb.api/match eid doc valid-time]))
 
+;; deftx --------------------------------------------------------------------------------
+;; macro for transactions to avoid race conditions: https://clojurians-log.clojureverse.org/crux/2020-03-24
+(defmacro deftx [name bindings & body]
+  "Defines a function used for mutations that uses a Crux transaction function under the hood.
+  body must return a valid Crux transaction vector, with any non-clojure.core variables fully
+  qualified. `install-tx-fns` must be called on namespaces where deftx is used for the function
+  to work."
+  (let [kwd-name (keyword (str *ns*) (str name))
+        symbol-name (symbol (str name))]
+    `(def
+       ~(vary-meta
+          symbol-name
+          assoc
+          :crux-tx-fn
+          `(fn [node#]
+             (xt/submit-tx node# [[:xtdb.api/put {:xt/id ~kwd-name
+                                                  :xt/fn (quote (fn ~bindings
+                                                                  ~@body))}]])))
+       (fn ~symbol-name [node# & ~'args]
+         (xt/await-tx
+           node#
+           (xt/submit-tx node# [(into [:xtdb.api/fn ~kwd-name] ~'args)]))))))
+
+(defn install-deftx-fns
+  "Given a node and a seq of namespace symbols, scan all public vars
+  and use any :crux-tx-fn in their metadata to install the tx-fn on
+  the node"
+  ([node]
+   ;; If no namespaces are supplied, take all "glam.xtdb" nses that aren't tests
+   (install-deftx-fns
+     node
+     (->> (all-ns)
+          (filter #(clojure.string/starts-with? (str %) "glam.xtdb"))
+          (filter #(not (clojure.string/ends-with? (str %) "-test"))))))
+  ([node namespaces]
+   (doseq [ns-symbol namespaces]
+     (when-let [ns (the-ns ns-symbol)]
+       (doseq [[vname v] (ns-publics ns)]
+         (when-let [tx-install-fn (some-> v meta :crux-tx-fn)]
+           ;; evict any already-existing entities with the tx-fn's id
+           ;; TODO: is there any cost to doing this over and over? If so, consider
+           ;; enabling this only in dev and using a put-if-nil strategy for prod
+           (xt/await-tx node (xt/submit-tx node [[:xtdb.api/evict (keyword (str ns) (str vname))]]))
+           (tx-install-fn node)))))))
+
 ;; tx functions for mutations ------------------------------------------------------------
 (def ^:private merge-tx-fn-id ::merge)
 (def ^:private merge-tx-fn '(fn [ctx eid m]
@@ -77,7 +122,9 @@
     (when-not (entity node update-tx-fn-id)
       (log/info "Installing update transaction function")
       (xt/submit-tx node [(match* update-tx-fn-id nil)
-                          (put* (tx-fn update-tx-fn-id update-tx-fn))]))))
+                          (put* (tx-fn update-tx-fn-id update-tx-fn))])))
+  ;; install tx-fns defined using `deftx` as well
+  (install-deftx-fns node))
 
 ;; mutations --------------------------------------------------------------------------------
 (defn submit-tx-sync [node tx]
