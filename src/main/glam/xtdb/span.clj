@@ -15,10 +15,12 @@
         (update :span/layer xutil/identize :span-layer/id)
         (update :span/tokens xutil/identize :token/id))))
 
-(defn create [node {:span/keys [id] :as attrs}]
-  (let [{:span/keys [id] :as record} (clojure.core/merge (xutil/new-record "span" id)
-                                                         (select-keys attrs attr-keys))
-        tx-status (gxe/submit! node [[:xtdb.api/put record]])]
+(defn create* [{:span/keys [id] :as attrs}]
+  (gxe/put* (xutil/create-record "span" id attrs attr-keys)))
+
+(defn create [node attrs]
+  (let [[_ {:span/keys [id]} :as put] (create* attrs)
+        tx-status (gxe/submit! node [put])]
     {:success tx-status
      :id      id}))
 

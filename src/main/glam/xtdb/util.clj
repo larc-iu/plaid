@@ -29,6 +29,12 @@
      :else {:xt/id            eid
             (keyword ns "id") eid})))
 
+(defn create-record
+  "Wrapper around new-record that guarantees records will not have extraneous keys"
+  [kw-ns id attrs attr-keys]
+  (merge (new-record kw-ns id)
+         (select-keys attrs attr-keys)))
+
 (defn remove-id
   "Remove an ID from a to-many join"
   [entity key target-id]

@@ -17,10 +17,12 @@
         (update :token/layer xutil/identize :token-layer/id)
         (update :token/text xutil/identize :text/id))))
 
-(defn create [node {:token/keys [id] :as attrs}]
-  (let [{:token/keys [id] :as record} (clojure.core/merge (xutil/new-record "token" id)
-                                                          (select-keys attrs attr-keys))
-        tx-status (gxe/submit! node [[:xtdb.api/put record]])]
+(defn create* [{:token/keys [id] :as attrs}]
+  (gxe/put* (xutil/create-record "token" id attrs attr-keys)))
+
+(defn create [node attrs]
+  (let [[_ {:token/keys [id]} :as put] (create* attrs)
+        tx-status (gxe/submit! node [put])]
     {:success tx-status
      :id      id}))
 

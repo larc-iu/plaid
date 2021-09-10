@@ -18,10 +18,12 @@
         (update :text/layer xutil/identize :text-layer/id)
         (update :text/document xutil/identize :document/id))))
 
-(defn create [node {:text/keys [id] :as attrs}]
-  (let [{:text/keys [id] :as record} (clojure.core/merge (xutil/new-record "text" id)
-                                                         (select-keys attrs attr-keys))
-        tx-status (gxe/submit! node [[:xtdb.api/put record]])]
+(defn create* [{:text/keys [id] :as attrs}]
+  (gxe/put* (xutil/create-record "text" id attrs attr-keys)))
+
+(defn create [node attrs]
+  (let [[_ {:text/keys [id]} :as put] (create* attrs)
+        tx-status (gxe/submit! node [put])]
     {:success tx-status
      :id      id}))
 

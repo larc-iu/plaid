@@ -14,10 +14,12 @@
     (-> doc
         (update :document/project xutil/identize :project/id))))
 
-(defn create [node {:document/keys [id] :as attrs}]
-  (let [{:document/keys [id] :as record} (clojure.core/merge (xutil/new-record "document" id)
-                                                             (select-keys attrs attr-keys))
-        tx-status (gxe/submit! node [[:xtdb.api/put record]])]
+(defn create* [{:document/keys [id] :as attrs}]
+  (gxe/put* (xutil/create-record "document" id attrs attr-keys)))
+
+(defn create [node attrs]
+  (let [[_ {:document/keys [id]} :as put] (create* attrs)
+        tx-status (gxe/submit! node [put])]
     {:success tx-status
      :id      id}))
 
