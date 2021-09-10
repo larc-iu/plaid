@@ -7,6 +7,8 @@
            ;; common ---------------------------------------------------------------------------------
            ;; logging
            com.taoensso/timbre                  {:mvn/version "5.1.2"}
+           org.slf4j/slf4j-api                  {:mvn/version "1.7.30"}
+           org.slf4j/slf4j-simple               {:mvn/version "1.7.30"}
            ;; profiler, haven't used so far
            com.taoensso/tufte                   {:mvn/version "2.2.0"}
 
@@ -62,7 +64,8 @@
                                                                   :sha     "f597341b6ca7bb4cf027e0a34a6710ca9cb969da"}
                                        thheller/shadow-cljs      {:mvn/version "2.15.0"}}}
            :dev         {:extra-paths ["src/dev" "src/test"]
-                         :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"]
+                         :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"
+                                       "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
 
                          :extra-deps  {org.clojure/clojurescript   {:mvn/version "1.10.866"}
                                        org.clojure/test.check      {:mvn/version "1.1.0"}

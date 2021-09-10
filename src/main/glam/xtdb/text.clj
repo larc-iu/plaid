@@ -42,14 +42,14 @@
                      :in    [?txt]}
                    eid)))
 
-(defn- get-token-ids [node eid]
+(defn get-token-ids [node eid]
   (map first (xt/q (xt/db node)
                    '{:find  [?tok]
                      :where [[?tok :token/text ?txt]]
                      :in    [?txt]}
                    eid)))
 
-(defn update-body [node eid old-body ops]
+(gxe/deftx update-body [node eid old-body ops]
   (let [text (gxe/entity node eid)
         tokens (map #(gxe/entity node %) (get-token-ids node eid))
         indexed-tokens (reduce #(assoc %1 (:token/id %2) %2) {} tokens)
@@ -61,8 +61,8 @@
         text-tx [(gxe/match* eid (assoc text :text/body old-body))
                  (gxe/put* (assoc text :text/body (:text/body new-text)))]
         tx (reduce into [text-tx deletion-tx update-tx])]
-    (let [success (gxe/submit! node tx)]
-      success)))
+    tx))
+
 
 ;; We don't follow the usual pattern of relying on child nodes' delete** functions here because
 ;; this would lead to children being included multiple times. Instead, we write a bespoke fn.

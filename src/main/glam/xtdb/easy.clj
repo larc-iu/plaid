@@ -3,7 +3,8 @@
   Functions that end in * return a vector that can be used to build transactions incrementally."
   (:require [xtdb.api :as xt]
             [clojure.pprint :as pprint]
-            [taoensso.timbre :as log])
+            [taoensso.timbre :as log]
+            [clojure.walk :as walk])
   (:refer-clojure :exclude [set update merge]))
 
 ;; reads ---------------------------------------------------------------------------------
@@ -49,27 +50,54 @@
    [:xtdb.api/match eid doc valid-time]))
 
 ;; deftx --------------------------------------------------------------------------------
+;; helper to get fully qualified symbols
+(defn- fq-symbols [body]
+  (let [ns-vars (ns-interns *ns*)]
+    (walk/postwalk
+      (fn [x]
+        (cond
+          (and (symbol? x) (some? (namespace x)))
+          (symbol (ns-resolve *ns* x))
+
+          (and (symbol? x) (contains? ns-vars x))
+          (symbol (get ns-vars x))
+
+          :else
+          x))
+      body)))
+
 ;; macro for transactions to avoid race conditions: https://clojurians-log.clojureverse.org/crux/2020-03-24
 (defmacro deftx [name bindings & body]
   "Defines a function used for mutations that uses a Crux transaction function under the hood.
   body must return a valid Crux transaction vector, with any non-clojure.core variables fully
   qualified. `install-tx-fns` must be called on namespaces where deftx is used for the function
-  to work."
+  to work.
+
+  NOTE: XTDB tx fns require all symbols to be fully qualified. This macro will attempt to resolve
+  them for you, with the following restriction: you MAY NOT use :refer'd symbols--instead, you must
+  either refer to the symbol directly (`foo.bar/baz`) or via a namespace abbreviation (`fb/baz`)."
   (let [kwd-name (keyword (str *ns*) (str name))
-        symbol-name (symbol (str name))]
-    `(def
-       ~(vary-meta
-          symbol-name
-          assoc
-          :crux-tx-fn
-          `(fn [node#]
-             (xt/submit-tx node# [[:xtdb.api/put {:xt/id ~kwd-name
-                                                  :xt/fn (quote (fn ~bindings
-                                                                  ~@body))}]])))
-       (fn ~symbol-name [node# & ~'args]
-         (xt/await-tx
-           node#
-           (xt/submit-tx node# [(into [:xtdb.api/fn ~kwd-name] ~'args)]))))))
+        symbol-name (symbol (str name))
+        body (fq-symbols body)]
+    `(do
+       (def
+         ~(vary-meta
+            symbol-name
+            assoc
+            :crux-tx-fn
+            `(fn [node#]
+               (xt/submit-tx node# [[:xtdb.api/put {:xt/id ~kwd-name
+                                                    :xt/fn (quote (fn ~bindings
+                                                                    ~@body))}]])))
+         (fn ~symbol-name [node# & ~'args]
+           (let [tx-map# (xt/submit-tx node# [(into [:xtdb.api/fn ~kwd-name] ~'args)])]
+             (xt/await-tx node# tx-map#)
+             (xt/tx-committed? node# tx-map#))))
+       ;; Also define a version that just returns the transaction
+       (def
+         ~(symbol (str symbol-name "**"))
+         (fn ~symbol-name [node# & ~'args]
+           [(into [:xtdb.api/fn ~kwd-name] ~'args)])))))
 
 (defn install-deftx-fns
   "Given a node and a seq of namespace symbols, scan all public vars
