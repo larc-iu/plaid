@@ -20,6 +20,7 @@
             [glam.client.ui.global-snackbar :as snack]))
 
 (declare TextEditor)
+
 (m/defmutation save-text
   [{doc-id :document/id :as params}]
   (action [{:keys [state ref]}]
@@ -37,8 +38,26 @@
                    (when message
                      (snack/message! {:message  message
                                       :severity (if error? "error" "success")}))
+                   (df/load! app [:document/id doc-id] TextEditor))))
+
+(m/defmutation create-text
+  [{doc-id :document/id :as params}]
+  (action [{:keys [state ref]}]
+          (swap! state #(assoc-in % (conj ref :ui/busy?) true)))
+  (remote [{:keys [ast]}]
+          (let [ast (assoc ast :key `txt/create-text)]
+            ast))
+  (result-action [{:keys [state ref app] :as env}]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `txt/create-text])]
+                   (swap! state (fn [s]
+                                  (cond-> (assoc-in s (conj ref :ui/busy?) false)
+                                          (not error?) (assoc-in (conj ref :ui/pristine-body)
+                                                                 (get-in s (conj ref :text/body)))
+                                          (not error?) (assoc-in (conj ref :ui/ops) []))))
+                   (when message
+                     (snack/message! {:message  message
+                                      :severity (if error? "error" "success")}))
                    (tempid/resolve-tempids! app (get-in env [:result :body]))
-                   ;; we may need new token offsets--trigger a load
                    (df/load! app [:document/id doc-id] TextEditor))))
 
 (defsc Text
@@ -56,12 +75,17 @@
   (let [save-ref (c/get-state this :save-ref)
         on-submit (fn [e]
                     (.preventDefault e)
-                    (c/transact! this [(save-text {:text/id       id
-                                                   :text-layer/id text-layer-id
-                                                   :document/id   document-id
-                                                   :old-body      pristine-body
-                                                   :new-body      body
-                                                   :ops           ops})]))
+                    (if (tempid/tempid? id)
+                      (c/transact! this [(create-text {:text/id       id
+                                                       :text-layer/id text-layer-id
+                                                       :document/id   document-id
+                                                       :body          body})])
+                      (c/transact! this [(save-text {:text/id       id
+                                                     :text-layer/id text-layer-id
+                                                     :document/id   document-id
+                                                     :old-body      pristine-body
+                                                     :new-body      body
+                                                     :ops           ops})])))
         dirty? (not= body pristine-body)]
     (dom/form
       {:onSubmit on-submit}
