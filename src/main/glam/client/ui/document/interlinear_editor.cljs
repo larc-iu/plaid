@@ -105,13 +105,22 @@
 ;; Only used for querying
 (defsc Span
   [this {:span/keys [id value]}]
-  {:query [:span/id :span/value :span/tokens]
-   :ident :span/id})
+  {:query     [:span/id :span/value :span/tokens :ui/focused?]
+   :pre-merge (fn [{:keys [data-tree current-normalized]}]
+                ;; If we're merging into a span that's currently being edited, keep its current value
+                (if (:ui/focused? current-normalized)
+                  (merge current-normalized
+                         data-tree
+                         {:span/value (:span/value current-normalized)})
+                  (merge current-normalized
+                         data-tree)))
+   :ident     :span/id})
 
 (defsc SpanLayer
   [this {:span-layer/keys [id name spans]}]
   {:query [:span-layer/id :span-layer/name
            {:span-layer/spans (c/get-query Span)}]
+   ;; TODO maybe try to use pre-merge here to hold on to any existing tempid spans to resolve focus loss issue on temp spans
    :ident :span-layer/id})
 
 (defsc Token
@@ -126,19 +135,22 @@
 ;; note that this is NOT included in our query tree, we just need a component here to fire mutations
 (defsc SpanCell [this {:span/keys [id value] :as props} {token-id :token/id span-layer-id :span-layer/id :as cp}]
   {:ident :span/id
-   :query [:span/id :span/value]}
+   :query [:span/id :span/value :ui/focused?]}
   (cell {}
         (ui-autosize-input {:type       "text"
                             :value      value
                             :onChange   #(m/set-string! this :span/value :event %)
-                            :onBlur     #(when-not (= 0 (count value))
-                                           (if (tempid/tempid? id)
-                                             (c/transact! this [(create-span {:span/id     id
-                                                                              :span/value  value
-                                                                              :span/tokens [token-id]
-                                                                              :span/layer  span-layer-id})])
-                                             (c/transact! this [(save-span {:span/id    id
-                                                                            :span/value value})])))
+                            :onFocus    #(m/set-value! this :ui/focused? true)
+                            :onBlur     (fn []
+                                          (m/set-value! this :ui/focused? false)
+                                          (when-not (= 0 (count value))
+                                            (if (tempid/tempid? id)
+                                              (c/transact! this [(create-span {:span/id     id
+                                                                               :span/value  value
+                                                                               :span/tokens [token-id]
+                                                                               :span/layer  span-layer-id})])
+                                              (c/transact! this [(save-span {:span/id    id
+                                                                             :span/value value})]))))
                             :inputStyle {:minWidth        (str "30px")
                                          :display         "inline-block"
                                          :outline         "none"
