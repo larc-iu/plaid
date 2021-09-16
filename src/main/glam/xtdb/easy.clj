@@ -51,6 +51,46 @@
    [:xtdb.api/match eid doc valid-time]))
 
 ;; deftx --------------------------------------------------------------------------------
+;; copied from https://github.com/clojure/tools.reader/blob/6918abc8b3c009228790cf091097eb3037858ad6/src/main/clojure/clojure/tools/reader.clj#L694
+(defn- handle-symbol [form]
+  (if (namespace form)
+    (let [maybe-class ((ns-map *ns*)
+                       (symbol (namespace form)))]
+      (if (class? maybe-class)
+        (symbol (.getName ^Class maybe-class) (name form))
+        (reader/resolve-symbol form)))
+    (let [sym (str form)]
+      (cond
+        ;; We don't need this here
+        ;;(.endsWith sym "#")
+        ;;(reader/register-gensym form)
+
+        (.startsWith sym ".")
+        form
+
+        :else (reader/resolve-symbol form)))))
+
+(defn- handle-let
+  "Un-namespace all symbols in let's bindings."
+  [form]
+  (-> form
+      vec
+      (clojure.core/update 1 (fn [bindings]
+                               (vec (map-indexed (fn [i v]
+                                                   (if (even? i)
+                                                     ;; left hand side could have destructuring--just walk it
+                                                     ;; and assume all symbols encountered are being used for destr.
+                                                     (walk/postwalk (fn [subform]
+                                                                      (if (and (symbol? subform)
+                                                                               (not (special-symbol? subform)))
+                                                                        (symbol (name subform))
+                                                                        subform))
+                                                                    v)
+                                                     v))
+                                                 bindings))))
+      reverse
+      (#(into (list) %))))
+
 (defn- fully-qualify-symbols
   "This helper mimics the behavior of the syntax quote `, taking a sequence of Clojure forms and
   modifying them so that all symbols are fully qualified. Syntax quote can't be used directly since
@@ -58,25 +98,14 @@
   [body]
   (walk/postwalk
     (fn [form]
-      (if (and (symbol? form) (not (special-symbol? form)))
-        ;; Begin copy from https://github.com/clojure/tools.reader/blob/6918abc8b3c009228790cf091097eb3037858ad6/src/main/clojure/clojure/tools/reader.clj#L694
-        (if (namespace form)
-          (let [maybe-class ((ns-map *ns*)
-                             (symbol (namespace form)))]
-            (if (class? maybe-class)
-              (symbol (.getName ^Class maybe-class) (name form))
-              (reader/resolve-symbol form)))
-          (let [sym (str form)]
-            (cond
-              ;; We don't need this here
-              ;;(.endsWith sym "#")
-              ;;(reader/register-gensym form)
+      (cond
+        (and (symbol? form) (not (special-symbol? form)))
+        (handle-symbol form)
 
-              (.startsWith sym ".")
-              form
+        (and (list? form) (= (first form) 'clojure.core/let))
+        (handle-let form)
 
-              :else (reader/resolve-symbol form))))
-        ;;end copy from tools.reader
+        :else
         form))
     body))
 
@@ -91,7 +120,9 @@
   either refer to the symbol directly (`foo.bar/baz`) or via a namespace abbreviation (`fb/baz`)."
   (let [kwd-name (keyword (str *ns*) (str name))
         symbol-name (symbol (str name))
+        fq-bindings (fully-qualify-symbols bindings)
         fq-body (fully-qualify-symbols body)]
+    (log/info fq-body)
     `(do
        (def
          ~(vary-meta
@@ -100,7 +131,7 @@
             :crux-tx-fn
             `(fn [node#]
                (xt/submit-tx node# [[:xtdb.api/put {:xt/id ~kwd-name
-                                                    :xt/fn (quote (fn ~bindings
+                                                    :xt/fn (quote (fn ~fq-bindings
                                                                     ~@fq-body))}]])))
          (fn ~symbol-name [node# & ~'args]
            (let [tx-map# (xt/submit-tx node# [(into [:xtdb.api/fn ~kwd-name] ~'args)])]
@@ -214,13 +245,16 @@
   (def node user/node)
   (deftx foo [node rec]
     (log/info rec)
-    [[:xtdb.api/put rec]])
+    (let [update (log/debug 'ok)
+          {foo :foo} {:foo :bar}]
+      [[:xtdb.api/put rec]]))
 
   (install-deftx-fns node)
 
   (foo node {:xt/id ::tmp})
   (xt/q (xt/db node) '{:find [?e] :where [[?e :xt/id ?eid]] :in [?eid]} :txtl1)
 
-  (fully-qualify-symbols (list 'def 'bar []))
+  (fully-qualify-symbols
+    (list 'def 'bar []))
 
   )
