@@ -51,63 +51,29 @@
    [:xtdb.api/match eid doc valid-time]))
 
 ;; deftx --------------------------------------------------------------------------------
-;; copied from https://github.com/clojure/tools.reader/blob/6918abc8b3c009228790cf091097eb3037858ad6/src/main/clojure/clojure/tools/reader.clj#L694
-(defn- handle-symbol [form]
-  (if (namespace form)
-    (let [maybe-class ((ns-map *ns*)
-                       (symbol (namespace form)))]
-      (if (class? maybe-class)
-        (symbol (.getName ^Class maybe-class) (name form))
-        (reader/resolve-symbol form)))
-    (let [sym (str form)]
-      (cond
-        ;; We don't need this here
-        ;;(.endsWith sym "#")
-        ;;(reader/register-gensym form)
-
-        (.startsWith sym ".")
-        form
-
-        :else (reader/resolve-symbol form)))))
-
-(defn- handle-let
-  "Un-namespace all symbols in let's bindings."
-  [form]
-  (-> form
-      vec
-      (clojure.core/update 1 (fn [bindings]
-                               (vec (map-indexed (fn [i v]
-                                                   (if (even? i)
-                                                     ;; left hand side could have destructuring--just walk it
-                                                     ;; and assume all symbols encountered are being used for destr.
-                                                     (walk/postwalk (fn [subform]
-                                                                      (if (and (symbol? subform)
-                                                                               (not (special-symbol? subform)))
-                                                                        (symbol (name subform))
-                                                                        subform))
-                                                                    v)
-                                                     v))
-                                                 bindings))))
-      reverse
-      (#(into (list) %))))
+(defn- filtered-refers
+  "ns-refers, but without clojure.core vars"
+  [ns]
+  (into {} (filter (fn [[_ v]] (not= "clojure.core" (namespace (symbol v))))
+                   (ns-refers ns))))
 
 (defn- fully-qualify-symbols
-  "This helper mimics the behavior of the syntax quote `, taking a sequence of Clojure forms and
-  modifying them so that all symbols are fully qualified. Syntax quote can't be used directly since
-  we do not want our result to be quoted."
+  "Add fully qualified symbols where needed so that we can store the body in an XTDB transaction function.
+  "
   [body]
-  (walk/postwalk
-    (fn [form]
-      (cond
-        (and (symbol? form) (not (special-symbol? form)))
-        (handle-symbol form)
+  (let [ns-vars (clojure.core/merge (ns-interns *ns*) (filtered-refers *ns*))]
+    (walk/postwalk
+      (fn [x]
+        (cond
+          (and (symbol? x) (some? (namespace x)))
+          (symbol (ns-resolve *ns* x))
 
-        (and (list? form) (= (first form) 'clojure.core/let))
-        (handle-let form)
+          (and (symbol? x) (contains? ns-vars x))
+          (symbol (get ns-vars x))
 
-        :else
-        form))
-    body))
+          :else
+          x))
+      body)))
 
 ;; macro for transactions to avoid race conditions: https://clojurians-log.clojureverse.org/crux/2020-03-24
 (defmacro deftx [name bindings & body]
@@ -116,8 +82,11 @@
   `install-tx-fns` must be called on the node before the deftx function can work.
 
   NOTE: XTDB tx fns require all symbols to be fully qualified. This macro will attempt to resolve
-  them for you, with the following restriction: you MAY NOT use :refer'd symbols--instead, you must
-  either refer to the symbol directly (`foo.bar/baz`) or via a namespace abbreviation (`fb/baz`)."
+  them for you, with the following restriction: none of your symbols should shadow either symbols
+  that are interned in your current namespace, or ones that are :refer'd into your current namespace.
+
+  (If you do shadow them, e.g. in a `let` expression, this macro will fully qualify them and likely
+  produce an invalid expression which the compiler will complain about.)"
   (let [kwd-name (keyword (str *ns*) (str name))
         symbol-name (symbol (str name))
         fq-bindings (fully-qualify-symbols bindings)
