@@ -4,7 +4,8 @@
   (:require [xtdb.api :as xt]
             [clojure.pprint :as pprint]
             [taoensso.timbre :as log]
-            [clojure.walk :as walk])
+            [clojure.walk :as walk]
+            [clojure.tools.reader :as reader])
   (:refer-clojure :exclude [set update merge]))
 
 ;; reads ---------------------------------------------------------------------------------
@@ -50,21 +51,34 @@
    [:xtdb.api/match eid doc valid-time]))
 
 ;; deftx --------------------------------------------------------------------------------
-;; helper to get fully qualified symbols
-(defn- fq-symbols [body]
-  (let [ns-vars (ns-interns *ns*)]
-    (walk/postwalk
-      (fn [x]
-        (cond
-          (and (symbol? x) (some? (namespace x)))
-          (symbol (ns-resolve *ns* x))
+(defn- fully-qualify-symbols
+  "This helper mimics the behavior of the syntax quote `, taking a sequence of Clojure forms and
+  modifying them so that all symbols are fully qualified. Syntax quote can't be used directly since
+  we do not want our result to be quoted."
+  [body]
+  (walk/postwalk
+    (fn [form]
+      (if (and (symbol? form) (not (special-symbol? form)))
+        ;; Begin copy from https://github.com/clojure/tools.reader/blob/6918abc8b3c009228790cf091097eb3037858ad6/src/main/clojure/clojure/tools/reader.clj#L694
+        (if (namespace form)
+          (let [maybe-class ((ns-map *ns*)
+                             (symbol (namespace form)))]
+            (if (class? maybe-class)
+              (symbol (.getName ^Class maybe-class) (name form))
+              (reader/resolve-symbol form)))
+          (let [sym (str form)]
+            (cond
+              ;; We don't need this here
+              ;;(.endsWith sym "#")
+              ;;(reader/register-gensym form)
 
-          (and (symbol? x) (contains? ns-vars x))
-          (symbol (get ns-vars x))
+              (.startsWith sym ".")
+              form
 
-          :else
-          x))
-      body)))
+              :else (reader/resolve-symbol form))))
+        ;;end copy from tools.reader
+        form))
+    body))
 
 ;; macro for transactions to avoid race conditions: https://clojurians-log.clojureverse.org/crux/2020-03-24
 (defmacro deftx [name bindings & body]
@@ -77,7 +91,7 @@
   either refer to the symbol directly (`foo.bar/baz`) or via a namespace abbreviation (`fb/baz`)."
   (let [kwd-name (keyword (str *ns*) (str name))
         symbol-name (symbol (str name))
-        body (fq-symbols body)]
+        fq-body (fully-qualify-symbols body)]
     `(do
        (def
          ~(vary-meta
@@ -87,7 +101,7 @@
             `(fn [node#]
                (xt/submit-tx node# [[:xtdb.api/put {:xt/id ~kwd-name
                                                     :xt/fn (quote (fn ~bindings
-                                                                    ~@body))}]])))
+                                                                    ~@fq-body))}]])))
          (fn ~symbol-name [node# & ~'args]
            (let [tx-map# (xt/submit-tx node# [(into [:xtdb.api/fn ~kwd-name] ~'args)])]
              (xt/await-tx node# tx-map#)
@@ -195,3 +209,18 @@
   "Updates some entity identified by eid in a transaction function. f can be any function"
   [node eid k f & args]
   `(submit-tx-sync ~node [(update* ~eid ~k ~f ~@args)]))
+
+(comment
+  (def node user/node)
+  (deftx foo [node rec]
+    (log/info rec)
+    [[:xtdb.api/put rec]])
+
+  (install-deftx-fns node)
+
+  (foo node {:xt/id ::tmp})
+  (xt/q (xt/db node) '{:find [?e] :where [[?e :xt/id ?eid]] :in [?eid]} :txtl1)
+
+  (fully-qualify-symbols (list 'def 'bar []))
+
+  )
