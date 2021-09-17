@@ -96,7 +96,7 @@
          ~(vary-meta
             symbol-name
             assoc
-            :crux-tx-fn
+            :xtdb-tx-fn
             `(fn [node#]
                (xt/submit-tx node# [[:xtdb.api/put {:xt/id ~kwd-name
                                                     :xt/fn (quote (fn ~fq-bindings
@@ -113,7 +113,7 @@
 
 (defn install-deftx-fns
   "Given a node and a seq of namespace symbols, scan all public vars
-  and use any :crux-tx-fn in their metadata to install the tx-fn on
+  and use any :xtdb-tx-fn in their metadata to install the tx-fn on
   the node"
   ([node]
    ;; If no namespaces are supplied, take all "glam.xtdb" nses that aren't tests
@@ -126,7 +126,7 @@
    (doseq [ns-symbol namespaces]
      (when-let [ns (the-ns ns-symbol)]
        (doseq [[vname v] (ns-publics ns)]
-         (when-let [tx-install-fn (some-> v meta :crux-tx-fn)]
+         (when-let [tx-install-fn (some-> v meta :xtdb-tx-fn)]
            ;; evict any already-existing entities with the tx-fn's id
            ;; TODO: is there any cost to doing this over and over? If so, consider
            ;; enabling this only in dev and using a put-if-nil strategy for prod
