@@ -46,6 +46,7 @@
 
 ;; Note: this should NOT be used more than once in a single transaction on a given span, or else its
 ;; deletion behavior will not work properly.
+;; TODO: is this still true now that this is a tx fn?
 (declare remove-token**)
 (gxe/deftx remove-token [node span-id token-id]
   (let [base-txs (xutil/remove-join** node span-id :span/tokens token-id)]
