@@ -10,7 +10,8 @@
             [taoensso.timbre :as log]
             [glam.xtdb.text :as txt]
             [glam.xtdb.token :as tok]
-            [glam.xtdb.span :as s]))
+            [glam.xtdb.span :as s]
+            [glam.xtdb.easy :as gxe]))
 
 (log/set-level! :error)
 
@@ -18,6 +19,7 @@
 
 (defn with-xtdb [f]
   (with-redefs [xtdb-node (xt/start-node {})]
+    (gxe/install-tx-fns! xtdb-node)
     (f)))
 
 (defn with-users [f]

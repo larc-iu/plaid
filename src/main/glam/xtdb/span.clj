@@ -1,7 +1,8 @@
 (ns glam.xtdb.span
   (:require [xtdb.api :as xt]
             [glam.xtdb.util :as xutil]
-            [glam.xtdb.easy :as gxe])
+            [glam.xtdb.easy :as gxe]
+            [taoensso.timbre :as log])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:span/id
@@ -39,18 +40,15 @@
 (defn delete [node eid]
   (gxe/submit-tx-sync node (delete** node eid)))
 
-(defn add-token** [node span-id token-id]
+(declare add-token**)
+(gxe/deftx add-token [node span-id token-id]
   (xutil/add-join** node span-id :span/tokens token-id))
-(defn add-token [node span-id token-id]
-  (gxe/submit! node (add-token** node span-id token-id)))
 
-(defn remove-token**
-  "Note: this should NOT be used more than once in a single transaction on a given span, or else its
-  deletion behavior will not work properly."
-  [node span-id token-id]
-  (cond-> (xutil/remove-join** node span-id :span/tokens token-id)
-          ;; If we are removing the last token, we should also delete the span
-          (= 1 (-> node (gxe/entity span-id) :span/tokens count))
-          (into (delete** node span-id))))
-(defn remove-token [node span-id token-id]
-  (gxe/submit! node (remove-token** node span-id token-id)))
+;; Note: this should NOT be used more than once in a single transaction on a given span, or else its
+;; deletion behavior will not work properly.
+(declare remove-token**)
+(gxe/deftx remove-token [node span-id token-id]
+  (let [base-txs (xutil/remove-join** node span-id :span/tokens token-id)]
+    (if (= 1 (-> (gxe/entity node span-id) :span/tokens count))
+      (into base-txs [(gxe/delete* span-id)])
+      base-txs)))

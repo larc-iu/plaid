@@ -91,7 +91,6 @@
         symbol-name (symbol (str name))
         fq-bindings (fully-qualify-symbols bindings)
         fq-body (fully-qualify-symbols body)]
-    (log/info fq-body)
     `(do
        (def
          ~(vary-meta
@@ -212,11 +211,12 @@
 
 (comment
   (def node user/node)
-  (deftx foo [node rec]
-    (log/info rec)
-    (let [update (log/debug 'ok)
-          {foo :foo} {:foo :bar}]
-      [[:xtdb.api/put rec]]))
+  (macroexpand
+    '(deftx foo [node rec]
+      (log/info rec)
+      (let [update (log/debug 'ok)
+            {foo :foo} {:foo :bar}]
+        [[:xtdb.api/put rec]])))
 
   (install-deftx-fns node)
 

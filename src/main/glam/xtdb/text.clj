@@ -49,6 +49,7 @@
                      :in    [?txt]}
                    eid)))
 
+(declare update-body**)
 (gxe/deftx update-body [node eid old-body ops]
   (let [text (gxe/entity node eid)
         tokens (map #(gxe/entity node %) (get-token-ids node eid))
