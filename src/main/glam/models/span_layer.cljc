@@ -9,7 +9,8 @@
             #?(:clj [glam.models.common :as mc :refer [server-message server-error]])
             #?(:clj [glam.xtdb.token-layer :as tokl])
             #?(:clj [glam.xtdb.span-layer :as sl])
-            #?(:clj [glam.xtdb.easy :as gxe])))
+            #?(:clj [glam.xtdb.easy :as gxe])
+            #?(:clj [glam.xtdb.span :as s])))
 
 (def span-layer-keys [:span-layer/name
                       :span-layer/span-layers])
@@ -43,14 +44,7 @@
       ::pc/output    [:span-layer/spans]
       ::pc/transform (ma/readable-required :span-layer/id)}
      (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (when-let [spans (mapv (fn [[id]] {:span/id id}) (xt/q (xt/db node)
-                                                              '{:find  [?s]
-                                                                :where [[?s :span/layer ?sl]
-                                                                        [?s :span/tokens ?tok]
-                                                                        [?tok :token/text ?txt]
-                                                                        [?txt :text/document ?doc]]
-                                                                :in    [[?sl ?doc]]}
-                                                              [id doc-id]))]
+       (when-let [spans (mapv (fn [id] {:span/id id}) (s/get-span-ids node doc-id id))]
          {:span-layer/spans spans}))))
 
 ;; admin --------------------------------------------------------------------------------

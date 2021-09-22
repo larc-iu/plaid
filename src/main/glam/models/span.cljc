@@ -9,6 +9,11 @@
             #?(:clj [glam.models.common :as mc :refer [server-error server-message]])
             #?(:clj [glam.xtdb.easy :as gxe])))
 
+#?(:cljs
+   (defn get-span-snapshots [fulcro-db doc-id span-layer-id]
+     ;; NYI
+     ))
+
 ;; user --------------------------------------------------------------------------------
 #?(:clj
    (pc/defresolver get-span [{:keys [node] :as env} {:span/keys [id]}]
@@ -18,6 +23,7 @@
      (s/get node id)))
 
 #?(:clj
+   ;; TODO this needs span-snapshots
    (pc/defmutation save-span [{:keys [node] :as env} {:span/keys [id value] :as span}]
      {::pc/transform (ma/writeable-required :span/id)}
      (cond
@@ -33,6 +39,7 @@
          (server-error (str "Failed to save span " id))))))
 
 #?(:clj
+   ;; TODO this needs span-snapshots
    (pc/defmutation create-span
      [{:keys [node] :as env} {:span/keys [id value layer tokens] :as span}]
      {::pc/transform (ma/writeable-required :span-layer/id :span/layer)}
@@ -51,8 +58,21 @@
                                                           :span/layer  layer
                                                           :span/tokens (into [] tokens)})]
          (if-not success
-           (server-error "Failed to create span , please try again")
+           (server-error "Failed to create span, please try again")
            (merge {:tempids {id new-id}} (server-message "Span created")))))))
+
+#?(:clj
+   (pc/defmutation batched-update
+     [{:keys [node] :as env} {document-id    :document/id
+                              span-layer-id  :span-layer/id
+                              span-snapshots :span-snapshots
+                              updates        :updates
+                              :as args}]
+     {::pc/transform (ma/writeable-required :span-layer/id)}
+     (let [success (s/batched-update node document-id span-layer-id span-snapshots updates)]
+       (if-not success
+         (server-error "Failed to update document, please try again")
+         (server-message "Updates applied")))))
 
 ;; admin --------------------------------------------------------------------------------
 #?(:clj

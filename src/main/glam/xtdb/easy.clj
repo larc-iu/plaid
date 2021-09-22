@@ -58,8 +58,7 @@
                    (ns-refers ns))))
 
 (defn- fully-qualify-symbols
-  "Add fully qualified symbols where needed so that we can store the body in an XTDB transaction function.
-  "
+  "Add fully qualified symbols where needed so that we can store the body in an XTDB transaction function. "
   [body]
   (let [ns-vars (clojure.core/merge (ns-interns *ns*) (filtered-refers *ns*))]
     (walk/postwalk
@@ -76,7 +75,7 @@
       body)))
 
 ;; macro for transactions to avoid race conditions: https://clojurians-log.clojureverse.org/crux/2020-03-24
-(defmacro deftx [name bindings & body]
+(defmacro deftx
   "Defines a function used for mutations that uses a Crux transaction function under the hood.
   Body must return a valid Crux transaction vector (or return false, error, etc.)
   `install-tx-fns` must be called on the node before the deftx function can work.
@@ -87,6 +86,7 @@
 
   (If you do shadow them, e.g. in a `let` expression, this macro will fully qualify them and likely
   produce an invalid expression which the compiler will complain about.)"
+  [name bindings & body]
   (let [kwd-name (keyword (str *ns*) (str name))
         symbol-name (symbol (str name))
         fq-bindings (fully-qualify-symbols bindings)

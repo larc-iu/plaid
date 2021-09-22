@@ -18,6 +18,21 @@
 
 (def ui-autosize-input (interop/react-factory AutosizeInput))
 
+(m/defmutation apply-schema
+  "See g.c.u.d.document"
+  [{:keys [data-tree]}]
+  (action [{:keys [state]}]
+          (doall
+            (for [text-layer (:document/text-layers data-tree)]
+              (do
+                (log/info "text" (:text-layer/text text-layer))
+                (doall
+                  (for [token-layer (:text-layer/token-layers text-layer)]
+                    (doall
+                      (for [token (:token-layer/tokens token-layer)]
+                        (log/info "token" token))))))))))
+  ;; result action: unset :ui/busy? (think about it)
+
 (m/defmutation save-span
   [{doc-id :document/id :as params}]
   (action [{:keys [state]}]
@@ -191,8 +206,6 @@
         sentence-span-layer-ids (set (get-in config [:editors :interlinear :sentence-level-span-layers]))
         token-span-layers (filter #(not (sentence-span-layer-ids (:span-layer/id %))) span-layers)
         sentence-span-layers (filter #(sentence-span-layer-ids (:span-layer/id %)) span-layers)]
-    (log/info token-span-layers)
-    (log/info sentence-span-layers)
     (dom/div
       (mui/typography {:variant "h5"} name)
       (map-indexed (fn [i line]

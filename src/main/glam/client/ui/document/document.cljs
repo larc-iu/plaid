@@ -8,11 +8,12 @@
             [glam.client.application :as gca]
             [glam.client.ui.document.text-editor :refer [TextEditor ui-text-editor]]
             [glam.client.ui.document.token-editor :refer [TokenEditor ui-token-editor]]
-            [glam.client.ui.document.interlinear-editor :refer [InterlinearEditor ui-interlinear-editor]]
+            [glam.client.ui.document.interlinear-editor :as ied :refer [InterlinearEditor ui-interlinear-editor]]
             [taoensso.timbre :as log]
             [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.mutations :as m]
-            [com.fulcrologic.fulcro.application :as app]))
+            [com.fulcrologic.fulcro.application :as app]
+            [com.fulcrologic.fulcro.algorithms.normalize :as fnorm]))
 
 (defsc ProjectNameQuery
   [this props]
@@ -22,7 +23,10 @@
 (def editors
   {"text"        {:slug "text" :name "Text" :join-key :>/text-editor}
    "token"       {:slug "token" :name "Tokens" :join-key :>/token-editor}
-   "interlinear" {:slug "interlinear" :name "Interlinear" :join-key :>/interlinear-editor}})
+   "interlinear" {:slug            "interlinear"
+                  :name            "Interlinear"
+                  :join-key        :>/interlinear-editor
+                  :schema-mutation ied/apply-schema}})
 (def editor-joins (set (map (comp :join-key second) editors)))
 
 (declare Document)
@@ -34,7 +38,17 @@
      (when doc-id
        (df/load! app-or-comp [:document/id doc-id] Document
                  (merge load-opts
-                        {:without (disj editor-joins editor-join-key)}))))))
+                        {:without
+                         (disj editor-joins editor-join-key)
+                         :post-action
+                         (fn [env]
+                           (let [data-tree (-> env :result :body (get [:document/id doc-id]))
+                                 schema-mutation (get-in editors [tab :schema-mutation])]
+
+                             ;; If the editor is the kind that wants us to have a schema check, trigger it
+                             (when schema-mutation
+                               (c/transact! app-or-comp
+                                            [(schema-mutation {:data-tree (editor-join-key data-tree)})]))))}))))))
 
 (defsc Document
   [this {:document/keys [id name project] :ui/keys [active-tab busy?]
