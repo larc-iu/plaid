@@ -122,7 +122,7 @@
               :merge
               (let [{:span/keys [id] :as span} (first args)]
                 (when-not (some #(= (:span/id %) id) current-spans)
-                  (ex-info "Attempted to merge into a non-existent span:" id))
+                  (throw (ex-info "Attempted to merge into a non-existent span:" {:span/id id})))
                 (gxe/put* (clojure.core/merge (gxe/entity node id)
                                               (select-keys span snapshot-attrs))))
 
@@ -130,9 +130,9 @@
               :put
               (let [span (first args)]
                 (when (or (not (map? span)) (nil? (:span/id span)))
-                  (ex-info "Span being :put must have :span/id and be a map" span))
+                  (throw (ex-info "Span being :put must have :span/id and be a map" span)))
                 (when-not (some? (-> span :span/tokens first))
-                  (ex-info "Span being created must have at least one associated token" span))
+                  (throw (ex-info "Span being created must have at least one associated token" span)))
                 (create* (clojure.core/merge span {:span/layer span-layer-id})))
 
               (throw (ex-info "Unknown op in batched update:" op))))

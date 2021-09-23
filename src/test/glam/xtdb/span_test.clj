@@ -31,6 +31,12 @@
     (s/batched-update xtdb-node :doc1 :sl1 span-snapshots [[:merge {:span/id :s1 :span/value "changed"}]])
     (is (= "changed" (:span/value (gxe/entity xtdb-node :s1))))))
 
+(deftest span-batched-update-merge-into-nil
+  (testing "Merging into nil throws"
+    ;; note: throwing happens inside the tx function, which then returns falsy
+    (is (not (s/batched-update xtdb-node :doc1 :sl1 span-snapshots
+                               [[:merge {:span/id :noexist :span/value "changed"}]])))))
+
 (deftest span-batched-update-single-put
   (testing "Batch update can be used for creating new spans"
     (is (nil? (gxe/entity xtdb-node :s5)))
@@ -48,3 +54,16 @@
                                                                   :span/value  "changed"}]])
     (is (some? (gxe/entity xtdb-node :s5)))
     (is (nil? (gxe/entity xtdb-node :s1)))))
+
+;; This is actually not true--the put will succeed. Unclear if this is a problem.
+;; if it is, can change impl of batched update.
+;;
+;;(deftest span-batched-update-merge-after-delete
+;;  (testing "Delete then merge into s1--should fail the entire tx"
+;;    (s/batched-update xtdb-node :doc1 :sl1 span-snapshots [[:delete :s1]
+;;                                                           [:merge {:span/id :s1 :span/value "changed"}]
+;;                                                           [:put {:span/id     :s5
+;;                                                                  :span/tokens [:tok1]
+;;                                                                  :span/value  "changed"}]])
+;;    (is (nil? (gxe/entity xtdb-node :s5)))
+;;    (is (some? (gxe/entity xtdb-node :s1)))))
