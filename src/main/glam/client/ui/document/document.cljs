@@ -34,7 +34,8 @@
   ([app-or-comp doc-id tab]
    (do-load! app-or-comp doc-id tab {}))
   ([app-or-comp doc-id tab load-opts]
-   (let [editor-join-key (get-in editors [tab :join-key])]
+   (let [editor-join-key (get-in editors [tab :join-key])
+         schema-mutation (get-in editors [tab :schema-mutation])]
      (when doc-id
        (df/load! app-or-comp [:document/id doc-id] Document
                  (merge load-opts
@@ -42,8 +43,7 @@
                          (disj editor-joins editor-join-key)
                          :post-action
                          (fn [env]
-                           (let [data-tree (-> env :result :body (get [:document/id doc-id]))
-                                 schema-mutation (get-in editors [tab :schema-mutation])]
+                           (let [data-tree (-> env :result :body (get [:document/id doc-id]))]
 
                              ;; If the editor is the kind that wants us to have a schema check, trigger it
                              (when schema-mutation
@@ -77,6 +77,7 @@
                                (dr/route-deferred
                                  [:document/id parsed-id]
                                  (fn []
+                                   ;; TODO: target-ready should actually be called once the apply-schema mutation is done
                                    (do-load! app parsed-id tab
                                              {:post-mutation        `dr/target-ready
                                               :post-mutation-params {:target [:document/id parsed-id]}})

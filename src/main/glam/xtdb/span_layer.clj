@@ -34,33 +34,17 @@
       first))
 
 ;; Mutations ----------------------------------------------------------------------
-(defn remove-span-layer-from-project-config** [node span-layer-id]
-  (let [project-id (first (xt/q (xt/db node) '{:find  [?prj]
-                                               :where [[?prj :project/text-layers ?txtl]
-                                                       [?txtl :text-layer/token-layers ?tokl]
-                                                       [?tokl :token-layer/span-layers ?sl]]
-                                               :in    [?sl]}
-                                span-layer-id))
-        project (gxe/entity node project-id)
-        updated-project (update-in project [:project/config :editors :interlinear :sentence-level-span-layers]
-                                   (fn [sls] (filterv #(not= % span-layer-id) sls)))]
-    (if (= project updated-project)
-      []
-      [(gxe/match* project-id project)
-       (gxe/put* updated-project)])))
-
 (defn merge
   [node eid m]
   (gxe/merge node eid (select-keys m [:span-layer/name])))
 (defn delete** [node eid]
-  (let [remove-from-project-tx (prjc/remove-span-layer-from-config** node eid)
+  (let [remove-from-project-tx (prjc/update-span-layer-scope** node eid nil)
         span-ids (map first (xt/q (xt/db node) '{:find  [?s]
                                                  :where [[?s :span/layer ?sl]]
                                                  :in    [?sl]}
                                   eid))
         span-deletions (mapv gxe/delete* span-ids)
-        span-layer-deletion [(gxe/match* eid (gxe/entity node eid))
-                             (gxe/delete* eid)]]
+        span-layer-deletion [(gxe/delete* eid)]]
     (reduce into [remove-from-project-tx
                   span-deletions
                   span-layer-deletion])))

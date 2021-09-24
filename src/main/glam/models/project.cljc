@@ -35,7 +35,8 @@
    ;; todo: make this a batch resolver if needed (same for others)
    (pc/defresolver get-project [{:keys [node]} {:project/keys [id]}]
      {::pc/input     #{:project/id}
-      ::pc/output    [:project/id :project/name :project/readers :project/writers :project/text-layers :project/documents]
+      ::pc/output    [:project/id :project/name :project/readers :project/writers
+                      :project/text-layers :project/documents :project/config]
       ::pc/transform (ma/readable-required :project/id)}
      (let [doc-ids (xutil/identize (prj/get-document-ids node id) :document/id)]
        (-> (prj/get node id)
@@ -110,31 +111,27 @@
            (mc/server-message "Updated privileges")
            (mc/server-error "Failed to update user privileges, please refresh and try again"))))))
 
-#?(:cljs
-   (m/defmutation set-interlinear-span-layer
-     [args]
-     (remote [_] true))
-   :clj
-   (pc/defmutation set-interlinear-span-layer [{:keys [node]} {add-sentence-level-sl    :add-sentence-level-span-layer
-                                                               remove-sentence-level-sl :remove-sentence-level-span-layer}]
+#?(:clj
+   (pc/defmutation set-interlinear-span-layer-scope [{:keys [node]} {:span-layer/keys [id] :keys [scope]}]
      {::pc/transform ma/admin-required}
-     (let [span-layer-id (or add-sentence-level-sl remove-sentence-level-sl)]
-       (cond
-         (nil? span-layer-id)
-         (mc/server-error "Must supply a span layer ID")
+     (cond
+       (not (contains? #{:token :sentence nil} scope))
+       (mc/server-error (str "Scope must be one of #{:token :sentence nil}, got " scope))
 
-         (not (gxe/entity node span-layer-id))
-         (mc/server-error (str "Span layer doesn't exist:" span-layer-id))
+       (nil? id)
+       (mc/server-error "Must supply a span layer ID")
 
-         :else
-         (let [add? add-sentence-level-sl
-               success (if add?
-                         (prjc/add-span-layer-to-config node span-layer-id)
-                         (prjc/remove-span-layer-from-config node span-layer-id))]
-           (if success
-             (mc/server-message (str "Span layer marked as " (if add? "sentence" "token") "-level"))
-             (mc/server-error "Failed to update span layer, please refresh and try again")))))))
+       (not (gxe/entity node id))
+       (mc/server-error (str "Span layer doesn't exist:" id))
+
+       :else
+       (let [success (prjc/update-span-layer-scope node id scope)]
+         (if success
+           (mc/server-message (str "Span layer marked as " (get {:token    "token-level"
+                                                                 :sentence "sentence-level"
+                                                                 nil       "excluded from interlinear editing"} scope)))
+           (mc/server-error "Failed to update span layer, please refresh and try again"))))))
 #?(:clj
    (def project-resolvers [accessible-projects all-projects get-project create-project
-                           get-users-for-project set-user-privileges set-interlinear-span-layer]))
+                           get-users-for-project set-user-privileges set-interlinear-span-layer-scope]))
 

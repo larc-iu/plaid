@@ -473,7 +473,6 @@
       (mui/list-item-text {:primary name :secondary email})
       (mui/list-item-secondary-action
         {}
-        ;; value, onChange
         (mui/minw-100-select
           {:variant  "filled"
            :value    privileges
@@ -488,18 +487,18 @@
 ;; Interface configuration ----------------------------------------------------------------------------
 ;; ====================================================================================================
 (declare ProjectSettings)
-(defmutation toggle-sentence-level
+(defmutation set-interlinear-span-layer-scope
   [_]
   (action [{:keys [state ref]}]
           (swap! state (fn [s]
                          (-> s
                              (assoc-in (conj ref :ui/busy?) true)))))
   (remote [{:keys [ast]}]
-          (let [ast (assoc ast :key `prj/set-interlinear-span-layer)]
+          (let [ast (assoc ast :key `prj/set-interlinear-span-layer-scope)]
             ast))
   (result-action [{:keys [state ref app component] :as env}]
                  (swap! state (fn [s] (assoc-in s (conj ref :ui/busy?) false)))
-                 (let [{:server/keys [message error?]} (get-in env [:result :body `prj/set-interlinear-span-layer])]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `prj/set-interlinear-span-layer-scope])]
                    (when message
                      (if error?
                        (snack/message! {:message  message
@@ -525,8 +524,8 @@
                :ui/busy?]}
   (let [span-layers (flatten (for [text-layer text-layers]
                                (for [token-layer (:text-layer/token-layers text-layer)]
-                                 (:token-layer/span-layers token-layer))))
-        sentence-level-ids (set (get-in config [:editors :interlinear :sentence-level-span-layers]))]
+                                 (:token-layer/span-layers token-layer))))]
+    (log/info (get-in config [:editors :interlinear]))
     (dom/div
       (mui/typography {:variant "h5"} "Interlinear Interface")
       (dom/p "Select the span layers that represent sentence-level information (e.g. a free translation)
@@ -535,20 +534,24 @@
              "on that layer being deleted.")
       (mui/list {}
         (mapv (fn [{:span-layer/keys [id name]}]
-                (mui/list-item {:key (str id)}
-                  (mui/list-item-text {:primary name})
-                  (mui/list-item-secondary-action
-                    {}
-                    (mui/checkbox
-                      {:color    "primary"
-                       :onChange (fn [e]
-                                   (let [v (.-checked (.-target e))]
-                                     (c/transact! this [(toggle-sentence-level
-                                                          (if v
-                                                            {:add-sentence-level-span-layer id}
-                                                            {:remove-sentence-level-span-layer id}))])))
-                       :checked  (some? (sentence-level-ids id))
-                       :disabled busy?}))))
+                (let [scope (get-in config [:editors :interlinear :span-layer-scopes id] "unused")]
+                  (js/console.log scope)
+                  (mui/list-item {:key (str id) :style {:marginBottom "1em"}}
+                    (mui/list-item-text {:primary name})
+                    (mui/list-item-secondary-action
+                      {}
+                      (mui/minw-100-select
+                        {:variant  "filled"
+                         :value    scope
+                         :disabled busy?
+                         :onChange (fn [e]
+                                     (let [v (.-value (.-target e))]
+                                       (c/transact! this [(set-interlinear-span-layer-scope
+                                                            {:span-layer/id id
+                                                             :scope         (if (= "unused" v) nil (keyword v))})])))}
+                        (mui/menu-item {:value "unused"} "Not used")
+                        (mui/menu-item {:value "token"} "Token")
+                        (mui/menu-item {:value "sentence"} "Sentence"))))))
               span-layers)))))
 
 (def ui-interface-configuration (c/factory InterfaceConfiguration))

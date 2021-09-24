@@ -18,21 +18,26 @@
 
 (def ui-autosize-input (interop/react-factory AutosizeInput))
 
+;; schema management --------------------------------------------------------------------------------
 (m/defmutation apply-schema
   "See g.c.u.d.document"
   [{:keys [data-tree]}]
   (action [{:keys [state]}]
-          (doall
-            (for [text-layer (:document/text-layers data-tree)]
-              (do
-                (log/info "text" (:text-layer/text text-layer))
-                (doall
-                  (for [token-layer (:text-layer/token-layers text-layer)]
-                    (doall
-                      (for [token (:token-layer/tokens token-layer)]
-                        (log/info "token" token))))))))))
-  ;; result action: unset :ui/busy? (think about it)
+          (let [config (get-in data-tree [:document/project :project/config :editors :interlinear])]
+            (log/info config)
 
+            #_(doall
+              (for [text-layer (:document/text-layers data-tree)]
+                (do
+                  (log/info "text" (:text-layer/text text-layer))
+                  (doall
+                    (for [token-layer (:text-layer/token-layers text-layer)]
+                      (doall
+                        (for [token (:token-layer/tokens token-layer)]
+                          (log/info "token" token)))))))))))
+;; result action: unset :ui/busy? (think about it)
+
+;; ui mutations ---------------------------------------------------------------------------------
 (m/defmutation save-span
   [{doc-id :document/id :as params}]
   (action [{:keys [state]}]
@@ -140,7 +145,7 @@
 
 (defsc Token
   [this {:token/keys [id value]}]
-  {:query [:token/id :token/value :token/begin :token/end]
+  {:query [:token/id :token/value :token/begin :token/end :token/text]
    :ident :token/id})
 
 (defn cell [props & children]
@@ -228,7 +233,7 @@
 ;; Text --------------------------------------------------------------------------------
 (defsc Text
   [this {:text/keys [id body]} {text-layer-name :text-layer/name}]
-  {:query [:text/id :text/body]
+  {:query [:text/id :text/body :text/document]
    :ident :text/id}
   body)
 

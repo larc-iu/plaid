@@ -2,17 +2,24 @@
   (:require [clojure.set :refer [rename-keys]]
             [com.wsscode.pathom.connect :as pc]
             [taoensso.timbre :as log]
+            #?(:cljs [glam.models.common :as mc]
+               :clj  [glam.models.common :as mc :refer [server-error server-message]])
             #?(:clj [glam.xtdb.token :as tok])
             #?(:clj [glam.xtdb.span :as s])
             #?(:clj [glam.xtdb.span-layer :as sl])
             #?(:clj [glam.models.auth :as ma])
-            #?(:clj [glam.models.common :as mc :refer [server-error server-message]])
-            #?(:clj [glam.xtdb.easy :as gxe])))
+            #?(:clj [glam.xtdb.easy :as gxe])
+            [com.fulcrologic.fulcro.algorithms.tempid :as tempid]))
 
 #?(:cljs
    (defn get-span-snapshots [fulcro-db doc-id span-layer-id]
-     ;; NYI
-     ))
+     (:document/id fulcro-db)
+     (let [spans (->> (:span/id fulcro-db)
+                      vals
+                      (filter #(not (tempid/tempid? (:span/id %))))
+                      (filter #(= doc-id (mc/get-document fulcro-db %))))
+           snapshots (map #(select-keys % [:span/id :span/value :span/tokens]) spans)]
+       snapshots)))
 
 ;; user --------------------------------------------------------------------------------
 #?(:clj
@@ -67,7 +74,7 @@
                               span-layer-id  :span-layer/id
                               span-snapshots :span-snapshots
                               updates        :updates
-                              :as args}]
+                              :as            args}]
      {::pc/transform (ma/writeable-required :span-layer/id)}
      (let [success (s/batched-update node document-id span-layer-id span-snapshots updates)]
        (if-not success

@@ -25,7 +25,7 @@
 ;; e.g. which span-layer ought to be used for free translation in the interlinear editing
 ;; interface.
 (def base-config
-  {:editors {:interlinear {:sentence-level-span-layers []}}})
+  {:editors {:interlinear {:span-layer-scopes {}}}})
 
 (defn create [node {:project/keys [id] :as attrs}]
   (let [{:project/keys [id] :as record}

@@ -3,6 +3,33 @@
             [com.wsscode.pathom.parser :as pp]
             [taoensso.timbre :as log]))
 
+#?(:cljs
+   (defn get-document
+     "Given a record representing a structural element of a document (e.g. span, token, ...),
+     find the ID of the document it belongs to."
+     [fulcro-db record]
+     (cond
+       (nil? record)
+       (log/error "get-document was called with a nil record. Does a record have a bad join?,"
+                  " or is a join missing from a query?")
+
+       (:span/id record)
+       (if-let [token-id (some-> record :span/tokens first :token/id)]
+         (get-document fulcro-db (get-in fulcro-db [:token/id token-id]))
+         (log/error "Found a span with no tokens!" record))
+
+       (:token/id record)
+       (get-document fulcro-db (get-in fulcro-db [:text/id (some-> record :token/text :text/id)]))
+
+       (:text/id record)
+       (get-document fulcro-db (get-in fulcro-db [:document/id (some-> record :text/document :document/id)]))
+
+       (:document/id record)
+       (:document/id record)
+
+       :else
+       (log/error "Unrecognized record type" record))))
+
 (defn server-message [msg]
   {:server/message msg
    :server/error?  false})

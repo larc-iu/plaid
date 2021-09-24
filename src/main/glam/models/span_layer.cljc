@@ -65,7 +65,6 @@
    (pc/defmutation save-span-layer [{:keys [node]} {delta :delta [_ id] :ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
-     (log/info (str "id:" (:ident params)))
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
          ;; must be valid
@@ -87,8 +86,8 @@
        :else
        (let [name (:span-layer/name (gxe/entity node id))
              parent-id (sl/parent-id node id)
-             tx (into (tokl/remove-span-layer** node parent-id id)
-                      (sl/delete** node id))
+             tx (into (sl/delete** node id)
+                      (tokl/remove-span-layer** node parent-id id))
              success (gxe/submit! node tx)]
          (if-not success
            (server-error (str "Failed to delete span layer " name ". Please refresh and try again"))
