@@ -208,9 +208,9 @@
                                (ta/add-untokenized-substrings text)
                                (ta/separate-into-lines text))
         lines (map #(filter :token/id %) lines-with-strings)
-        sentence-span-layer-ids (set (get-in config [:editors :interlinear :sentence-level-span-layers]))
-        token-span-layers (filter #(not (sentence-span-layer-ids (:span-layer/id %))) span-layers)
-        sentence-span-layers (filter #(sentence-span-layer-ids (:span-layer/id %)) span-layers)]
+        scopes (get-in config [:editors :interlinear :span-layer-scopes])
+        token-span-layers (->> scopes (filter #(= %2 :token)) keys)
+        sentence-span-layers (->> scopes (filter #(= %2 :sentence)) keys)]
     (dom/div
       (mui/typography {:variant "h5"} name)
       (map-indexed (fn [i line]
@@ -257,10 +257,12 @@
            {:document/text-layers (c/get-query TextLayer)}
            {:document/project (c/get-query ProjectQuery)}]
    :ident :document/id}
-  (dom/p
-    (str name))
-  (when text-layers
-    (c/fragment (mapv ui-text-layer (map #(c/computed % {:config (:project/config project)}) text-layers)))))
+  ;;(if (empty? (-> props :document/project :project/config))
+  ;;  (dom/p "The interlinear editor must have at least one span layer designated as ")
+  ;;  )
+  (dom/div
+    (when text-layers
+      (c/fragment (mapv ui-text-layer (map #(c/computed % {:config (:project/config project)}) text-layers))))))
 
 (def ui-interlinear-editor (c/factory InterlinearEditor))
 
