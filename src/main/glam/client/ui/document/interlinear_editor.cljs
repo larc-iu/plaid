@@ -27,14 +27,14 @@
             (log/info config)
 
             #_(doall
-              (for [text-layer (:document/text-layers data-tree)]
-                (do
-                  (log/info "text" (:text-layer/text text-layer))
-                  (doall
-                    (for [token-layer (:text-layer/token-layers text-layer)]
-                      (doall
-                        (for [token (:token-layer/tokens token-layer)]
-                          (log/info "token" token)))))))))))
+                (for [text-layer (:document/text-layers data-tree)]
+                  (do
+                    (log/info "text" (:text-layer/text text-layer))
+                    (doall
+                      (for [token-layer (:text-layer/token-layers text-layer)]
+                        (doall
+                          (for [token (:token-layer/tokens token-layer)]
+                            (log/info "token" token)))))))))))
 ;; result action: unset :ui/busy? (think about it)
 
 ;; ui mutations ---------------------------------------------------------------------------------
@@ -157,25 +157,27 @@
   {:ident :span/id
    :query [:span/id :span/value :ui/focused?]}
   (cell {}
-        (ui-autosize-input {:type       "text"
-                            :value      value
-                            :onChange   #(m/set-string! this :span/value :event %)
-                            :onFocus    #(m/set-value! this :ui/focused? true)
-                            :onBlur     (fn []
-                                          (m/set-value! this :ui/focused? false)
-                                          (when-not (= 0 (count value))
-                                            (if (tempid/tempid? id)
-                                              (c/transact! this [(create-span {:span/id     id
-                                                                               :span/value  value
-                                                                               :span/tokens [token-id]
-                                                                               :span/layer  span-layer-id})])
-                                              (c/transact! this [(save-span {:span/id    id
-                                                                             :span/value value})]))))
-                            :inputStyle {:minWidth        (str "30px")
-                                         :display         "inline-block"
-                                         :outline         "none"
-                                         :border          "none"
-                                         :backgroundColor "transparent"}})))
+        (ui-autosize-input {:type                  "text"
+                            :value                 value
+                            :onChange              #(m/set-string! this :span/value :event %)
+                            :onFocus               #(m/set-value! this :ui/focused? true)
+                            :onBlur                (fn []
+                                                     (m/set-value! this :ui/focused? false)
+                                                     (when-not (= 0 (count value))
+                                                       (if (tempid/tempid? id)
+                                                         (c/transact! this [(create-span {:span/id     id
+                                                                                          :span/value  value
+                                                                                          :span/tokens [token-id]
+                                                                                          :span/layer  span-layer-id})])
+                                                         (c/transact! this [(save-span {:span/id    id
+                                                                                        :span/value value})]))))
+                            :shouldComponentUpdate (fn [this new-props new-state]
+                                                     (:ui/focused? new-props))
+                            :inputStyle            {:minWidth        (str "30px")
+                                                    :display         "inline-block"
+                                                    :outline         "none"
+                                                    :border          "none"
+                                                    :backgroundColor "transparent"}})))
 (def ui-span-cell (c/computed-factory SpanCell {:keyfn (comp str :span/id)}))
 
 ;; Here is where the real UI begins
@@ -277,38 +279,38 @@
     {:token-layer/id   :tokl1,
      :token-layer/name "Token Layer 1",
      :token-layer/tokens
-                       [{:token/id    :tok2,
-                         :token/value "sentence",
-                         :token/begin 5,
-                         :token/end   13}
-                        {:token/id    :tok3,
-                         :token/value "is",
-                         :token/begin 14,
-                         :token/end   16}
-                        {:token/id    :tok1,
-                         :token/value "This",
-                         :token/begin 0,
-                         :token/end   4}
-                        {:token/id    :tok4,
-                         :token/value "great",
-                         :token/begin 17,
-                         :token/end   22}],
+     [{:token/id    :tok2,
+       :token/value "sentence",
+       :token/begin 5,
+       :token/end   13}
+      {:token/id    :tok3,
+       :token/value "is",
+       :token/begin 14,
+       :token/end   16}
+      {:token/id    :tok1,
+       :token/value "This",
+       :token/begin 0,
+       :token/end   4}
+      {:token/id    :tok4,
+       :token/value "great",
+       :token/begin 17,
+       :token/end   22}],
      :token-layer/span-layers
-                       [{:span-layer/id   :sl1,
-                         :span-layer/name "Span Layer 1",
-                         :span-layer/spans
-                                          [{:span/id     :s2,
-                                            :span/value  "NN",
-                                            :span/tokens [{:token/id :tok2}]}
-                                           {:span/id     :s1,
-                                            :span/value  "DT",
-                                            :span/tokens [{:token/id :tok1}]}
-                                           {:span/id     :s4,
-                                            :span/value  "JJ",
-                                            :span/tokens [{:token/id :tok4}]}
-                                           {:span/id     :s3,
-                                            :span/value  "VBZ",
-                                            :span/tokens [{:token/id :tok3}]}]}]}
+     [{:span-layer/id   :sl1,
+       :span-layer/name "Span Layer 1",
+       :span-layer/spans
+       [{:span/id     :s2,
+         :span/value  "NN",
+         :span/tokens [{:token/id :tok2}]}
+        {:span/id     :s1,
+         :span/value  "DT",
+         :span/tokens [{:token/id :tok1}]}
+        {:span/id     :s4,
+         :span/value  "JJ",
+         :span/tokens [{:token/id :tok4}]}
+        {:span/id     :s3,
+         :span/value  "VBZ",
+         :span/tokens [{:token/id :tok3}]}]}]}
     )
 
   )
