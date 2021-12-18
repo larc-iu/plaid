@@ -154,34 +154,40 @@
   (dom/div (merge {:style {:minHeight "12pt"}} props)
     children))
 
-(defsc SpanCell [this {:span/keys [id value] :as props} {token-id :token/id span-layer-id :span-layer/id :as cp}]
-  {:ident :span/id
-   :query [:span/id :span/value :ui/focused? :ui/dirty?]}
-  (cell {}
-        (ui-autosize-input {:type                  "text"
-                            :value                 value
-                            :onChange              (fn [e]
-                                                     (m/set-string! this :span/value :event e)
-                                                     (m/set-value! this :ui/dirty? true))
-                            :onFocus               #(m/set-value! this :ui/focused? true)
-                            :onBlur                (fn []
-                                                     (m/set-value! this :ui/focused? false)
-                                                     (log/info props)
-                                                     (when (:ui/dirty? props)
-                                                       (if (tempid/tempid? id)
-                                                         (c/transact! this [(create-span {:span/id     id
-                                                                                          :span/value  value
-                                                                                          :span/tokens [token-id]
-                                                                                          :span/layer  span-layer-id})])
-                                                         (c/transact! this [(save-span {:span/id    id
-                                                                                        :span/value value})]))))
-                            :shouldComponentUpdate (fn [this new-props new-state]
-                                                     (not (:ui/focused? new-props)))
-                            :inputStyle            {:minWidth        (str "30px")
-                                                    :display         "inline-block"
-                                                    :outline         "none"
-                                                    :border          "none"
-                                                    :backgroundColor "transparent"}})))
+(defsc SpanCell [this {:span/keys [id] :as props} {token-id :token/id span-layer-id :span-layer/id :as cp}]
+  {:ident              :span/id
+   :query              [:span/id :span/value :ui/focused? :ui/dirty?]
+   ;; Need to use local state here because otherwise we lose focus when another user triggers a refresh.
+   :initLocalState     (fn [this props] {:value (or (:span/value props) "")})
+   :componentDidUpdate (fn [this prev-props _]
+                         (let [props (c/props this)]
+                           (when-not (and (not (:ui/focused? props))
+                                          (= (:span/value prev-props) (:span/value props)))
+                             (c/set-state! this {:value (:span/value props)}))))}
+  (let [{:keys [value]} (c/get-state this)]
+    (cell {}
+          (ui-autosize-input {:type       "text"
+                              :value      value
+                              :onChange   (fn [e]
+                                            (m/set-string! this :span/value :event e)
+                                            (m/set-value! this :ui/dirty? true))
+                              :onFocus    #(m/set-value! this :ui/focused? true)
+                              :onBlur     (fn []
+                                            (m/set-value! this :ui/focused? false)
+                                            (log/info props)
+                                            (when (:ui/dirty? props)
+                                              (if (tempid/tempid? id)
+                                                (c/transact! this [(create-span {:span/id     id
+                                                                                 :span/value  value
+                                                                                 :span/tokens [token-id]
+                                                                                 :span/layer  span-layer-id})])
+                                                (c/transact! this [(save-span {:span/id    id
+                                                                               :span/value value})]))))
+                              :inputStyle {:minWidth        (str "30px")
+                                           :display         "inline-block"
+                                           :outline         "none"
+                                           :border          "none"
+                                           :backgroundColor "transparent"}}))))
 (def ui-span-cell (c/computed-factory SpanCell {:keyfn (comp str :span/id)}))
 
 ;; Here is where the real UI begins
