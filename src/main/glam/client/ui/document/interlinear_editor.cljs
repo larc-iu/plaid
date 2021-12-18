@@ -49,10 +49,11 @@
   (result-action [{:keys [state ref app component] :as env}]
                  (let [{:server/keys [message error?]} (get-in env [:result :body `span/save-span])]
                    (when message
+                     (log/info message)
                      (if error?
                        (snack/message! {:message  message
                                         :severity (if error? "error" "success")})
-                       (log/info message))))))
+                       (swap! state assoc-in (conj ref :ui/dirty?) false))))))
 
 (m/defmutation create-span
   [{doc-id :document/id :as params}]
@@ -64,11 +65,12 @@
             ast))
   (result-action [{:keys [state ref app component] :as env}]
                  (let [{:server/keys [message error?]} (get-in env [:result :body `span/create-span])]
+                   (log/info message)
                    (when message
                      (if error?
                        (snack/message! {:message  message
                                         :severity (if error? "error" "success")})
-                       (log/info message)))
+                       (swap! state assoc-in (conj ref :ui/dirty?) false)))
                    (tempid/resolve-tempids! app (get-in env [:result :body])))))
 
 (defn ensure-span-for-each-token
@@ -125,7 +127,7 @@
 ;; Only used for querying
 (defsc Span
   [this {:span/keys [id value]}]
-  {:query     [:span/id :span/value :span/tokens :ui/focused?]
+  {:query     [:span/id :span/value :span/tokens :ui/focused? :ui/dirty?]
    :pre-merge (fn [{:keys [data-tree current-normalized]}]
                 ;; If we're merging into a span that's currently being edited, keep its current value
                 (if (:ui/focused? current-normalized)
@@ -152,18 +154,20 @@
   (dom/div (merge {:style {:minHeight "12pt"}} props)
     children))
 
-;; note that this is NOT included in our query tree, we just need a component here to fire mutations
 (defsc SpanCell [this {:span/keys [id value] :as props} {token-id :token/id span-layer-id :span-layer/id :as cp}]
   {:ident :span/id
-   :query [:span/id :span/value :ui/focused?]}
+   :query [:span/id :span/value :ui/focused? :ui/dirty?]}
   (cell {}
         (ui-autosize-input {:type                  "text"
                             :value                 value
-                            :onChange              #(m/set-string! this :span/value :event %)
+                            :onChange              (fn [e]
+                                                     (m/set-string! this :span/value :event e)
+                                                     (m/set-value! this :ui/dirty? true))
                             :onFocus               #(m/set-value! this :ui/focused? true)
                             :onBlur                (fn []
                                                      (m/set-value! this :ui/focused? false)
-                                                     (when-not (= 0 (count value))
+                                                     (log/info props)
+                                                     (when (:ui/dirty? props)
                                                        (if (tempid/tempid? id)
                                                          (c/transact! this [(create-span {:span/id     id
                                                                                           :span/value  value
@@ -172,7 +176,7 @@
                                                          (c/transact! this [(save-span {:span/id    id
                                                                                         :span/value value})]))))
                             :shouldComponentUpdate (fn [this new-props new-state]
-                                                     (:ui/focused? new-props))
+                                                     (not (:ui/focused? new-props)))
                             :inputStyle            {:minWidth        (str "30px")
                                                     :display         "inline-block"
                                                     :outline         "none"
