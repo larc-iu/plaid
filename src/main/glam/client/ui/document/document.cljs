@@ -44,8 +44,6 @@
                          :post-action
                          (fn [env]
                            (let [data-tree (-> env :result :body (get [:document/id doc-id]))]
-
-                             ;; If the editor is the kind that wants us to have a schema check, trigger it
                              (when schema-mutation
                                (c/transact! app-or-comp
                                             [(schema-mutation {:data-tree (editor-join-key data-tree)})]))))}))))))

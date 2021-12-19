@@ -7,7 +7,13 @@
     [com.fulcrologic.fulcro.algorithms.tx-processing.synchronous-tx-processing :as stx]
     [com.fulcrologic.fulcro.rendering.keyframe-render :as kfr]
     [taoensso.timbre :as log]
-    [com.fulcrologic.fulcro.mutations :as m]))
+    [com.fulcrologic.fulcro.mutations :as m])
+  (:import [goog.async Debouncer]))
+
+(defn debounce [f interval]
+  (let [dbnc (Debouncer. f interval)]
+    ;; We use apply here to support functions of various arities
+    (fn [& args] (.apply (.-fire dbnc) dbnc (to-array args)))))
 
 (goog-define LOG-RESPONSES false)
 
@@ -100,7 +106,7 @@
     (app/fulcro-app
       {:remote-error?     remote-error?
        :remotes           {:remote  (fws/fulcro-websocket-remote {:csrf-token   (get-token)
-                                                                  :push-handler push-handler})
+                                                                  :push-handler #_push-handler (debounce push-handler 200)})
                            :session (api-remote)}
        :optimized-render! kfr/render!
        ;; Modify the default result action so that it looks for :on-result, :on-ok and :on-error

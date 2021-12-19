@@ -106,34 +106,45 @@
 (gxe/deftx batched-update [node doc-id span-layer-id client-spans updates]
   (let [current-spans (set (get-span-snapshots node doc-id span-layer-id))
         client-spans (set client-spans)]
+    (log/info current-spans)
     (when-not (= current-spans client-spans)
       (throw (ex-info (str "Aborting batched update: client-provided span snapshot"
                            " does not match current span snapshot")
                       {:current current-spans
                        :client  client-spans})))
 
-    (mapv (fn [[op & args :as update]]
-            (case op
-              ;; [:delete :span-id]
-              :delete
-              (gxe/delete* (first args))
+    (let [tx (mapv (fn [[op & args :as update]]
+                     (case op
+                       ;; [:create {:span/value "foo", ...}]
+                       :create
+                       (let [{:span/keys [value tokens] :as span} (first args)]
+                         (when-not (string? value)
+                           (throw (ex-info ":span/value must be a string" span)))
+                         (when-not (every? #(gxe/entity node %) tokens)
+                           (throw (ex-info ":span/tokens must point to tokens" span)))
+                         (create* (dissoc (first args) :span/id)))
 
-              ;; [:merge {:span/id :s1, :span/value "foo", ...}]
-              :merge
-              (let [{:span/keys [id] :as span} (first args)]
-                (when-not (some #(= (:span/id %) id) current-spans)
-                  (throw (ex-info "Attempted to merge into a non-existent span:" {:span/id id})))
-                (gxe/put* (clojure.core/merge (gxe/entity node id)
-                                              (select-keys span snapshot-attrs))))
+                       ;; [:delete :span-id]
+                       :delete
+                       (gxe/delete* (first args))
 
-              ;; [:put {:span/id :s1, :span/value "foo", ...}]
-              :put
-              (let [span (first args)]
-                (when (or (not (map? span)) (nil? (:span/id span)))
-                  (throw (ex-info "Span being :put must have :span/id and be a map" span)))
-                (when-not (some? (-> span :span/tokens first))
-                  (throw (ex-info "Span being created must have at least one associated token" span)))
-                (create* (clojure.core/merge span {:span/layer span-layer-id})))
+                       ;; [:merge {:span/id :s1, :span/value "foo", ...}]
+                       :merge
+                       (let [{:span/keys [id] :as span} (first args)]
+                         (when-not (some #(= (:span/id %) id) current-spans)
+                           (throw (ex-info "Attempted to merge into a non-existent span:" {:span/id id})))
+                         (gxe/put* (clojure.core/merge (gxe/entity node id)
+                                                       (select-keys span snapshot-attrs))))
 
-              (throw (ex-info "Unknown op in batched update:" op))))
-          updates)))
+                       ;; [:put {:span/id :s1, :span/value "foo", ...}]
+                       :put
+                       (let [span (first args)]
+                         (when (or (not (map? span)) (nil? (:span/id span)))
+                           (throw (ex-info "Span being :put must have :span/id and be a map" span)))
+                         (when-not (some? (-> span :span/tokens first))
+                           (throw (ex-info "Span being created must have at least one associated token" span)))
+                         (create* (clojure.core/merge span {:span/layer span-layer-id})))
+
+                       (throw (ex-info "Unknown op in batched update:" op))))
+                   updates)]
+      tx)))

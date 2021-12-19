@@ -13,6 +13,7 @@
                                                 :in    [?sl]}
                                  span-layer-id))
         project (gxe/entity node project-id)
+        ;; TODO: how to make this extensible?
         updated-project (update-in project [:project/config :editors :interlinear :span-layer-scopes]
                                    (fn [id-to-scope-map]
                                      (if (nil? scope)

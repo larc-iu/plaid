@@ -72,6 +72,7 @@
           :else
           (recur offsets open (inc i) new-head new-tail))))))
 
+;; todo: this needs a deftx rewrite, probably
 (defn whitespace-tokenize [node eid document-id text-id]
   (let [existing-token-ids (map first (xt/q (xt/db node) '{:find  [?tok]
                                                            :where [[?prj :project/text-layers ?txtl]
@@ -82,10 +83,9 @@
                                                                    [?tok :token/layer ?tokl]]
                                                            :in    [[?tokl ?doc]]}
                                             [eid document-id]))
-        deletions (mapv gxe/delete* existing-token-ids)
+        deletions (reduce into (mapv (partial tok/delete** node) existing-token-ids))
         text-body (-> (txt/get node text-id) :text/body)
         offsets (get-whitespace-token-offsets text-body)]
-    ;; todo: this will need cleanup for solving #5
     (let [res (gxe/submit! node deletions)]
       (doseq [[b e] offsets]
         (tok/create node {:token/begin b

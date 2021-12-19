@@ -83,4 +83,4 @@
 
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
-   (def span-resolvers [get-span save-span create-span]))
+   (def span-resolvers [get-span save-span create-span batched-update]))
