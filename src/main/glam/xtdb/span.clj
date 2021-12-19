@@ -115,15 +115,6 @@
 
     (let [tx (mapv (fn [[op & args :as update]]
                      (case op
-                       ;; [:create {:span/value "foo", ...}]
-                       :create
-                       (let [{:span/keys [value tokens] :as span} (first args)]
-                         (when-not (string? value)
-                           (throw (ex-info ":span/value must be a string" span)))
-                         (when-not (every? #(gxe/entity node %) tokens)
-                           (throw (ex-info ":span/tokens must point to tokens" span)))
-                         (create* (dissoc (first args) :span/id)))
-
                        ;; [:delete :span-id]
                        :delete
                        (gxe/delete* (first args))
@@ -136,13 +127,15 @@
                          (gxe/put* (clojure.core/merge (gxe/entity node id)
                                                        (select-keys span snapshot-attrs))))
 
-                       ;; [:put {:span/id :s1, :span/value "foo", ...}]
-                       :put
-                       (let [span (first args)]
-                         (when (or (not (map? span)) (nil? (:span/id span)))
-                           (throw (ex-info "Span being :put must have :span/id and be a map" span)))
-                         (when-not (some? (-> span :span/tokens first))
-                           (throw (ex-info "Span being created must have at least one associated token" span)))
+                       ;; [:create {:span/id :s1, :span/value "foo", ...}]
+                       :create
+                       (let [{:span/keys [value tokens] :as span} (first args)]
+                         (when-not (map? span)
+                           (throw (ex-info "Span being :put must have be a map" span)))
+                         (when-not (string? value)
+                           (throw (ex-info ":span/value must be a string" span)))
+                         (when-not (and (not-empty tokens) (every? #(:token/id (gxe/entity node %)) tokens))
+                           (throw (ex-info ":span/tokens must point to at least one token" span)))
                          (create* (clojure.core/merge span {:span/layer span-layer-id})))
 
                        (throw (ex-info "Unknown op in batched update:" op))))

@@ -76,8 +76,7 @@
                   (let [batched-updates (atom [])]
                     (doseq [{:token/keys [id]} (spanless-tokens tokens spans)]
                       (swap! batched-updates conj
-                             [:create {:span/id     (tempid/tempid)
-                                       :span/value  ""
+                             [:create {:span/value  ""
                                        :span/layer  (:span-layer/id sl)
                                        :span/tokens [id]}]))
                     (when-not (empty? @batched-updates)

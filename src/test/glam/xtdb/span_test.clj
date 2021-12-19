@@ -33,25 +33,26 @@
 
 (deftest span-batched-update-merge-into-nil
   (testing "Merging into nil throws"
-    ;; note: throwing happens inside the tx function, which then returns falsy
+    ;; note: throwing happens inside the tx function, which then returns falsy.
+    ;; The stack trace will appear in the logger--don't worry, that's intended.
     (is (not (s/batched-update xtdb-node :doc1 :sl1 span-snapshots
                                [[:merge {:span/id :noexist :span/value "changed"}]])))))
 
-(deftest span-batched-update-single-put
+(deftest span-batched-update-single-create
   (testing "Batch update can be used for creating new spans"
     (is (nil? (gxe/entity xtdb-node :s5)))
-    (s/batched-update xtdb-node :doc1 :sl1 span-snapshots [[:put {:span/id     :s5
-                                                                  :span/tokens [:tok1]
-                                                                  :span/value  "changed"}]])
+    (s/batched-update xtdb-node :doc1 :sl1 span-snapshots [[:create {:span/id     :s5
+                                                                     :span/tokens [:tok1]
+                                                                     :span/value  "changed"}]])
     (is (some? (gxe/entity xtdb-node :s5)))))
 
 (deftest span-batched-update-one-of-each
-  (testing "Delete, merge, and put at the same time"
+  (testing "Delete, merge, and create at the same time"
     (s/batched-update xtdb-node :doc1 :sl1 span-snapshots [[:merge {:span/id :s1 :span/value "changed"}]
                                                            [:delete :s1]
-                                                           [:put {:span/id     :s5
-                                                                  :span/tokens [:tok1]
-                                                                  :span/value  "changed"}]])
+                                                           [:create {:span/id     :s5
+                                                                     :span/tokens [:tok1]
+                                                                     :span/value  "changed"}]])
     (is (some? (gxe/entity xtdb-node :s5)))
     (is (nil? (gxe/entity xtdb-node :s1)))))
 
