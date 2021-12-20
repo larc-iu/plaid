@@ -38,7 +38,8 @@
                    (when message
                      (snack/message! {:message  message
                                       :severity (if error? "error" "success")}))
-                   (df/load! app [:document/id doc-id] TextEditor))))
+                   ;; disable for now--push notification loading handles this
+                   #_ (df/load! app [:document/id doc-id] TextEditor))))
 
 (m/defmutation create-text
   [{doc-id :document/id :as params}]
@@ -58,7 +59,8 @@
                      (snack/message! {:message  message
                                       :severity (if error? "error" "success")}))
                    (tempid/resolve-tempids! app (get-in env [:result :body]))
-                   (df/load! app [:document/id doc-id] TextEditor))))
+                   ;; disable for now--push notification loading handles this
+                   #_(df/load! app [:document/id doc-id] TextEditor))))
 
 (defsc Text
   [this {:text/keys [id body] :ui/keys [busy? pristine-body ops] :as props} {document-id   :document/id
