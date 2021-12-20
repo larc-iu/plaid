@@ -73,7 +73,7 @@
 
 ;; Mutations --------------------------------------------------------------------------------
 (defn merge [node eid m]
-  (gxe/merge node eid (select-keys m [:span/value])))
+  (gxe/merge node eid (select-keys m [:span/value :span/tokens])))
 
 (defn delete** [node eid]
   [(gxe/delete* eid)])
@@ -138,6 +138,7 @@
                            (throw (ex-info ":span/tokens must point to at least one token" span)))
                          (create* (clojure.core/merge span {:span/layer span-layer-id})))
 
-                       (throw (ex-info "Unknown op in batched update:" op))))
+                       (throw (ex-info "Unknown op in batched update:" {:op op :valid [:delete :merge :create]}))))
                    updates)]
+      (log/debug "Submitting " (count tx) " batched span updates: " (clojure.string/join (map first tx)))
       tx)))
