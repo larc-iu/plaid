@@ -251,6 +251,22 @@
   (dom/div (merge {:style {:minHeight "12pt"}} props)
     children))
 
+(defn flex-row [extra-props & children]
+  (let [style (if (:style extra-props)
+                (merge {:display "flex" :gap "6px"} (:style extra-props))
+                {:display "flex" :gap "6px"})]
+    (dom/div (merge extra-props
+                    {:style style})
+      children)))
+
+(defn flex-col [extra-props & children]
+  (let [style (if (:style extra-props)
+                (merge {:display "flex" :flex-direction "column" :gap "6px"} (:style extra-props))
+                {:display "flex" :flex-direction "column" :gap "6px"})]
+    (dom/div (merge extra-props
+                    {:style style})
+      children)))
+
 ;; BE SURE to keep this in sync with Span, above: load queries look to Span, not SpanCell.
 ;; Why? See reshape-into-token-grid.
 (defsc SpanCell [this {:span/keys [id] :as props} {token-id :token/id span-layer-id :span-layer/id :as cp}]
@@ -265,30 +281,30 @@
                              (c/set-state! this {:value (:span/value props)}))))}
   (let [{:keys [value]} (c/get-state this)]
     (cell {}
-          (ui-autosize-input {:type       "text"
-                              :value      value
-                              :onChange   (fn [e]
-                                            (m/set-string! this :span/value :event e)
-                                            (m/set-value! this :ui/dirty? true)
-                                            (c/set-state! this {:value (.-value (.-target e))}))
-                              :onFocus    #(m/set-value! this :ui/focused? true)
-                              :onBlur     (fn []
-                                            (m/set-value! this :ui/focused? false)
-                                            (when (:ui/dirty? props)
-                                              (if (tempid/tempid? id)
-                                                (c/transact! this [(create-span {:span/id     id
-                                                                                 :span/value  value
-                                                                                 :span/tokens [token-id]
-                                                                                 :span/layer  span-layer-id})])
-                                                (c/transact! this [(save-span {:span/id    id
-                                                                               :span/value value})]))))
-                              :inputStyle {:minWidth        (str "30px")
-                                           :display         "inline-block"
-                                           :outline         "none"
-                                           :border          "none"
-                                           :borderRadius    "4px"
-                                           :padding         "2px"
-                                           :backgroundColor (if (:ui/focused? props) "#c6ffda" "transparent")}}))))
+      (ui-autosize-input {:type       "text"
+                          :value      value
+                          :onChange   (fn [e]
+                                        (m/set-string! this :span/value :event e)
+                                        (m/set-value! this :ui/dirty? true)
+                                        (c/set-state! this {:value (.-value (.-target e))}))
+                          :onFocus    #(m/set-value! this :ui/focused? true)
+                          :onBlur     (fn []
+                                        (m/set-value! this :ui/focused? false)
+                                        (when (:ui/dirty? props)
+                                          (if (tempid/tempid? id)
+                                            (c/transact! this [(create-span {:span/id     id
+                                                                             :span/value  value
+                                                                             :span/tokens [token-id]
+                                                                             :span/layer  span-layer-id})])
+                                            (c/transact! this [(save-span {:span/id    id
+                                                                           :span/value value})]))))
+                          :inputStyle {:minWidth        (str "30px")
+                                       :display         "inline-block"
+                                       :outline         "none"
+                                       :border          "none"
+                                       :borderRadius    "4px"
+                                       :padding         "2px"
+                                       :backgroundColor (if (:ui/focused? props) "#c6ffda" "transparent")}}))))
 (def ui-span-cell (c/computed-factory SpanCell {:keyfn (comp str :span/id)}))
 
 (defsc SentenceLevelSpan [this {:span/keys [id tokens] :ui/keys [focused? dirty?] :as props}]
@@ -326,12 +342,9 @@
 ;; Here is where the real UI begins
 (defn ui-token [config {:token/keys [id value] spans :spans :as props}]
   (let [token-span-layers (get-token-span-layers config)]
-    (dom/div {:style {:display "inline-block"} :key id}
-      (mui/box {:m 0.4 :p 0.4}
-        (dom/div value))
+    (flex-col {:key id}
+      (dom/div value)
       (mapv (fn [[sl-id spans]]
-              (log/info spans)
-              (log/info (filter #(token-span-layers (:span/layer %)) spans))
               (when (> (count spans) 1)
                 (log/warn (str "Found a token " id " with more than one associated span in " sl-id "."
                                " Currently, this is not supported, and only the first span will be used.")))
@@ -364,37 +377,51 @@
                      ;; TODO: fix for very long sentences. need to pull out two divs per line probably
 
                      ;; For each line...
-                     #_(log/info line)
                      (when-not (empty? (line->token-ids i))
                        (dom/div {:style {:backgroundColor (if (even? i) "#0055ff17" "white")
-                                         :borderRadius    4}}
+                                         :borderRadius    4
+                                         :padding         "0.3em"}}
 
-                         ;; Title column
-                         (dom/div {:style {:display "inline-block"}}
-                           ;; blank first cell--it's the tokens
-                           (mui/box {:m 0.4 :p 0.4}
-                             (cell {:key "space"} (dom/div {} ent/nbsp)))
-                           ;; span layer titles
-                           (mapv
-                             (fn [sl]
-                               (mui/box {:m 0.4 :p 0.4}
-                                 (cell {:key (str (:span-layer/id sl))}
-                                       (:span-layer/name sl))))
-                             span-layers))
+                         ;; Token-level rows
+                         (flex-row {:style {:flexWrap "wrap"}}
+                           ;; Titles
+                           (flex-col {:key "title"}
+                             ;; blank first cell--it's the tokens
+                             (cell {:key "space"} (dom/div {} ent/nbsp))
+                             ;; span layer titles
+                             (mapv
+                               (fn [sl]
+                                 (cell {:key (str (:span-layer/id sl))
+                                        :style {:fontVariant "small-caps"
+                                                :fontWeight 700}}
+                                   (:span-layer/name sl)))
+                               token-span-layers))
 
-                         (dom/div {:style {:display "inline-block"}}
                            ;; Token columns
-                           (mapv (partial ui-token config) line)
+                           (mapv (partial ui-token config) line))
 
-                           ;; Sentence-level spans
-                           (for [{:span-layer/keys [id spans]} sentence-span-layers]
-                             (let [tokens-for-line (set (line->token-ids i))
-                                   span (some #(when (= tokens-for-line (set (map :token/id (:span/tokens %)))) %) spans)]
-                               (if span
-                                 (dom/div {:key id}
-                                   (mui/box {:m 0.4 :p 0.4}
-                                     (ui-sentence-level-span span)))
-                                 (log/error "No span found for span layer " id "!"))))))))
+                         ;; Sentence-level rows
+                         (flex-row {:style {:marginTop "12px"}}
+                           ;; Titles
+                           (flex-col {:key "title"}
+                             ;; span layer titles
+                             (mapv
+                               (fn [sl]
+                                 (cell {:key (str (:span-layer/id sl))
+                                        :style {:fontVariant "small-caps"
+                                                :fontWeight 700}}
+                                   (:span-layer/name sl)))
+                               sentence-span-layers))
+
+                           (flex-col {:key "spans"}
+                             (for [{:span-layer/keys [id spans]} sentence-span-layers]
+                               (let [tokens-for-line (set (line->token-ids i))
+                                     span (some #(when (= tokens-for-line (set (map :token/id (:span/tokens %)))) %) spans)]
+                                 (if span
+                                   (ui-sentence-level-span span)
+                                   (log/error "No span found for span layer " id "!")))))))))
+
+
                    lines))))
 
 (def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
