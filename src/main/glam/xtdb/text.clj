@@ -57,11 +57,12 @@
         {new-text :text new-tokens :tokens deleted-token-ids :deleted} (ta/apply-text-edits ops text tokens)
         needs-update? (fn [{:token/keys [begin end id]}] (or (not= begin (:token/begin (clojure.core/get indexed-tokens id)))
                                                              (not= end (:token/end (clojure.core/get indexed-tokens id)))))
-        deletion-tx (map #(tok/delete** node %) deleted-token-ids)
+        deletion-tx (reduce into (map #(tok/delete** node %) deleted-token-ids))
         update-tx (map #(gxe/put* %) (filter needs-update? new-tokens))
         text-tx [(gxe/match* eid (assoc text :text/body old-body))
                  (gxe/put* (assoc text :text/body (:text/body new-text)))]
         tx (reduce into [text-tx deletion-tx update-tx])]
+    (log/info tx)
     tx))
 
 
