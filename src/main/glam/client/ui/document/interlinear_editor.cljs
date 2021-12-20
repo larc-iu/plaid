@@ -14,7 +14,8 @@
             [glam.models.span :as span]
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
             ["react-input-autosize" :default AutosizeInput]
-            [glam.client.ui.global-snackbar :as snack]))
+            [glam.client.ui.global-snackbar :as snack]
+            [goog.object :as gobj]))
 
 (def ui-autosize-input (interop/react-factory AutosizeInput))
 (defn get-token-span-layers [{:keys [span-layer-scopes]}]
@@ -269,44 +270,6 @@
 
 ;; BE SURE to keep this in sync with Span, above: load queries look to Span, not SpanCell.
 ;; Why? See reshape-into-token-grid.
-(defsc SpanCell [this {:span/keys [id] :as props} {token-id :token/id span-layer-id :span-layer/id :as cp}]
-  {:ident              :span/id
-   :query              [:span/id :span/value :ui/focused? :ui/dirty?]
-   ;; Need to use local state here because otherwise we lose focus when another user triggers a refresh.
-   :initLocalState     (fn [this props] {:value (or (:span/value props) "")})
-   :componentDidUpdate (fn [this prev-props _]
-                         (let [props (c/props this)]
-                           (when-not (and (not (:ui/focused? props))
-                                          (= (:span/value prev-props) (:span/value props)))
-                             (c/set-state! this {:value (:span/value props)}))))}
-  (let [{:keys [value]} (c/get-state this)]
-    (cell {}
-      (ui-autosize-input {:type       "text"
-                          :value      value
-                          :onChange   (fn [e]
-                                        (m/set-string! this :span/value :event e)
-                                        (m/set-value! this :ui/dirty? true)
-                                        (c/set-state! this {:value (.-value (.-target e))}))
-                          :onFocus    #(m/set-value! this :ui/focused? true)
-                          :onBlur     (fn []
-                                        (m/set-value! this :ui/focused? false)
-                                        (when (:ui/dirty? props)
-                                          (if (tempid/tempid? id)
-                                            (c/transact! this [(create-span {:span/id     id
-                                                                             :span/value  value
-                                                                             :span/tokens [token-id]
-                                                                             :span/layer  span-layer-id})])
-                                            (c/transact! this [(save-span {:span/id    id
-                                                                           :span/value value})]))))
-                          :inputStyle {:minWidth        (str "30px")
-                                       :display         "inline-block"
-                                       :outline         "none"
-                                       :border          "none"
-                                       :borderRadius    "4px"
-                                       :padding         "2px"
-                                       :backgroundColor (if (:ui/focused? props) "#c6ffda" "transparent")}}))))
-(def ui-span-cell (c/computed-factory SpanCell {:keyfn (comp str :span/id)}))
-
 (defsc SentenceLevelSpan [this {:span/keys [id tokens] :ui/keys [focused? dirty?] :as props}]
   {:ident              :span/id
    :query              [:span/id :span/value :span/tokens :ui/focused? :ui/dirty?]
@@ -334,16 +297,72 @@
                                      :display         "inline-block"
                                      :outline         "none"
                                      :border          "none"
-                                     :borderRadius    "4px"
+                                     :borderRadius    (if focused? "4px" "0")
                                      :padding         "2px"
+                                     :borderBottom    (if focused? "none" "dotted gray 1px")
                                      :backgroundColor (if focused? "#c6ffda" "transparent")}})))
 (def ui-sentence-level-span (c/computed-factory SentenceLevelSpan {:keyfn (comp str :span/id)}))
 
+(defsc SpanCell [this {:span/keys [id] :ui/keys [focused? dirty?] :as props} {token-id      :token/id
+                                                                              span-layer-id :span-layer/id
+                                                                              token-width   :token-width :as cp}]
+  {:ident              :span/id
+   :query              [:span/id :span/value :ui/focused? :ui/dirty?]
+   ;; Need to use local state here because otherwise we lose focus when another user triggers a refresh.
+   :initLocalState     (fn [this props] {:value (or (:span/value props) "")})
+   :componentDidUpdate (fn [this prev-props _]
+                         (let [props (c/props this)]
+                           (when-not (and (not (:ui/focused? props))
+                                          (= (:span/value prev-props) (:span/value props)))
+                             (c/set-state! this {:value (:span/value props)}))))}
+  (let [{:keys [value]} (c/get-state this)]
+    (cell {}
+      (ui-autosize-input {:type       "text"
+                          :value      value
+                          :onChange   (fn [e]
+                                        (m/set-string! this :span/value :event e)
+                                        (m/set-value! this :ui/dirty? true)
+                                        (c/set-state! this {:value (.-value (.-target e))}))
+                          :onFocus    #(m/set-value! this :ui/focused? true)
+                          :onBlur     (fn []
+                                        (m/set-value! this :ui/focused? false)
+                                        (when dirty?
+                                          (if (tempid/tempid? id)
+                                            (c/transact! this [(create-span {:span/id     id
+                                                                             :span/value  value
+                                                                             :span/tokens [token-id]
+                                                                             :span/layer  span-layer-id})])
+                                            (c/transact! this [(save-span {:span/id    id
+                                                                           :span/value value})]))))
+                          :inputStyle {:minWidth        (or (and token-width (str (max (- token-width 4) 20) "px"))
+                                                            "20px")
+                                       :display         "inline-block"
+                                       :outline         "none"
+                                       :border          "none"
+                                       :borderRadius    (if focused? "4px" "0")
+                                       :padding         "2px"
+                                       :borderBottom    (if focused?
+                                                          ""
+                                                          (if (= 0 (count value))
+                                                            "dotted gray 1px"
+                                                            "none"))
+                                       :backgroundColor (if focused? "#c6ffda" "transparent")}}))))
+(def ui-span-cell (c/computed-factory SpanCell {:keyfn (comp str :span/id)}))
+
 ;; Here is where the real UI begins
-(defn ui-token [config {:token/keys [id value] spans :spans :as props}]
-  (let [token-span-layers (get-token-span-layers config)]
+(defsc TokenCell [this {:token/keys [id value] spans :spans :as props}]
+  {:query             [:token/id :token/value :spans]
+   :ident             :token/id
+   :initLocalState    (fn [this props]
+                        {:save-ref (fn [r]
+                                     (gobj/set this "token-ref" r))})
+   :componentDidMount (fn [this prev-props _]
+                        ;; The first render sets up the ref but not in time for its width to be grabbed.
+                        ;; Force another render on mount so that we have a chance to properly get the width of the ref.
+                        (.forceUpdate this))}
+  (let [save-ref (c/get-state this :save-ref)]
     (flex-col {:key id}
-      (dom/div value)
+      (dom/div {:ref save-ref} value)
       (mapv (fn [[sl-id spans]]
               (when (> (count spans) 1)
                 (log/warn (str "Found a token " id " with more than one associated span in " sl-id "."
@@ -352,8 +371,11 @@
                 (log/error "Uh oh"))
               (ui-span-cell (c/computed (first spans)
                                         {:token/id      id
-                                         :span-layer/id sl-id})))
-            (filter #(token-span-layers (first %)) spans)))))
+                                         :span-layer/id sl-id
+                                         :token-width   (when-let [t (gobj/get this "token-ref")]
+                                                          (.-width (.getBoundingClientRect t)))})))
+            spans))))
+(def ui-token (c/factory TokenCell {:keyfn :token/id}))
 
 ;; Where much of the work happens --------------------------------------------------------------------------------
 (defsc TokenLayer
@@ -391,14 +413,14 @@
                              ;; span layer titles
                              (mapv
                                (fn [sl]
-                                 (cell {:key (str (:span-layer/id sl))
+                                 (cell {:key   (str (:span-layer/id sl))
                                         :style {:fontVariant "small-caps"
-                                                :fontWeight 700}}
+                                                :fontWeight  700}}
                                    (:span-layer/name sl)))
                                token-span-layers))
 
                            ;; Token columns
-                           (mapv (partial ui-token config) line))
+                           (mapv ui-token line))
 
                          ;; Sentence-level rows
                          (flex-row {:style {:marginTop "12px"}}
@@ -407,9 +429,9 @@
                              ;; span layer titles
                              (mapv
                                (fn [sl]
-                                 (cell {:key (str (:span-layer/id sl))
+                                 (cell {:key   (str (:span-layer/id sl))
                                         :style {:fontVariant "small-caps"
-                                                :fontWeight 700}}
+                                                :fontWeight  700}}
                                    (:span-layer/name sl)))
                                sentence-span-layers))
 
