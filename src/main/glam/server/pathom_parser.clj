@@ -132,6 +132,10 @@
 
     (fn wrapped-parser [env tx]
       (when-not (vector? tx) (throw (Exception. "You must pass a vector for the transaction.")))
+
+      ;; make it easier to read transactions when debugging
+      (println)
+
       ;; Add trace - pathom-viz already adds it so only add if that's not included.
       (let [tx (if (and trace? (not connect-viz?))
                  (conj tx :com.wsscode.pathom/trace) tx)

@@ -161,7 +161,12 @@
                            ;; broadcast the body of all mutations to all clients so that they can
                            ;; ask for updates in response
                            (doseq [item tx]
-                             (when (and (mutation? item) (gcc/document-mutation? item))
+                             (when (and (mutation? item)
+                                        (gcc/document-mutation? item)
+                                        ;; response looks like {glam.models.span/batched-update #:server{...}}
+                                        ;; assume that the mutation response will be the only item in the response
+                                        ;; and only trigger the push notification if the mutation did not fail
+                                        (not (-> response (dissoc :com.wsscode.pathom/trace) vals first :server/error?)))
                                (when-some [doc-ident (gcc/get-affected-doc xtdb-node item response)]
                                  (log/info "Notifying clients of document modification:" doc-ident)
                                  (doseq [cid @client-ids]
