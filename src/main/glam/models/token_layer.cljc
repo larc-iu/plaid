@@ -52,42 +52,41 @@
                                (tok/get-tokens node id doc-id))]
          {:token-layer/tokens tokens}))))
 
-;; something ain't right
-(:clj
-  (pc/defresolver lorge-get-tokens [{:keys [node] :as env} {:token-layer/keys [id]}]
-    {::pc/input     #{:token-layer/id}
-     ::pc/output    [:token-layer/name
-                     {:token-layer/tokens [:token/id :token/text :token/begin :token/end :token/layer :token/value]}
-                     {:token-layer/span-layers
-                      [:span-layer/id :span-layer/name
-                       {:span-layer/spans [:span/id :span/value :span/layer]}]}]
-     ::pc/transform (ma/readable-required :token-layer/id)}
-    (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-      (let [tokens (mapv (fn [token]
-                           (-> token
-                               (update :token/text (fn [id] {:text/id id}))
-                               (update :token/layer (fn [id] {:token-layer/id id}))))
-                         (tok/get-tokens node id doc-id))
-            sl-ids (set (:token-layer/span-layers (gxe/entity node id)))
-            spans (->> (xt/q (xt/db node)
-                             '{:find  [(pull ?s [:span/layer :span/id :span/value])]
-                               :where [[?tok :token/text ?txt]
-                                       [?txt :text/document ?doc]
-                                       [?s :span/tokens ?tok]
-                                       [?s :span/layer ?sl]]
-                               :in    [[?sl ?doc]]}
-                             [sl-ids doc-id])
-                       (map first))
-            spans-by-id (group-by :span/layer spans)
-            sls (map #(gxe/entity node %) sl-ids)
-            span-layers (for [sl sls]
-                          (assoc sl :span-layer/spans
-                                    (mapv (fn [s]
-                                            (-> s (update :span/layer (fn [id] {:span-layer/id id}))))
-                                          (spans-by-id (:span-layer/id sl)))))]
-        (merge {:token-layer/name (:token-layer/name (gxe/entity node id))}
-               {:token-layer/tokens      tokens
-                :token-layer/span-layers span-layers})))))
+#?(:clj
+   (pc/defresolver lorge-get-tokens [{:keys [node] :as env} {:token-layer/keys [id]}]
+     {::pc/input     #{:token-layer/id}
+      ::pc/output    [:token-layer/name
+                      {:token-layer/tokens [:token/id :token/text :token/begin :token/end :token/layer :token/value]}
+                      {:token-layer/span-layers
+                       [:span-layer/id :span-layer/name
+                        {:span-layer/spans [:span/id :span/value :span/layer]}]}]
+      ::pc/transform (ma/readable-required :token-layer/id)}
+     (when-let [[_ doc-id] (mc/try-get-document-ident env)]
+       (let [tokens (mapv (fn [token]
+                            (-> token
+                                (update :token/text (fn [id] {:text/id id}))
+                                (update :token/layer (fn [id] {:token-layer/id id}))))
+                          (tok/get-tokens node id doc-id))
+             sl-ids (set (:token-layer/span-layers (gxe/entity node id)))
+             spans (->> (xt/q (xt/db node)
+                              '{:find  [(pull ?s [:span/layer :span/id :span/value])]
+                                :where [[?tok :token/text ?txt]
+                                        [?txt :text/document ?doc]
+                                        [?s :span/tokens ?tok]
+                                        [?s :span/layer ?sl]]
+                                :in    [[?sl ?doc]]}
+                              [sl-ids doc-id])
+                        (map first))
+             spans-by-id (group-by :span/layer spans)
+             sls (map #(gxe/entity node %) sl-ids)
+             span-layers (for [sl sls]
+                           (assoc sl :span-layer/spans
+                                     (mapv (fn [s]
+                                             (-> s (update :span/layer (fn [id] {:span-layer/id id}))))
+                                           (spans-by-id (:span-layer/id sl)))))]
+         (merge {:token-layer/name (:token-layer/name (gxe/entity node id))}
+                {:token-layer/tokens      tokens
+                 :token-layer/span-layers span-layers})))))
 
 #?(:clj
    (pc/defmutation whitespace-tokenize [{:keys [node] :as env} {:token-layer/keys [id]
