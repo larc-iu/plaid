@@ -132,8 +132,6 @@
                         in)]
 
     (fn wrapped-parser [env tx]
-      (when-not (vector? tx) (throw (Exception. "You must pass a vector for the transaction.")))
-
       ;; make it easier to read transactions when debugging
       (println)
 
@@ -149,8 +147,7 @@
                        (let [resp (async/<!! out)]
                          resp))
                      (parser env tx))]
-        #_
-        (spit "/tmp/foo" result)
+        #_(spit "/tmp/foo" result)
         result))))
 
 (mount/defstate parser
