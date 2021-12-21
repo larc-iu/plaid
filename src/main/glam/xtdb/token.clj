@@ -31,6 +31,16 @@
   [node id]
   (xt->pathom (gxe/find-entity node {:token/id id})))
 
+(defn get-tokens
+  [node layer-id doc-id]
+  (map first (xt/q (xt/db node)
+                   '{:find  [(pull ?tok [:token/id :token/text :token/begin :token/end :token/layer])]
+                     :where [[?tok :token/layer ?tokl]
+                             [?tok :token/text ?txt]
+                             [?txt :text/document ?doc]]
+                     :in    [[?tokl ?doc]]}
+                   [layer-id doc-id])))
+
 ;; Mutations --------------------------------------------------------------------------------
 (defn- get-span-ids [node eid]
   (map first (xt/q (xt/db node)

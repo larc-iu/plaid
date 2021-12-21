@@ -57,6 +57,19 @@
                :in    [[?sl ?doc]]}
              [span-layer-id doc-id])))
 
+(defn get-spans
+  "Get spans for a given doc and layer"
+  [node doc-id span-layer-id]
+  (map first
+       (xt/q (xt/db node)
+             '{:find  [(pull ?s [:span/layer :span/tokens :span/id :span/value])]
+               :where [[?s :span/layer ?sl]
+                       [?s :span/tokens ?tok]
+                       [?tok :token/text ?txt]
+                       [?txt :text/document ?doc]]
+               :in    [[?sl ?doc]]}
+             [span-layer-id doc-id])))
+
 (defn get-span-snapshots
   "Get span snapshots for a given doc and layer. A snapshot is a particular view of
   an entity that contains a subset of attributes and is used to comparison with

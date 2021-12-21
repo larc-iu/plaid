@@ -11,7 +11,8 @@
             #?(:clj [glam.xtdb.text-layer :as txtl])
             #?(:clj [glam.xtdb.text :as txt])
             #?(:clj [glam.xtdb.token-layer :as tokl])
-            #?(:clj [glam.xtdb.easy :as gxe])))
+            #?(:clj [glam.xtdb.easy :as gxe])
+            #?(:clj [glam.xtdb.token :as tok])))
 
 (def token-layer-keys [:token-layer/name :token-layer/span-layers])
 
@@ -41,22 +42,21 @@
 #?(:clj
    (pc/defresolver get-tokens [{:keys [node] :as env} {:token-layer/keys [id]}]
      {::pc/input     #{:token-layer/id}
-      ::pc/output    [:token-layer/tokens]
+      ::pc/output    [{:token-layer/tokens [:token/id :token/text :token/begin :token/end :token/layer]}]
       ::pc/transform (ma/readable-required :token-layer/id)}
      (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (when-let [tokens (mapv (fn [[id]] {:token/id id}) (xt/q (xt/db node)
-                                                                  '{:find  [?tok]
-                                                                    :where [[?tok :token/layer ?tokl]
-                                                                            [?tok :token/text ?txt]
-                                                                            [?txt :text/document ?doc]]
-                                                                    :in    [[?tokl ?doc]]}
-                                                                  [id doc-id]))]
+       (when-let [tokens (mapv (fn [token]
+                                 (log/info token)
+                                 (-> token
+                                     (update :token/text (fn [id] {:text/id id}))
+                                     (update :token/layer (fn [id] {:token-layer/id id}))))
+                               (tok/get-tokens node id doc-id))]
          {:token-layer/tokens tokens}))))
 
 #?(:clj
    (pc/defmutation whitespace-tokenize [{:keys [node] :as env} {:token-layer/keys [id]
-                                                                doc-id :document/id
-                                                                text-id :text/id}]
+                                                                doc-id            :document/id
+                                                                text-id           :text/id}]
      {::pc/transform (ma/writeable-required :token-layer/id)}
      (cond
        (nil? (tokl/get node id))

@@ -41,10 +41,14 @@
 #?(:clj
    (pc/defresolver get-spans [{:keys [node] :as env} {:span-layer/keys [id]}]
      {::pc/input     #{:span-layer/id}
-      ::pc/output    [:span-layer/spans]
+      ::pc/output    [{:span-layer/spans [:span/id :span/value :span/layer :span/tokens]}]
       ::pc/transform (ma/readable-required :span-layer/id)}
      (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (when-let [spans (mapv (fn [id] {:span/id id}) (s/get-span-ids node doc-id id))]
+       (when-let [spans (mapv (fn [s]
+                                (-> s
+                                    (update :span/tokens #(mapv (fn [id] {:token/id id}) %))
+                                    (update :span/layer (fn [id] {:span-layer/id id}))))
+                              (s/get-spans node doc-id id))]
          {:span-layer/spans spans}))))
 
 ;; admin --------------------------------------------------------------------------------
