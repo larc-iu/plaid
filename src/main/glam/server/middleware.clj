@@ -150,7 +150,7 @@
 ;; websockets remote for fulcro, registered as :remote
 (mount/defstate websockets
   :start
-  (let [wrapped-parser (fn wrapped-parser [{:keys [request]} tx]
+  (let [wrapped-parser (fn wrapped-parser [{:keys [request cid] :as env} tx]
                          ;; It seems like when requests come in via websockets, they don't always get hit by the
                          ;; request half of ring's wrap-session. To get around this, read session data directly from
                          ;; the store just before it goes into pathom. TODO: figure out whether this story is right
@@ -169,8 +169,9 @@
                                         (not (-> response (dissoc :com.wsscode.pathom/trace) vals first :server/error?)))
                                (when-some [doc-ident (gcc/get-affected-doc xtdb-node item response)]
                                  (log/info "Notifying clients of document modification:" doc-ident)
-                                 (doseq [cid @client-ids]
-                                   (fwsp/push websockets cid :glam/document-changed doc-ident)))))
+                                 (doseq [other-cid @client-ids]
+                                   (when-not (= cid other-cid)
+                                     (fwsp/push websockets other-cid :glam/document-changed doc-ident))))))
                            response))]
     (let [ws (fws/start! (fws/make-websockets
                            wrapped-parser
