@@ -138,6 +138,9 @@
       ;; Add trace - pathom-viz already adds it so only add if that's not included.
       (let [tx (if (and trace? (not connect-viz?))
                  (conj tx :com.wsscode.pathom/trace) tx)
+            tx (if (:pathom/eql tx)
+                 (:pathom/eql tx)
+                 tx)
             use-serial-parser? (has-mutation? tx)
             _ (log/debug (if use-serial-parser? "Pathom tx has a mutation--using global write lock"
                                                 "Pathom tx only has reads--performing concurrently"))
