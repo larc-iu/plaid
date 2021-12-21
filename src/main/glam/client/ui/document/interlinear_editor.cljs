@@ -254,7 +254,7 @@
 
 (defn flex-row [extra-props & children]
   (let [style (if (:style extra-props)
-                (merge {:display "flex" :gap "6px"} (:style extra-props))
+                (merge {:display "flex" :gap "10px"} (:style extra-props))
                 {:display "flex" :gap "6px"})]
     (dom/div (merge extra-props
                     {:style style})
@@ -346,7 +346,7 @@
                                                           (if (= 0 (count value))
                                                             "dotted gray 1px"
                                                             "none"))
-                                       :backgroundColor (if focused? "#c6ffda" "transparent")}}))))
+                                       :backgroundColor (if focused? "#e3ffe6" "transparent")}}))))
 (def ui-span-cell (c/computed-factory SpanCell {:keyfn (comp str :span/id)}))
 
 ;; Here is where the real UI begins
@@ -402,12 +402,13 @@
                      (when-not (empty? (line->token-ids i))
                        (dom/div {:style {:backgroundColor (if (even? i) "#0055ff17" "white")
                                          :borderRadius    4
-                                         :padding         "0.3em"}}
+                                         :padding         "0.3em"
+                                         :marginBottom   "1em"}}
 
                          ;; Token-level rows
-                         (flex-row {:style {:flexWrap "wrap"}}
+                         (flex-row {:style {:flexWrap "wrap" :marginBottom "20px"}}
                            ;; Titles
-                           (flex-col {:key "title"}
+                           (flex-col {:key "title" :style {:marginBottom "20px"}}
                              ;; blank first cell--it's the tokens
                              (cell {:key "space"} (dom/div {} ent/nbsp))
                              ;; span layer titles
