@@ -129,7 +129,8 @@
                             (when-let [{:keys [env tx out]} (async/<!! in)]
                               (async/>!! out (parser env tx))
                               (recur))))
-                        in)]
+                        in)
+        cache (atom {})]
 
     (fn wrapped-parser [env tx]
       ;; make it easier to read transactions when debugging
@@ -141,16 +142,25 @@
             tx (if (:pathom/eql tx)
                  (:pathom/eql tx)
                  tx)
-            use-serial-parser? (has-mutation? tx)
-            _ (log/debug (if use-serial-parser? "Pathom tx has a mutation--using global write lock"
+            mutation? (has-mutation? tx)
+            _ (log/debug (if mutation? "Pathom tx has a mutation--using global write lock"
                                                 "Pathom tx only has reads--performing concurrently"))
-            result (if use-serial-parser?
-                     (let [out (async/chan)]
-                       (async/>!! serial-parser {:env env :tx tx :out out})
-                       (let [resp (async/<!! out)]
-                         resp))
-                     (parser env tx))]
+            result (cond mutation?
+                         (let [out (async/chan)]
+                           (async/>!! serial-parser {:env env :tx tx :out out})
+                           (let [resp (async/<!! out)]
+                             (log/info "Resetting cache")
+                             (reset! cache {})
+                             resp))
+
+                         (@cache tx)
+                         (do (log/info "Using cached result") (@cache tx))
+
+                         :else
+                         (parser env tx))]
         #_(spit "/tmp/foo" result)
+        (when-not (contains? @cache tx)
+          (swap! cache assoc tx result))
         result))))
 
 (mount/defstate parser
