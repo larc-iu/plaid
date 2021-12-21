@@ -190,13 +190,13 @@
   [params]
   (action [_] nil)
   (remote [{:keys [ast state ref]}]
-          (swap! state assoc-in (conj ref :ui/busy?) true)
+          (swap! state update-in (conj ref :ui/mutation-count) #(if (nil? %) 1 (inc %)))
           (let [ast (assoc ast :key `span/batched-update)]
             ast))
   (result-action [{:keys [component app result ref]}]
                  (df/load! app ref InterlinearEditor
                            {:post-action (fn [{:keys [state]}]
-                                           (swap! state assoc-in (conj ref :ui/busy?) false))})))
+                                           (swap! state update-in (conj ref :ui/mutation-count) dec))})))
 
 (m/defmutation save-span
   [{doc-id :document/id :as params}]
@@ -509,17 +509,17 @@
 (def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 
 (defsc ProjectQuery [_ _] {:ident :project/id :query [:project/config :project/id]})
-(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [busy?] :as props}]
+(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [mutation-count] :as props}]
   {:query [:document/id :document/name
            {:document/text-layers (c/get-query TextLayer)}
            {:document/project (c/get-query ProjectQuery)}
-           :ui/busy?]
+           :ui/mutation-count]
    :ident :document/id}
   ;;(if (empty? (-> props :document/project :project/config))
   ;;  (dom/p "The interlinear editor must have at least one span layer designated as ")
   ;;  )
   (dom/div
-    (if busy?
+    (if (and mutation-count (> mutation-count 0))
       (loader)
       (when text-layers
         (c/fragment
