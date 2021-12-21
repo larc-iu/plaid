@@ -44,7 +44,7 @@
            cryptohash-clj/cryptohash-clj        {:mvn/version "0.1.10"}
 
            ;; Only actually used during dev, but it's annoying to take it out of prod builds
-           com.wsscode/pathom-viz-connector     {:mvn/version "2021.07.04"}
+           com.wsscode/pathom-viz-connector     {:mvn/version "2021.10.16"}
 
            ;; these are missing from xtdb-lmdb
            org.lwjgl/lwjgl$natives-windows      {:mvn/version "3.2.3" :native-prefix ""}
