@@ -178,7 +178,7 @@
                            {:http-server-adapter (get-sch-adapter)
                             :parser-accepts-env? true
                             ;; See Sente for CSRF instructions
-                            :sente-options       {:csrf-token-fn :anti-forgery-token
+                            :sente-options       {:csrf-token-fn #_nil :anti-forgery-token
                                                   ;; todo: revisit this implementation if we ever want to do targeted push
                                                   ;; current problem is that login makes the read of :session stale
                                                   ;; maybe rely on using a client-id that can be mapped to session
@@ -198,4 +198,5 @@
         wrap-transit-response
         (fws/wrap-api websockets)
         wrap-html-routes
-        (wrap-defaults (assoc defaults-config :session {:store session-store})))))
+        (wrap-defaults (-> defaults-config
+                           (assoc :session {:store session-store}))))))

@@ -37,6 +37,8 @@
                      :resolver-env env})))
   (let [user-id (get-in env [:ring/request :session :user/id])
         id (param-key params)]
+    ;; for pathom-viz
+    #_true
     (access/ident-readable? node user-id [id-key id])))
 
 (defn- writeable-required-fn [id-key param-key {:keys [node] :as env} params]
