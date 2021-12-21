@@ -148,12 +148,12 @@
         tokens-and-strings (ta/add-untokenized-substrings tokens text)]
     (mui/box {:my 2}
       (mui/typography {:component "h6" :gutterBottom true :variant "subtitle1"} name)
-      (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
-        (dom/div (map-indexed (fn [tok-num e] (if (string? e)
-                                                ;; This is bad react practice but we don't have an easy alternative
-                                                (dc/inline-span (str line-num "-" tok-num) e false)
-                                                (ui-token (c/computed e {:text text}))))
-                              line))))))
+      (doall (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
+               (dom/div (map-indexed (fn [tok-num e] (if (string? e)
+                                                       ;; This is bad react practice but we don't have an easy alternative
+                                                       (dc/inline-span (str line-num "-" tok-num) e false)
+                                                       (ui-token (c/computed e {:text text}))))
+                                     line)))))))
 
 (def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
 
