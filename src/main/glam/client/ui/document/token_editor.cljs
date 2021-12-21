@@ -38,8 +38,7 @@
                      (snack/message! {:message  message
                                       :severity (if error? "error" "success")}))
                    ;; we may need new token offsets--trigger a load
-                   ;; (actually, disable since we're using push notifications for new loads)
-                   #_(df/load! app [:document/id doc-id] TokenEditor))))
+                   (df/load! app [:document/id doc-id] TokenEditor))))
 
 (defsc Text
   [this {:text/keys [id body] :as props}]

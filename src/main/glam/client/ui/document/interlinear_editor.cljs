@@ -14,6 +14,7 @@
             ["react-window" :refer [FixedSizeList]]
             [glam.client.router :as r]
             [glam.client.util :as gcu]
+            [glam.client.ui.common.core :refer [loader]]
             [glam.client.ui.material-ui :as mui]
             [glam.algos.text :as ta]
             [glam.models.span :as span]
@@ -72,6 +73,7 @@
 
 
 (declare batched-update)
+(declare InterlinearEditor)
 (m/defmutation apply-schema
   "Called by g.c.u.d.document. Makes changes to the document on load to make it consistent with schematic requirements
   of the interface."
@@ -187,9 +189,14 @@
 (m/defmutation batched-update
   [params]
   (action [_] nil)
-  (remote [{:keys [ast]}]
+  (remote [{:keys [ast state ref]}]
+          (swap! state assoc-in (conj ref :ui/busy?) true)
           (let [ast (assoc ast :key `span/batched-update)]
-            ast)))
+            ast))
+  (result-action [{:keys [component app result ref]}]
+                 (df/load! app ref InterlinearEditor
+                           {:post-action (fn [{:keys [state]}]
+                                           (swap! state assoc-in (conj ref :ui/busy?) false))})))
 
 (m/defmutation save-span
   [{doc-id :document/id :as params}]
@@ -450,7 +457,7 @@
                       (ui-sentence-level-span span)
                       (log/error "No span found for span layer " id "!"))))))))]
 
-    (let [page-count 5]
+    (let [page-count 10]
       (dom/div {}
         (mui/typography {:variant "h5" :style {:marginBottom "1em"}} name)
 
@@ -463,7 +470,7 @@
           (mui/pagination
             {:count    (js/Math.ceil (/ (count filtered-lines) page-count))
              :page     page
-             :onChange #(do (log/info %2) (m/set-integer! this :ui/page :value %2))}))))))
+             :onChange #(m/set-integer! this :ui/page :value %2)}))))))
 
 (def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
 
@@ -489,19 +496,22 @@
 (def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 
 (defsc ProjectQuery [_ _] {:ident :project/id :query [:project/config :project/id]})
-(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :as props}]
+(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [busy?] :as props}]
   {:query [:document/id :document/name
            {:document/text-layers (c/get-query TextLayer)}
-           {:document/project (c/get-query ProjectQuery)}]
+           {:document/project (c/get-query ProjectQuery)}
+           :ui/busy?]
    :ident :document/id}
   ;;(if (empty? (-> props :document/project :project/config))
   ;;  (dom/p "The interlinear editor must have at least one span layer designated as ")
   ;;  )
   (dom/div
-    (when text-layers
-      (c/fragment
-        (mapv ui-text-layer (map #(c/computed % {:config (-> project :project/config :editors :interlinear)})
-                                 text-layers))))))
+    (if busy?
+      (loader)
+      (when text-layers
+        (c/fragment
+          (mapv ui-text-layer (map #(c/computed % {:config (-> project :project/config :editors :interlinear)})
+                                   text-layers)))))))
 
 (def ui-interlinear-editor (c/factory InterlinearEditor))
 
