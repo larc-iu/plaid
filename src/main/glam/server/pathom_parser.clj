@@ -85,6 +85,7 @@
 (defn mutation?
   [tx-item]
   (and
+    (coll? tx-item)
     (-> tx-item first symbol?)
     (-> tx-item second map?)))
 
@@ -148,6 +149,8 @@
                        (let [resp (async/<!! out)]
                          resp))
                      (parser env tx))]
+        #_
+        (spit "/tmp/foo" result)
         result))))
 
 (mount/defstate parser
