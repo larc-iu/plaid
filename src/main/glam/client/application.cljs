@@ -6,6 +6,8 @@
     [com.fulcrologic.fulcro.algorithms.tx-processing :as txp]
     [com.fulcrologic.fulcro.algorithms.tx-processing.synchronous-tx-processing :as stx]
     [com.fulcrologic.fulcro.rendering.keyframe-render :as kfr]
+    [com.fulcrologic.fulcro.rendering.keyframe-render2 :as kfr2]
+    [com.fulcrologic.fulcro.rendering.ident-optimized-render :as ier]
     [taoensso.timbre :as log]
     [com.fulcrologic.fulcro.mutations :as m])
   (:import [goog.async Debouncer]))
@@ -108,7 +110,7 @@
        :remotes           {:remote  (fws/fulcro-websocket-remote {:csrf-token   (get-token)
                                                                   :push-handler #_push-handler (debounce push-handler 200)})
                            :session (api-remote)}
-       :optimized-render! kfr/render!
+       :optimized-render! kfr2/render!
        ;; Modify the default result action so that it looks for :on-result, :on-ok and :on-error
        ;; see, for an example, change_password.cljs
        :default-result-action!

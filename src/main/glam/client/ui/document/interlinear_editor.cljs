@@ -1,21 +1,26 @@
 (ns glam.client.ui.document.interlinear-editor
-  (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
+  (:require [goog.object :as gobj]
+            [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
             [com.fulcrologic.fulcro.data-fetch :as df]
             [com.fulcrologic.fulcro.algorithms.react-interop :as interop]
-            [glam.client.router :as r]
-            [glam.client.util :as gcu]
-            [glam.client.ui.material-ui :as mui]
-            [taoensso.timbre :as log]
             [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.dom.html-entities :as ent]
             [com.fulcrologic.fulcro.mutations :as m]
+            [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
+            [taoensso.timbre :as log]
+            ["react-input-autosize" :default AutosizeInput]
+            ["react-virtualized-auto-sizer" :default AutoSizer]
+            ["react-window" :refer [FixedSizeList]]
+            [glam.client.router :as r]
+            [glam.client.util :as gcu]
+            [glam.client.ui.material-ui :as mui]
             [glam.algos.text :as ta]
             [glam.models.span :as span]
-            [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
-            ["react-input-autosize" :default AutosizeInput]
-            [glam.client.ui.global-snackbar :as snack]
-            [goog.object :as gobj]))
+            [glam.client.ui.global-snackbar :as snack]))
+
+(def ui-fixed-size-list (interop/react-factory FixedSizeList))
+(def ui-auto-sizer (interop/react-factory AutoSizer))
 
 (def ui-autosize-input (interop/react-factory AutosizeInput))
 (defn get-token-span-layers [{:keys [span-layer-scopes]}]
@@ -293,7 +298,7 @@
                                       (when dirty?
                                         (c/transact! this [(save-span {:span/id    id
                                                                        :span/value value})])))
-                        :inputStyle {:minWidth        (str "300px")
+                        :inputStyle {:minWidth        (str "180px")
                                      :display         "inline-block"
                                      :outline         "none"
                                      :border          "none"
@@ -379,73 +384,87 @@
 
 ;; Where much of the work happens --------------------------------------------------------------------------------
 (defsc TokenLayer
-  [this {:token-layer/keys [id name tokens span-layers] :as token-layer} {:keys [text config]}]
-  {:query [:token-layer/id :token-layer/name
-           {:token-layer/tokens (c/get-query Token)}
-           {:token-layer/span-layers (c/get-query SpanLayer)}]
-   :ident :token-layer/id}
+  [this {:token-layer/keys [id name tokens span-layers] :ui/keys [page] :as token-layer} {:keys [text config]}]
+  {:query     [:token-layer/id :token-layer/name
+               {:token-layer/tokens (c/get-query Token)}
+               {:token-layer/span-layers (c/get-query SpanLayer)}
+               :ui/page]
+   :pre-merge (fn [{:keys [data-tree]}]
+                (merge {:ui/page 1}
+                       data-tree))
+   :ident     :token-layer/id}
   (let [tokens (sort-by :token/begin (reshape-into-token-grid config token-layer))
         lines-with-strings (-> tokens
                                (ta/add-untokenized-substrings text)
                                (ta/separate-into-lines text))
         lines (map #(filter :token/id %) lines-with-strings)
         line->token-ids (get-line->token lines)
+        filtered-lines (map second (filter #(not-empty (line->token-ids (first %))) (map-indexed (fn [i v] [i v]) lines)))
         token-span-layers (filter #((get-token-span-layers config) (:span-layer/id %)) span-layers)
-        sentence-span-layers (filter #((get-sentence-span-layers config) (:span-layer/id %)) span-layers)]
-    (dom/div
-      ;; Title of the token layer
-      (mui/typography {:variant "h5"} name)
-      (map-indexed (fn [i line]
-                     ;; TODO: fix for very long sentences. need to pull out two divs per line probably
+        sentence-span-layers (filter #((get-sentence-span-layers config) (:span-layer/id %)) span-layers)
+        render-line
+        (fn [[i line]]
+          ;; TODO: fix for very long sentences. need to pull out two divs per line probably
 
-                     ;; For each line...
-                     (when-not (empty? (line->token-ids i))
-                       (dom/div {:style {:backgroundColor (if (even? i) "#0055ff17" "white")
-                                         :borderRadius    4
-                                         :padding         "0.3em"
-                                         :marginBottom   "1em"}}
+          ;; For each line...
+          (dom/div {:style {:backgroundColor (if (even? i) "#0055ff17" "white")
+                            :borderRadius    4
+                            :padding         "0.3em"
+                            :marginBottom    "1em"}}
 
-                         ;; Token-level rows
-                         (flex-row {:style {:flexWrap "wrap" :marginBottom "20px"}}
-                           ;; Titles
-                           (flex-col {:key "title" :style {:marginBottom "20px"}}
-                             ;; blank first cell--it's the tokens
-                             (cell {:key "space"} (dom/div {} ent/nbsp))
-                             ;; span layer titles
-                             (mapv
-                               (fn [sl]
-                                 (cell {:key   (str (:span-layer/id sl))
-                                        :style {:fontVariant "small-caps"
-                                                :fontWeight  700}}
-                                   (:span-layer/name sl)))
-                               token-span-layers))
+            ;; Token-level rows
+            (flex-row {:style {:flexWrap "wrap" :marginBottom "20px"}}
+              ;; Titles
+              (flex-col {:key "title" :style {:marginBottom "20px"}}
+                ;; blank first cell--it's the tokens
+                (cell {:key "space"} (dom/div {} ent/nbsp))
+                ;; span layer titles
+                (mapv
+                  (fn [sl]
+                    (cell {:key   (str (:span-layer/id sl))
+                           :style {:fontVariant "small-caps"
+                                   :fontWeight  700}}
+                      (:span-layer/name sl)))
+                  token-span-layers))
 
-                           ;; Token columns
-                           (mapv ui-token line))
+              ;; Token columns
+              (mapv ui-token line))
 
-                         ;; Sentence-level rows
-                         (flex-row {:style {:marginTop "12px"}}
-                           ;; Titles
-                           (flex-col {:key "title"}
-                             ;; span layer titles
-                             (mapv
-                               (fn [sl]
-                                 (cell {:key   (str (:span-layer/id sl))
-                                        :style {:fontVariant "small-caps"
-                                                :fontWeight  700}}
-                                   (:span-layer/name sl)))
-                               sentence-span-layers))
+            ;; Sentence-level rows
+            (flex-row {:style {:marginTop "12px"}}
+              ;; Titles
+              (flex-col {:key "title"}
+                ;; span layer titles
+                (mapv
+                  (fn [sl]
+                    (cell {:key   (str (:span-layer/id sl))
+                           :style {:fontVariant "small-caps"
+                                   :fontWeight  700}}
+                      (:span-layer/name sl)))
+                  sentence-span-layers))
 
-                           (flex-col {:key "spans"}
-                             (for [{:span-layer/keys [id spans]} sentence-span-layers]
-                               (let [tokens-for-line (set (line->token-ids i))
-                                     span (some #(when (= tokens-for-line (set (map :token/id (:span/tokens %)))) %) spans)]
-                                 (if span
-                                   (ui-sentence-level-span span)
-                                   (log/error "No span found for span layer " id "!")))))))))
+              (flex-col {:key "spans"}
+                (for [{:span-layer/keys [id spans]} sentence-span-layers]
+                  (let [tokens-for-line (set (line->token-ids i))
+                        span (some #(when (= tokens-for-line (set (map :token/id (:span/tokens %)))) %) spans)]
+                    (if span
+                      (ui-sentence-level-span span)
+                      (log/error "No span found for span layer " id "!"))))))))]
 
+    (let [page-count 5]
+      (dom/div {}
+        (mui/typography {:variant "h5" :style {:marginBottom "1em"}} name)
 
-                   lines))))
+        (mapv render-line (->> filtered-lines
+                               (drop (* page-count (dec page)))
+                               (take page-count)
+                               (map-indexed (fn [i v] [i v]))))
+
+        (when (> (count filtered-lines) page-count)
+          (mui/pagination
+            {:count    (js/Math.ceil (/ (count filtered-lines) page-count))
+             :page     page
+             :onChange #(do (log/info %2) (m/set-integer! this :ui/page :value %2))}))))))
 
 (def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
 
