@@ -290,11 +290,11 @@
                         :value      value
                         :onChange   (fn [e]
                                       (m/set-string! this :span/value :event e)
-                                      (m/set-value! this :ui/dirty? true)
+                                      (m/set-value!! this :ui/dirty? true)
                                       (c/set-state! this {:value (.-value (.-target e))}))
-                        :onFocus    #(m/set-value! this :ui/focused? true)
+                        :onFocus    #(m/set-value!! this :ui/focused? true)
                         :onBlur     (fn []
-                                      (m/set-value! this :ui/focused? false)
+                                      (m/set-value!! this :ui/focused? false)
                                       (when dirty?
                                         (c/transact! this [(save-span {:span/id    id
                                                                        :span/value value})])))
@@ -367,7 +367,7 @@
                         (.forceUpdate this))}
   (let [save-ref (c/get-state this :save-ref)]
     (flex-col {:key id}
-      (dom/div {:ref save-ref} value)
+      (dom/div {} (dom/span {:ref save-ref} value))
       (mapv (fn [[sl-id spans]]
               (when (> (count spans) 1)
                 (log/warn (str "Found a token " id " with more than one associated span in " sl-id "."
@@ -389,9 +389,8 @@
                {:token-layer/tokens (c/get-query Token)}
                {:token-layer/span-layers (c/get-query SpanLayer)}
                :ui/page]
-   :pre-merge (fn [{:keys [data-tree]}]
-                (merge {:ui/page 1}
-                       data-tree))
+   :pre-merge (fn [{:keys [data-tree current-normalized]}]
+                (assoc data-tree :ui/page (or (:ui/page current-normalized) 1)))
    :ident     :token-layer/id}
   (let [tokens (sort-by :token/begin (reshape-into-token-grid config token-layer))
         lines-with-strings (-> tokens
