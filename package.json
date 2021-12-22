@@ -10,7 +10,7 @@
     "client/cljs-repl": "shadow-cljs -A:dev cljs-repl :main",
     "client/clj-repl": "shadow-cljs -A:dev clj-repl",
     "server": "clojure -A:dev -J-Dtrace -J-Dguardrails.enabled=true",
-    "start": "yarn run-p client/main server",
+    "start": "yarn run-p client server",
     "clean": "rm -rf target resources/public/js resources/public/workspaces/js",
     "client/release": "yarn shadow-cljs -A:shadow-cljs release main",
     "server/release": "clojure -X:uberjar",
