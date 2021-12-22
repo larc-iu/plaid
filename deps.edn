@@ -39,6 +39,7 @@
            ;; xtdb
            com.xtdb/xtdb-core                   {:mvn/version "1.19.0-beta1"}
            com.xtdb/xtdb-lmdb                   {:mvn/version "1.19.0-beta1"}
+           duratom/duratom                      {:mvn/version "0.5.3"}
 
            ;; Password hashing
            cryptohash-clj/cryptohash-clj        {:mvn/version "0.1.10"}
