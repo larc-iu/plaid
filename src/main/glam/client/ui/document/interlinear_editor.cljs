@@ -180,9 +180,11 @@
                                                                      (:span-layer/spans sl))
                                                 :updates        @batched-updates}))))))))
 
+
             (when-not (empty? @all-batched-updates)
               (log/info "SUBMITTING " @all-batched-updates)
-              (c/transact! component @all-batched-updates)))))
+              (c/transact! component @all-batched-updates))
+            (m/set-value! component :ui/checking-schema? false))))
 ;; result action: unset :ui/busy? (think about it)
 
 ;; ui mutations ---------------------------------------------------------------------------------
@@ -193,10 +195,12 @@
           (swap! state update-in (conj ref :ui/mutation-count) #(if (nil? %) 1 (inc %)))
           (let [ast (assoc ast :key `span/batched-update)]
             ast))
-  (result-action [{:keys [component app result ref]}]
-                 (df/load! app ref InterlinearEditor
-                           {:post-action (fn [{:keys [state]}]
-                                           (swap! state update-in (conj ref :ui/mutation-count) dec))})))
+  (result-action [{:keys [component state app result ref]}]
+                 (let [count (get-in @state (conj ref :ui/mutation-count))]
+                   (if (> count 1)
+                     (swap! state update-in (conj ref :ui/mutation-count) dec)
+                     (df/load! app ref InterlinearEditor
+                               {:post-action (fn [] (swap! state update-in (conj ref :ui/mutation-count) dec))})))))
 
 (m/defmutation save-span
   [{doc-id :document/id :as params}]
@@ -260,8 +264,15 @@
    :ident :token/id})
 
 ;; UI helpers --------------------------------------------------------------------------------
+(defn merge-props-with-style [default extra]
+  (if (:style extra)
+    (let [style (merge (:style default) (:style extra))]
+      (-> default (merge extra) (assoc :style style)))
+    (merge default extra)))
+
 (defn cell [props & children]
-  (dom/div (merge {:style {:minHeight "12pt"}} props)
+  (dom/div
+    (merge-props-with-style {:style {:minHeight "12pt"}} props)
     children))
 
 (defn flex-row [extra-props & children]
@@ -355,7 +366,6 @@
                       :outline         "none"
                       :border          "none"
                       :borderRadius    (if focused? "4px" "0")
-                      :padding         "2px"
                       :borderBottom    (if focused?
                                          ""
                                          (if (= 0 (count value))
@@ -377,18 +387,18 @@
                         (.forceUpdate this))}
   (let [save-ref (c/get-state this :save-ref)]
     (flex-col {:key id}
-      (dom/div {} (dom/span {:ref save-ref} value))
+      (cell {} (dom/span {:ref save-ref} value))
       (mapv (fn [[sl-id spans]]
               (when (> (count spans) 1)
                 (log/warn (str "Found a token " id " with more than one associated span in " sl-id "."
                                " Currently, this is not supported, and only the first span will be used.")))
-              (when (= (count spans) 0)
-                (log/error "Uh oh"))
-              (ui-span-cell (c/computed (first spans)
-                                        {:token/id      id
-                                         :span-layer/id sl-id
-                                         :token-width   (when-let [t (gobj/get this "token-ref")]
-                                                          (.-width (.getBoundingClientRect t)))})))
+              (if (= (count spans) 0)
+                (log/error "Uh oh")
+                (ui-span-cell (c/computed (first spans)
+                                          {:token/id      id
+                                           :span-layer/id sl-id
+                                           :token-width   (when-let [t (gobj/get this "token-ref")]
+                                                            (.-width (.getBoundingClientRect t)))}))))
             spans))))
 (def ui-token (c/factory TokenCell {:keyfn :token/id}))
 
@@ -509,17 +519,17 @@
 (def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 
 (defsc ProjectQuery [_ _] {:ident :project/id :query [:project/config :project/id]})
-(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [mutation-count] :as props}]
+(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [mutation-count checking-schema?] :as props}]
   {:query [:document/id :document/name
            {:document/text-layers (c/get-query TextLayer)}
            {:document/project (c/get-query ProjectQuery)}
-           :ui/mutation-count]
+           :ui/mutation-count :ui/checking-schema?]
    :ident :document/id}
   ;;(if (empty? (-> props :document/project :project/config))
   ;;  (dom/p "The interlinear editor must have at least one span layer designated as ")
   ;;  )
   (dom/div
-    (if (and mutation-count (> mutation-count 0))
+    (if (or (and mutation-count (> mutation-count 0)) checking-schema?)
       (loader)
       (when text-layers
         (c/fragment

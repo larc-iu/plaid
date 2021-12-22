@@ -76,6 +76,7 @@
                                  [:document/id parsed-id]
                                  (fn []
                                    ;; TODO: target-ready should actually be called once the apply-schema mutation is done
+                                   (m/raw-set-value! app {:document/id parsed-id} :ui/checking-schema? true)
                                    (do-load! app parsed-id tab
                                              {:post-mutation        `dr/target-ready
                                               :post-mutation-params {:target [:document/id parsed-id]}})
