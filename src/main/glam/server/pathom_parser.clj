@@ -144,7 +144,7 @@
                  tx)
             mutation? (has-mutation? tx)
             _ (log/debug (if mutation? "Pathom tx has a mutation--using global write lock"
-                                                "Pathom tx only has reads--performing concurrently"))
+                                       "Pathom tx only has reads--performing concurrently"))
             result (cond mutation?
                          (let [out (async/chan)]
                            (async/>!! serial-parser {:env env :tx tx :out out})

@@ -72,15 +72,14 @@
             [id filtered-spans]))))))
 
 
-(declare batched-update)
+(declare schema-batched-update)
 (declare InterlinearEditor)
 (m/defmutation apply-schema
   "Called by g.c.u.d.document. Makes changes to the document on load to make it consistent with schematic requirements
   of the interface."
-  [{:keys [data-tree]}]
-  (action [{:keys [component ref]}]
-          (let [document-id (last ref)
-                config (get-in data-tree [:document/project :project/config :editors :interlinear])
+  [{:keys [data-tree] document-id :document/id}]
+  (action [{:keys [component app]}]
+          (let [config (get-in data-tree [:document/project :project/config :editors :interlinear])
                 token-level-layer-ids (get-token-span-layers config)
                 sentence-level-layer-ids (get-sentence-span-layers config)
                 text-layers (:document/text-layers data-tree)
@@ -100,10 +99,10 @@
                     (when-not (empty? @batched-updates)
                       (swap! all-batched-updates
                              conj
-                             (batched-update {:document/id    document-id
-                                              :span-layer/id  id
-                                              :span-snapshots spans
-                                              :updates        @batched-updates})))))))
+                             (schema-batched-update {:document/id    document-id
+                                                     :span-layer/id  id
+                                                     :span-snapshots spans
+                                                     :updates        @batched-updates})))))))
 
             ;; Ensure that all sentence-level span layers have exactly one span per-token
             (doseq [{:text-layer/keys [text] :as text-layer} text-layers]
@@ -174,21 +173,23 @@
                       (when-not (empty? @batched-updates)
                         (swap! all-batched-updates
                                conj
-                               (batched-update {:document/id    document-id
-                                                :span-layer/id  id
-                                                :span-snapshots (map #(update % :span/tokens (fn [ts] (mapv :token/id ts)))
-                                                                     (:span-layer/spans sl))
-                                                :updates        @batched-updates}))))))))
+                               (schema-batched-update
+                                 {:document/id    document-id
+                                  :span-layer/id  id
+                                  :span-snapshots (map #(update % :span/tokens (fn [ts] (mapv :token/id ts)))
+                                                       (:span-layer/spans sl))
+                                  :updates        @batched-updates}))))))))
 
-
-            (when-not (empty? @all-batched-updates)
-              (log/info "SUBMITTING " @all-batched-updates)
-              (c/transact! component @all-batched-updates))
-            (m/set-value! component :ui/checking-schema? false))))
-;; result action: unset :ui/busy? (think about it)
+            (if-not (empty? @all-batched-updates)
+              (do
+                (log/info "SUBMITTING " @all-batched-updates)
+                (c/transact! component @all-batched-updates))
+              ;; If we didn't need to make any updates, tell the router  we're all set
+              (do
+                (c/transact! app [(dr/target-ready {:target [:document/id document-id]})]))))))
 
 ;; ui mutations ---------------------------------------------------------------------------------
-(m/defmutation batched-update
+(m/defmutation schema-batched-update
   [params]
   (action [_] nil)
   (remote [{:keys [ast state ref]}]
@@ -199,8 +200,11 @@
                  (let [count (get-in @state (conj ref :ui/mutation-count))]
                    (if (> count 1)
                      (swap! state update-in (conj ref :ui/mutation-count) dec)
+                     ;; If this is the last schema update, tell the ruoter we're ready after the load is done
                      (df/load! app ref InterlinearEditor
-                               {:post-action (fn [] (swap! state update-in (conj ref :ui/mutation-count) dec))})))))
+                               {:post-action (fn []
+                                               (swap! state update-in (conj ref :ui/mutation-count) dec)
+                                               (dr/target-ready! component ref))})))))
 
 (m/defmutation save-span
   [{doc-id :document/id :as params}]
@@ -519,17 +523,21 @@
 (def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 
 (defsc ProjectQuery [_ _] {:ident :project/id :query [:project/config :project/id]})
-(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [mutation-count checking-schema?] :as props}]
-  {:query [:document/id :document/name
-           {:document/text-layers (c/get-query TextLayer)}
-           {:document/project (c/get-query ProjectQuery)}
-           :ui/mutation-count :ui/checking-schema?]
-   :ident :document/id}
+(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [mutation-count] :as props}]
+  {:query     [:document/id :document/name
+               {:document/text-layers (c/get-query TextLayer)}
+               {:document/project (c/get-query ProjectQuery)}
+               :ui/mutation-count]
+   :pre-merge (fn [{:keys [data-tree]}]
+                (merge {:ui/checking-schema? true :ui/mutation-count 0}
+                       data-tree))
+   :ident     :document/id}
   ;;(if (empty? (-> props :document/project :project/config))
   ;;  (dom/p "The interlinear editor must have at least one span layer designated as ")
   ;;  )
+  (log/info mutation-count)
   (dom/div
-    (if (or (and mutation-count (> mutation-count 0)) checking-schema?)
+    (if (and mutation-count (> mutation-count 0))
       (loader)
       (when text-layers
         (c/fragment

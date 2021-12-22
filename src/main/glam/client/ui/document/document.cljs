@@ -5,7 +5,7 @@
             [glam.client.router :as r]
             [glam.client.util :as gcu]
             [glam.client.ui.material-ui :as mui]
-            [glam.client.application :as gca]
+            [glam.algos.subs :as gas]
             [glam.client.ui.document.text-editor :refer [TextEditor ui-text-editor]]
             [glam.client.ui.document.token-editor :refer [TokenEditor ui-token-editor]]
             [glam.client.ui.document.interlinear-editor :as ied :refer [InterlinearEditor ui-interlinear-editor]]
@@ -37,16 +37,20 @@
    (let [editor-join-key (get-in editors [tab :join-key])
          schema-mutation (get-in editors [tab :schema-mutation])]
      (when doc-id
-       (df/load! app-or-comp [:document/id doc-id] Document
-                 (merge load-opts
-                        {:without
-                         (disj editor-joins editor-join-key)
-                         :post-action
-                         (fn [env]
-                           (let [data-tree (-> env :result :body (get [:document/id doc-id]))]
-                             (when schema-mutation
-                               (c/transact! app-or-comp
-                                            [(schema-mutation {:data-tree (editor-join-key data-tree)})]))))}))))))
+       (if (nil? schema-mutation)
+         (df/load! app-or-comp [:document/id doc-id] Document
+                   (merge load-opts
+                          {:without (disj editor-joins editor-join-key)}))
+
+         ;; in this case, it's the interface's responsibility to call dr/target-ready
+         (df/load! app-or-comp [:document/id doc-id] Document
+                   {:without (disj editor-joins editor-join-key)
+                    :post-action
+                    (fn [env]
+                      (let [data-tree (-> env :result :body (get [:document/id doc-id]))]
+                        (c/transact! app-or-comp
+                                     [(schema-mutation {:data-tree (editor-join-key data-tree)
+                                                        :document/id doc-id})])))}))))))
 
 (defsc Document
   [this {:document/keys [id name project] :ui/keys [active-tab busy?]
@@ -76,7 +80,6 @@
                                  [:document/id parsed-id]
                                  (fn []
                                    ;; TODO: target-ready should actually be called once the apply-schema mutation is done
-                                   (m/raw-set-value! app {:document/id parsed-id} :ui/checking-schema? true)
                                    (do-load! app parsed-id tab
                                              {:post-mutation        `dr/target-ready
                                               :post-mutation-params {:target [:document/id parsed-id]}})
@@ -91,7 +94,7 @@
                            (let [props (c/props this)
                                  doc-id (:document/id props)
                                  tab (:ui/active-tab props)]
-                             (let [unregister! (gca/register-subscription!
+                             (let [unregister! (gas/register-subscription!
                                                  [:document/id doc-id]
                                                  #(do-load! this doc-id tab))]
                                (c/set-state! this {:unregister-fn unregister!}))))

@@ -8,8 +8,9 @@
     [com.fulcrologic.fulcro.rendering.keyframe-render :as kfr]
     [com.fulcrologic.fulcro.rendering.keyframe-render2 :as kfr2]
     [com.fulcrologic.fulcro.rendering.ident-optimized-render :as ier]
+    [com.fulcrologic.fulcro.mutations :as m]
     [taoensso.timbre :as log]
-    [com.fulcrologic.fulcro.mutations :as m])
+    [glam.algos.subs :refer [push-handler]])
   (:import [goog.async Debouncer]))
 
 (defn debounce [f interval]
@@ -85,23 +86,6 @@
                  (read-error? result))]
     (log/info "Remote error? " resp)
     resp))
-
-;; realtime sync stuff
-(def ^:private subscriptions (atom {}))
-(defn push-handler [{:keys [topic msg]}]
-  (log/info topic msg)
-  (when (= topic :glam/document-changed)
-    (log/info "Executing subscription load")
-    (doseq [[_ load-fn] (get @subscriptions msg)]
-      (load-fn))))
-
-(defn register-subscription! [ident load-fn]
-  (let [sub-id (random-uuid)]
-    (log/info "Registering subscription on" ident)
-    (swap! subscriptions assoc-in [ident sub-id] load-fn)
-    (fn unregister []
-      (log/info "Unregistering subscription on" ident)
-      sub-id)))
 
 (defonce SPA
   (stx/with-synchronous-transactions
