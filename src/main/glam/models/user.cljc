@@ -38,12 +38,6 @@
 
 (def valid-admin? boolean?)
 
-(defn valid-reader [reader]
-  (and (set? reader)
-       (every? uuid? reader)))
-
-(def valid-writer valid-reader)
-
 (defn- field-valid [field v]
   (case field
     :user/name (valid-name v)
