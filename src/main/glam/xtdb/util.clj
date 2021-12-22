@@ -1,5 +1,10 @@
 (ns glam.xtdb.util
-  (:require [glam.xtdb.easy :as gxe])
+  (:require [glam.xtdb.easy :as gxe]
+            [xtdb.api :as xt]
+            [mount.core :as mount]
+            [glam.server.id-counter :refer [id-counter]]
+            [taoensso.timbre :as log]
+            [duratom.core :as duratom])
   (:import (java.util UUID)))
 
 (defn identize
@@ -12,6 +17,9 @@
            {id-attr id}))
     {id-attr id-or-id-seq}))
 
+(defn new-id! []
+  (swap! id-counter inc))
+
 ;; conveniences
 (defn new-record
   "Create a blank record with a UUID in :xt/id. If ns is provided,
@@ -20,7 +28,7 @@
   of a random UUID. If eid is passed but is nil, will fall back to a UUID."
   ([] (new-record nil))
   ([ns]
-   (let [eid (UUID/randomUUID)]
+   (let [eid (new-id!)]
      (new-record ns eid)))
   ([ns eid]
    (cond

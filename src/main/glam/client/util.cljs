@@ -1,4 +1,5 @@
-(ns glam.client.util)
+(ns glam.client.util
+  (:require [taoensso.timbre :as log]))
 
 (defn uuid-string? [x]
   (and (= (count (filter #(= % \-) x)) 4)
@@ -7,7 +8,13 @@
 (defn parse-id
   "Parse a path parameter from a fulcro route into an ID"
   [x]
+  (log/info x)
   (when x
-    (if (uuid-string? x)
-      (uuid x)
-      (keyword x))))
+    (cond (uuid-string? x)
+          (uuid x)
+
+          (re-matches #"^\d+$" x)
+          (js/parseInt x)
+
+          :else
+          (keyword x))))
