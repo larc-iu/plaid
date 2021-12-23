@@ -1,7 +1,6 @@
 (ns glam.algos.subs
   (:require [taoensso.timbre :as log]))
 
-;; realtime sync stuff
 (def ^:private subscriptions (atom {}))
 (defn push-handler [{:keys [topic msg]}]
   (log/info topic msg)
@@ -16,4 +15,4 @@
     (swap! subscriptions assoc-in [ident sub-id] load-fn)
     (fn unregister []
       (log/info "Unregistering subscription on" ident)
-      sub-id)))
+      (swap! subscriptions update ident dissoc sub-id))))
