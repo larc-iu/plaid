@@ -262,7 +262,7 @@
 
 (defn cell [props & children]
   (dom/div
-    (merge-props-with-style {:style {:minHeight "12pt"}} props)
+    (merge-props-with-style {:style {:minHeight "18pt"}} props)
     children))
 
 (defn flex-row [extra-props & children]
