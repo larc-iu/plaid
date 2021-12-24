@@ -91,7 +91,7 @@
   (stx/with-synchronous-transactions
     (app/fulcro-app
       {:remote-error?     remote-error?
-       :remotes           {:remote  (fws/fulcro-websocket-remote {:csrf-token   (get-token)
+       :remotes           {:remote  (fws/fulcro-websocket-remote {:csrf-token                  (get-token)
                                                                   :push-handler #_push-handler (debounce push-handler 200)})
                            :session (api-remote)}
        :optimized-render! kfr2/render!
