@@ -205,9 +205,9 @@
                  (log/info "RESULT" result)
                  (let [target (conj ref :ui/busy?)]
                    ;; If this is the last schema update, tell the ruoter we're ready after the load is done
-                   (swap! state assoc-in target false)
                    (df/load! app ref InterlinearEditor
                              {:post-action (fn []
+                                             (swap! state assoc-in target false)
                                              (when mark-ready?
                                                (dr/target-ready! component ref)))}))))
 
