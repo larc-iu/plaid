@@ -120,7 +120,6 @@
 (gxe/deftx batched-update [node doc-id span-layer-id client-spans updates]
   (let [current-spans (set (get-span-snapshots node doc-id span-layer-id))
         client-spans (set client-spans)]
-    (log/info current-spans)
     (when-not (= current-spans client-spans)
       (throw (ex-info (str "Aborting batched update: client-provided span snapshot"
                            " does not match current span snapshot")
@@ -154,7 +153,7 @@
 
                        (throw (ex-info "Unknown op in batched update:" {:op op :valid [:delete :merge :create]}))))
                    updates)]
-      (log/debug "Submitting " (count tx) " batched span updates: " (clojure.string/join (map first tx)))
+      (log/debug "Submitting " (count tx) " batched span updates: " (clojure.string/join "," (map (comp name first) tx)))
       tx)))
 
 (gxe/deftx multi-batched-update [node doc-id batches]
