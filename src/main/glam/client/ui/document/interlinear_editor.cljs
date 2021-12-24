@@ -199,7 +199,7 @@
             ast))
   (result-action [{:keys [component state app result ref]}]
                  ;; TODO check for failure
-                 (let[{:server/keys [message error?]} (get-in result [:body `span/multi-layer-batched-update])]
+                 (let [{:server/keys [message error?]} (get-in result [:body `span/multi-layer-batched-update])]
                    (log/info "Schema update error?" error?)
                    (log/info "Schema update message:" message))
                  (log/info "RESULT" result)
@@ -381,8 +381,7 @@
               (when (> (count spans) 1)
                 (log/warn (str "Found a token " id " with more than one associated span in " sl-id "."
                                " Currently, this is not supported, and only the first span will be used.")))
-              (if (= (count spans) 0)
-                (log/error "Uh oh")
+              (when (> (count spans) 0)
                 (ui-span-cell (c/computed (first spans)
                                           {:token/id      id
                                            :span-layer/id sl-id
