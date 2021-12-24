@@ -461,9 +461,8 @@
                 (for [{:span-layer/keys [id spans]} sentence-span-layers]
                   (let [tokens-for-line (set (line->token-ids i))
                         span (some #(when (= tokens-for-line (set (map :token/id (:span/tokens %)))) %) spans)]
-                    (if span
-                      (ui-sentence-level-span span)
-                      (log/error "No span found for span layer " id "!"))))))))]
+                    (when span
+                      (ui-sentence-level-span span))))))))]
 
     (let [page-count 10
           pagination (fn []
