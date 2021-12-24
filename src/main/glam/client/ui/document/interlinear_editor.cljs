@@ -199,6 +199,9 @@
             ast))
   (result-action [{:keys [component state app result ref]}]
                  ;; TODO check for failure
+                 (let[{:server/keys [message error?]} (get-in result [:body `span/multi-layer-batched-update])]
+                   (log/info "Schema update error?" error?)
+                   (log/info "Schema update message:" message))
                  (log/info "RESULT" result)
                  (let [target (conj ref :ui/busy?)]
                    ;; If this is the last schema update, tell the ruoter we're ready after the load is done
@@ -209,39 +212,21 @@
                                                (dr/target-ready! component ref)))}))))
 
 (m/defmutation save-span
-  [{doc-id :document/id :as params}]
-  (action [{:keys [state]}]
-          ;; be optimistic
-          nil)
+  [{:span/keys [value]}]
+  (action [{:keys [state ref]}]
+          (swap! state assoc-in (conj ref :span/value) value))
   (remote [{:keys [ast]}]
           (let [ast (assoc ast :key `span/save-span)]
             ast))
   (result-action [{:keys [state ref app component] :as env}]
                  (let [{:server/keys [message error?]} (get-in env [:result :body `span/save-span])]
+                   (log/info ref)
                    (log/info "Save processed: " message)
                    (when message
                      (if error?
                        (snack/message! {:message  message
                                         :severity (if error? "error" "success")})
                        (swap! state assoc-in (conj ref :ui/dirty?) false))))))
-
-(m/defmutation create-span
-  [{doc-id :document/id :as params}]
-  (action [{:keys [state]}]
-          ;; be optimistic
-          nil)
-  (remote [{:keys [ast]}]
-          (let [ast (assoc ast :key `span/create-span)]
-            ast))
-  (result-action [{:keys [state ref app component] :as env}]
-                 (let [{:server/keys [message error?]} (get-in env [:result :body `span/create-span])]
-                   (log/info "Create processed: " message)
-                   (when message
-                     (if error?
-                       (snack/message! {:message  message
-                                        :severity (if error? "error" "success")})
-                       (swap! state assoc-in (conj ref :ui/dirty?) false)))
-                   (tempid/resolve-tempids! app (get-in env [:result :body])))))
 
 ;; Query components --------------------------------------------------------------------------------
 (defsc Span
@@ -320,7 +305,6 @@
                           :onBlur     (fn []
                                         (c/set-state! this (assoc (c/get-state this) :ui/focused? false))
                                         (when dirty?
-                                          (m/set-value! this :span/value value)
                                           (c/transact! this [(save-span {:span/id    id
                                                                          :span/value value})]
                                                        {:on-result #(c/set-state! this (assoc (c/get-state this) :ui/dirty? false))})))
@@ -362,7 +346,6 @@
          :onBlur     (fn []
                        (c/set-state! this (assoc (c/get-state this) :ui/focused? false))
                        (when dirty?
-                         (m/set-value! this :span/value value)
                          (c/transact! this [(save-span {:span/id    id
                                                         :span/value value})]
                                       {:on-result #(c/set-state! this (assoc (c/get-state this) :ui/dirty? false))})))
@@ -419,15 +402,16 @@
 
 (defsc TokenLayer
   [this {:token-layer/keys [id name tokens span-layers] :ui/keys [page] :as token-layer} {:keys [text config]}]
-  {:query          [:token-layer/id :token-layer/name
-                    {:token-layer/tokens (c/get-query Token)}
-                    {:token-layer/span-layers (c/get-query SpanLayer)}
-                    :ui/page]
-   :initLocalState (fn [this props]
-                     {})
-   :pre-merge      (fn [{:keys [data-tree current-normalized]}]
-                     (assoc data-tree :ui/page (or (:ui/page current-normalized) 1)))
-   :ident          :token-layer/id}
+  {:query                [:token-layer/id :token-layer/name
+                          {:token-layer/tokens (c/get-query Token)}
+                          {:token-layer/span-layers (c/get-query SpanLayer)}
+                          :ui/page]
+   :initLocalState       (fn [this props]
+                           {})
+   :pre-merge            (fn [{:keys [data-tree current-normalized]}]
+                           (assoc data-tree :ui/page 1 (or (:ui/page current-normalized) 1)))
+   :componentWillUnmount (fn [this] (m/set-value! this :ui/page 1))
+   :ident                :token-layer/id}
   (let [tokens (sort-by :token/begin (reshape-into-token-grid config token-layer))
         lines-with-strings (-> tokens
                                (ta/add-untokenized-substrings text)
@@ -482,20 +466,27 @@
                       (ui-sentence-level-span span)
                       (log/error "No span found for span layer " id "!"))))))))]
 
-    (let [page-count 10]
-      (dom/div {}
-        (mui/typography {:variant "h5" :style {:marginBottom "1em"}} name)
+    (let [page-count 10
+          pagination (fn []
+                       (when (> (count filtered-lines) page-count)
+                         (mui/pagination
+                           {:count    (js/Math.ceil (/ (count filtered-lines) page-count))
+                            :page     page
+                            :onChange #(m/set-integer! this :ui/page :value %2)})))]
+      (mui/card {}
+        (mui/card-header {:action (pagination)
+                          :title  name})
 
-        (mapv render-line (->> filtered-lines
-                               (drop (* page-count (dec page)))
-                               (take page-count)
-                               (map-indexed (fn [i v] [i v]))))
+        #_(mui/typography {:variant "h5" :style {:marginBottom "1em"}} name)
 
-        (when (> (count filtered-lines) page-count)
-          (mui/pagination
-            {:count    (js/Math.ceil (/ (count filtered-lines) page-count))
-             :page     page
-             :onChange #(m/set-integer! this :ui/page :value %2)}))))))
+        (mui/card-content {}
+          (mapv render-line (->> filtered-lines
+                                 (drop (* page-count (dec page)))
+                                 (take page-count)
+                                 (map-indexed (fn [i v] [i v])))))
+
+        (mui/card-actions {}
+                          (pagination))))))
 
 (def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
 
@@ -533,7 +524,6 @@
   ;;(if (empty? (-> props :document/project :project/config))
   ;;  (dom/p "The interlinear editor must have at least one span layer designated as ")
   ;;  )
-  (log/info "busy?" busy?)
   (dom/div
     (if busy?
       (loader)
