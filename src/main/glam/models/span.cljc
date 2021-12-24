@@ -81,6 +81,17 @@
          (server-error "Failed to update document, please try again")
          (server-message "Updates applied")))))
 
+#?(:clj
+   (pc/defmutation multi-layer-batched-update
+     [{:keys [node] :as env} {document-id :document/id
+                              batches     :batches
+                              :as         args}]
+     {::pc/transform (ma/writeable-required :document/id)}
+     (let [success (s/multi-batched-update node document-id batches)]
+       (if-not success
+         (server-error "Failed to update document, please try again")
+         (server-message "Updates applied")))))
+
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
-   (def span-resolvers [get-span save-span create-span batched-update]))
+   (def span-resolvers [get-span save-span create-span batched-update multi-layer-batched-update]))

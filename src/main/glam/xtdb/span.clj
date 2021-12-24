@@ -116,6 +116,7 @@
 ;; - a vec of changes (this is a DSL) to make to the spans on the layer,
 ;; check that the client-supplied snapshot matches the current state of the DB and
 ;; apply the changes only if they do match
+(declare batched-update**)
 (gxe/deftx batched-update [node doc-id span-layer-id client-spans updates]
   (let [current-spans (set (get-span-snapshots node doc-id span-layer-id))
         client-spans (set client-spans)]
@@ -155,3 +156,11 @@
                    updates)]
       (log/debug "Submitting " (count tx) " batched span updates: " (clojure.string/join (map first tx)))
       tx)))
+
+(gxe/deftx multi-batched-update [node doc-id batches]
+  (let [tx (reduce into (map (fn [{span-layer-id :span-layer/id
+                                   client-spans  :client-spans
+                                   updates       :updates}]
+                               (batched-update** node doc-id span-layer-id client-spans updates))
+                             batches))]
+    tx))
