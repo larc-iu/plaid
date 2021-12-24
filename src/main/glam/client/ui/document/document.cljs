@@ -31,26 +31,33 @@
 
 (declare Document)
 (defn do-load!
-  ([app-or-comp doc-id tab]
-   (do-load! app-or-comp doc-id tab {}))
   ([app-or-comp doc-id tab load-opts]
+   (do-load! app-or-comp doc-id tab load-opts false))
+  ([app-or-comp doc-id tab load-opts mark-ready?]
    (let [editor-join-key (get-in editors [tab :join-key])
-         schema-mutation (get-in editors [tab :schema-mutation])]
+         schema-mutation (get-in editors [tab :schema-mutation])
+         ident [:document/id doc-id]]
      (when doc-id
        (if (nil? schema-mutation)
-         (df/load! app-or-comp [:document/id doc-id] Document
-                   (merge load-opts
-                          {:without (disj editor-joins editor-join-key)}))
+         (df/load! app-or-comp ident Document
+                   (merge {:without (disj editor-joins editor-join-key)}
+                          load-opts
+                          (when mark-ready?
+                            {:post-mutation        `dr/target-ready
+                             :post-mutation-params {:target ident}})))
 
-         ;; in this case, it's the interface's responsibility to call dr/target-ready
          (df/load! app-or-comp [:document/id doc-id] Document
-                   {:without (disj editor-joins editor-join-key)
-                    :post-action
-                    (fn [env]
-                      (let [data-tree (-> env :result :body (get [:document/id doc-id]))]
-                        (c/transact! app-or-comp
-                                     [(schema-mutation {:data-tree (editor-join-key data-tree)
-                                                        :document/id doc-id})])))}))))))
+                   (merge (dissoc load-opts :post-mutation :post-mutation-params)
+                          {:without (disj editor-joins editor-join-key)
+                           :post-action
+                           (fn [env]
+                             (let [data-tree (-> env :result :body (get ident))]
+                               (c/transact! app-or-comp
+                                            [(schema-mutation {:data-tree      (editor-join-key data-tree)
+                                                               :document/id    doc-id
+                                                               :ui/mark-ready? mark-ready?})]))
+                             (when-let [f (:post-action load-opts)]
+                               (f)))})))))))
 
 (defsc Document
   [this {:document/keys [id name project] :ui/keys [active-tab busy?]
@@ -79,10 +86,7 @@
                                (dr/route-deferred
                                  [:document/id parsed-id]
                                  (fn []
-                                   ;; TODO: target-ready should actually be called once the apply-schema mutation is done
-                                   (do-load! app parsed-id tab
-                                             {:post-mutation        `dr/target-ready
-                                              :post-mutation-params {:target [:document/id parsed-id]}})
+                                   (do-load! app parsed-id tab {} true)
                                    ;; TODO: here (and in tab onclick, and in refresh lambda) is where I should
                                    ;; call a function defined in interlinear  which scans the state that was just
                                    ;; loaded and triggers any maintenance that might need to happen, e.g. realigning
@@ -96,7 +100,7 @@
                                  tab (:ui/active-tab props)]
                              (let [unregister! (gas/register-subscription!
                                                  [:document/id doc-id]
-                                                 #(do-load! this doc-id tab))]
+                                                 #(do-load! this doc-id tab {}))]
                                (c/set-state! this {:unregister-fn unregister!}))))
    :componentWillUnmount (fn [this]
                            (when-let [unregister! (:unregister-fn (c/get-state this))]

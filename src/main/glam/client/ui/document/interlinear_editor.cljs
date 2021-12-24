@@ -77,32 +77,31 @@
 (m/defmutation apply-schema
   "Called by g.c.u.d.document. Makes changes to the document on load to make it consistent with schematic requirements
   of the interface."
-  [{:keys [data-tree] document-id :document/id}]
+  [{:keys [data-tree] document-id :document/id mark-ready? :ui/mark-ready?}]
   (action [{:keys [component app]}]
           (let [config (get-in data-tree [:document/project :project/config :editors :interlinear])
                 token-level-layer-ids (get-token-span-layers config)
                 sentence-level-layer-ids (get-sentence-span-layers config)
                 text-layers (:document/text-layers data-tree)
-                all-batched-updates (atom [])]
+                batches (atom [])]
 
             ;; Ensure that all token-level span layers have a span per-token
             (doseq [text-layer text-layers]
               (doseq [{:token-layer/keys [tokens] :as token-layer} (:text-layer/token-layers text-layer)]
                 (doseq [{:span-layer/keys [id spans] :as sl} (filter #(token-level-layer-ids (:span-layer/id %))
                                                                      (:token-layer/span-layers token-layer))]
-                  (let [batched-updates (atom [])]
+                  (let [updates (atom [])]
                     (doseq [{:token/keys [id]} (spanless-tokens tokens spans)]
-                      (swap! batched-updates conj
+                      (swap! updates conj
                              [:create {:span/value  ""
                                        :span/layer  (:span-layer/id sl)
                                        :span/tokens [id]}]))
-                    (when-not (empty? @batched-updates)
-                      (swap! all-batched-updates
+                    (when-not (empty? @updates)
+                      (swap! batches
                              conj
-                             (schema-batched-update {:document/id    document-id
-                                                     :span-layer/id  id
-                                                     :span-snapshots spans
-                                                     :updates        @batched-updates})))))))
+                             {:span-layer/id  id
+                              :span-snapshots spans
+                              :updates        @updates}))))))
 
             ;; Ensure that all sentence-level span layers have exactly one span per-token
             (doseq [{:text-layer/keys [text] :as text-layer} text-layers]
@@ -120,7 +119,7 @@
                     (let [spans-with-lines (map (fn [span]
                                                   (assoc span :lines (set (map #(lines-by-token (:token/id %)) (:span/tokens span)))))
                                                 spans)
-                          batched-updates (atom [])
+                          updates (atom [])
                           spans (atom spans-with-lines)]
 
                       ;; Check 1: if some spans span multiple lines, choose just one line (the smallest)
@@ -131,7 +130,7 @@
                                 (if (> (count lines) 1)
                                   (let [min-line (apply min lines)
                                         new-tokens (filterv #(= min-line (lines-by-token (:token/id %))) tokens)]
-                                    (swap! batched-updates conj [:merge {:span/id id :span/tokens new-tokens}])
+                                    (swap! updates conj [:merge {:span/id id :span/tokens new-tokens}])
                                     (-> span
                                         (assoc :lines #{min-line})
                                         (assoc :span/tokens new-tokens)))
@@ -148,7 +147,7 @@
                                              (mapcat #(drop 1 %))
                                              set)]
                         (doseq [id deleted-ids]
-                          (swap! batched-updates conj [:delete id]))
+                          (swap! updates conj [:delete id]))
                         (reset! spans (remove #(deleted-ids (:span/id %)) @spans)))
 
                       ;; Check 3: if some spans only incompletely span a line, expand them
@@ -158,7 +157,7 @@
                                       line-tokens (tokens-by-line line-num)]
                                   (if-not (= (set line-tokens) (set (map :token/id tokens)))
                                     (do
-                                      (swap! batched-updates conj [:merge {:span/id id :span/tokens (vec line-tokens)}])
+                                      (swap! updates conj [:merge {:span/id id :span/tokens (vec line-tokens)}])
                                       (assoc span :span/tokens (vec line-tokens)))
                                     span))))
 
@@ -167,44 +166,47 @@
                         (doseq [line-num needs-span]
                           (let [tokens-for-line (vec (tokens-by-line line-num))
                                 record {:span/value "" :span/tokens tokens-for-line}]
-                            (swap! batched-updates conj [:create record])
+                            (swap! updates conj [:create record])
                             (swap! spans conj (assoc record :span/id (tempid/tempid))))))
 
-                      (when-not (empty? @batched-updates)
-                        (swap! all-batched-updates
+                      (when-not (empty? @updates)
+                        (swap! batches
                                conj
-                               (schema-batched-update
-                                 {:document/id    document-id
-                                  :span-layer/id  id
-                                  :span-snapshots (map #(update % :span/tokens (fn [ts] (mapv :token/id ts)))
-                                                       (:span-layer/spans sl))
-                                  :updates        @batched-updates}))))))))
+                               {:span-layer/id  id
+                                :span-snapshots (map #(update % :span/tokens (fn [ts] (mapv :token/id ts)))
+                                                     (:span-layer/spans sl))
+                                :updates        @updates})))))))
 
-            (if-not (empty? @all-batched-updates)
+            (if-not (empty? @batches)
               (do
-                (log/info "SUBMITTING " @all-batched-updates)
-                (c/transact! component @all-batched-updates))
+                (log/info "SUBMITTING " @batches)
+                (c/transact! component [(schema-batched-update {:ui/mark-ready? mark-ready?
+                                                                :document/id    document-id
+                                                                :batches        @batches})]))
               ;; If we didn't need to make any updates, tell the router  we're all set
-              (do
+              (when mark-ready?
                 (c/transact! app [(dr/target-ready {:target [:document/id document-id]})]))))))
 
 ;; ui mutations ---------------------------------------------------------------------------------
 (m/defmutation schema-batched-update
-  [params]
-  (action [_] nil)
-  (remote [{:keys [ast state ref]}]
-          (swap! state update-in (conj ref :ui/mutation-count) #(if (nil? %) 1 (inc %)))
-          (let [ast (assoc ast :key `span/batched-update)]
+  [{mark-ready? :ui/mark-ready?}]
+  (action [{:keys [state ref]}]
+          (log/info "busy!")
+          (swap! state assoc-in (conj ref :ui/busy?) true))
+  (remote [{:keys [ast]}]
+          (let [ast (assoc ast :key `span/multi-layer-batched-update)]
+            (log/info ast)
             ast))
   (result-action [{:keys [component state app result ref]}]
-                 (let [count (get-in @state (conj ref :ui/mutation-count))]
-                   (if (> count 1)
-                     (swap! state update-in (conj ref :ui/mutation-count) dec)
-                     ;; If this is the last schema update, tell the ruoter we're ready after the load is done
-                     (df/load! app ref InterlinearEditor
-                               {:post-action (fn []
-                                               (swap! state update-in (conj ref :ui/mutation-count) dec)
-                                               (dr/target-ready! component ref))})))))
+                 ;; TODO check for failure
+                 (log/info "RESULT" result)
+                 (let [target (conj ref :ui/busy?)]
+                   ;; If this is the last schema update, tell the ruoter we're ready after the load is done
+                   (swap! state assoc-in target false)
+                   (df/load! app ref InterlinearEditor
+                             {:post-action (fn []
+                                             (when mark-ready?
+                                               (dr/target-ready! component ref)))}))))
 
 (m/defmutation save-span
   [{doc-id :document/id :as params}]
@@ -433,25 +435,22 @@
         lines (map #(filter :token/id %) lines-with-strings)
         line->token-ids (get-line->token lines)
         filtered-lines (map second (filter #(not-empty (line->token-ids (first %))) (map-indexed (fn [i v] [i v]) lines)))
+        line->token-ids (get-line->token filtered-lines)
         token-span-layers (filter #((get-token-span-layers config) (:span-layer/id %)) span-layers)
         sentence-span-layers (filter #((get-sentence-span-layers config) (:span-layer/id %)) span-layers)
         render-line
         (fn [[i line]]
-          ;; TODO: fix for very long sentences. need to pull out two divs per line probably
-
           ;; For each line...
           (dom/div {:style {:backgroundColor (if (even? i) "#0055ff17" "white")
                             :borderRadius    4
                             :padding         "0.3em"
                             :marginBottom    "1em"}}
 
-            ;; Token-level rows
+            ;; Token-level
             (flex-row {:style {:flexWrap "wrap" :marginBottom "20px"}}
-              ;; Titles
+              ;; Title column
               (flex-col {:key "title" :style {:marginBottom "20px"}}
-                ;; blank first cell--it's the tokens
                 (cell {:key "space"} (dom/div {} ent/nbsp))
-                ;; span layer titles
                 (mapv
                   (fn [sl]
                     (cell {:key   (str (:span-layer/id sl))
@@ -463,11 +462,10 @@
               ;; Token columns
               (mapv ui-token line))
 
-            ;; Sentence-level rows
+            ;; Sentence-level
             (flex-row {:style {:marginTop "12px"}}
-              ;; Titles
+              ;; Title column
               (flex-col {:key "title"}
-                ;; span layer titles
                 (mapv
                   (fn [sl]
                     (cell {:key   (str (:span-layer/id sl))
@@ -523,21 +521,21 @@
 (def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 
 (defsc ProjectQuery [_ _] {:ident :project/id :query [:project/config :project/id]})
-(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [mutation-count] :as props}]
+(defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [busy?] :as props}]
   {:query     [:document/id :document/name
                {:document/text-layers (c/get-query TextLayer)}
                {:document/project (c/get-query ProjectQuery)}
-               :ui/mutation-count]
+               :ui/busy?]
    :pre-merge (fn [{:keys [data-tree]}]
-                (merge {:ui/checking-schema? true :ui/mutation-count 0}
+                (merge {:ui/busy? false}
                        data-tree))
    :ident     :document/id}
   ;;(if (empty? (-> props :document/project :project/config))
   ;;  (dom/p "The interlinear editor must have at least one span layer designated as ")
   ;;  )
-  (log/info mutation-count)
+  (log/info "busy?" busy?)
   (dom/div
-    (if (and mutation-count (> mutation-count 0))
+    (if busy?
       (loader)
       (when text-layers
         (c/fragment
