@@ -52,6 +52,7 @@
                            :post-action
                            (fn [env]
                              (let [data-tree (-> env :result :body (get ident))]
+                               (log/info "Triggering schema mutation: " schema-mutation)
                                (c/transact! app-or-comp
                                             [(schema-mutation {:data-tree      (editor-join-key data-tree)
                                                                :document/id    doc-id
@@ -119,8 +120,8 @@
         (mui/tab-context {:value active-tab}
           (mui/tabs {:value    active-tab
                      :onChange (fn [_ val]
-                                 (m/set-value! this :ui/active-tab val)
                                  (m/set-value! this :ui/busy? true)
+                                 (m/set-value! this :ui/active-tab val)
                                  (r/assoc-query-param! :tab val)
                                  (do-load! this id val {:post-action #(m/set-value! this :ui/busy? false)}))}
             (mui/tab {:label (get-in editors ["text" :name]) :value "text"})

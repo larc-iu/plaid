@@ -71,14 +71,36 @@
                                        spans)]
             [id filtered-spans]))))))
 
-
-(declare schema-batched-update)
 (declare InterlinearEditor)
+(m/defmutation schema-update
+  [{mark-ready? :ui/mark-ready? document-id :document/id}]
+  (action [{:keys [state ref]}]
+          (log/info "busy!")
+          (swap! state assoc-in [:document/id document-id :ui/busy?] true))
+  (remote [{:keys [ast]}]
+          (let [ast (assoc ast :key `span/multi-layer-batched-update)]
+            (log/info ast)
+            ast))
+  (result-action [{:keys [state app result]}]
+                 ;; TODO check for failure
+                 (let [{:server/keys [message error?]} (get-in result [:body `span/multi-layer-batched-update])]
+                   (log/info "Schema update error?" error?)
+                   (log/info "Schema update message:" message))
+                 (log/info "RESULT" result)
+                 (let [ident [:document/id document-id]
+                       target (conj ident :ui/busy?)]
+                   ;; If this is the last schema update, tell the ruoter we're ready after the load is done
+                   (df/load! app ident InterlinearEditor
+                             {:post-action (fn []
+                                             (swap! state assoc-in target false)
+                                             (when mark-ready?
+                                               (dr/target-ready! app ident)))}))))
+
 (m/defmutation apply-schema
   "Called by g.c.u.d.document. Makes changes to the document on load to make it consistent with schematic requirements
   of the interface."
   [{:keys [data-tree] document-id :document/id mark-ready? :ui/mark-ready?}]
-  (action [{:keys [component app]}]
+  (action [{:keys [app]}]
           (let [config (get-in data-tree [:document/project :project/config :editors :interlinear])
                 token-level-layer-ids (get-token-span-layers config)
                 sentence-level-layer-ids (get-sentence-span-layers config)
@@ -91,7 +113,7 @@
                 (doseq [{:span-layer/keys [id spans] :as sl} (filter #(token-level-layer-ids (:span-layer/id %))
                                                                      (:token-layer/span-layers token-layer))]
                   (let [updates (atom [])]
-                    (doseq [{:token/keys [id]} (spanless-tokens tokens spans)]
+                    (doseq [{:token/keys [id] :as token} (spanless-tokens tokens spans)]
                       (swap! updates conj
                              [:create {:span/value  ""
                                        :span/layer  (:span-layer/id sl)
@@ -179,38 +201,15 @@
 
             (if-not (empty? @batches)
               (do
-                (log/info "SUBMITTING " @batches)
-                (c/transact! component [(schema-batched-update {:ui/mark-ready? mark-ready?
-                                                                :document/id    document-id
-                                                                :batches        @batches})]))
+                (c/transact! app
+                             [(schema-update {:ui/mark-ready? mark-ready?
+                                              :document/id    document-id
+                                              :batches        @batches})]))
               ;; If we didn't need to make any updates, tell the router  we're all set
               (when mark-ready?
                 (c/transact! app [(dr/target-ready {:target [:document/id document-id]})]))))))
 
 ;; ui mutations ---------------------------------------------------------------------------------
-(m/defmutation schema-batched-update
-  [{mark-ready? :ui/mark-ready?}]
-  (action [{:keys [state ref]}]
-          (log/info "busy!")
-          (swap! state assoc-in (conj ref :ui/busy?) true))
-  (remote [{:keys [ast]}]
-          (let [ast (assoc ast :key `span/multi-layer-batched-update)]
-            (log/info ast)
-            ast))
-  (result-action [{:keys [component state app result ref]}]
-                 ;; TODO check for failure
-                 (let [{:server/keys [message error?]} (get-in result [:body `span/multi-layer-batched-update])]
-                   (log/info "Schema update error?" error?)
-                   (log/info "Schema update message:" message))
-                 (log/info "RESULT" result)
-                 (let [target (conj ref :ui/busy?)]
-                   ;; If this is the last schema update, tell the ruoter we're ready after the load is done
-                   (df/load! app ref InterlinearEditor
-                             {:post-action (fn []
-                                             (swap! state assoc-in target false)
-                                             (when mark-ready?
-                                               (dr/target-ready! component ref)))}))))
-
 (m/defmutation save-span
   [{:span/keys [value]}]
   (action [{:keys [state ref]}]
@@ -218,7 +217,7 @@
   (remote [{:keys [ast]}]
           (let [ast (assoc ast :key `span/save-span)]
             ast))
-  (result-action [{:keys [state ref app component] :as env}]
+  (result-action [{:keys [state ref] :as env}]
                  (let [{:server/keys [message error?]} (get-in env [:result :body `span/save-span])]
                    (log/info ref)
                    (log/info "Save processed: " message)
