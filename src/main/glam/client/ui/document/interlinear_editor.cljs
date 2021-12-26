@@ -166,7 +166,7 @@
                                                        @spans))
                             needs-span (difference contentful-lines covered-lines)]
                         (doseq [line-num needs-span]
-                          (let [tokens-for-line (vec (line->tokens line-num))
+                          (let [tokens-for-line (mapv :token/id (line->tokens line-num))
                                 record {:span/value "" :span/tokens tokens-for-line}]
                             (swap! updates conj [:create record])
                             (swap! spans conj (assoc record :span/id (tempid/tempid))))))
