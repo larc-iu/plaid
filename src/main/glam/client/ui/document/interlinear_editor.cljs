@@ -1,5 +1,6 @@
 (ns glam.client.ui.document.interlinear-editor
   (:require [goog.object :as gobj]
+            [clojure.set :refer [difference]]
             [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
             [com.fulcrologic.fulcro.data-fetch :as df]
@@ -17,6 +18,7 @@
             [glam.client.ui.common.core :refer [loader]]
             [glam.client.ui.material-ui :as mui]
             [glam.algos.text :as ta]
+            [glam.models.token-layer :as tokl]
             [glam.models.span :as span]
             [glam.client.ui.global-snackbar :as snack]))
 
@@ -24,10 +26,6 @@
 (def ui-auto-sizer (interop/react-factory AutoSizer))
 
 (def ui-autosize-input (interop/react-factory AutosizeInput))
-(defn get-token-span-layers [{:keys [span-layer-scopes]}]
-  (->> span-layer-scopes (filter #(= (second %) :token)) keys set))
-(defn get-sentence-span-layers [{:keys [span-layer-scopes]}]
-  (->> span-layer-scopes (filter #(= (second %) :sentence)) keys set))
 
 ;; schema management --------------------------------------------------------------------------------
 (defn get-line->token [lines]
@@ -43,33 +41,6 @@
                 #(some (fn [{token-id :token/id}] (= token-id id)) (:span/tokens %))
                 spans)))
           tokens))
-
-(defn reshape-into-token-grid
-  "Given a token layer's data tree, returns the sequence of tokens where each token has
-  been enriched with a :spans attribute containing a list of 2-tuples, where for each span
-  in the layer that is linked to the token and is configured as a token-level span layer,
-  the first item is the span layer's ID, and the second item is a sequence of all spans on
-  that layer that were linkde to this token. Example:
-
-      (reshape-into-token-grid tl)
-      =>
-      ({:token/id :tok2,
-        :token/value \"sentence\",
-        :token/begin 5,
-        :token/end 13,
-        :spans ([:sl1 (#:span{:id :s2, :value \"NN\", :tokens [#:token{:id :tok2}]})])
-       ...)
-  "
-  [config {:token-layer/keys [tokens span-layers]}]
-  (let [token-span-layers (get-token-span-layers config)]
-    (for [{token-id :token/id :as token} tokens]
-      (assoc token
-        :spans
-        (for [{:span-layer/keys [id spans]} (filter #(token-span-layers (:span-layer/id %)) span-layers)]
-          (let [filtered-spans (filter (fn [{:span/keys [tokens]}]
-                                         (some #(= (:token/id %) token-id) tokens))
-                                       spans)]
-            [id filtered-spans]))))))
 
 (declare InterlinearEditor)
 (m/defmutation schema-update
@@ -101,62 +72,71 @@
   of the interface."
   [{:keys [data-tree] document-id :document/id mark-ready? :ui/mark-ready?}]
   (action [{:keys [app]}]
-          (let [config (get-in data-tree [:document/project :project/config :editors :interlinear])
-                token-level-layer-ids (get-token-span-layers config)
-                sentence-level-layer-ids (get-sentence-span-layers config)
-                text-layers (:document/text-layers data-tree)
-                batches (atom [])]
+          (let [text-layers (:document/text-layers data-tree)
+                batches (atom [])
+                get-snapshots (memoize (fn [token-layer]
+                                         (group-by :span/layer
+                                                   (mapcat :token/spans
+                                                           (:token-layer/columnar-tokens token-layer)))))]
 
             ;; Ensure that all token-level span layers have a span per-token
             (doseq [text-layer text-layers]
-              (doseq [{:token-layer/keys [tokens] :as token-layer} (:text-layer/token-layers text-layer)]
-                (doseq [{:span-layer/keys [id spans] :as sl} (filter #(token-level-layer-ids (:span-layer/id %))
-                                                                     (:token-layer/span-layers token-layer))]
+              (doseq [token-layer (:text-layer/token-layers text-layer)]
+                ;; For each token-level span layer...
+                (doseq [{sl-id :span-layer/id} (:token-layer/token-span-layers token-layer)]
                   (let [updates (atom [])]
-                    (doseq [{:token/keys [id] :as token} (spanless-tokens tokens spans)]
-                      (swap! updates conj
-                             [:create {:span/value  ""
-                                       :span/layer  (:span-layer/id sl)
-                                       :span/tokens [id]}]))
+                    ;; For each token...
+                    (doseq [{:token/keys [id spans] :as tok} (:token-layer/columnar-tokens token-layer)]
+                      ;; Check how many spans there are for this layer
+                      (let [spans-for-layer (filter #(= (:span/layer %) sl-id) spans)]
+                        ;; If there's no span for that token for that span layer, create one
+                        (when (empty? spans-for-layer)
+                          (swap! updates conj
+                                 [:create {:span/value  ""
+                                           :span/layer  sl-id
+                                           :span/tokens [id]}]))
+                        ;; If there's more than one span for that token, delete the others
+                        (when-let [{:span/keys [id]} (seq (rest spans-for-layer))]
+                          (swap! updates conj
+                                 [:delete id]))))
+
                     (when-not (empty? @updates)
                       (swap! batches
                              conj
-                             {:span-layer/id  id
-                              :span-snapshots spans
+                             {:span-layer/id  sl-id
+                              :span-snapshots ((get-snapshots token-layer) sl-id)
                               :updates        @updates}))))))
 
             ;; Ensure that all sentence-level span layers have exactly one span per-token
-            (doseq [{:text-layer/keys [text] :as text-layer} text-layers]
+            (doseq [text-layer text-layers]
               (doseq [token-layer (:text-layer/token-layers text-layer)]
-                (let [tokens (sort-by :token/begin (reshape-into-token-grid config token-layer))
-                      lines-with-strings (-> tokens
-                                             (ta/add-untokenized-substrings text)
-                                             (ta/separate-into-lines text))
-                      lines (map #(filter :token/id %) lines-with-strings)
-                      contentful-lines (filter some? (map-indexed #(if (empty? %2) nil %1) lines))
-                      tokens-by-line (get-line->token lines)
-                      lines-by-token (get-token->line lines)]
-                  (doseq [{:span-layer/keys [id spans] :as sl} (filter #(sentence-level-layer-ids (:span-layer/id %))
-                                                                       (:token-layer/span-layers token-layer))]
-                    (let [spans-with-lines (map (fn [span]
-                                                  (assoc span :lines (set (map #(lines-by-token (:token/id %)) (:span/tokens span)))))
-                                                spans)
-                          updates (atom [])
-                          spans (atom spans-with-lines)]
+                (let [tokens (:token-layer/columnar-tokens token-layer)
+                      contentful-lines (set (map :token/line tokens))
+                      token-index (into {} (map (fn [v] [(:token/id v) v]) tokens))
+                      line->tokens (group-by :token/line tokens)]
+                  (doseq [{sl-id :span-layer/id} (:token-layer/sentence-span-layers token-layer)]
+                    (let [updates (atom [])
+                          spans (atom (filterv #(= (:span/layer %) sl-id) (:token-layer/sentence-level-spans token-layer)))]
+
+                      (log/info @spans)
 
                       ;; Check 1: if some spans span multiple lines, choose just one line (the smallest)
                       ;; TODO: just takes the lowest numbered line right now, probably we want to actually take the line
                       ;; with the most tokens associated with the given span
                       (reset! spans
-                              (for [{lines :lines tokens :span/tokens id :span/id :as span} @spans]
-                                (if (> (count lines) 1)
-                                  (let [min-line (apply min lines)
-                                        new-tokens (filterv #(= min-line (lines-by-token (:token/id %))) tokens)]
-                                    (swap! updates conj [:merge {:span/id id :span/tokens new-tokens}])
-                                    (-> span
-                                        (assoc :lines #{min-line})
-                                        (assoc :span/tokens new-tokens)))
-                                  span)))
+                              (mapv (fn [{tokens :span/tokens id :span/id :as span}]
+                                      (let [lines (map (comp :token/line #(get token-index %)) tokens)]
+                                        (log/info lines span)
+                                        (if (> (count (set lines)) 1)
+                                          (let [min-line (apply min lines)
+                                                new-tokens (filterv #(= min-line (line->tokens (:token/id %))) tokens)]
+                                            (log/info new-tokens)
+                                            (swap! updates conj [:merge {:span/id id :span/tokens new-tokens}])
+                                            (-> span
+                                                (assoc :lines #{min-line})
+                                                (assoc :span/tokens new-tokens)))
+                                          (assoc span :lines (set lines)))))
+                                    @spans))
 
                       ;; Check 2: if a line has more than one span, choose the longest one and delete the rest
                       (let [spans-by-line (into {} (for [line-number contentful-lines]
@@ -174,19 +154,23 @@
 
                       ;; Check 3: if some spans only incompletely span a line, expand them
                       (reset! spans
-                              (for [{:span/keys [id tokens] :as span} @spans]
-                                (let [line-num (lines-by-token (-> tokens first :token/id))
-                                      line-tokens (tokens-by-line line-num)]
-                                  (if-not (= (set line-tokens) (set (map :token/id tokens)))
-                                    (do
-                                      (swap! updates conj [:merge {:span/id id :span/tokens (vec line-tokens)}])
-                                      (assoc span :span/tokens (vec line-tokens)))
-                                    span))))
+                              (doall (for [{:span/keys [id tokens] :as span} @spans]
+                                       (let [line-num (-> span :lines first)
+                                             line-token-ids (mapv :token/id (line->tokens line-num))]
+                                         (if-not (= (set line-token-ids) (set tokens))
+                                           (do
+                                             (swap! updates conj [:merge {:span/id id :span/tokens line-token-ids}])
+                                             (assoc span :span/tokens line-token-ids))
+                                           span)))))
 
                       ;; Check 4: if some lines entirely lack a span, create one
-                      (let [needs-span (filterv (fn [n] (not-any? #((:lines %) n) @spans)) contentful-lines)]
+                      (let [covered-lines (set (mapcat #(->> (% :span/tokens)
+                                                             (map token-index)
+                                                             (map :token/line))
+                                                       @spans))
+                            needs-span (difference contentful-lines covered-lines)]
                         (doseq [line-num needs-span]
-                          (let [tokens-for-line (vec (tokens-by-line line-num))
+                          (let [tokens-for-line (vec (line->tokens line-num))
                                 record {:span/value "" :span/tokens tokens-for-line}]
                             (swap! updates conj [:create record])
                             (swap! spans conj (assoc record :span/id (tempid/tempid))))))
@@ -194,9 +178,8 @@
                       (when-not (empty? @updates)
                         (swap! batches
                                conj
-                               {:span-layer/id  id
-                                :span-snapshots (map #(update % :span/tokens (fn [ts] (mapv :token/id ts)))
-                                                     (:span-layer/spans sl))
+                               {:span-layer/id  sl-id
+                                :span-snapshots ((get-snapshots token-layer) sl-id)
                                 :updates        @updates})))))))
 
             (if-not (empty? @batches)
@@ -226,32 +209,6 @@
                        (snack/message! {:message  message
                                         :severity (if error? "error" "success")})
                        (swap! state assoc-in (conj ref :ui/dirty?) false))))))
-
-;; Query components --------------------------------------------------------------------------------
-(defsc Span
-  [this {:span/keys [id value]}]
-  {:query     [:span/id :span/value :span/tokens :ui/focused? :ui/dirty?]
-   :pre-merge (fn [{:keys [data-tree current-normalized]}]
-                ;; If we're merging into a span that's currently being edited, keep its current value
-                (if (:ui/focused? current-normalized)
-                  (merge current-normalized
-                         data-tree
-                         {:span/value (:span/value current-normalized)})
-                  (merge current-normalized
-                         data-tree)))
-   :ident     :span/id})
-
-(defsc SpanLayer
-  [this {:span-layer/keys [id name spans]}]
-  {:query [:span-layer/id :span-layer/name
-           {:span-layer/spans (c/get-query Span)}]
-   ;; TODO maybe try to use pre-merge here to hold on to any existing tempid spans to resolve focus loss issue on temp spans
-   :ident :span-layer/id})
-
-(defsc Token
-  [this {:token/keys [id value]}]
-  {:query [:token/id :token/value :token/begin :token/end :token/text]
-   :ident :token/id})
 
 ;; UI helpers --------------------------------------------------------------------------------
 (defn merge-props-with-style [default extra]
@@ -285,7 +242,15 @@
 ;; Why? See reshape-into-token-grid.
 (defsc SentenceLevelSpan [this {:span/keys [id tokens] :as props}]
   {:ident              :span/id
-   :query              [:span/id :span/value :span/tokens]
+   :query              [:span/id :span/value :span/tokens :span/layer]
+   :pre-merge          (fn [{:keys [data-tree current-normalized]}]
+                         ;; If we're merging into a span that's currently being edited, keep its current value
+                         (if (:ui/focused? current-normalized)
+                           (merge current-normalized
+                                  data-tree
+                                  {:span/value (:span/value current-normalized)})
+                           (merge current-normalized
+                                  data-tree)))
    ;; Need to use local state here because otherwise we lose focus when another user triggers a refresh.
    :initLocalState     (fn [this props] {:value (or (:span/value props) "")})
    :componentDidUpdate (fn [this prev-props _]
@@ -321,11 +286,18 @@
                                        :backgroundColor (if focused? "#e3ffe6" "transparent")}}))))
 (def ui-sentence-level-span (c/computed-factory SentenceLevelSpan {:keyfn (comp str :span/id)}))
 
-(defsc SpanCell [this {:span/keys [id] :as props} {token-id      :token/id
-                                                   span-layer-id :span-layer/id
-                                                   token-width   :token-width :as cp}]
+(defsc SpanCell [this {:span/keys [id] :as props} {token-id    :token/id
+                                                   token-width :token-width :as cp}]
   {:ident              :span/id
-   :query              [:span/id :span/value]
+   :query              [:span/id :span/value :span/layer :span/tokens]
+   :pre-merge          (fn [{:keys [data-tree current-normalized]}]
+                         ;; If we're merging into a span that's currently being edited, keep its current value
+                         (if (:ui/focused? current-normalized)
+                           (merge current-normalized
+                                  data-tree
+                                  {:span/value (:span/value current-normalized)})
+                           (merge current-normalized
+                                  data-tree)))
    ;; Need to use local state here because otherwise we lose focus when another user triggers a refresh.
    :initLocalState     (fn [this props] {:value (or (:span/value props) "")})
    :componentDidUpdate (fn [this prev-props _]
@@ -339,6 +311,7 @@
         {:type       "text"
          :value      (if focused? value (:span/value props))
          :onChange   (fn [e]
+                       (log/info "Changed")
                        (c/set-state! this {:value     (.-value (.-target e))
                                            :ui/dirty? true}))
          :onFocus    #(c/set-state! this (assoc (c/get-state this) :ui/focused? true))
@@ -347,7 +320,9 @@
                        (when dirty?
                          (c/transact! this [(save-span {:span/id    id
                                                         :span/value value})]
-                                      {:on-result #(c/set-state! this (assoc (c/get-state this) :ui/dirty? false))})))
+                                      {:on-result (fn []
+                                                    (log/info "Undirtying")
+                                                    (c/set-state! this (assoc (c/get-state this) :ui/dirty? false)))})))
          :inputStyle {:minWidth        (or (and token-width (str (max (- token-width 4) 20) "px"))
                                            "20px")
                       :display         "inline-block"
@@ -363,31 +338,30 @@
 (def ui-span-cell (c/computed-factory SpanCell {:keyfn (comp str :span/id)}))
 
 ;; Here is where the real UI begins
-(defsc TokenCell [this {:token/keys [id value] spans :spans :as props}]
-  {:query             [:token/id :token/value :spans]
+(defsc ColumnarToken [this {:token/keys [id value spans] :as props}]
+  {:query             [:token/id :token/value :token/line {:token/spans (c/get-query SpanCell)}]
    :ident             :token/id
    :initLocalState    (fn [this props]
-                        {:save-ref (fn [r]
-                                     (gobj/set this "token-ref" r))})
+                        {:save-ref #(gobj/set this "token-ref" %)})
    :componentDidMount (fn [this prev-props _]
                         ;; The first render sets up the ref but not in time for its width to be grabbed.
                         ;; Force another render on mount so that we have a chance to properly get the width of the ref.
                         (.forceUpdate this))}
-  (let [save-ref (c/get-state this :save-ref)]
+  (let [save-ref (c/get-state this :save-ref)
+        grouped-spans (group-by :span/layer spans)]
     (flex-col {:key id}
       (cell {} (dom/span {:ref save-ref} value))
-      (mapv (fn [[sl-id spans]]
+      (mapv (fn [[sl spans]]
               (when (> (count spans) 1)
-                (log/warn (str "Found a token " id " with more than one associated span in " sl-id "."
+                (log/warn (str "Found a token " id " with more than one associated span in " (:span/layer (first spans)) "."
                                " Currently, this is not supported, and only the first span will be used.")))
               (when (> (count spans) 0)
                 (ui-span-cell (c/computed (first spans)
-                                          {:token/id      id
-                                           :span-layer/id sl-id
-                                           :token-width   (when-let [t (gobj/get this "token-ref")]
-                                                            (.-width (.getBoundingClientRect t)))}))))
-            spans))))
-(def ui-token (c/factory TokenCell {:keyfn :token/id}))
+                                          {:token/id    id
+                                           :token-width (when-let [t (gobj/get this "token-ref")]
+                                                          (.-width (.getBoundingClientRect t)))}))))
+            grouped-spans))))
+(def ui-columnar-token (c/factory ColumnarToken {:keyfn :token/id}))
 
 ;; Where much of the work happens --------------------------------------------------------------------------------
 ;; TODO debug
@@ -398,35 +372,43 @@
       (c/set-state! this (assoc state cache-key [invalidator-value (calc-fn)]))
       (second (cache-key state)))))
 
+(defsc SpanLayer [_ _]
+  {:ident :span-layer/id
+   :query [:span-layer/id :span-layer/name]})
+
 (defsc TokenLayer
-  [this {:token-layer/keys [id name tokens span-layers] :ui/keys [page] :as token-layer} {:keys [text config]}]
+  [this
+   {:token-layer/keys [id name columnar-tokens sentence-level-spans token-span-layers sentence-span-layers]
+    :ui/keys          [page] :as token-layer}
+   {:keys [text config]}]
   {:query                [:token-layer/id :token-layer/name
-                          {:token-layer/tokens (c/get-query Token)}
-                          {:token-layer/span-layers (c/get-query SpanLayer)}
+                          {:token-layer/columnar-tokens (c/get-query ColumnarToken)}
+                          {:token-layer/sentence-level-spans (c/get-query SentenceLevelSpan)}
+                          {:token-layer/token-span-layers (c/get-query SpanLayer)}
+                          {:token-layer/sentence-span-layers (c/get-query SpanLayer)}
                           :ui/page]
-   :initLocalState       (fn [this props]
-                           {})
    :pre-merge            (fn [{:keys [data-tree current-normalized]}]
                            (assoc data-tree :ui/page 1 (or (:ui/page current-normalized) 1)))
    :componentWillUnmount (fn [this] (m/set-value! this :ui/page 1))
    :ident                :token-layer/id}
-  (let [tokens (sort-by :token/begin (reshape-into-token-grid config token-layer))
-        lines-with-strings (-> tokens
-                               (ta/add-untokenized-substrings text)
-                               (ta/separate-into-lines text))
-        lines (map #(filter :token/id %) lines-with-strings)
-        line->token-ids (get-line->token lines)
-        filtered-lines (map second (filter #(not-empty (line->token-ids (first %))) (map-indexed (fn [i v] [i v]) lines)))
-        line->token-ids (get-line->token filtered-lines)
-        token-span-layers (filter #((get-token-span-layers config) (:span-layer/id %)) span-layers)
-        sentence-span-layers (filter #((get-sentence-span-layers config) (:span-layer/id %)) span-layers)
+  ;; TODO remap lines to avoid empty lines
+  (let [contentful-lines (set (map :token/line columnar-tokens))
+        line-remapping (into {} (map (fn [orig new] [orig new])
+                                     (sort contentful-lines)
+                                     (range (count contentful-lines))))
+        tokens-by-line (group-by (comp line-remapping :token/line) columnar-tokens)
+
+        tokens-by-id (into {} (for [{id :token/id :as token} columnar-tokens] [id token]))
+        line-count (count contentful-lines)
+        sentence-level-spans-by-line (group-by (comp line-remapping :token/line tokens-by-id first :span/tokens) sentence-level-spans)
         render-line
-        (fn [[i line]]
+        (fn [[i tokens]]
           ;; For each line...
           (dom/div {:style {:backgroundColor (if (even? i) "#0055ff17" "white")
                             :borderRadius    4
                             :padding         "0.3em"
-                            :marginBottom    "1em"}}
+                            :marginBottom    "1em"}
+                    :key   (str "line" i)}
 
             ;; Token-level
             (flex-row {:style {:flexWrap "wrap" :marginBottom "20px"}}
@@ -442,7 +424,7 @@
                   token-span-layers))
 
               ;; Token columns
-              (mapv ui-token line))
+              (mapv ui-columnar-token tokens))
 
             ;; Sentence-level
             (flex-row {:style {:marginTop "12px"}}
@@ -457,33 +439,27 @@
                   sentence-span-layers))
 
               (flex-col {:key "spans"}
-                (for [{:span-layer/keys [id spans]} sentence-span-layers]
-                  (let [tokens-for-line (set (line->token-ids i))
-                        span (some #(when (= tokens-for-line (set (map :token/id (:span/tokens %)))) %) spans)]
-                    (when span
-                      (ui-sentence-level-span span))))))))]
-
+                (doall (for [sl-id (map :span-layer/id sentence-span-layers)]
+                         (let [span (some #(when (= (:span/layer %) sl-id) %) (sentence-level-spans-by-line i))]
+                           (when span
+                             (ui-sentence-level-span span)))))))))]
     (let [page-count 10
           pagination (fn []
-                       (when (> (count filtered-lines) page-count)
+                       (when (> line-count page-count)
                          (mui/pagination
-                           {:count    (js/Math.ceil (/ (count filtered-lines) page-count))
+                           {:count    (js/Math.ceil (/ line-count page-count))
                             :page     page
                             :onChange #(m/set-integer! this :ui/page :value %2)})))]
       (mui/card {}
         (mui/card-header {:action (pagination)
                           :title  name})
 
-        #_(mui/typography {:variant "h5" :style {:marginBottom "1em"}} name)
-
         (mui/card-content {}
-          (mapv render-line (->> filtered-lines
-                                 (drop (* page-count (dec page)))
-                                 (take page-count)
-                                 (map-indexed (fn [i v] [i v])))))
+          (mapv render-line (map (fn [i] [i (tokens-by-line i)])
+                                 (range (* page-count (dec page)) (min line-count (* page-count page))))))
 
         (mui/card-actions {}
-                          (pagination))))))
+          (pagination))))))
 
 (def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
 

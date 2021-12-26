@@ -169,7 +169,8 @@
   based on the occurrence of the newline character. A token will be split if
   it contains a newline character in the output of this function, even though
   all copies will have the same ID, in order to facilitate display. (Newlines in
-  tokens are virtually unheard of, so this shouldn't be a big deal.)"
+  tokens are virtually unheard of, so this shouldn't be a big deal.)
+  Also add a :token/line attribute which is the 0-indexed line number of the token."
   [tokens-and-strings {:text/keys [body]}]
   (let [token-text (fn [{:token/keys [begin end] :as token}]
                      (subs body begin end))]
@@ -177,43 +178,46 @@
            current-line []
            head (first tokens-and-strings)
            tail (rest tokens-and-strings)]
-      (cond
-        (nil? head)
-        (conj accum-lines current-line)
+      (let [line-number (count accum-lines)]
+        (cond
+          (nil? head)
+          (conj accum-lines current-line)
 
-        ;; string with newline
-        (and (string? head) (clojure.string/index-of head "\n"))
-        (let [newline-index (clojure.string/index-of head "\n")
-              current-line (conj current-line (subs head 0 newline-index))]
-          (recur (conj accum-lines current-line)
-                 []
-                 (subs head (inc newline-index))
-                 tail))
+          ;; string with newline
+          (and (string? head) (clojure.string/index-of head "\n"))
+          (let [newline-index (clojure.string/index-of head "\n")
+                current-line (conj current-line (subs head 0 newline-index))]
+            (recur (conj accum-lines current-line)
+                   []
+                   (subs head (inc newline-index))
+                   tail))
 
-        ;; token with newline
-        (and (map? head) (clojure.string/index-of (token-text head) "\n"))
-        (let [newline-index (clojure.string/index-of (token-text head) "\n")
-              current-line (conj current-line (assoc head :token/end (+ newline-index (:token/begin head))))
-              new-head (assoc head :token/begin (+ (:token/begin head) (inc newline-index)))
-              new-head-text (token-text new-head)]
-          (recur (conj accum-lines current-line)
-                 []
-                 (if-not (empty? new-head-text) new-head (first tail))
-                 (if-not (empty? new-head-text) tail (rest tail))))
+          ;; token with newline
+          (and (map? head) (clojure.string/index-of (token-text head) "\n"))
+          (let [newline-index (clojure.string/index-of (token-text head) "\n")
+                current-line (conj current-line (-> head
+                                                    (assoc :token/end (+ newline-index (:token/begin head)))
+                                                    (assoc :token/line line-number)))
+                new-head (assoc head :token/begin (+ (:token/begin head) (inc newline-index)))
+                new-head-text (token-text new-head)]
+            (recur (conj accum-lines current-line)
+                   []
+                   (if-not (empty? new-head-text) new-head (first tail))
+                   (if-not (empty? new-head-text) tail (rest tail))))
 
-        ;; plain string
-        (and (string? head) (not (empty? head)))
-        (recur accum-lines
-               (conj current-line head)
-               (first tail)
-               (rest tail))
+          ;; plain token
+          (map? head)
+          (recur accum-lines
+                 (conj current-line (assoc head :token/line line-number))
+                 (first tail)
+                 (rest tail))
 
-        ;; plain token
-        :else
-        (recur accum-lines
-               (conj current-line head)
-               (first tail)
-               (rest tail))))))
+          ;; plain string
+          :else
+          (recur accum-lines
+                 (conj current-line head)
+                 (first tail)
+                 (rest tail)))))))
 
 (defn add-untokenized-substrings
   "Takes a sequence of tokens, finds which parts of the text aren't covered by the tokens, and inserts
