@@ -118,19 +118,15 @@
                     (let [updates (atom [])
                           spans (atom (filterv #(= (:span/layer %) sl-id) (:token-layer/sentence-level-spans token-layer)))]
 
-                      (log/info @spans)
-
                       ;; Check 1: if some spans span multiple lines, choose just one line (the smallest)
                       ;; TODO: just takes the lowest numbered line right now, probably we want to actually take the line
                       ;; with the most tokens associated with the given span
                       (reset! spans
                               (mapv (fn [{tokens :span/tokens id :span/id :as span}]
                                       (let [lines (map (comp :token/line #(get token-index %)) tokens)]
-                                        (log/info lines span)
                                         (if (> (count (set lines)) 1)
                                           (let [min-line (apply min lines)
                                                 new-tokens (filterv #(= min-line (line->tokens (:token/id %))) tokens)]
-                                            (log/info new-tokens)
                                             (swap! updates conj [:merge {:span/id id :span/tokens new-tokens}])
                                             (-> span
                                                 (assoc :lines #{min-line})
@@ -154,14 +150,14 @@
 
                       ;; Check 3: if some spans only incompletely span a line, expand them
                       (reset! spans
-                              (doall (for [{:span/keys [id tokens] :as span} @spans]
-                                       (let [line-num (-> span :lines first)
-                                             line-token-ids (mapv :token/id (line->tokens line-num))]
-                                         (if-not (= (set line-token-ids) (set tokens))
-                                           (do
-                                             (swap! updates conj [:merge {:span/id id :span/tokens line-token-ids}])
-                                             (assoc span :span/tokens line-token-ids))
-                                           span)))))
+                              (for [{:span/keys [id tokens] :as span} @spans]
+                                (let [line-num (-> span :lines first)
+                                      line-token-ids (mapv :token/id (line->tokens line-num))]
+                                  (if-not (= (set line-token-ids) (set tokens))
+                                    (do
+                                      (swap! updates conj [:merge {:span/id id :span/tokens line-token-ids}])
+                                      (assoc span :span/tokens line-token-ids))
+                                    span))))
 
                       ;; Check 4: if some lines entirely lack a span, create one
                       (let [covered-lines (set (mapcat #(->> (% :span/tokens)
@@ -402,12 +398,13 @@
         line-count (count contentful-lines)
         sentence-level-spans-by-line (group-by (comp line-remapping :token/line tokens-by-id first :span/tokens) sentence-level-spans)
         render-line
-        (fn [[i tokens]]
+        (fn [{:keys [i tokens hidden?]}]
           ;; For each line...
           (dom/div {:style {:backgroundColor (if (even? i) "#0055ff17" "white")
                             :borderRadius    4
                             :padding         "0.3em"
-                            :marginBottom    "1em"}
+                            :marginBottom    "1em"
+                            :display         (if hidden? "none" "block")}
                     :key   (str "line" i)}
 
             ;; Token-level
@@ -439,10 +436,10 @@
                   sentence-span-layers))
 
               (flex-col {:key "spans"}
-                (doall (for [sl-id (map :span-layer/id sentence-span-layers)]
-                         (let [span (some #(when (= (:span/layer %) sl-id) %) (sentence-level-spans-by-line i))]
-                           (when span
-                             (ui-sentence-level-span span)))))))))]
+                (for [sl-id (map :span-layer/id sentence-span-layers)]
+                  (let [span (some #(when (= (:span/layer %) sl-id) %) (sentence-level-spans-by-line i))]
+                    (when span
+                      (ui-sentence-level-span span))))))))]
     (let [page-count 10
           pagination (fn []
                        (when (> line-count page-count)
@@ -455,8 +452,11 @@
                           :title  name})
 
         (mui/card-content {}
-          (mapv render-line (map (fn [i] [i (tokens-by-line i)])
-                                 (range (* page-count (dec page)) (min line-count (* page-count page))))))
+          (mapv render-line (map (fn [i]
+                                   {:i      i
+                                    :tokens (tokens-by-line i)})
+                                 (range (* page-count (dec page))
+                                        (min line-count (* page-count page))))))
 
         (mui/card-actions {}
           (pagination))))))
