@@ -5,7 +5,12 @@ For a short summary of this app's goals and vision, see [this post](https://foru
 Check back soon 🚧
 
 # Installation
-*Coming soon*
+*(These instructions are a sketch--more detailed instructions will be given later.)*
+
+1. Secure a server that will run the app. We will assume you are using an Ubuntu machine.
+2. Download [a JAR from the latest release](https://github.com/lgessler/glam/releases). 
+3. [Configure the JAR as a service](https://dzone.com/articles/run-your-java-application-as-a-service-on-ubuntu).
+4. Set up HTTPS. **If you do not set up HTTPS, your instance of Glam will be vulnerable to password-stealing attacks.** Fortunately, this is fairly easy--we recommend running Glam on the default port (8080) and using a reverse proxy like Nginx with [certbot](https://certbot.eff.org/) to provide HTTPS.
 
 # Development
 
