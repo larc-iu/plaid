@@ -190,12 +190,13 @@
 
 ;; ui mutations ---------------------------------------------------------------------------------
 (m/defmutation save-span
-  [{:span/keys [value]}]
+  [{:span/keys [value] ok-action :ok-action}]
   (action [{:keys [state ref]}]
           (swap! state assoc-in (conj ref :span/value) value))
   (remote [{:keys [ast]}]
-          (let [ast (assoc ast :key `span/save-span)]
-            ast))
+          (-> ast
+              (assoc :key `span/save-span)
+              (update :params dissoc :ok-action)))
   (result-action [{:keys [state ref] :as env}]
                  (let [{:server/keys [message error?]} (get-in env [:result :body `span/save-span])]
                    (log/info ref)
@@ -204,7 +205,9 @@
                      (if error?
                        (snack/message! {:message  message
                                         :severity (if error? "error" "success")})
-                       (swap! state assoc-in (conj ref :ui/dirty?) false))))))
+                       (swap! state assoc-in (conj ref :ui/dirty?) false)))
+                   (when (and (not error?) ok-action)
+                     (ok-action)))))
 
 ;; UI helpers --------------------------------------------------------------------------------
 (defn merge-props-with-style [default extra]
@@ -234,56 +237,7 @@
                     {:style style})
       children)))
 
-;; BE SURE to keep this in sync with Span, above: load queries look to Span, not SpanCell.
-;; Why? See reshape-into-token-grid.
-(defsc SentenceLevelSpan [this {:span/keys [id tokens] :as props}]
-  {:ident              :span/id
-   :query              [:span/id :span/value :span/tokens :span/layer]
-   :pre-merge          (fn [{:keys [data-tree current-normalized]}]
-                         ;; If we're merging into a span that's currently being edited, keep its current value
-                         (if (:ui/focused? current-normalized)
-                           (merge current-normalized
-                                  data-tree
-                                  {:span/value (:span/value current-normalized)})
-                           (merge current-normalized
-                                  data-tree)))
-   ;; Need to use local state here because otherwise we lose focus when another user triggers a refresh.
-   :initLocalState     (fn [this props] {:value (or (:span/value props) "")})
-   :componentDidUpdate (fn [this prev-props _]
-                         (let [props (c/props this)]
-                           (when-not (and (not (:ui/focused? prev-props))
-                                          (= (:span/value prev-props) (:span/value props)))
-                             (c/set-state! this {:value (:span/value props)}))))}
-  (let [{:keys [value] :ui/keys [focused? dirty?]} (c/get-state this)]
-    (cell {}
-      (ui-autosize-input {:type       "text"
-                          :value      value
-                          :onChange   (fn [e]
-                                        (c/set-state! this {:value     (.-value (.-target e))
-                                                            :ui/dirty? true}))
-                          :onFocus    #(c/set-state! this (assoc (c/get-state this) :ui/focused? true))
-                          :onBlur     (fn []
-                                        (c/set-state! this (assoc (c/get-state this) :ui/focused? false))
-                                        (when dirty?
-                                          (c/transact! this [(save-span {:span/id    id
-                                                                         :span/value value})]
-                                                       {:on-result #(c/set-state! this (assoc (c/get-state this) :ui/dirty? false))})))
-                          :inputStyle {:minWidth        "180px"
-                                       :display         "inline-block"
-                                       :outline         "none"
-                                       :border          "none"
-                                       :borderRadius    (if focused? "4px" "0")
-                                       :padding         "2px"
-                                       :borderBottom    (if focused?
-                                                          ""
-                                                          (if (= 0 (count value))
-                                                            "dotted gray 1px"
-                                                            "none"))
-                                       :backgroundColor (if focused? "#e3ffe6" "transparent")}}))))
-(def ui-sentence-level-span (c/computed-factory SentenceLevelSpan {:keyfn (comp str :span/id)}))
-
-(defsc SpanCell [this {:span/keys [id] :as props} {token-id    :token/id
-                                                   token-width :token-width :as cp}]
+(defsc SpanCell [this {:span/keys [id tokens] :as props} {token-width :token-width :as cp}]
   {:ident              :span/id
    :query              [:span/id :span/value :span/layer :span/tokens]
    :pre-merge          (fn [{:keys [data-tree current-normalized]}]
@@ -294,31 +248,37 @@
                                   {:span/value (:span/value current-normalized)})
                            (merge current-normalized
                                   data-tree)))
-   ;; Need to use local state here because otherwise we lose focus when another user triggers a refresh.
-   :initLocalState     (fn [this props] {:value (or (:span/value props) "")})
+   ;; Need to use local state here for value because otherwise we lose focus when another user triggers a refresh.
+   :initLocalState     (fn [this {:span/keys [id] :as props}]
+                         (let [on-save-result (fn []
+                                                (log/info "Undirtying")
+                                                (c/set-state! this (assoc (c/get-state this) :ui/dirty? false)))]
+                           {:value     (or (:span/value props) "")
+                            :on-blur   (fn []
+                                         (let [{:ui/keys [dirty?] value :value :as state} (c/get-state this)]
+                                           (c/set-state! this (assoc state :ui/focused? false))
+                                           (when dirty?
+                                             (c/transact! this [(save-span {:span/id    id
+                                                                            :span/value value
+                                                                            :ok-action  on-save-result})]))))
+                            :on-focus  #(c/set-state! this (assoc (c/get-state this) :ui/focused? true))
+                            :on-change (fn [e]
+                                         (log/info "Changed")
+                                         (c/set-state! this {:value     (.-value (.-target e))
+                                                             :ui/dirty? true}))}))
    :componentDidUpdate (fn [this prev-props _]
                          (let [props (c/props this)]
                            (when-not (and (not (:ui/focused? props))
                                           (= (:span/value prev-props) (:span/value props)))
                              (c/set-state! this {:value (:span/value props)}))))}
-  (let [{:keys [value] :ui/keys [focused? dirty?]} (c/get-state this)]
+  (let [{:keys [value on-blur on-focus on-change] :ui/keys [focused? dirty?]} (c/get-state this)]
     (cell {}
       (ui-autosize-input
         {:type       "text"
          :value      (if focused? value (:span/value props))
-         :onChange   (fn [e]
-                       (log/info "Changed")
-                       (c/set-state! this {:value     (.-value (.-target e))
-                                           :ui/dirty? true}))
-         :onFocus    #(c/set-state! this (assoc (c/get-state this) :ui/focused? true))
-         :onBlur     (fn []
-                       (c/set-state! this (assoc (c/get-state this) :ui/focused? false))
-                       (when dirty?
-                         (c/transact! this [(save-span {:span/id    id
-                                                        :span/value value})]
-                                      {:on-result (fn []
-                                                    (log/info "Undirtying")
-                                                    (c/set-state! this (assoc (c/get-state this) :ui/dirty? false)))})))
+         :onChange   on-change
+         :onFocus    on-focus
+         :onBlur     on-blur
          :inputStyle {:minWidth        (or (and token-width (str (max (- token-width 4) 20) "px"))
                                            "20px")
                       :display         "inline-block"
@@ -379,10 +339,12 @@
    {:keys [text config]}]
   {:query                [:token-layer/id :token-layer/name
                           {:token-layer/columnar-tokens (c/get-query ColumnarToken)}
-                          {:token-layer/sentence-level-spans (c/get-query SentenceLevelSpan)}
+                          {:token-layer/sentence-level-spans (c/get-query SpanCell)}
                           {:token-layer/token-span-layers (c/get-query SpanLayer)}
                           {:token-layer/sentence-span-layers (c/get-query SpanLayer)}
                           :ui/page]
+   :initLocalState       (fn [this props]
+                           {:on-page-change #(m/set-integer! this :ui/page :value %2)})
    :pre-merge            (fn [{:keys [data-tree current-normalized]}]
                            (assoc data-tree :ui/page 1 (or (:ui/page current-normalized) 1)))
    :componentWillUnmount (fn [this] (m/set-value! this :ui/page 1))
@@ -397,6 +359,7 @@
         tokens-by-id (into {} (for [{id :token/id :as token} columnar-tokens] [id token]))
         line-count (count contentful-lines)
         sentence-level-spans-by-line (group-by (comp line-remapping :token/line tokens-by-id first :span/tokens) sentence-level-spans)
+        {:keys [on-page-change]} (c/get-state this)
         render-line
         (fn [{:keys [i tokens hidden?]}]
           ;; For each line...
@@ -439,14 +402,14 @@
                 (for [sl-id (map :span-layer/id sentence-span-layers)]
                   (let [span (some #(when (= (:span/layer %) sl-id) %) (sentence-level-spans-by-line i))]
                     (when span
-                      (ui-sentence-level-span span))))))))]
+                      (ui-span-cell (c/computed span {:token-width 180})))))))))]
     (let [page-count 10
           pagination (fn []
                        (when (> line-count page-count)
                          (mui/pagination
                            {:count    (js/Math.ceil (/ line-count page-count))
                             :page     page
-                            :onChange #(m/set-integer! this :ui/page :value %2)})))]
+                            :onChange on-page-change})))]
       (mui/card {}
         (mui/card-header {:action (pagination)
                           :title  name})
