@@ -55,6 +55,59 @@
                      :in    [?tok]}
                    eid)))
 
+(gxe/deftx set-extent [node eid {:keys [new-begin new-end delta-begin delta-end]}]
+  (let [{:token/keys [begin end text layer] :as token} (gxe/entity node eid)
+        new-begin (or new-begin (and delta-begin (+ begin delta-begin)))
+        new-end (or new-end (and delta-end (+ end delta-end)))
+        new-token (cond-> token
+                          (some? new-begin) (assoc :token/begin new-begin)
+                          (some? new-end) (assoc :token/end new-end))
+        other-tokens (map first (xt/q (xt/db node)
+                                      '{:find  [(pull ?t2 [:token/begin :token/end])]
+                                        :where [[?t2 :token/layer layer]
+                                                [?t2 :token/text text]
+                                                (not [?t2 :token/id ?t])]
+                                        :in    [[?t layer text]]}
+                                      [eid layer text]))
+        sorted-tokens (sort-by :token/begin (conj other-tokens new-token))
+        {text-body :text/body} (gxe/entity node text)]
+    (log/info sorted-tokens)
+    (cond
+      ;; Token doesn't exist?
+      (nil? token)
+      (throw (ex-info "Token does not exist" {:token/id eid}))
+
+      ;; Zero-width token
+      (< (- (:token/end new-token) (:token/begin new-token)) 1)
+      (throw (ex-info "Token has non-positive extent" {:old-token token
+                                                       :new-token new-token}))
+
+      ;; Bounds check: left
+      (and (some? new-begin) (< new-begin 0))
+      (throw (ex-info "Token has a negative start index" {:new-token new-token}))
+
+      ;; Bounds check: right
+      (and (some? new-end) (> new-end (count text-body)))
+      (throw (ex-info "Token ends beyond the end of its associated text" {:new-token new-token
+                                                                          :text-length (count text-body)
+                                                                          :text text-body}))
+      ;; Overlap with other tokens
+      (some (fn [[{t1-end :token/end} {t2-begin :token/begin}]]
+              (< t2-begin t1-end))
+            (partition 2 1 sorted-tokens))
+      (throw (ex-info "Change in extent would result in overlap with another token" {:new-token new-token}))
+
+      :else
+      [(gxe/put* new-token)])))
+
+(defn shift-begin
+  [node eid d]
+  (set-extent node eid {:delta-begin d}))
+
+(defn shift-end
+  [node eid d]
+  (set-extent node eid {:delta-end d}))
+
 ;; We don't follow the usual pattern of relying on child nodes' delete** functions here because
 ;; this would lead to children being included multiple times. Instead, we write a bespoke fn.
 (defn delete** [node eid]
