@@ -3,6 +3,7 @@
             [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [com.fulcrologic.fulcro.mutations :as m]
             [com.fulcrologic.fulcro.algorithms.merge :as merge]
+            [com.fulcrologic.fulcro.algorithms.normalized-state :as norms]
             [com.fulcrologic.fulcro.data-fetch :as df]
             [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.mutations :as m]
@@ -26,9 +27,7 @@
   (action [{:keys [state ref]}]
           (swap! state #(assoc-in % (conj ref :ui/busy?) true)))
   (remote [{:keys [ast]}]
-          (log/info ast)
           (let [ast (assoc ast :key `tokl/whitespace-tokenize)]
-            (log/info ast)
             ast))
   (result-action [{:keys [state ref app] :as env}]
                  (let [{:server/keys [message error?]} (get-in env [:result :body `tokl/whitespace-tokenize])]
@@ -48,17 +47,24 @@
             (swap! state #(update-in % (conj ref (keyword "token" (name direction))) (fn [v] (+ v delta))))))
   (remote [{:keys [ast]}]
           (when (#{:begin :end} direction)
-            (log/info (:params ast))
             (-> ast
                 (assoc :key `tok/set-extent)
                 (update :params dissoc :delta)
                 (update :params dissoc :direction)
                 (update :params assoc (keyword (str "delta-" (name direction))) delta))))
   (ok-action [{:keys [state ref]}]
-             (log/info "OK"))
+             nil)
   (error-action [{:keys [state ref]}]
-                (log/info "oops")
                 (swap! state #(update-in % (conj ref :token/begin) (fn [v] (- v delta))))))
+
+(m/defmutation delete-token [{token-id :token/id}]
+  (action [{:keys [state ref]}]
+          (swap! state #(norms/remove-entity % ref)))
+  (remote [{:keys [ast]}]
+          (-> ast
+              (assoc :key `tok/delete)))
+  (ok-action [{:keys [state ref]}]
+             (log/info "Deleted")))
 
 (defsc Text
   [this {:text/keys [id body] :as props}]
@@ -74,35 +80,31 @@
                                   (gobj/set this "ref" r))})}
   (let [save-ref (c/get-state this :save-ref)]
     (dc/base-inline-span
-      {:onMouseEnter (fn [_]
-                       (.focus (gobj/get this "ref"))
-                       (m/set-value! this :ui/focused? true)
-                       #_(set-selected-token id))
-       :onMouseLeave (fn [_]
-                       (m/set-value! this :ui/focused? false)
-                       #_(set-selected-token nil))
-       :onKeyDown    (fn [e]
-                       (let [shift (.-shiftKey e)
-                             key (.-key e)
-                             left-keys #{"a" "A" "ArrowLeft"}
-                             right-keys #{"d" "D" "ArrowRight"}]
-                         (log/info key)
-                         (log/info shift)
-                         (log/info (left-keys key))
-                         (cond (and shift (left-keys key))
-                               (c/transact! this [(shift-token {:token/id id :direction :begin :delta 1})])
+      {:onMouseEnter  (fn [_]
+                        (.focus (gobj/get this "ref"))
+                        (m/set-value! this :ui/focused? true))
+       :onMouseLeave  (fn [_]
+                        (m/set-value! this :ui/focused? false))
+       :onDoubleClick #(c/transact! this [(delete-token {:token/id id})])
+       :onKeyDown     (fn [e]
+                        (let [shift (.-shiftKey e)
+                              key (.-key e)
+                              left-keys #{"a" "A" "ArrowLeft"}
+                              right-keys #{"d" "D" "ArrowRight"}]
+                          (cond (and shift (left-keys key))
+                                (c/transact! this [(shift-token {:token/id id :direction :end :delta -1})])
 
-                               (left-keys key)
-                               (c/transact! this [(shift-token {:token/id id :direction :begin :delta -1})])
+                                (left-keys key)
+                                (c/transact! this [(shift-token {:token/id id :direction :begin :delta -1})])
 
-                               (and shift (right-keys key))
-                               (c/transact! this [(shift-token {:token/id id :direction :end :delta -1})])
+                                (and shift (right-keys key))
+                                (c/transact! this [(shift-token {:token/id id :direction :begin :delta 1})])
 
-                               (right-keys key)
-                               (c/transact! this [(shift-token {:token/id id :direction :end :delta 1})]))))
-       :ref          save-ref
+                                (right-keys key)
+                                (c/transact! this [(shift-token {:token/id id :direction :end :delta 1})]))))
+       :ref           save-ref
        ;; Need a tab index for focus to work, and need focus to work for logging keyboard events
-       :tabIndex     begin}
+       :tabIndex      begin}
       (cond-> {:borderRadius "3px"
                :border       "1px solid black"}
               focused? (merge {:backgroundColor "#e3ffe6"}))
@@ -131,20 +133,20 @@
                         " "
                         (mui/tooltip {:interactive true
                                       :title       (str "To edit individual tokens, hover over it with your mouse and shift its"
-                                                        " boundaries with the following key combinations:"
+                                                        " boundaries with the following key combinations: "
                                                         "(1) Expand left: A or ←; "
-                                                        "(2) Shrink left: SHIFT+A or SHIFT+←; "
+                                                        "(2) Shrink right: SHIFT+A or SHIFT+←; "
                                                         "(3) Expand right: D or →; "
-                                                        "(4) Shrink right: SHIFT+D or SHIFT+→"
+                                                        "(4) Shrink left: SHIFT+D or SHIFT+→"
                                                         )}
-                          (muic/help-outline-outlined {:color "secondary" :fontSize "small"}))
-                        )
-        (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
-          (dom/div (map-indexed (fn [tok-num e] (if (string? e)
-                                                  ;; This is bad react practice but we don't have an easy alternative
-                                                  (dc/inline-span (str line-num "-" tok-num) e false)
-                                                  (ui-token (c/computed e {:text text}))))
-                                line)))
+                          (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
+        (dom/div {}
+          (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
+            (dom/div (map-indexed (fn [tok-num e] (if (string? e)
+                                                    ;; This is bad react practice but we don't have an easy alternative
+                                                    (dc/inline-span (str line-num "-" tok-num) e false)
+                                                    (ui-token (c/computed e {:text text}))))
+                                  line))))
         (mui/button
           {:key       "tokenize-button"
            :type      "submit"

@@ -46,7 +46,21 @@
            (server-error "Retokenization failed")
            (server-message "Token boundaries updated"))))))
 
+#?(:clj
+   (pc/defmutation delete [{:keys [node]} {:token/keys [id] :as params}]
+     {::pc/output    [:server/message :server/error?]
+      ::pc/transform (ma/writeable-required :token/id)}
+     (let [token (gxe/entity node id)]
+       (cond
+         (nil? token)
+         (server-error (str "Token does not exist with id: " id))
+
+         :else
+         (if-not (tok/delete node id)
+           (server-error "Token deletion failed")
+           (server-message "Token deleted"))))))
+
 ;; admin --------------------------------------------------------------------------------
 
 #?(:clj
-   (def token-resolvers [get-token get-token-value set-extent]))
+   (def token-resolvers [get-token get-token-value set-extent delete]))
