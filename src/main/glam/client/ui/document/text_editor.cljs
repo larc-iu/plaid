@@ -17,7 +17,8 @@
             [glam.algos.text :as ta]
             [taoensso.timbre :as log]
             [glam.client.ui.material-ui-icon :as muic]
-            [glam.client.ui.global-snackbar :as snack]))
+            [glam.client.ui.global-snackbar :as snack]
+            [glam.client.ui.document.token-editor :refer [Token ui-token]]))
 
 (declare TextEditor)
 
@@ -129,12 +130,12 @@
 
 (def ui-text (c/computed-factory Text {:keyfn :text/id}))
 
-(defsc Token [this {:token/keys [id begin end]} {:keys [text]}]
-  {:query [:token/id :token/begin :token/end]
-   :ident :token/id}
-  (dc/inline-span (str id) (subs (:text/body text) begin end) true))
-
-(def ui-token (c/computed-factory Token {:keyfn :token/id}))
+;; (defsc Token [this {:token/keys [id begin end]} {:keys [text]}]
+;;   {:query [:token/id :token/begin :token/end]
+;;    :ident :token/id}
+;;   (dc/inline-span (str id) (subs (:text/body text) begin end) true))
+;;
+;; (def ui-token (c/computed-factory Token {:keyfn :token/id}))
 
 (defsc TokenLayer [this {:token-layer/keys [id name tokens]} {:keys [text]}]
   {:query [:token-layer/id :token-layer/name
@@ -176,7 +177,7 @@
                         (mui/tooltip {:interactive true
                                       :title       "This display-only area shows how tokens are affected by changes you
                                                   make to text. To edit tokens, go to the Tokens tab."}
-                                     (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
+                          (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
         (mapv ui-token-layer (map #(c/computed % {:text text})
                                   token-layers)))
       (mui/box {:my 2}
@@ -185,7 +186,7 @@
                                       :title       "Enter text however you like, with one exception: each sentence
                                                   (or equivalent) should have one line. Also note that currently
                                                   only whitespace tokenization is supported (this will change soon)."}
-                                     (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
+                          (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
         (ui-text (c/computed text {:text-layer/name name
                                    :text-layer/id   id
                                    :document/id     document-id}))))))
