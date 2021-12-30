@@ -32,7 +32,21 @@
                            "  Text: " (pr-str text)))
            (log/error (str "Exception message: " (.getMessage e))))))))
 
+#?(:clj
+   (pc/defmutation set-extent [{:keys [node]} {:token/keys [id] :as params}]
+     {::pc/output    [:server/message :server/error?]
+      ::pc/transform (ma/writeable-required :token/id)}
+     (let [token (gxe/entity node id)]
+       (cond
+         (nil? token)
+         (server-error (str "Token does not exist with id: " id))
+
+         :else
+         (if-not (tok/set-extent node id (select-keys params [:new-begin :new-end :delta-begin :delta-end]))
+           (server-error "Retokenization failed")
+           (server-message "Token boundaries updated"))))))
+
 ;; admin --------------------------------------------------------------------------------
 
 #?(:clj
-   (def token-resolvers [get-token get-token-value]))
+   (def token-resolvers [get-token get-token-value set-extent]))
