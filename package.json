@@ -20,10 +20,7 @@
     "npm-outdated": "yarn outdated",
     "loc": "cloc src/main"
   },
-  "dependencies": {
-    "react-virtualized-auto-sizer": "^1.0.6",
-    "react-window": "^1.8.6"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@material-ui/core": "^4.11.0",
     "@material-ui/icons": "^4.9.1",
