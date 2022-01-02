@@ -55,6 +55,44 @@
                      :in    [?tok]}
                    eid)))
 
+(gxe/deftx safe-create-internal [node {:token/keys [begin end text layer] :as token}]
+  (let [other-tokens (map first (xt/q (xt/db node)
+                                      '{:find  [(pull ?t [:token/begin :token/end])]
+                                        :where [[?t :token/layer layer]
+                                                [?t :token/text text]]
+                                        :in    [[layer text]]}
+                                      [layer text]))
+        sorted-tokens (sort-by :token/begin (conj other-tokens token))
+        {text-body :text/body} (gxe/entity node text)]
+
+    (cond
+      ;; Zero- or negative-width token
+      (not (pos-int? (- end begin)))
+      (throw (ex-info "Token has non-positive extent" {:token token}))
+
+      ;; Bounds check: left
+      (< begin 0)
+      (throw (ex-info "Token has a negative start index" {:token token}))
+
+      ;; Bounds check: right
+      (> end (count text-body))
+      (throw (ex-info "Token ends beyond the end of its associated text" {:token token
+                                                                          :text-length (count text-body)
+                                                                          :text text-body}))
+      ;; Overlap with other tokens
+      (some (fn [[{t1-end :token/end} {t2-begin :token/begin}]]
+              (< t2-begin t1-end))
+            (partition 2 1 sorted-tokens))
+      (throw (ex-info "Token creation would result in overlap with another token" {:token token}))
+
+      :else
+      [(gxe/put* token)])))
+
+(defn safe-create [node token]
+  (let [new-record (xutil/create-record "token" nil token (filterv #(not= % :token/id) attr-keys))
+        success (safe-create-internal node new-record)]
+    {:success success :id (:token/id new-record)}))
+
 (gxe/deftx set-extent [node eid {:keys [new-begin new-end delta-begin delta-end]}]
   (let [{:token/keys [begin end text layer] :as token} (gxe/entity node eid)
         new-begin (or new-begin (and delta-begin (+ begin delta-begin)))
@@ -71,7 +109,6 @@
                                       [eid layer text]))
         sorted-tokens (sort-by :token/begin (conj other-tokens new-token))
         {text-body :text/body} (gxe/entity node text)]
-    (log/info sorted-tokens)
     (cond
       ;; Token doesn't exist?
       (nil? token)

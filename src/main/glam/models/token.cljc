@@ -60,7 +60,16 @@
            (server-error "Token deletion failed")
            (server-message "Token deleted"))))))
 
+#?(:clj
+   (pc/defmutation create [{:keys [node]} token]
+     {::pc/output    [:server/message :server/error?]
+      ::pc/transform (ma/writeable-required :token-layer/id :token/layer)}
+     (let [{:keys [success] new-id :id} (tok/safe-create node token)]
+       (if-not success
+         (server-error "Token creation failed")
+         (merge {:tempids {(:token/id token) new-id}} (server-message "Text created"))))))
+
 ;; admin --------------------------------------------------------------------------------
 
 #?(:clj
-   (def token-resolvers [get-token get-token-value set-extent delete]))
+   (def token-resolvers [get-token get-token-value set-extent delete create]))

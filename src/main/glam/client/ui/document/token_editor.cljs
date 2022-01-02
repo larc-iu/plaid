@@ -64,50 +64,74 @@
           (-> ast
               (assoc :key `tok/delete)))
   (ok-action [{:keys [state ref]}]
-             (log/info "Deleted")))
+             (log/info "Deleted"))
+  (error-action [{:keys [state ref]}]
+                nil))
+
+(m/defmutation create-token [token]
+  (action [{:keys [state ref]}]
+          (swap! state (fn [s]
+                         (-> s
+                             (assoc-in [:token/id (:token/id token)] token)
+                             (update-in [:token-layer/id (:token/layer token) :token-layer/tokens]
+                                        conj [:token/id (:token/id token)])))))
+  (remote [{:keys [ast]}]
+          (-> ast
+              (assoc :key `tok/create)))
+  (ok-action [{:keys [result app]}]
+             (tempid/resolve-tempids! app (:body result)))
+  (error-action [{:keys [state ref]}]
+                (swap! state (fn [s] (-> s
+                                         (update :token/id dissoc (:token/id token))
+                                         (update-in [:token-layer/id (:token/layer token) :token-layer/tokens]
+                                                    (fn [tokens] (filterv #(not= (second %) (:token/id token)) tokens))))))))
 
 (defsc Text
   [this {:text/keys [id body] :as props}]
   {:query [:text/id :text/body]
    :ident :text/id})
 
-(defsc Token [this {:token/keys [id begin end] focused? :ui/focused?} {:keys [text]}]
+(defsc Token [this {:token/keys [id begin end] focused? :ui/focused? :as props} {:keys [text]}]
   {:query          [:token/id :token/begin :token/end :ui/focused?]
    :ident          :token/id
    :initLocalState (fn [this _]
                      {:save-ref (fn [r]
-                                  (log/info "Saving ref")
                                   (gobj/set this "ref" r))})}
   (let [save-ref (c/get-state this :save-ref)]
     (dc/base-inline-span
-      {:onMouseEnter  (fn [_]
-                        (.focus (gobj/get this "ref"))
-                        (m/set-value! this :ui/focused? true))
-       :onMouseLeave  (fn [_]
-                        (m/set-value! this :ui/focused? false))
-       :onDoubleClick #(c/transact! this [(delete-token {:token/id id})])
-       :onKeyDown     (fn [e]
-                        (let [shift (.-shiftKey e)
-                              key (.-key e)
-                              left-keys #{"a" "A" "ArrowLeft"}
-                              right-keys #{"d" "D" "ArrowRight"}]
-                          (cond (and shift (left-keys key))
-                                (c/transact! this [(shift-token {:token/id id :direction :end :delta -1})])
+      {:onMouseEnter (fn [_]
+                       (.focus (gobj/get this "ref"))
+                       (m/set-value! this :ui/focused? true))
+       :onMouseLeave (fn [_]
+                       (m/set-value! this :ui/focused? false))
+       :onMouseDown  #(c/transact! this [(delete-token {:token/id    id
+                                                        :token/begin begin
+                                                        :token/end   end
+                                                        :token/layer (:token/layer props)
+                                                        :token/text  (:token/text props)})])
+       :onKeyDown    (fn [e]
+                       (let [shift (.-shiftKey e)
+                             key (.-key e)
+                             left-keys #{"a" "A" "ArrowLeft"}
+                             right-keys #{"d" "D" "ArrowRight"}]
+                         (cond (and shift (left-keys key))
+                               (c/transact! this [(shift-token {:token/id id :direction :end :delta -1})])
 
-                                (left-keys key)
-                                (c/transact! this [(shift-token {:token/id id :direction :begin :delta -1})])
+                               (left-keys key)
+                               (c/transact! this [(shift-token {:token/id id :direction :begin :delta -1})])
 
-                                (and shift (right-keys key))
-                                (c/transact! this [(shift-token {:token/id id :direction :begin :delta 1})])
+                               (and shift (right-keys key))
+                               (c/transact! this [(shift-token {:token/id id :direction :begin :delta 1})])
 
-                                (right-keys key)
-                                (c/transact! this [(shift-token {:token/id id :direction :end :delta 1})]))))
-       :ref           save-ref
+                               (right-keys key)
+                               (c/transact! this [(shift-token {:token/id id :direction :end :delta 1})]))))
+       :ref          save-ref
        ;; Need a tab index for focus to work, and need focus to work for logging keyboard events
-       :tabIndex      begin}
+       :tabIndex     begin}
       (cond-> {:borderRadius "3px"
                :border       "1px solid black"}
-              focused? (merge {:backgroundColor "#e3ffe6"}))
+              focused? (merge {:backgroundColor "#e3ffe6"
+                               :cursor          "not-allowed"}))
       (subs (:text/body text) begin end))))
 
 (def ui-token (c/computed-factory Token {:keyfn :token/id}))
@@ -140,13 +164,41 @@
                                                         "(4) Shrink left: SHIFT+D or SHIFT+→"
                                                         )}
                           (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
-        (dom/div {}
+        (dom/div {:onMouseUp (fn [e]
+                               (let [s (js/window.getSelection)
+                                     n (.-parentNode (.-baseNode s))
+                                     row (.-parentNode n)]
+                                 (when (and (not (.-isCollapsed s))
+                                            (= (.-anchorNode s) (.-baseNode s) (.-extentNode s)))
+                                   (let [row-length (loop [sibling (.-previousSibling n)
+                                                           length 0]
+                                                      (if (nil? sibling)
+                                                        length
+                                                        (recur (.-previousSibling sibling)
+                                                               (+ length (count (.-innerText sibling))))))
+                                         prev-row-length (loop [prev-row (.-previousSibling row)
+                                                                length 0]
+                                                           (if (nil? prev-row)
+                                                             length
+                                                             (recur (.-previousSibling prev-row)
+                                                                    ;; 1 to account for \n
+                                                                    (+ length 1 (count (.-innerText prev-row))))))
+                                         offset (+ row-length prev-row-length)
+                                         begin (+ offset (min (.-baseOffset s) (.-extentOffset s)))
+                                         end (+ offset (max (.-baseOffset s) (.-extentOffset s)))
+                                         new-token-record {:token/begin begin
+                                                           :token/end   end
+                                                           :token/id    (tempid/tempid)
+                                                           :token/layer id
+                                                           :token/text  (:text/id text)}]
+                                     (c/transact! this [(create-token new-token-record)])))))}
           (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
-            (dom/div (map-indexed (fn [tok-num e] (if (string? e)
-                                                    ;; This is bad react practice but we don't have an easy alternative
-                                                    (dc/inline-span (str line-num "-" tok-num) e false)
-                                                    (ui-token (c/computed e {:text text}))))
-                                  line))))
+            (dom/div {}
+              (map-indexed (fn [tok-num e] (if (string? e)
+                                             ;; TODO: is this key strategy ok?
+                                             (dc/inline-span (str line-num "-" tok-num) e false)
+                                             (ui-token (c/computed e {:text text}))))
+                           line))))
         (mui/button
           {:key       "tokenize-button"
            :type      "submit"
