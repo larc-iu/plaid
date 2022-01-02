@@ -11,8 +11,6 @@
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
             [taoensso.timbre :as log]
             ["react-input-autosize" :default AutosizeInput]
-            ["react-virtualized-auto-sizer" :default AutoSizer]
-            ["react-window" :refer [FixedSizeList]]
             [glam.client.router :as r]
             [glam.client.util :as gcu]
             [glam.client.ui.common.core :refer [loader]]
@@ -21,9 +19,6 @@
             [glam.models.token-layer :as tokl]
             [glam.models.span :as span]
             [glam.client.ui.global-snackbar :as snack]))
-
-(def ui-fixed-size-list (interop/react-factory FixedSizeList))
-(def ui-auto-sizer (interop/react-factory AutoSizer))
 
 (def ui-autosize-input (interop/react-factory AutosizeInput))
 
