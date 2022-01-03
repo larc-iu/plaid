@@ -290,7 +290,7 @@
 
 ;; Here is where the real UI begins
 (defsc ColumnarToken [this {:token/keys [id value spans] :as props}]
-  {:query             [:token/id :token/value :token/line {:token/spans (c/get-query SpanCell)}]
+  {:query             [:token/id :token/value :token/begin :token/end :token/line {:token/spans (c/get-query SpanCell)}]
    :ident             :token/id
    :initLocalState    (fn [this props]
                         {:save-ref #(gobj/set this "token-ref" %)})
@@ -326,6 +326,30 @@
 (defsc SpanLayer [_ _]
   {:ident :span-layer/id
    :query [:span-layer/id :span-layer/name]})
+
+(defn render-tokens [tokens]
+  (let [chunks (loop [[{:token/keys [end] :as t1} {:token/keys [begin] :as t2} :as tokens] tokens
+                      chunk []
+                      chunks []]
+                 (cond (nil? t1)
+                       chunks
+
+                       (nil? t2)
+                       (conj chunks (conj chunk t1))
+
+                       (= end begin)
+                       (recur (rest tokens)
+                              (conj chunk t1)
+                              chunks)
+
+                       :else
+                       (recur (rest tokens)
+                              []
+                              (conj chunks (conj chunk t1)))))]
+    (mapv (fn [chunk]
+            (flex-row {:style {:gap "2px"}}
+              (mapv ui-columnar-token chunk)))
+          chunks)))
 
 (defsc TokenLayer
   [this
@@ -379,7 +403,7 @@
                   token-span-layers))
 
               ;; Token columns
-              (mapv ui-columnar-token tokens))
+              (render-tokens tokens))
 
             ;; Sentence-level
             (flex-row {:style {:marginTop "12px"}}
