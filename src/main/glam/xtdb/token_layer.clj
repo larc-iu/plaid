@@ -5,7 +5,8 @@
             [glam.xtdb.span-layer :as sl]
             [glam.xtdb.text :as txt]
             [taoensso.timbre :as log]
-            [glam.xtdb.token :as tok])
+            [glam.xtdb.token :as tok]
+            [glam.algos.token :as toka])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:token-layer/id
@@ -45,54 +46,26 @@
   [node eid m]
   (gxe/merge node eid (select-keys m [:token-layer/name])))
 
-
-(def whitespace-regexp #"\s|\n")
-(defn whitespace? [s]
-  (boolean (re-matches whitespace-regexp s)))
-
-(defn get-whitespace-token-offsets [text]
-  (loop [offsets []
-         open nil
-         i 0
-         head (subs text 0 1)
-         tail (subs text 1)]
-    (if (nil? head)
-      (if (some? open)
-        (conj offsets [open i])
-        offsets)
-      (let [new-head (if (= i (dec (count text))) nil (subs tail 0 1))
-            new-tail (if (= 0 (count tail)) nil (subs tail 1))]
-        (cond
-          (and (whitespace? head) (some? open))
-          (recur (conj offsets [open i]) nil (inc i) new-head new-tail)
-
-          (and (not (whitespace? head)) (nil? open))
-          (recur offsets i (inc i) new-head new-tail)
-
-          :else
-          (recur offsets open (inc i) new-head new-tail))))))
-
-;; todo: this needs a deftx rewrite, probably
-(defn whitespace-tokenize [node eid document-id text-id]
-  (let [existing-token-ids (map first (xt/q (xt/db node) '{:find  [?tok]
-                                                           :where [[?prj :project/text-layers ?txtl]
-                                                                   [?doc :document/project ?prj]
-                                                                   [?txtl :text-layer/token-layers ?tokl]
-                                                                   [?txt :text/document ?doc]
-                                                                   [?tok :token/text ?txt]
-                                                                   [?tok :token/layer ?tokl]]
-                                                           :in    [[?tokl ?doc]]}
-                                            [eid document-id]))
-        deletions (reduce into (mapv (partial tok/delete** node) existing-token-ids))
+(gxe/deftx whitespace-tokenize [node eid document-id text-id]
+  (let [existing-tokens (map first (xt/q (xt/db node) '{:find  [(pull ?tok [:token/begin :token/end])]
+                                                        :where [[?prj :project/text-layers ?txtl]
+                                                                [?doc :document/project ?prj]
+                                                                [?txtl :text-layer/token-layers ?tokl]
+                                                                [?txt :text/document ?doc]
+                                                                [?tok :token/text ?txt]
+                                                                [?tok :token/layer ?tokl]]
+                                                        :in    [[?tokl ?doc]]}
+                                         [eid document-id]))
         text-body (-> (txt/get node text-id) :text/body)
-        offsets (get-whitespace-token-offsets text-body)]
-    (let [res (gxe/submit! node deletions)]
-      (doseq [[b e] offsets]
-        (tok/create node {:token/begin b
+        offsets (toka/filter-overlaps
+                  (map (fn [{:token/keys [begin end]}] [begin end]) existing-tokens)
+                  (toka/whitespace-tokenize text-body))]
+    (mapv (fn [[b e]]
+            (tok/create* {:token/begin b
                           :token/end   e
                           :token/text  text-id
                           :token/layer eid}))
-      res)))
+          offsets)))
 
 (defn add-span-layer** [node token-layer-id span-layer-id]
   (xutil/add-join** node token-layer-id :token-layer/span-layers span-layer-id))
