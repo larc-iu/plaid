@@ -41,8 +41,8 @@
 (m/defmutation schema-update
   [{mark-ready? :ui/mark-ready? document-id :document/id}]
   (action [{:keys [state ref]}]
-          (log/info "busy!")
-          (swap! state assoc-in [:document/id document-id :ui/busy?] true))
+    (log/info "busy!")
+    (swap! state assoc-in [:document/id document-id :ui/busy?] true))
   (remote [{:keys [ast]}]
           (let [ast (assoc ast :key `span/multi-layer-batched-update)]
             (log/info ast)
@@ -67,127 +67,127 @@
   of the interface."
   [{:keys [data-tree] document-id :document/id mark-ready? :ui/mark-ready?}]
   (action [{:keys [app]}]
-          (let [text-layers (:document/text-layers data-tree)
-                batches (atom [])
-                get-snapshots (memoize (fn [token-layer]
-                                         (group-by :span/layer
-                                                   (mapcat :token/spans
-                                                           (:token-layer/columnar-tokens token-layer)))))]
+    (let [text-layers (:document/text-layers data-tree)
+          batches (atom [])
+          get-snapshots (memoize (fn [token-layer]
+                                   (group-by :span/layer
+                                             (mapcat :token/spans
+                                                     (:token-layer/columnar-tokens token-layer)))))]
 
-            ;; Ensure that all token-level span layers have a span per-token
-            (doseq [text-layer text-layers]
-              (doseq [token-layer (:text-layer/token-layers text-layer)]
-                ;; For each token-level span layer...
-                (doseq [{sl-id :span-layer/id} (:token-layer/token-span-layers token-layer)]
-                  (let [updates (atom [])]
-                    ;; For each token...
-                    (doseq [{:token/keys [id spans] :as tok} (:token-layer/columnar-tokens token-layer)]
-                      ;; Check how many spans there are for this layer
-                      (let [spans-for-layer (filter #(= (:span/layer %) sl-id) spans)]
-                        ;; If there's no span for that token for that span layer, create one
-                        (when (empty? spans-for-layer)
-                          (swap! updates conj
-                                 [:create {:span/value  ""
-                                           :span/layer  sl-id
-                                           :span/tokens [id]}]))
-                        ;; If there's more than one span for that token, delete the others
-                        (when-let [{:span/keys [id]} (seq (rest spans-for-layer))]
-                          (swap! updates conj
-                                 [:delete id]))))
+      ;; Ensure that all token-level span layers have a span per-token
+      (doseq [text-layer text-layers]
+        (doseq [token-layer (:text-layer/token-layers text-layer)]
+          ;; For each token-level span layer...
+          (doseq [{sl-id :span-layer/id} (:token-layer/token-span-layers token-layer)]
+            (let [updates (atom [])]
+              ;; For each token...
+              (doseq [{:token/keys [id spans] :as tok} (:token-layer/columnar-tokens token-layer)]
+                ;; Check how many spans there are for this layer
+                (let [spans-for-layer (filter #(= (:span/layer %) sl-id) spans)]
+                  ;; If there's no span for that token for that span layer, create one
+                  (when (empty? spans-for-layer)
+                    (swap! updates conj
+                           [:create {:span/value  ""
+                                     :span/layer  sl-id
+                                     :span/tokens [id]}]))
+                  ;; If there's more than one span for that token, delete the others
+                  (when-let [{:span/keys [id]} (seq (rest spans-for-layer))]
+                    (swap! updates conj
+                           [:delete id]))))
 
-                    (when-not (empty? @updates)
-                      (swap! batches
-                             conj
-                             {:span-layer/id  sl-id
-                              :span-snapshots ((get-snapshots token-layer) sl-id)
-                              :updates        @updates}))))))
+              (when-not (empty? @updates)
+                (swap! batches
+                       conj
+                       {:span-layer/id  sl-id
+                        :span-snapshots ((get-snapshots token-layer) sl-id)
+                        :updates        @updates}))))))
 
-            ;; Ensure that all sentence-level span layers have exactly one span per-token
-            (doseq [text-layer text-layers]
-              (doseq [token-layer (:text-layer/token-layers text-layer)]
-                (let [tokens (:token-layer/columnar-tokens token-layer)
-                      contentful-lines (set (map :token/line tokens))
-                      token-index (into {} (map (fn [v] [(:token/id v) v]) tokens))
-                      line->tokens (group-by :token/line tokens)]
-                  (doseq [{sl-id :span-layer/id} (:token-layer/sentence-span-layers token-layer)]
-                    (let [updates (atom [])
-                          spans (atom (filterv #(= (:span/layer %) sl-id) (:token-layer/sentence-level-spans token-layer)))]
+      ;; Ensure that all sentence-level span layers have exactly one span per-token
+      (doseq [text-layer text-layers]
+        (doseq [token-layer (:text-layer/token-layers text-layer)]
+          (let [tokens (:token-layer/columnar-tokens token-layer)
+                contentful-lines (set (map :token/line tokens))
+                token-index (into {} (map (fn [v] [(:token/id v) v]) tokens))
+                line->tokens (group-by :token/line tokens)]
+            (doseq [{sl-id :span-layer/id} (:token-layer/sentence-span-layers token-layer)]
+              (let [updates (atom [])
+                    spans (atom (filterv #(= (:span/layer %) sl-id) (:token-layer/sentence-level-spans token-layer)))]
 
-                      ;; Check 1: if some spans span multiple lines, choose just one line (the smallest)
-                      ;; TODO: just takes the lowest numbered line right now, probably we want to actually take the line
-                      ;; with the most tokens associated with the given span
-                      (reset! spans
-                              (mapv (fn [{tokens :span/tokens id :span/id :as span}]
-                                      (let [lines (map (comp :token/line #(get token-index %)) tokens)]
-                                        (if (> (count (set lines)) 1)
-                                          (let [min-line (apply min lines)
-                                                new-tokens (filterv #(= min-line (line->tokens (:token/id %))) tokens)]
-                                            (swap! updates conj [:merge {:span/id id :span/tokens new-tokens}])
-                                            (-> span
-                                                (assoc :lines #{min-line})
-                                                (assoc :span/tokens new-tokens)))
-                                          (assoc span :lines (set lines)))))
-                                    @spans))
+                ;; Check 1: if some spans span multiple lines, choose just one line (the smallest)
+                ;; TODO: just takes the lowest numbered line right now, probably we want to actually take the line
+                ;; with the most tokens associated with the given span
+                (reset! spans
+                        (mapv (fn [{tokens :span/tokens id :span/id :as span}]
+                                (let [lines (map (comp :token/line #(get token-index %)) tokens)]
+                                  (if (> (count (set lines)) 1)
+                                    (let [min-line (apply min lines)
+                                          new-tokens (filterv #(= min-line (line->tokens (:token/id %))) tokens)]
+                                      (swap! updates conj [:merge {:span/id id :span/tokens new-tokens}])
+                                      (-> span
+                                          (assoc :lines #{min-line})
+                                          (assoc :span/tokens new-tokens)))
+                                    (assoc span :lines (set lines)))))
+                              @spans))
 
-                      ;; Check 2: if a line has more than one span, choose the longest one and delete the rest
-                      (let [spans-by-line (into {} (for [line-number contentful-lines]
-                                                     [line-number (->> @spans
-                                                                       (filter #(contains? (:lines %) line-number))
-                                                                       (sort #(- (count (:span/tokens %)))))]))
-                            deleted-ids (->> spans-by-line
-                                             vals
-                                             (map :span/id)
-                                             (mapcat #(drop 1 %))
-                                             set)]
-                        (doseq [id deleted-ids]
-                          (swap! updates conj [:delete id]))
-                        (reset! spans (remove #(deleted-ids (:span/id %)) @spans)))
+                ;; Check 2: if a line has more than one span, choose the longest one and delete the rest
+                (let [spans-by-line (into {} (for [line-number contentful-lines]
+                                               [line-number (->> @spans
+                                                                 (filter #(contains? (:lines %) line-number))
+                                                                 (sort #(- (count (:span/tokens %)))))]))
+                      deleted-ids (->> spans-by-line
+                                       vals
+                                       (map :span/id)
+                                       (mapcat #(drop 1 %))
+                                       set)]
+                  (doseq [id deleted-ids]
+                    (swap! updates conj [:delete id]))
+                  (reset! spans (remove #(deleted-ids (:span/id %)) @spans)))
 
-                      ;; Check 3: if some spans only incompletely span a line, expand them
-                      (reset! spans
-                              (for [{:span/keys [id tokens] :as span} @spans]
-                                (let [line-num (-> span :lines first)
-                                      line-token-ids (mapv :token/id (line->tokens line-num))]
-                                  (if-not (= (set line-token-ids) (set tokens))
-                                    (do
-                                      (swap! updates conj [:merge {:span/id id :span/tokens line-token-ids}])
-                                      (assoc span :span/tokens line-token-ids))
-                                    span))))
+                ;; Check 3: if some spans only incompletely span a line, expand them
+                (reset! spans
+                        (for [{:span/keys [id tokens] :as span} @spans]
+                          (let [line-num (-> span :lines first)
+                                line-token-ids (mapv :token/id (line->tokens line-num))]
+                            (if-not (= (set line-token-ids) (set tokens))
+                              (do
+                                (swap! updates conj [:merge {:span/id id :span/tokens line-token-ids}])
+                                (assoc span :span/tokens line-token-ids))
+                              span))))
 
-                      ;; Check 4: if some lines entirely lack a span, create one
-                      (let [covered-lines (set (mapcat #(->> (% :span/tokens)
-                                                             (map token-index)
-                                                             (map :token/line))
-                                                       @spans))
-                            needs-span (difference contentful-lines covered-lines)]
-                        (doseq [line-num needs-span]
-                          (let [tokens-for-line (mapv :token/id (line->tokens line-num))
-                                record {:span/value "" :span/tokens tokens-for-line}]
-                            (swap! updates conj [:create record])
-                            (swap! spans conj (assoc record :span/id (tempid/tempid))))))
+                ;; Check 4: if some lines entirely lack a span, create one
+                (let [covered-lines (set (mapcat #(->> (% :span/tokens)
+                                                       (map token-index)
+                                                       (map :token/line))
+                                                 @spans))
+                      needs-span (difference contentful-lines covered-lines)]
+                  (doseq [line-num needs-span]
+                    (let [tokens-for-line (mapv :token/id (line->tokens line-num))
+                          record {:span/value "" :span/tokens tokens-for-line}]
+                      (swap! updates conj [:create record])
+                      (swap! spans conj (assoc record :span/id (tempid/tempid))))))
 
-                      (when-not (empty? @updates)
-                        (swap! batches
-                               conj
-                               {:span-layer/id  sl-id
-                                :span-snapshots ((get-snapshots token-layer) sl-id)
-                                :updates        @updates})))))))
+                (when-not (empty? @updates)
+                  (swap! batches
+                         conj
+                         {:span-layer/id  sl-id
+                          :span-snapshots ((get-snapshots token-layer) sl-id)
+                          :updates        @updates})))))))
 
-            (if-not (empty? @batches)
-              (do
-                (c/transact! app
-                             [(schema-update {:ui/mark-ready? mark-ready?
-                                              :document/id    document-id
-                                              :batches        @batches})]))
-              ;; If we didn't need to make any updates, tell the router  we're all set
-              (when mark-ready?
-                (c/transact! app [(dr/target-ready {:target [:document/id document-id]})]))))))
+      (if-not (empty? @batches)
+        (do
+          (c/transact! app
+                       [(schema-update {:ui/mark-ready? mark-ready?
+                                        :document/id    document-id
+                                        :batches        @batches})]))
+        ;; If we didn't need to make any updates, tell the router  we're all set
+        (when mark-ready?
+          (c/transact! app [(dr/target-ready {:target [:document/id document-id]})]))))))
 
 ;; ui mutations ---------------------------------------------------------------------------------
 (m/defmutation save-span
   [{:span/keys [value] ok-action :ok-action}]
   (action [{:keys [state ref]}]
-          (swap! state assoc-in (conj ref :span/value) value))
+    (swap! state assoc-in (conj ref :span/value) value))
   (remote [{:keys [ast]}]
           (-> ast
               (assoc :key `span/save-span)
@@ -433,12 +433,15 @@
         (mui/card-header {:action (pagination)
                           :title  name})
 
-        (mui/card-content {}
-          (mapv render-line (map (fn [i]
-                                   {:i      i
-                                    :tokens (tokens-by-line i)})
-                                 (range (* page-count (dec page))
-                                        (min line-count (* page-count page))))))
+        (if-not (seq contentful-lines)
+          (mui/box {:m 2}
+            (mui/typography {:variant "subtitle1"} "No tokens available"))
+          (mui/card-content {}
+            (mapv render-line (map (fn [i]
+                                     {:i      i
+                                      :tokens (tokens-by-line i)})
+                                   (range (* page-count (dec page))
+                                          (min line-count (* page-count page)))))))
 
         (mui/card-actions {}
           (pagination))))))

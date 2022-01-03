@@ -9,11 +9,15 @@
             [glam.client.ui.document.text-editor :refer [TextEditor ui-text-editor]]
             [glam.client.ui.document.token-editor :refer [TokenEditor ui-token-editor]]
             [glam.client.ui.document.interlinear-editor :as ied :refer [InterlinearEditor ui-interlinear-editor]]
+            [glam.client.ui.document.settings :as settings :refer [Settings ui-settings]]
             [taoensso.timbre :as log]
             [com.fulcrologic.fulcro.dom :as dom]
             [com.fulcrologic.fulcro.mutations :as m]
             [com.fulcrologic.fulcro.application :as app]
-            [com.fulcrologic.fulcro.algorithms.normalize :as fnorm]))
+            [com.fulcrologic.fulcro.algorithms.normalize :as fnorm]
+            [com.fulcrologic.fulcro.ui-state-machines :as uism]
+            [glam.client.ui.common.forms :as forms]
+            [glam.models.session :as sn]))
 
 (defsc ProjectNameQuery
   [this props]
@@ -26,7 +30,10 @@
    "interlinear" {:slug            "interlinear"
                   :name            "Interlinear"
                   :join-key        :>/interlinear-editor
-                  :schema-mutation ied/apply-schema}})
+                  :schema-mutation ied/apply-schema}
+   "settings"    {:slug     "settings"
+                  :name     "Settings"
+                  :join-key :>/settings}})
 (def editor-joins (set (map (comp :join-key second) editors)))
 
 (declare Document)
@@ -60,29 +67,51 @@
                              (when-let [f (:post-action load-opts)]
                                (f)))})))))))
 
+(m/defmutation change-tab [{:keys [tab]}]
+  (action [{:keys [state ref component]}]
+          (swap! state (fn [s]
+                         (-> s
+                             (assoc-in (conj ref :ui/busy?) true)
+                             (assoc-in (conj ref :ui/active-tab) tab)
+                             (assoc-in sn/session-ident (sn/session-assoc (get-in s sn/session-ident) (conj ref ::tab) tab)))))
+          (do-load! component (last ref) tab {:post-action #(m/set-value! component :ui/busy? false)})))
+
 (defsc Document
   [this {:document/keys [id name project] :ui/keys [active-tab busy?]
-         :>/keys        [text-editor token-editor interlinear-editor] :as props}]
+         :>/keys        [text-editor token-editor interlinear-editor settings] :as props}]
   {:query                [:document/id :document/name
                           {:document/project (c/get-query ProjectNameQuery)}
                           {:>/text-editor (c/get-query TextEditor)}
                           {:>/token-editor (c/get-query TokenEditor)}
                           {:>/interlinear-editor (c/get-query InterlinearEditor)}
+                          {:>/settings (c/get-query Settings)}
                           :ui/active-tab
-                          :ui/busy?]
+                          :ui/busy?
+                          sn/session-join]
    :ident                :document/id
-   :pre-merge            (fn [{:keys [data-tree]}]
+   :pre-merge            (fn [{:keys [data-tree state-map]}]
                            (let [q-params (r/get-query-params)
-                                 tab (or (:tab q-params) "interlinear")]
+                                 session (get-in state-map sn/session-ident)
+                                 ident [:document/id (:document/id data-tree)]
+                                 tab-session-key (conj ident ::tab)
+                                 tab (or (sn/session-get session tab-session-key)
+                                         (:tab q-params)
+                                         "text")]
                              (when (not= tab (:tab q-params))
-                               (r/assoc-query-param! :tab "interlinear"))
+                               (r/assoc-query-param! :tab tab))
                              (merge {:ui/active-tab tab
                                      :ui/busy?      false}
-                                    data-tree)))
+                                    data-tree
+                                    {sn/session-ident (sn/session-assoc session tab-session-key tab)})))
    :route-segment        (r/last-route-segment :document)
    :will-enter           (fn [app {:keys [id] :as route-params}]
                            (let [parsed-id (gcu/parse-id id)
-                                 tab (or (:tab (r/get-query-params)) "interlinear")]
+                                 session (get-in (app/current-state app) sn/session-ident)
+                                 ident [:document/id parsed-id]
+                                 tab-session-key (conj ident ::tab)
+                                 tab (or (sn/session-get session tab-session-key)
+                                         (:tab (r/get-query-params))
+                                         "text")]
                              (when parsed-id
                                (dr/route-deferred
                                  [:document/id parsed-id]
@@ -120,13 +149,14 @@
         (mui/tab-context {:value active-tab}
           (mui/tabs {:value    active-tab
                      :onChange (fn [_ val]
-                                 (m/set-value! this :ui/busy? true)
-                                 (m/set-value! this :ui/active-tab val)
-                                 (r/assoc-query-param! :tab val)
-                                 (do-load! this id val {:post-action #(m/set-value! this :ui/busy? false)}))}
+                                 (c/transact! this [(change-tab {:tab val})])
+                                 (when (= val "settings")
+                                   (uism/begin! this forms/edit-form-machine ::settings/settings
+                                                {:actor/form (uism/with-actor-class [:document/id id] Settings)})))}
             (mui/tab {:label (get-in editors ["text" :name]) :value "text"})
             (mui/tab {:label (get-in editors ["token" :name]) :value "token"})
-            (mui/tab {:label (get-in editors ["interlinear" :name]) :value "interlinear"}))
+            (mui/tab {:label (get-in editors ["interlinear" :name]) :value "interlinear"})
+            (mui/tab {:label (get-in editors ["settings" :name]) :value "settings"}))
 
           (c/fragment
             (mui/tab-panel {:value "text"}
@@ -134,4 +164,6 @@
             (mui/tab-panel {:value "token"}
               (ui-token-editor token-editor))
             (mui/tab-panel {:value "interlinear"}
-              (ui-interlinear-editor interlinear-editor))))))))
+              (ui-interlinear-editor interlinear-editor))
+            (mui/tab-panel {:value "settings"}
+              (ui-settings settings))))))))

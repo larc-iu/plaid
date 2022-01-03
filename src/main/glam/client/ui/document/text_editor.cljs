@@ -153,7 +153,8 @@
         (mui/horizontal-grid
           (mapv (fn [{:token-layer/keys [id name]}]
                   (mui/button
-                    {:type      "submit"
+                    {:key       (str id)
+                     :type      "submit"
                      :size      "large"
                      :disabled  (or busy? (not dirty?))
                      :color     "primary"

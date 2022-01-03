@@ -48,8 +48,37 @@
            (server-error (str "Failed to create document, please refresh and try again"))
            {:tempids {temp-id id}})))))
 
+#?(:clj
+   (pc/defmutation save-document [{:keys [node]} {delta :delta [_ id] :ident :as params}]
+     {::pc/transform (ma/writeable-required :document/id (comp second :ident))}
+     (let [valid? (mc/validate-delta record-valid? delta)]
+       (cond
+         (nil? (gxe/entity node id))
+         (server-error (str "Document doesn't exist with ID: " id))
+
+         (not valid?)
+         (server-error (str "Document is not valid, refusing to save: " delta))
+
+         :else
+         (if (doc/merge node id (mc/apply-delta {} delta))
+           (server-message "Document saved")
+           (server-error "Document failed to save"))))))
+
+#?(:clj
+   (pc/defmutation delete-document [{:keys [node]} {[_ id] :ident :as params}]
+     {::pc/transform (ma/writeable-required :document/id (comp second :ident))}
+     (let [{:document/keys [name] :as record} (gxe/entity node id)]
+       (cond
+         (nil? record)
+         (server-error (str "Document not found with ID: " id))
+
+         :else
+         (if-not (doc/delete node id)
+           (server-error (str "Failed to delete document " name ". Please refresh and try again"))
+           (server-message (str "Document " name " deleted")))))))
+
 ;; admin --------------------------------------------------------------------------------
 
 #?(:clj
-   (def document-resolvers [get-document create-document]))
+   (def document-resolvers [get-document create-document save-document delete-document]))
 

@@ -18,7 +18,8 @@
 ;; query-only defsc for normalization
 (defsc Session
   [_ {:keys [:session/valid? :user/email :user/id :session/server-error-msg :user/admin?]}]
-  {:query         [:session/valid? :user/admin? :session/server-error-msg :user/email :user/id :ui/loading?]
+  {:query         [:session/valid? :user/admin? :session/server-error-msg :user/email :user/id :ui/loading?
+                   :ui/browser-state]
    :ident         (fn [] session-ident)
    :pre-merge     (fn [{:keys [data-tree]}]
                     (merge
@@ -26,9 +27,23 @@
                        :user/admin?              false
                        :user/email               ""
                        :user/id                  nil
-                       :session/server-error-msg nil}
+                       :session/server-error-msg nil
+                       :ui/browser-state         {}}
                       data-tree))
    :initial-state {:session/valid? false :user/admin? false :user/email "" :user/id nil :session/server-error-msg nil}})
+
+;; For local state that doesn't need to go to the server
+(defn session-get [session-map k]
+  (get-in session-map [:ui/browser-state k]))
+(defn session-assoc [session-map k data]
+  (-> session-map
+      (update :ui/browser-state #(if (associative? %) % {}))
+      (assoc-in [:ui/browser-state k] data)))
+(defn session-update [session-map k fn & args]
+  (apply (partial update-in (update session-map :ui/browser-state #(if (associative? %) % {}))
+                  [:ui/browser-state k]
+                  fn)
+         args))
 
 (def session-join {session-ident (comp/get-query Session)})
 
