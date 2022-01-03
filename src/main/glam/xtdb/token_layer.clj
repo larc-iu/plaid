@@ -70,19 +70,35 @@
                           :token/layer eid}))
           offsets)))
 
+(declare morpheme-tokenize**)
 (gxe/deftx morpheme-tokenize [node eid document-id text-id]
   (let [existing-tokens (get-existing-tokens node eid document-id)
-        text-body (-> (txt/get node text-id) :text/body)
-        offsets (toka/morpheme-tokenize
-                  text-body
-                  (map (fn [{:token/keys [begin end]}] [begin end]) existing-tokens)
-                  "-")]
-    (mapv (fn [[b e]]
-            (tok/create* {:token/begin b
-                          :token/end   e
-                          :token/text  text-id
-                          :token/layer eid}))
-          offsets)))
+        {text-body :text/body :as text} (gxe/entity node text-id)
+        [new-body offsets] (toka/morpheme-tokenize
+                             text-body
+                             (map (fn [{:token/keys [begin end]}] [begin end]) existing-tokens)
+                             \-)]
+    (conj (mapv (fn [[b e]]
+                  (tok/create* {:token/begin b
+                                :token/end   e
+                                :token/text  text-id
+                                :token/layer eid}))
+                offsets)
+          (gxe/put* (assoc text :text/body new-body)))))
+
+(gxe/deftx update-body-and-morpheme-tokenize [node tokl-id text-id old-body ops]
+  (log/info tokl-id text-id)
+  (let [{doc-id :text/document} (gxe/entity node text-id)]
+    (into (txt/update-body** node text-id old-body ops) (morpheme-tokenize** node tokl-id doc-id text-id))))
+
+(gxe/deftx create-text-and-morpheme-tokenize-internal [node text tokl-id]
+  (into [(gxe/put* text)]
+        (morpheme-tokenize** node tokl-id (:text/document text) (:text/id text))))
+
+(defn create-text-and-morpheme-tokenize [node text tokl-id]
+  (let [{:text/keys [id] :as text} (xutil/create-record "text" nil text txt/attr-keys)]
+    {:success (create-text-and-morpheme-tokenize-internal node text tokl-id)
+     :id id}))
 
 (defn add-span-layer** [node token-layer-id span-layer-id]
   (xutil/add-join** node token-layer-id :token-layer/span-layers span-layer-id))

@@ -62,9 +62,7 @@
         text-tx [(gxe/match* eid (assoc text :text/body old-body))
                  (gxe/put* (assoc text :text/body (:text/body new-text)))]
         tx (reduce into [text-tx deletion-tx update-tx])]
-    (log/info tx)
     tx))
-
 
 ;; We don't follow the usual pattern of relying on child nodes' delete** functions here because
 ;; this would lead to children being included multiple times. Instead, we write a bespoke fn.

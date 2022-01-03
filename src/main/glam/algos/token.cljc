@@ -1,5 +1,6 @@
 (ns glam.algos.token
   (:require [clojure.string :as cstr]
+            [taoensso.timbre :as log]
             #?(:cljs ["unicode-properties" :refer [getCategory]])))
 
 (def whitespace-regexp #"\s|\n")

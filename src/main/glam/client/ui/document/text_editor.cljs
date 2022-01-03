@@ -11,6 +11,7 @@
             [glam.client.util :as gcu]
             [glam.models.text :as txt]
             [glam.models.token :as tok]
+            [glam.models.token-layer :as tokl]
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.common.forms :as forms]
             [glam.client.ui.document.common :as dc]
@@ -22,15 +23,19 @@
 
 (declare TextEditor)
 
+(m/defmutation morpheme-tokenize [{doc-id :document/id text-id :text/id}]
+
+  (action [{:keys [state ref]}] nil))
+
 (m/defmutation save-text
-  [{doc-id :document/id :as params}]
+  [{doc-id :document/id mutation :mutation}]
   (action [{:keys [state ref]}]
           (swap! state #(assoc-in % (conj ref :ui/busy?) true)))
   (remote [{:keys [ast]}]
-          (let [ast (assoc ast :key `txt/save-text)]
+          (let [ast (assoc ast :key mutation)]
             ast))
   (result-action [{:keys [state ref app component] :as env}]
-                 (let [{:server/keys [message error?]} (get-in env [:result :body `txt/save-text])]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body mutation])]
                    (swap! state (fn [s]
                                   (cond-> (assoc-in s (conj ref :ui/busy?) false)
                                           (not error?) (assoc-in (conj ref :ui/pristine-body)
@@ -42,14 +47,14 @@
                    (df/load! app [:document/id doc-id] TextEditor))))
 
 (m/defmutation create-text
-  [{doc-id :document/id :as params}]
+  [{doc-id :document/id mutation :mutation}]
   (action [{:keys [state ref]}]
           (swap! state #(assoc-in % (conj ref :ui/busy?) true)))
   (remote [{:keys [ast]}]
-          (let [ast (assoc ast :key `txt/create-text)]
+          (let [ast (assoc ast :key mutation)]
             ast))
   (result-action [{:keys [state ref app] :as env}]
-                 (let [{:server/keys [message error?]} (get-in env [:result :body `txt/create-text])]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body mutation])]
                    (swap! state (fn [s]
                                   (cond-> (assoc-in s (conj ref :ui/busy?) false)
                                           (not error?) (assoc-in (conj ref :ui/pristine-body)
@@ -62,14 +67,16 @@
                    (df/load! app [:document/id doc-id] TextEditor))))
 
 (defsc Text
-  [this {:text/keys [id body] :ui/keys [busy? pristine-body ops] :as props} {document-id   :document/id
-                                                                             text-layer-id :text-layer/id}]
-  {:query          [:text/id :text/body :ui/busy? :ui/pristine-body :ui/ops]
+  [this
+   {:text/keys [id body] :ui/keys [busy? pristine-body ops active-token-layer] :as props}
+   {document-id :document/id text-layer-id :text-layer/id token-layers :token-layers}]
+  {:query          [:text/id :text/body :ui/busy? :ui/pristine-body :ui/ops :ui/active-token-layer]
    :pre-merge      (fn [{:keys [data-tree]}]
                      ;; TODO: if pristine does not match body, warn user before we clobber their changes
-                     (merge {:ui/busy?         false
-                             :ui/pristine-body (:text/body data-tree)
-                             :ui/ops           []}
+                     (merge {:ui/busy?              false
+                             :ui/pristine-body      (:text/body data-tree)
+                             :ui/ops                []
+                             :ui/active-token-layer ""}
                             data-tree))
    :initLocalState (fn [this _] {:save-ref (fn [r] (gobj/set this "input-ref" r))})
    :ident          :text/id}
@@ -80,16 +87,35 @@
                       (c/transact! this [(create-text {:text/id       id
                                                        :text-layer/id text-layer-id
                                                        :document/id   document-id
-                                                       :body          body})])
+                                                       :body          body
+                                                       :mutation      `txt/create-text})])
                       (c/transact! this [(save-text {:text/id       id
                                                      :text-layer/id text-layer-id
                                                      :document/id   document-id
                                                      :old-body      pristine-body
                                                      :new-body      body
-                                                     :ops           ops})])))
+                                                     :ops           ops
+                                                     :mutation      `txt/save-text})])))
+
+        on-submit-with-morpheme-tokenization (fn [token-layer-id e]
+                                               (.preventDefault e)
+                                               (if (tempid/tempid? id)
+                                                 (c/transact! this [(create-text {:text/id        id
+                                                                                  :text-layer/id  text-layer-id
+                                                                                  :document/id    document-id
+                                                                                  :body           body
+                                                                                  :token-layer/id token-layer-id
+                                                                                  :mutation       `txt/create-and-morpheme-tokenize})])
+                                                 (c/transact! this [(save-text {:text/id        id
+                                                                                :text-layer/id  text-layer-id
+                                                                                :document/id    document-id
+                                                                                :old-body       pristine-body
+                                                                                :new-body       body
+                                                                                :ops            ops
+                                                                                :token-layer/id token-layer-id
+                                                                                :mutation       `txt/save-and-morpheme-tokenize})])))
         dirty? (not= body pristine-body)]
-    (dom/form
-      {:onSubmit on-submit}
+    (dom/form {}
       (mui/vertical-grid
         (mui/text-field
           {:inputRef  save-ref
@@ -116,8 +142,9 @@
              :disabled  (or busy? (not dirty?))
              :color     "primary"
              :variant   "contained"
-             :startIcon (muic/save)}
-            "Save Changes")
+             :startIcon (muic/save)
+             :onClick   on-submit}
+            "Save")
           (mui/button
             {:size      "large"
              :disabled  (or busy? (not dirty?))
@@ -126,7 +153,19 @@
                           (m/set-value! this :text/body pristine-body)
                           (m/set-value! this :ui/ops []))
              :startIcon (muic/restore)}
-            "Discard Changes"))))))
+            "Discard Changes"))
+        (mui/horizontal-grid
+          (mapv (fn [{:token-layer/keys [id name]}]
+                  (mui/button
+                    {:type      "submit"
+                     :size      "large"
+                     :disabled  (or busy? (not dirty?))
+                     :color     "primary"
+                     :variant   "contained"
+                     :startIcon (muic/more-horiz)
+                     :onClick   #(on-submit-with-morpheme-tokenization id %)}
+                    (str "Save and Morpheme-Tokenize (" name ")")))
+                token-layers))))))
 
 (def ui-text (c/computed-factory Text {:keyfn :text/id}))
 
@@ -189,7 +228,8 @@
                           (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
         (ui-text (c/computed text {:text-layer/name name
                                    :text-layer/id   id
-                                   :document/id     document-id}))))))
+                                   :document/id     document-id
+                                   :token-layers    (mapv #(select-keys % [:token-layer/id :token-layer/name]) token-layers)}))))))
 
 (def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 
