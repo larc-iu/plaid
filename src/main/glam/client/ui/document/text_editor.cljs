@@ -23,10 +23,6 @@
 
 (declare TextEditor)
 
-(m/defmutation morpheme-tokenize [{doc-id :document/id text-id :text/id}]
-
-  (action [{:keys [state ref]}] nil))
-
 (m/defmutation save-text
   [{doc-id :document/id mutation :mutation}]
   (action [{:keys [state ref]}]

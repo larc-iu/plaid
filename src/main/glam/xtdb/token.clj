@@ -42,10 +42,13 @@
                             :in    [[?tokl ?doc]]}
                           [layer-id doc-id])
                     (map first))]
-    (if-let [{:text/keys [body]} (gxe/entity node (-> tokens first :token/text))]
-      (map #(assoc % :token/value (subs body (:token/begin %) (:token/end %))) tokens)
-      (do (log/error "Found tokens without a text!")
-          []))))
+    (if-not (seq tokens)
+      []
+      (if-let [{:text/keys [body]} (gxe/entity node (-> tokens first :token/text))]
+        (map #(assoc % :token/value (subs body (:token/begin %) (:token/end %))) tokens)
+        (do (log/error "Found tokens without a text!")
+            (log/error (vec tokens))
+            [])))))
 
 ;; Mutations --------------------------------------------------------------------------------
 (defn- get-span-ids [node eid]

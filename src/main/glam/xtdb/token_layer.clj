@@ -76,22 +76,25 @@
 (gxe/deftx morpheme-tokenize [node eid document-id text-id]
   (let [existing-tokens (get-existing-tokens node eid document-id)
         {text-body :text/body :as text} (gxe/entity node text-id)
-        [new-body offsets] (toka/morpheme-tokenize
-                             text-body
-                             (map (fn [{:token/keys [begin end]}] [begin end]) existing-tokens)
-                             \-)]
-    (conj (reduce into (mapv (fn [[b e]]
-                               (let [token {:token/begin b
-                                            :token/end   e
-                                            :token/text  text-id
-                                            :token/layer eid}
-                                     token (xutil/create-record "token" nil token (filterv #(not= % :token/id) tok/attr-keys))]
-                                 (tok/safe-create-internal2** node existing-tokens token)))
-                             offsets))
-          (gxe/put* (assoc text :text/body new-body)))))
+        {:keys [new-body offsets ops] :as output} (toka/morpheme-tokenize
+                                                    text-body
+                                                    (map (fn [{:token/keys [begin end]}] [begin end]) existing-tokens)
+                                                    \-)]
+    ;; At this point, the state of the text body has the raw input. Make the body changes, and then introduce the
+    ;; tokens. The body update should produce a body equal to `new-body` (above), and the new offsets assume the
+    ;; new-body, not the old body.
+    (let [new-token-txs (reduce into (mapv (fn [[b e]]
+                                             (let [token {:token/begin b
+                                                          :token/end   e
+                                                          :token/text  text-id
+                                                          :token/layer eid}
+                                                   token (xutil/create-record "token" nil token (filterv #(not= % :token/id) tok/attr-keys))]
+                                               (tok/safe-create-internal2** node existing-tokens token)))
+                                           offsets))
+          body-update-txs (txt/update-body** node text-id (:text/body text) ops)]
+      (into body-update-txs new-token-txs))))
 
 (gxe/deftx update-body-and-morpheme-tokenize [node tokl-id text-id old-body ops]
-  (log/info tokl-id text-id)
   (let [{doc-id :text/document} (gxe/entity node text-id)]
     (into (txt/update-body** node text-id old-body ops) (morpheme-tokenize** node tokl-id doc-id text-id))))
 

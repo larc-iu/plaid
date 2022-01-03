@@ -84,70 +84,126 @@
        (getCategory c)
        (getCategory (.charCodeAt c 0)))))
 
-(defn- morpheme-tokenize-helper [body separator]
+(defn- get-coverage-index [max-offset offsets]
+  (reduce (fn [m [begin end]]
+            (merge m (into {} (map (fn [i] [i true]) (range begin end)))))
+          (into {} (map (fn [i] [i false]) (range max-offset)))
+          offsets))
+
+(defn- morpheme-tokenize-helper [body existing-token-offsets separator]
   (let [separator (if (char? separator) separator (char separator))
         getcat (memoize unicode-category)
         separator? (fn [c] (= c separator))
         boundary? (fn [c] (#{\C \S \P \N} (first (getcat c))))
         space? (fn [c] (#{\Z} (first (getcat c))))
-        token-char? (fn [c] (not (or (space? c) (boundary? c) (separator? c))))]
+        token-char? (fn [c] (not (or (space? c) (boundary? c) (separator? c))))
+        index (get-coverage-index (count body) existing-token-offsets)
+        covered? (fn [[b e]] (some #(index %) (range b e)))]
     (loop [chars (seq body)
            output-chars []
-           offsets []]
+           offsets []
+           i 0
+           ops []]
       (cond
         ;; Base case
         (not (seq chars))
-        [(cstr/join output-chars) offsets]
+        {:new-body (cstr/join output-chars)
+         :offsets  offsets
+         :ops      ops}
 
-        ;; If we encounter a double sep, treat it as a literal, eating only one copy, and tokenize it
-        (and (separator? (first chars)) (separator? (second chars)))
+        ;; Take while there are separator chars that are covered
+        (and (separator? (first chars)) (covered? [i (inc i)]))
+        (let [chunk (loop [output []
+                           j i
+                           [head :as chars] chars]
+                      (if (and (some? head) (separator? head) (index j))
+                        (recur (conj output head)
+                               (inc j)
+                               (rest chars))
+                        output))]
+          (recur (drop (count chunk) chars)
+                 (into output-chars chunk)
+                 offsets
+                 (+ i (count chunk))
+                 ops))
+
+        ;; If we encounter an uncovered double sep, treat it as a literal, eating only one copy, and tokenize it
+        (and (separator? (first chars))
+             (separator? (second chars))
+             (not (covered? [i (+ i 2)])))
         (recur (drop 2 chars)
                (conj output-chars separator)
-               (conj offsets [(count output-chars) (inc (count output-chars))]))
+               (conj offsets [(count output-chars) (inc (count output-chars))])
+               (+ i 2)
+               (conj ops {:type :delete :index i :value 1}))
 
         ;; If we encounter a legitimate sep, skip ahead without eating
         (separator? (first chars))
         (recur (drop 1 chars)
                output-chars
-               offsets)
+               offsets
+               (inc i)
+               (conj ops {:type :delete :index i :value 1}))
 
         ;; At least 1 space--eat them but don't tokenize them
         (space? (first chars))
-        (recur
-          (drop-while space? chars)
-          (into output-chars (take-while space? chars))
-          offsets)
+        (let [chunk (take-while space? chars)]
+          (recur
+            (drop-while space? chars)
+            (into output-chars chunk)
+            offsets
+            (+ i (count chunk))
+            ops))
+
+        ;; Skip newlines always
+        (= \newline (first chars))
+        (recur (drop 1 chars)
+               (conj output-chars (first chars))
+               offsets
+               (inc i)
+               ops)
 
         ;; If we peek a clear non-boundary, eat em all up while they last
         (token-char? (first chars))
         (let [token (take-while token-char? chars)
-              new-chars (into output-chars token)]
+              new-chars (into output-chars token)
+              span [(count output-chars) (count new-chars)]]
           (recur
             (drop-while token-char? chars)
             new-chars
-            (conj offsets [(count output-chars) (+ (count token) (count output-chars))])))
+            (if (covered? span)
+              offsets
+              (conj offsets span))
+            (+ i (count token))
+            ops))
 
         ;; We have at least one boundary char in the mix--definitely take the first char, and
         ;; take the rest as long as it's token-chars, producing a token
         (boundary? (first chars))
         (let [token (concat [(first chars)] (take-while token-char? (rest chars)))
-              new-chars (into output-chars token)]
+              new-chars (into output-chars token)
+              span [(count output-chars) (count new-chars)]]
           (recur
             (drop (count token) chars)
             new-chars
-            (conj offsets [(count output-chars) (count new-chars)])))
+            (if (covered? span)
+              offsets
+              (conj offsets span))
+            (+ i (count token))
+            ops))
 
         :else
         (throw (ex-info "Unexpected case!" {:chars        chars
                                             :output-chars output-chars
-                                            :offsets      offsets}))))))
+                                            :offsets      offsets
+                                            :i            i}))))))
 
-(defn filter-overlaps [existing proposed]
-  (let [max-offset (apply max (map second (concat existing proposed)))
-        coverage-index (reduce (fn [m [begin end]]
-                                 (merge m (into {} (map (fn [i] [i true]) (range begin end)))))
-                               (into {} (map (fn [i] [i false]) (range max-offset)))
-                               existing)]
+(defn filter-overlaps
+  "Only works if no text edits have been made"
+  [existing proposed]
+  (let [all (concat existing proposed)
+        max-offset (if (seq all) (apply max (map second all)) 0)
+        coverage-index (get-coverage-index max-offset existing)]
     (filter (fn [[begin end]]
               (every? #(not (coverage-index %)) (range begin end)))
             proposed)))
@@ -157,16 +213,24 @@
    - body: a string of text
    - existing-token-offsets: any existing tokens (provided as 2-vectors of begin and end index)
    - separator: a morpheme separator
-  perform a heuristic tokenization that tries to tokenize morphemes by using
-  punctuation, space, and morpheme separators as hints. Returns a sequence of offset 2-vectors.
-  To literally include the separator, include it twice.
+  perform a heuristic tokenization that tries to tokenize morphemes by using punctuation, space,
+  and morpheme separators as hints. To literally include the separator, include it twice.
+
+  Returns a map with 3 keys:
+   - new-body: the new string value of the text's body
+   - offsets: the offsets of new tokens that should be created
+   - ops: the text edit operations (see glam.algos.text) that describe how to handle separator sequences appropriately.
+          You should probably use these with txt/update-body** after initially doing a raw put* on the body--see
+          glam.xtdb.token-layer/morpheme-tokenize
 
   Example:
 
   (morpheme-tokenize \"John-'s two--hundred dogs\" [] \"-\")
-  => [\"John's saved two-hundred dogs\" [[0 4] [4 6] [7 10] [10 12] [13 16] [16 17] [17 24] [25 28] [28 29]]]
+  => {:new-body \"John's saved two-hundred dogs\"
+      :offsets [[0 4] [4 6] [7 10] [10 12] [13 16] [16 17] [17 24] [25 28] [28 29]]]
+      :ops ...}
 
-  (let [[body offsets] (morpheme-tokenize \"John-'s sav-ed two--hundred dog-s\" [] \\-)
+  (let [{:keys [offsets]} (morpheme-tokenize \"John-'s sav-ed two--hundred dog-s\" [] \\-)
     (doseq [[begin end] offsets]
       (println (subs body begin end))))
   =>
@@ -181,12 +245,11 @@
   s
   "
   [body existing-token-offsets separator]
-  (let [[body offsets] (morpheme-tokenize-helper body separator)]
-    [body (filter-overlaps existing-token-offsets offsets)]))
+  (let [output (morpheme-tokenize-helper body existing-token-offsets separator)]
+    output))
 
 (comment
 
   (morpheme-tokenize "John-'s sav-ed two--hundred dog-s" [[0 5]] \-)
-
 
   )
