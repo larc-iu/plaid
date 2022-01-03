@@ -46,20 +46,37 @@
   [node eid m]
   (gxe/merge node eid (select-keys m [:token-layer/name])))
 
+(defn get-existing-tokens [node eid document-id]
+  (map first (xt/q (xt/db node) '{:find  [(pull ?tok [:token/begin :token/end])]
+                                  :where [[?prj :project/text-layers ?txtl]
+                                          [?doc :document/project ?prj]
+                                          [?txtl :text-layer/token-layers ?tokl]
+                                          [?txt :text/document ?doc]
+                                          [?tok :token/text ?txt]
+                                          [?tok :token/layer ?tokl]]
+                                  :in    [[?tokl ?doc]]}
+                   [eid document-id])))
+
 (gxe/deftx whitespace-tokenize [node eid document-id text-id]
-  (let [existing-tokens (map first (xt/q (xt/db node) '{:find  [(pull ?tok [:token/begin :token/end])]
-                                                        :where [[?prj :project/text-layers ?txtl]
-                                                                [?doc :document/project ?prj]
-                                                                [?txtl :text-layer/token-layers ?tokl]
-                                                                [?txt :text/document ?doc]
-                                                                [?tok :token/text ?txt]
-                                                                [?tok :token/layer ?tokl]]
-                                                        :in    [[?tokl ?doc]]}
-                                         [eid document-id]))
+  (let [existing-tokens (get-existing-tokens node eid document-id)
         text-body (-> (txt/get node text-id) :text/body)
         offsets (toka/filter-overlaps
                   (map (fn [{:token/keys [begin end]}] [begin end]) existing-tokens)
                   (toka/whitespace-tokenize text-body))]
+    (mapv (fn [[b e]]
+            (tok/create* {:token/begin b
+                          :token/end   e
+                          :token/text  text-id
+                          :token/layer eid}))
+          offsets)))
+
+(gxe/deftx morpheme-tokenize [node eid document-id text-id]
+  (let [existing-tokens (get-existing-tokens node eid document-id)
+        text-body (-> (txt/get node text-id) :text/body)
+        offsets (toka/morpheme-tokenize
+                  text-body
+                  (map (fn [{:token/keys [begin end]}] [begin end]) existing-tokens)
+                  "-")]
     (mapv (fn [[b e]]
             (tok/create* {:token/begin b
                           :token/end   e

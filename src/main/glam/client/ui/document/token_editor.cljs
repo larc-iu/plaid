@@ -27,10 +27,11 @@
   (action [{:keys [state ref]}]
           (swap! state #(assoc-in % (conj ref :ui/busy?) true)))
   (remote [{:keys [ast]}]
-          (let [ast (assoc ast :key `tokl/whitespace-tokenize)]
-            ast))
+          (-> ast
+              (assoc :key `tokl/tokenize)
+              (update :params assoc :tokenization :tokenization/whitespace)))
   (result-action [{:keys [state ref app] :as env}]
-                 (let [{:server/keys [message error?]} (get-in env [:result :body `tokl/whitespace-tokenize])]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `tokl/tokenize])]
                    (swap! state (fn [s]
                                   (assoc-in s (conj ref :ui/busy?) false)))
                    (log/info message)

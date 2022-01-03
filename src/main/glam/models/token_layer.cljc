@@ -169,9 +169,10 @@
           :token-layer/sentence-span-layers sentence-span-layers}))))
 
 #?(:clj
-   (pc/defmutation whitespace-tokenize [{:keys [node] :as env} {:token-layer/keys [id]
-                                                                doc-id            :document/id
-                                                                text-id           :text/id}]
+   (pc/defmutation tokenize [{:keys [node] :as env} {:token-layer/keys [id]
+                                                     doc-id            :document/id
+                                                     text-id           :text/id
+                                                     tokenization-scheme :tokenization}]
      {::pc/transform (ma/writeable-required :token-layer/id)}
      (cond
        (nil? (tokl/get node id))
@@ -183,8 +184,13 @@
        (nil? (doc/get node doc-id))
        (server-error (str "Doc does not exist:" doc-id))
 
+       (not (#{:tokenization/whitespace :tokenization/morpheme} tokenization-scheme))
+       (server-error (str "Unrecognized tokenization scheme:" tokenization-scheme))
+
        :else
-       (let [success (tokl/whitespace-tokenize node id doc-id text-id)]
+       (let [success (condp = tokenization-scheme
+                       :tokenization/whitespace (tokl/whitespace-tokenize node id doc-id text-id)
+                       :tokenization/morpheme (tokl/morpheme-tokenize node id doc-id text-id))]
          (if success
            (server-message "Tokenization successful")
            (server-error "Tokenization failed"))))))
@@ -237,5 +243,5 @@
 
 #?(:clj
    (def token-layer-resolvers [get-token-layer get-tokens lorge-get-tokens lorge-get-columnar-tokens
-                               create-token-layer save-token-layer delete-token-layer whitespace-tokenize]))
+                               create-token-layer save-token-layer delete-token-layer tokenize]))
 
