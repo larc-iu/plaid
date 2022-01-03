@@ -55,6 +55,8 @@
                      :in    [?tok]}
                    eid)))
 
+
+(declare safe-create-internal**)
 (gxe/deftx safe-create-internal [node {:token/keys [begin end text layer] :as token}]
   (let [other-tokens (map first (xt/q (xt/db node)
                                       '{:find  [(pull ?t [:token/begin :token/end])]
@@ -63,6 +65,34 @@
                                         :in    [[layer text]]}
                                       [layer text]))
         sorted-tokens (sort-by :token/begin (conj other-tokens token))
+        {text-body :text/body} (gxe/entity node text)]
+
+    (cond
+      ;; Zero- or negative-width token
+      (not (pos-int? (- end begin)))
+      (throw (ex-info "Token has non-positive extent" {:token token}))
+
+      ;; Bounds check: left
+      (< begin 0)
+      (throw (ex-info "Token has a negative start index" {:token token}))
+
+      ;; Bounds check: right
+      (> end (count text-body))
+      (throw (ex-info "Token ends beyond the end of its associated text" {:token token
+                                                                          :text-length (count text-body)
+                                                                          :text text-body}))
+      ;; Overlap with other tokens
+      (some (fn [[{t1-end :token/end} {t2-begin :token/begin}]]
+              (< t2-begin t1-end))
+            (partition 2 1 sorted-tokens))
+      (throw (ex-info "Token creation would result in overlap with another token" {:token token}))
+
+      :else
+      [(gxe/put* token)])))
+
+(declare safe-create-internal2**)
+(gxe/deftx safe-create-internal2 [node other-tokens {:token/keys [begin end text] :as token}]
+  (let [sorted-tokens (sort-by :token/begin (conj other-tokens token))
         {text-body :text/body} (gxe/entity node text)]
 
     (cond
