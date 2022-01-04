@@ -18,7 +18,10 @@
     "test": "clojure -M:test -d src/test",
     "clojure-outdated": "clojure -M:outdated",
     "npm-outdated": "yarn outdated",
-    "loc": "cloc src/main"
+    "loc": "cloc src/main",
+    "docs/html": "asciidoctor -o target/book.html -b html5 -r asciidoctor-diagram docs/book.adoc",
+    "docs/pdf": "asciidoctor-pdf -o target/book.pdf -b pdf -r asciidoctor-diagram docs/book.adoc",
+    "docs": "yarn docs/pdf && yarn docs/html"
   },
   "dependencies": {},
   "devDependencies": {

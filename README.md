@@ -65,6 +65,8 @@ ClojureScript Client Profile:
 
 ## Yarn Commands
 
+*Note*: all `docs` command will require additional dependencies for `asciidoctor`. Use `gem` to get them.
+
 * **`client`**: Start the shadow-cljs ClojureScript compiler, which will compile code to JS and also hot reload any changes.
 * `client/cljs-repl`: Get a client CLJS REPL (note: requires a running browser session).
 * `client/clj-repl`: Get a client CLJ REPL (note: this is only useful if you want to fiddle with shadow-cljs, which is rare).
@@ -78,3 +80,6 @@ ClojureScript Client Profile:
 * `clojure-outdated`: Check Clojure dependencies for oudatedness.
 * `npm-outdated`: Check NPM dependencies for outdatedness.
 * `loc`: Count lines of code (requires `cloc`: `npm install -g cloc`).
+* `docs/html`: Compile `docs/book.adoc` into HTML at `target/book.html`
+* `docs/pdf`: Compile `docs/book.adoc` into a PDF at `target/book.pdf`
+* `docs`: Perform `docs/html` and `docs/pdf`
