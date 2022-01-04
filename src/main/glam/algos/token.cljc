@@ -220,8 +220,7 @@
    - new-body: the new string value of the text's body
    - offsets: the offsets of new tokens that should be created
    - ops: the text edit operations (see glam.algos.text) that describe how to handle separator sequences appropriately.
-          You should probably use these with txt/update-body** after initially doing a raw put* on the body--see
-          glam.xtdb.token-layer/morpheme-tokenize
+          You should probably use these with txt/update-body**--see glam.xtdb.token-layer/morpheme-tokenize
 
   Example:
 
