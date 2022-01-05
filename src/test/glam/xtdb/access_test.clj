@@ -3,7 +3,7 @@
             [glam.xtdb.access :as access]
             [glam.xtdb.user :as user]
             [glam.xtdb.project :as prj]
-            [glam.xtdb.fixtures :refer [with-xtdb with-users with-projects xtdb-node with-layers-and-documents]]))
+            [glam.fixtures :refer [with-xtdb with-users with-projects xtdb-node with-layers-and-documents]]))
 
 (use-fixtures :each with-xtdb with-users with-projects with-layers-and-documents)
 

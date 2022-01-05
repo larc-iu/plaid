@@ -60,6 +60,7 @@
                                       :verbose    true}
                          :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.253"}}}
            :test        {:extra-paths ["src/test"]
+                         :jvm-opts    ["-Dpathom_auth=disabled"]
                          :main-opts   ["-m" "cognitect.test-runner"]
                          :exec-fn     cognitect.test-runner.api/test
                          :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"

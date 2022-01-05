@@ -1,4 +1,4 @@
-(ns glam.xtdb.fixtures
+(ns glam.fixtures
   (:require [clojure.test :refer :all]
             [glam.xtdb.user :as user]
             [glam.xtdb.project :as prj]
@@ -11,15 +11,24 @@
             [glam.xtdb.text :as txt]
             [glam.xtdb.token :as tok]
             [glam.xtdb.span :as s]
-            [glam.xtdb.easy :as gxe]))
+            [glam.xtdb.easy :as gxe]
+            [glam.server.pathom-parser :refer [make-parser]]
+            [com.fulcrologic.fulcro.server.config :refer [load-config!]]))
 
 (log/set-level! :error)
 
 (def xtdb-node nil)
+(def config nil)
+(def parser nil)
 
 (defn with-xtdb [f]
   (with-redefs [xtdb-node (xt/start-node {})]
     (gxe/install-tx-fns! xtdb-node)
+    (f)))
+
+(defn with-parser [f]
+  (with-redefs [config (load-config! {:config-path "config/dev.edn"})
+                parser (make-parser config xtdb-node)]
     (f)))
 
 (defn with-users [f]

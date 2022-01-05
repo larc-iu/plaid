@@ -5,6 +5,12 @@
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.access :as access]))
 
+(def ^:private auth-disabled
+  (let [disabled (= (System/getProperty "pathom_auth") "disabled")]
+    (when disabled
+      (log/warn "Pathom auth is disabled! This should never be done in production."))
+    disabled))
+
 ;; pathom security transforms
 (defn make-auth-transform [auth-fn failure-message]
   "Make a transform for a Pathom resolver that checks whether the user has sufficient
@@ -12,18 +18,20 @@
   (fn auth-transform [{::pc/keys [mutate resolve] :as outer-env}]
     (let [pathom-action (if mutate mutate resolve)
           pathom-action-kwd (if mutate ::pc/mutate ::pc/resolve)]
-      (-> outer-env
-          ;; apply the transformation
-          (assoc
-            pathom-action-kwd
-            (fn [env params]
-              ;;(log/info (str "Hit resolver/mutator: " (pr-str (::pc/resolver-data env))))
-              (if (auth-fn env params)
-                (pathom-action env params)
-                (let [msg (str "Unauthorized pathom action: session " (get-in env [:ring/request :session])
-                               " does not satisfy authorization requirement: " failure-message)]
-                  (log/warn (str "Unauthorized request: " msg))
-                  (mc/server-error msg)))))))))
+      (if (= (System/getProperty "pathom_auth") "disabled")
+        outer-env
+        (-> outer-env
+            ;; apply the transformation
+            (assoc
+              pathom-action-kwd
+              (fn [env params]
+                ;;(log/info (str "Hit resolver/mutator: " (pr-str (::pc/resolver-data env))))
+                (if (auth-fn env params)
+                  (pathom-action env params)
+                  (let [msg (str "Unauthorized pathom action: session " (get-in env [:ring/request :session])
+                                 " does not satisfy authorization requirement: " failure-message)]
+                    (log/warn (str "Unauthorized request: " msg))
+                    (mc/server-error msg))))))))))
 
 ;; TODO: this auth pattern might be unperformant--one idea: cache the auth check in the pathom environment
 ;; see https://blog.wsscode.com/pathom/#updating-env

@@ -76,11 +76,11 @@
    span-layer-resolvers
    span-resolvers])
 
-(def env-additions
+(defn env-additions [config node]
   (fn [env]
-    {:node         xtdb-node
+    {:node         node
      :config       config
-     :current-user (user/get-current-user (assoc env :node xtdb-node))}))
+     :current-user (user/get-current-user (assoc env :node node))}))
 
 (defn mutation?
   [tx-item]
@@ -92,7 +92,7 @@
 (defn has-mutation? [tx]
   (some mutation? tx))
 
-(defn make-parser []
+(defn make-parser [config node]
   (let [{:keys [trace?
                 fail-fast?
                 log-requests?
@@ -104,7 +104,7 @@
 
                         log-requests? (conj (p/pre-process-parser-plugin (partial log-request! (::config config))))
                         log-responses? (conj (p/post-process-parser-plugin (partial log-response! (::config config))))
-                        env-additions (conj (p/env-wrap-plugin (mk-augment-env-request env-additions)))
+                        env-additions (conj (p/env-wrap-plugin (mk-augment-env-request (env-additions config node))))
                         trace? (conj p/trace-plugin)
                         handle-errors? (conj p/error-handler-plugin))
         parser (cond->> (p/parser
@@ -130,7 +130,7 @@
                               (async/>!! out (parser env tx))
                               (recur))))
                         in)
-        cache (atom {})]
+        #_#_cache (atom {})]
 
     (fn wrapped-parser [env tx]
       ;; make it easier to read transactions when debugging
@@ -149,20 +149,20 @@
                          (let [out (async/chan)]
                            (async/>!! serial-parser {:env env :tx tx :out out})
                            (let [resp (async/<!! out)]
-                             (log/info "Resetting cache")
-                             (reset! cache {})
+                             #_(log/info "Resetting cache")
+                             #_(reset! cache {})
                              resp))
 
-                         (@cache tx)
+                         #_#_(@cache tx)
                          (do (log/info "Using cached result") (@cache tx))
 
                          :else
                          (parser env tx))]
         #_(spit "/tmp/foo" result)
-        (when-not (contains? @cache tx)
+        #_(when-not (contains? @cache tx)
           (swap! cache assoc tx result))
         result))))
 
 (mount/defstate parser
-  :start (make-parser))
+  :start (make-parser config xtdb-node))
 

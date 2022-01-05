@@ -10,7 +10,7 @@
             [glam.xtdb.text :as txt]
             [glam.xtdb.token :as tok]
             [glam.xtdb.span :as s]
-            [glam.xtdb.fixtures :refer [with-xtdb with-users with-projects xtdb-node with-layers-and-documents]]
+            [glam.fixtures :refer [with-xtdb with-users with-projects xtdb-node with-layers-and-documents]]
             [glam.xtdb.easy :as gxe]))
 
 (use-fixtures :each with-xtdb with-users with-layers-and-documents)
