@@ -69,10 +69,10 @@
   (action [{:keys [app]}]
     (let [text-layers (:document/text-layers data-tree)
           batches (atom [])
-          get-snapshots (memoize (fn [token-layer]
-                                   (group-by :span/layer
-                                             (mapcat :token/spans
-                                                     (:token-layer/columnar-tokens token-layer)))))]
+          get-snapshots (memoize (fn [{:token-layer/keys [columnar-tokens sentence-level-spans]}]
+                                   (let [token-spans (mapcat :token/spans columnar-tokens)
+                                         spans (into token-spans sentence-level-spans)]
+                                     (group-by :span/layer spans))))]
 
       ;; Ensure that all token-level span layers have a span per-token
       (doseq [text-layer text-layers]
@@ -387,7 +387,7 @@
                             :padding         "0.3em"
                             :marginBottom    "1em"
                             :display         (if hidden? "none" "block")
-                            :overflow        "scroll"}
+                            :overflow        "auto"}
                     :key   (str "line" i)}
 
             ;; Token-level
