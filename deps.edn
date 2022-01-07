@@ -56,7 +56,7 @@
            :uberjar     {:exec-fn    hf.depstar/uberjar
                          :exec-args  {:aot        true
                                       :main-class "glam.server.main"
-                                      :jar        "target/server.jar"
+                                      :jar        "target/glam.jar"
                                       :verbose    true}
                          :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.253"}}}
            :test        {:extra-paths ["src/test"]
