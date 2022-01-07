@@ -152,64 +152,68 @@
                                                              :text/id        (:text/id text)
                                                              :token-layer/id id})]))]
     (mui/box {:my 2}
-      (dom/form {:onSubmit on-submit}
-        (mui/typography {:key "title" :component "h6" :gutterBottom true :variant "subtitle1"}
-                        name
-                        " "
-                        (mui/tooltip {:interactive true
-                                      :title       (str "To edit individual tokens, hover over it with your mouse and shift its"
-                                                        " boundaries with the following key combinations: "
-                                                        "(1) Expand left: A or ←; "
-                                                        "(2) Shrink right: SHIFT+A or SHIFT+←; "
-                                                        "(3) Expand right: D or →; "
-                                                        "(4) Shrink left: SHIFT+D or SHIFT+→"
-                                                        )}
-                          (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
-        (dom/div {:onMouseUp (fn [e]
-                               (let [s (js/window.getSelection)
-                                     n (.-parentNode (.-baseNode s))
-                                     row (.-parentNode n)]
-                                 (when (and (not (.-isCollapsed s))
-                                            (= (.-anchorNode s) (.-baseNode s) (.-extentNode s)))
-                                   (let [row-length (loop [sibling (.-previousSibling n)
-                                                           length 0]
-                                                      (if (nil? sibling)
-                                                        length
-                                                        (recur (.-previousSibling sibling)
-                                                               (+ length (count (.-innerText sibling))))))
-                                         prev-row-length (loop [prev-row (.-previousSibling row)
-                                                                length 0]
-                                                           (if (nil? prev-row)
-                                                             length
-                                                             (recur (.-previousSibling prev-row)
-                                                                    ;; 1 to account for \n
-                                                                    (+ length 1 (count (.-innerText prev-row))))))
-                                         offset (+ row-length prev-row-length)
-                                         begin (+ offset (min (.-baseOffset s) (.-extentOffset s)))
-                                         end (+ offset (max (.-baseOffset s) (.-extentOffset s)))
-                                         new-token-record {:token/begin begin
-                                                           :token/end   end
-                                                           :token/id    (tempid/tempid)
-                                                           :token/layer id
-                                                           :token/text  (:text/id text)}]
-                                     (c/transact! this [(create-token new-token-record)])))))}
-          (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
-            (dom/div {}
-              (map-indexed (fn [tok-num e] (if (string? e)
-                                             ;; TODO: is this key strategy ok?
-                                             (dc/inline-span (str line-num "-" tok-num) e false)
-                                             (ui-token (c/computed e {:text text}))))
-                           line))))
-        (mui/button
-          {:key       "tokenize-button"
-           :type      "submit"
-           :size      "large"
-           :disabled  busy?
-           :color     "primary"
-           :variant   "outlined"
-           :startIcon (muic/more-horiz)
-           :style     {:marginTop "0.3em"}}
-          "Whitespace Tokenize")))))
+      (if (empty? tokens-and-strings)
+        (dom/div
+          (mui/typography {:key "title" :component "h6" :gutterBottom true :variant "subtitle1"} name)
+          (mui/typography {:key "title" :component "h6" :gutterBottom true :variant "caption"} "No tokens available"))
+        (dom/form {:onSubmit on-submit}
+          (mui/typography {:key "title" :component "h6" :gutterBottom true :variant "subtitle1"}
+                          name
+                          " "
+                          (mui/tooltip {:interactive true
+                                        :title       (str "To edit individual tokens, hover over it with your mouse and shift its"
+                                                          " boundaries with the following key combinations: "
+                                                          "(1) Expand left: A or ←; "
+                                                          "(2) Shrink right: SHIFT+A or SHIFT+←; "
+                                                          "(3) Expand right: D or →; "
+                                                          "(4) Shrink left: SHIFT+D or SHIFT+→"
+                                                          )}
+                            (muic/help-outline-outlined {:color "secondary" :fontSize "small"})))
+          (dom/div {:onMouseUp (fn [e]
+                                 (let [s (js/window.getSelection)
+                                       n (.-parentNode (.-baseNode s))
+                                       row (.-parentNode n)]
+                                   (when (and (not (.-isCollapsed s))
+                                              (= (.-anchorNode s) (.-baseNode s) (.-extentNode s)))
+                                     (let [row-length (loop [sibling (.-previousSibling n)
+                                                             length 0]
+                                                        (if (nil? sibling)
+                                                          length
+                                                          (recur (.-previousSibling sibling)
+                                                                 (+ length (count (.-innerText sibling))))))
+                                           prev-row-length (loop [prev-row (.-previousSibling row)
+                                                                  length 0]
+                                                             (if (nil? prev-row)
+                                                               length
+                                                               (recur (.-previousSibling prev-row)
+                                                                      ;; 1 to account for \n
+                                                                      (+ length 1 (count (.-innerText prev-row))))))
+                                           offset (+ row-length prev-row-length)
+                                           begin (+ offset (min (.-baseOffset s) (.-extentOffset s)))
+                                           end (+ offset (max (.-baseOffset s) (.-extentOffset s)))
+                                           new-token-record {:token/begin begin
+                                                             :token/end   end
+                                                             :token/id    (tempid/tempid)
+                                                             :token/layer id
+                                                             :token/text  (:text/id text)}]
+                                       (c/transact! this [(create-token new-token-record)])))))}
+            (for [[line-num line] (map-indexed (fn [i l] [i l]) (ta/separate-into-lines tokens-and-strings text))]
+              (dom/div {}
+                (map-indexed (fn [tok-num e] (if (string? e)
+                                               ;; TODO: is this key strategy ok?
+                                               (dc/inline-span (str line-num "-" tok-num) e false)
+                                               (ui-token (c/computed e {:text text}))))
+                             line))))
+          (mui/button
+            {:key       "tokenize-button"
+             :type      "submit"
+             :size      "large"
+             :disabled  busy?
+             :color     "primary"
+             :variant   "outlined"
+             :startIcon (muic/more-horiz)
+             :style     {:marginTop "0.3em"}}
+            "Whitespace Tokenize"))))))
 
 (def ui-token-layer (c/computed-factory TokenLayer {:keyfn :token-layer/id}))
 

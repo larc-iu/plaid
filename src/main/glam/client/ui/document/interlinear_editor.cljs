@@ -435,7 +435,7 @@
 
         (if-not (seq contentful-lines)
           (mui/box {:m 2}
-            (mui/typography {:variant "subtitle1"} "No tokens available"))
+            (mui/typography {:variant "subtitle"} "No tokens available"))
           (mui/card-content {}
             (mapv render-line (map (fn [i]
                                      {:i      i
