@@ -119,7 +119,7 @@
 (declare batched-update**)
 (gxe/deftx batched-update [node doc-id span-layer-id client-spans updates]
   (let [current-spans (set (get-span-snapshots node doc-id span-layer-id))
-        client-spans (set client-spans)]
+        client-spans (set (map #(select-keys % snapshot-attrs) client-spans))]
     (when-not (= current-spans client-spans)
       (throw (ex-info (str "Aborting batched update: client-provided span snapshot"
                            " does not match current span snapshot")
@@ -158,7 +158,7 @@
 
 (gxe/deftx multi-batched-update [node doc-id batches]
   (let [tx (reduce into (map (fn [{span-layer-id :span-layer/id
-                                   client-spans  :client-spans
+                                   client-spans  :span-snapshots
                                    updates       :updates}]
                                (batched-update** node doc-id span-layer-id client-spans updates))
                              batches))]

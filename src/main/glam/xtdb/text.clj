@@ -61,7 +61,6 @@
         update-tx (map #(gxe/put* %) (filter needs-update? new-tokens))
         text-tx [(gxe/put* (assoc text :text/body (:text/body new-text)))]
         tx (reduce into [text-tx deletion-tx update-tx])]
-    (log/info tx)
     tx))
 
 ;; We don't follow the usual pattern of relying on child nodes' delete** functions here because
