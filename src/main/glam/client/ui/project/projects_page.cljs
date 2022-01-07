@@ -36,7 +36,7 @@
     (if-not (empty? accessible-projects)
       (mui/padded-paper
         (mui/list {}
-          (mapv ui-project-list-item accessible-projects)))
+          (mapv ui-project-list-item (sort-by :project/name accessible-projects))))
       (mui/box {:my 4}
         (mui/typography
           {:variant   "subtitle1"
