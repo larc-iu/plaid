@@ -41,6 +41,10 @@
                    ;; we may need new token offsets--trigger a load
                    (df/load! app [:document/id doc-id] TokenEditor))))
 
+(defn reload-editor [app]
+  (when-let [doc-id (gcu/parse-id (second (r/current-app-route)))]
+    (df/load! app [:document/id doc-id] TokenEditor)))
+
 ;; :direction is either :begin or :end
 (m/defmutation shift-token [{token-id :token/id delta :delta direction :direction :as params}]
   (action [{:keys [state ref]}]
@@ -55,8 +59,8 @@
                 (update :params assoc (keyword (str "delta-" (name direction))) delta))))
   (ok-action [{:keys [state ref]}]
              nil)
-  (error-action [{:keys [state ref]}]
-                (swap! state #(update-in % (conj ref :token/begin) (fn [v] (- v delta))))))
+  (error-action [{:keys [app]}]
+                (reload-editor app)))
 
 (m/defmutation delete-token [{token-id :token/id}]
   (action [{:keys [state ref]}]
@@ -66,8 +70,8 @@
               (assoc :key `tok/delete)))
   (ok-action [{:keys [state ref]}]
              (log/info "Deleted"))
-  (error-action [{:keys [state ref]}]
-                nil))
+  (error-action [{:keys [app]}]
+                (reload-editor app)))
 
 (m/defmutation create-token [token]
   (action [{:keys [state ref]}]
@@ -81,11 +85,8 @@
               (assoc :key `tok/create)))
   (ok-action [{:keys [result app]}]
              (tempid/resolve-tempids! app (:body result)))
-  (error-action [{:keys [state ref]}]
-                (swap! state (fn [s] (-> s
-                                         (update :token/id dissoc (:token/id token))
-                                         (update-in [:token-layer/id (:token/layer token) :token-layer/tokens]
-                                                    (fn [tokens] (filterv #(not= (second %) (:token/id token)) tokens))))))))
+  (error-action [{:keys [app]}]
+                (reload-editor app)))
 
 (defsc Text
   [this {:text/keys [id body] :as props}]
@@ -115,17 +116,17 @@
                              key (.-key e)
                              left-keys #{"a" "A" "ArrowLeft"}
                              right-keys #{"d" "D" "ArrowRight"}]
-                         (cond (left-keys key)
-                               (c/transact! this [(shift-token {:token/id id :direction :begin :delta -1})])
-
-                               (right-keys key)
-                               (c/transact! this [(shift-token {:token/id id :direction :end :delta 1})])
-
-                               (and shift (left-keys key))
+                         (cond (and shift (left-keys key))
                                (c/transact! this [(shift-token {:token/id id :direction :begin :delta 1})])
 
                                (and shift (right-keys key))
-                               (c/transact! this [(shift-token {:token/id id :direction :end :delta -1})]))))
+                               (c/transact! this [(shift-token {:token/id id :direction :end :delta -1})])
+
+                               (left-keys key)
+                               (c/transact! this [(shift-token {:token/id id :direction :begin :delta -1})])
+
+                               (right-keys key)
+                               (c/transact! this [(shift-token {:token/id id :direction :end :delta 1})]))))
        :ref          save-ref
        ;; Need a tab index for focus to work, and need focus to work for logging keyboard events
        :tabIndex     begin}
