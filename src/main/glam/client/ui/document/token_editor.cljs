@@ -115,17 +115,17 @@
                              key (.-key e)
                              left-keys #{"a" "A" "ArrowLeft"}
                              right-keys #{"d" "D" "ArrowRight"}]
-                         (cond (and shift (left-keys key))
-                               (c/transact! this [(shift-token {:token/id id :direction :end :delta -1})])
-
-                               (left-keys key)
+                         (cond (left-keys key)
                                (c/transact! this [(shift-token {:token/id id :direction :begin :delta -1})])
 
-                               (and shift (right-keys key))
+                               (right-keys key)
+                               (c/transact! this [(shift-token {:token/id id :direction :end :delta 1})])
+
+                               (and shift (left-keys key))
                                (c/transact! this [(shift-token {:token/id id :direction :begin :delta 1})])
 
-                               (right-keys key)
-                               (c/transact! this [(shift-token {:token/id id :direction :end :delta 1})]))))
+                               (and shift (right-keys key))
+                               (c/transact! this [(shift-token {:token/id id :direction :end :delta -1})]))))
        :ref          save-ref
        ;; Need a tab index for focus to work, and need focus to work for logging keyboard events
        :tabIndex     begin}

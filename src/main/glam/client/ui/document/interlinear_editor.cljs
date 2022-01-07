@@ -386,7 +386,8 @@
                             :borderRadius    4
                             :padding         "0.3em"
                             :marginBottom    "1em"
-                            :display         (if hidden? "none" "block")}
+                            :display         (if hidden? "none" "block")
+                            :overflow        "scroll"}
                     :key   (str "line" i)}
 
             ;; Token-level
