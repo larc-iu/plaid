@@ -135,7 +135,7 @@
                (conj output-chars separator)
                (conj offsets [(count output-chars) (inc (count output-chars))])
                (+ i 2)
-               (conj ops {:type :delete :index i :value 1}))
+               (conj ops {:type :delete :index (count output-chars) :value 1}))
 
         ;; If we encounter a legitimate sep, skip ahead without eating
         (separator? (first chars))
@@ -143,7 +143,7 @@
                output-chars
                offsets
                (inc i)
-               (conj ops {:type :delete :index i :value 1}))
+               (conj ops {:type :delete :index (count output-chars) :value 1}))
 
         ;; At least 1 space--eat them but don't tokenize them
         (space? (first chars))
@@ -249,6 +249,10 @@
 
 (comment
 
-  (morpheme-tokenize "John-'s sav-ed two--hundred dog-s" [[0 5]] \-)
+  (require '[glam.algos.text :refer :all])
 
+  (let [text "John-'s sav-ed two--hundred dogs"
+        existing []
+        {:keys [ops]} (morpheme-tokenize text existing \-)]
+    (glam.algos.text/apply-text-edits ops text []))
   )
