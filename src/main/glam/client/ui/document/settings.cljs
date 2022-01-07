@@ -32,7 +32,7 @@
        {:token-layer/tokens [:token/id :token/text :token/begin :token/end :token/layer :token/value]}
        {:token-layer/span-layers
         [:span-layer/id :span-layer/name
-         {:span-layer/spans [:span/id :span/value :span/layer]}]}]}]}])
+         {:span-layer/spans [:span/id :span/value :span/layer :span/tokens]}]}]}]}])
 
 (defsc Settings [this {:document/keys [id name project] :>/keys [data] :ui/keys [busy?] :as props}]
   {:query                  [:document/id :document/name fs/form-config-join :ui/busy?
