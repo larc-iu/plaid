@@ -46,13 +46,10 @@
 
 #?(:clj
    (pc/defmutation save-text
-     [{:keys [node] :as env} {:text/keys [id] :keys [new-body old-body ops] document-id :document/id tl-id :text-layer/id}]
+     [{:keys [node] :as env} {:text/keys [id] :keys [new-body ops] document-id :document/id tl-id :text-layer/id}]
      {::pc/transform (ma/writeable-required :document/id)}
      (cond (not (string? new-body))
            (server-error "Text body must be a string")
-
-           (not (string? old-body))
-           (server-error "Old value of text body must be supplied")
 
            (nil? (doc/get node document-id))
            (server-error (str "Document does not exist: " document-id))
@@ -61,20 +58,17 @@
            (server-error (str "Text layer does not exist: " tl-id))
 
            :else
-           (if (text/update-body node id old-body ops)
+           (if (text/update-body node id ops)
              (server-message "Update successful")
              (server-error "Failed to create text, please try again")))))
 
 #?(:clj
    (pc/defmutation save-and-morpheme-tokenize
-     [{:keys [node] :as env} {:text/keys [id] :keys [new-body old-body ops]
+     [{:keys [node] :as env} {:text/keys [id] :keys [new-body ops]
                               doc-id     :document/id tl-id :text-layer/id tokl-id :token-layer/id}]
      {::pc/transform (ma/writeable-required :document/id)}
      (cond (not (string? new-body))
            (server-error "Text body must be a string")
-
-           (not (string? old-body))
-           (server-error "Old value of text body must be supplied")
 
            (nil? (doc/get node doc-id))
            (server-error (str "Document does not exist: " doc-id))
@@ -86,7 +80,7 @@
            (server-error (str "Token layer does not exist: " tokl-id))
 
            :else
-           (if (tokl/update-body-and-morpheme-tokenize node tokl-id id old-body ops)
+           (if (tokl/update-body-and-morpheme-tokenize node tokl-id id ops)
              (server-message "Update successful")
              (server-error "Failed to create text, please try again")))))
 

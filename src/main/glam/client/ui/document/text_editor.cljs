@@ -88,7 +88,6 @@
                       (c/transact! this [(save-text {:text/id       id
                                                      :text-layer/id text-layer-id
                                                      :document/id   document-id
-                                                     :old-body      pristine-body
                                                      :new-body      body
                                                      :ops           ops
                                                      :mutation      `txt/save-text})])))
@@ -105,7 +104,6 @@
                                                  (c/transact! this [(save-text {:text/id        id
                                                                                 :text-layer/id  text-layer-id
                                                                                 :document/id    document-id
-                                                                                :old-body       pristine-body
                                                                                 :new-body       body
                                                                                 :ops            ops
                                                                                 :token-layer/id token-layer-id

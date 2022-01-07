@@ -50,7 +50,7 @@
                    eid)))
 
 (declare update-body**)
-(gxe/deftx update-body [node eid old-body ops]
+(gxe/deftx update-body [node eid ops]
   (let [text (gxe/entity node eid)
         tokens (map #(gxe/entity node %) (get-token-ids node eid))
         indexed-tokens (reduce #(assoc %1 (:token/id %2) %2) {} tokens)
@@ -59,9 +59,9 @@
                                                              (not= end (:token/end (clojure.core/get indexed-tokens id)))))
         deletion-tx (reduce into (map #(tok/delete** node %) deleted-token-ids))
         update-tx (map #(gxe/put* %) (filter needs-update? new-tokens))
-        text-tx [(gxe/match* eid (assoc text :text/body old-body))
-                 (gxe/put* (assoc text :text/body (:text/body new-text)))]
+        text-tx [(gxe/put* (assoc text :text/body (:text/body new-text)))]
         tx (reduce into [text-tx deletion-tx update-tx])]
+    (log/info tx)
     tx))
 
 ;; We don't follow the usual pattern of relying on child nodes' delete** functions here because

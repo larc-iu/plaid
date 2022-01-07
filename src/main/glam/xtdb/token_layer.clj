@@ -91,12 +91,12 @@
                                                    token (xutil/create-record "token" nil token (filterv #(not= % :token/id) tok/attr-keys))]
                                                (tok/safe-create-internal2** node existing-tokens token)))
                                            offsets))
-          body-update-txs (txt/update-body** node text-id (:text/body text) ops)]
+          body-update-txs (txt/update-body** node text-id ops)]
       (into body-update-txs new-token-txs))))
 
-(gxe/deftx update-body-and-morpheme-tokenize [node tokl-id text-id old-body ops]
+(gxe/deftx update-body-and-morpheme-tokenize [node tokl-id text-id ops]
   (let [{doc-id :text/document} (gxe/entity node text-id)]
-    (into (txt/update-body** node text-id old-body ops) (morpheme-tokenize** node tokl-id doc-id text-id))))
+    (into (txt/update-body** node text-id ops) (morpheme-tokenize** node tokl-id doc-id text-id))))
 
 (gxe/deftx create-text-and-morpheme-tokenize-internal [node text tokl-id]
   (into [(gxe/put* text)]
