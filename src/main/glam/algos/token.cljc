@@ -171,7 +171,7 @@
           (recur
             (drop-while token-char? chars)
             new-chars
-            (if (covered? span)
+            (if (covered? [i (+ i (count token))])
               offsets
               (conj offsets span))
             (+ i (count token))
@@ -186,7 +186,7 @@
           (recur
             (drop (count token) chars)
             new-chars
-            (if (covered? span)
+            (if (covered? [i (+ i (count token))])
               offsets
               (conj offsets span))
             (+ i (count token))
