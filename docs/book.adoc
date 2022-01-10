@@ -19,17 +19,118 @@
 Glam is an app for linguistic annotation.
 While Glam is usable for many different kinds of annotation projects, it was originally developed to serve https://en.wikipedia.org/wiki/Language_documentation[**language documentation**] projects, and in pursuit of that, aims to achieve the following core goals:
 
-- **Modular Data Schema**: users should be able to record however much data and whatever kind of data they desire.
-Annotating anything from good old-fashioned https://en.wikipedia.org/wiki/Interlinear_gloss[interlinear glossed text] to more complicated schemas like https://universaldependencies.org/format.html[Universal Dependencies] should be possible and easy.
-- **Durability**: data should never be lost--all past states of the database should be recorded, and the present state of the database should be a single source of truth.
+- **Flexible Data Model**: users should be able to record however much data and whatever kind of data they desire.
+Annotating anything from good old-fashioned https://en.wikipedia.org/wiki/Interlinear_gloss[interlinear glossed text] to more complicated formats like https://universaldependencies.org/format.html[Universal Dependencies] should be possible and easy.
 - **Seamless collaboration**: working with others should be frictionless--users should be able to share data without thinking about it, changes made to data should be viewable by everyone in real time, and new users should be able to be onboarded quickly.
-- **NLP model integration**: it should be easy to configure cutting-edge NLP models to provide best-effort annotations to be corrected by humans, and have them train themselves incrementally as new gold annotations become available.
+- **Durability**: data should never be lost--all past states of the database should be recorded and accessible.
+- **NLP model integration**: it should be easy to configure cutting-edge NLP models to provide best possible annotations to be corrected by humans, and have them train incrementally as new gold annotations become available.
 - **Hackable UIs**: Programmers who want to provide new UIs for different kinds of annotation (e.g. entity recognition, syntax, and coreference) should be able to do so just by writing JavaScript using the Glam API, with no backend changes required.
 
 = Core Concepts
 
-= Workflows
+== Document Structure
+
+=== Text
+
+=== Token
+
+=== Span
+
+=== Relation
+
+=== Vocabulary
+
+== Projects
+
+= User Workflows
+
+== Document Annotation
+Glam ships with a number of document-level editing interfaces to facilitate typical kinds of annotation.
+All of these interfaces will automatically update in real time if multiple users are editing the same document.
+
+=== Text Entry
+The text editing interface (at `/document/:id?tab=text`) is used for editing the raw text that will be annotated in the document.
+
+.Raw text entry
+A text box allows for entry, and the default "save" action will save the text as it is entered.
+No tokens will be created--just the text will be saved.
+
+.Text entry with morpheme tokenization
+[#morphent]
+You will often want tokens that represent a morpheme rather than a whole word.
+To conveniently enter data like this, the text editing interface offers a "save with morpheme tokenization" action.
+Text that is entered and saved with this action will create tokens when the text is saved with explicit guidance from you in the form of `-` separators between morphemes.
+For example, consider the following raw text:
+
+```
+Ox-en plow-ing the field-s
+```
+
+When saved with morpheme tokenization mode, two things will happen: first, the `-` separators will be removed from the text's final form; second, tokens will be generated that will have boundaries at `-` separators as well as other heuristic boundaries, such as whitespace characters.
+The text above would therefore look like so, where the numbers under each character indicates the token it belongs to:
+
+```
+Oxen plowing the fields
+1122 3333444 555 666667
+```
+
+If you want to include a literal `-` in your text, simply repeat it:
+
+```
+The ice--cream melt-ed
+=>
+The ice-cream melted
+111 222344444 555566
+```
+
+=== Token Entry
+
+The token editing interface (at `/document/:id?tab=token`) allows you to create and edit tokens.
+A token is visually represented in both this interface and the text interface with a black rounded box around its text.
+
+WARNING: Some of the actions described here are only guaranteed to work in Google Chrome. Avoid using other browsers at this time.
+
+.Bulk token creation
+Currently, only whitespace tokenization is supported for bulk token editing.
+It is recommended that you use text editing with morpheme tokenization if this is not suitable for you.
+In the future, it will be possible to use external tokenizers, such as SpaCy's.
+
+.Token deletion
+Simply click on a token's box to delete it.
+
+.Token creation
+Highlight a totally untokenized span of text, either by clicking and dragging your mouse over it or double clicking on a whole word.
+Creation will only succeed if all characters do not belong to any existing token.
+
+.Token editing
+To shift the boundaries of an existing token, hover over the token with your mouse and use the following keyboard commands:
+
+- `A` / `←`: expand token left
+- `SHIFT+A` / `SHIFT+←`: shrink token left
+- `D` / `→`: expand token right
+- `SHIFT+D` / `SHIFT+→`: shrink token right
+
+=== Interlinear Editing
+TODO
+
+= Administrator Workflows
+
+Administrators are privileged users that can
+
+== User Management
+
+== Project Configuration
+
+Each project has its own configuration of layers which will determine the structure of documents inside that project.
+Most projects will only need one text layer and one token layer, though one may want to have e.g. tokenizations at both the morpheme and the word level.
+Span layers will vary most across projects, as they contain the span-level linguistic annotations that will constitute the bulk of a document's linguistic annotations.
+
+.Span Configuration for Interlinear Editor
+The interlinear editor needs to know which span layers represent token-level information (e.g. a POS tag or a grammatical category), and which represent sentence-level information (e.g. a translation).
+Once you have configured your project's layers, go to the "Interfaces" tab of the admin's project management activity and configure the span layers you wish to use in the interlinear editor.
 
 = Developer's Guide
 
 CAUTION: This section is intended only for people who want to extend Glam. You do not need to read this section in order to use Glam.
+
+TODO
