@@ -48,7 +48,7 @@ Annotating anything from good old-fashioned https://en.wikipedia.org/wiki/Interl
 Glam ships with a number of document-level editing interfaces to facilitate typical kinds of annotation.
 All of these interfaces will automatically update in real time if multiple users are editing the same document.
 
-=== Text Entry
+=== Text
 The text editing interface (at `/document/:id?tab=text`) is used for editing the raw text that will be annotated in the document.
 
 .Raw text entry
@@ -83,7 +83,7 @@ The ice-cream melted
 111 222344444 555566
 ```
 
-=== Token Entry
+=== Token
 
 The token editing interface (at `/document/:id?tab=token`) allows you to create and edit tokens.
 A token is visually represented in both this interface and the text interface with a black rounded box around its text.
@@ -110,7 +110,7 @@ To shift the boundaries of an existing token, hover over the token with your mou
 - `D` / `→`: expand token right
 - `SHIFT+D` / `SHIFT+→`: shrink token right
 
-=== Interlinear Editing
+=== Interlinear
 TODO
 
 = Administrator Workflows
