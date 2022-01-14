@@ -39,12 +39,12 @@ By the addition and combination of layers, different projects are able to record
 Projects may have as many or as few of each layer as is appropriate.
 
 === Text
-A text layer represents strings of text that form the foundation of documents.
+A text layer holds strings of text that form the foundation of documents.
 Most projects will only have one text layer, though it is possible to create more than one.
-(One such rare situation might be one where the same text has been given in two different languages, and both versions of the text need to be annotated.)
+(One such rare occasion might be when the same text has been given in two different languages, and both versions of the text need to be annotated.)
 
 There are no constraints on what texts can contain, except one: many of Glam's core interfaces assume that one line in the text will roughly correspond to something like a sentence.
-Texts should be edited accordingly.
+Texts should be edited accordingly, and very long lines should be avoided if possible.
 
 NOTE: Some things that you might feel like modeling with multiple text layers might actually be better modeled with other layers.
 For example, you might want to model different speakers in conversational texts with different text layers, but speakers are different and variable across documents, so this is actually better modeled by having a span layer for speakers.
@@ -53,8 +53,6 @@ For example, you might want to model different speakers in conversational texts 
 A token layer contains tokens, which are defined as non-overlapping, non-empty, continuous substrings of a text layer which the token layer depends on.
 Tokens provide basic units for further linguistic analysis, and will most commonly capture something like a morpheme or a word.
 It therefore may be desirable to have multiple token layers in some situations.
-
-TODO: note on vocab
 
 === Span
 A span layer contains spans and depends on a token layer.
@@ -66,7 +64,44 @@ Many kinds of span layers will have spans which always span exactly one token--t
 Other span layers will have much wider spans, such as a translation span layer, whose spans would cover entire sentences.
 
 === Relation
+A relation layer depends on a single span layer and holds edges between spans.
+These edges are directed (one span is the source, the other is the target), and must always connect exactly two spans from the span layer.
+The relation also has a value like spans do: either a plain text value, or an item from a vocabulary.
+Many projects will not need relation layers, but they are critical for expressing some kinds of data such as coreference links and syntax trees.
+
+NOTE: We are optimistic that a relation layer will only ever need to involve spans from a single span layer, but if you are in a situation where you feel that you need relations to connect spans from different layers, please https://github.com/lgessler/glam/discussions[discuss your situation] with us.
+
 === Vocabulary
+A vocabulary is simply a list of items which have at minimum a **form**.
+A vocabulary may also specify additional fields that each item should have, which will be able to hold arbitrary text as information.
+Vocabularies may be **closed** or **open**: if a vocabulary is closed, then only administrators will be able to add more items, and if it is open, then regular users will be able to extend the vocabulary with new items during regular use.
+
+NOTE: For now, additional vocabulary fields will only be able to hold plain strings, but if you would like something beyond that, please https://github.com/lgessler/glam/discussions[describe your needs].
+
+Unlike the other layer types, vocabularies are **global** and are not associated with a project.
+Vocabularies come in two different varieties: if a vocabulary is to be used with a token layer, then it is an **alloformic vocabulary**, and if it is to be used with a span or relation layer, it is a **basic vocabulary**.
+
+.Basic Vocabulary
+In this kind of vocabulary, spans and relations whose values refer to a vocabulary item will have exactly that vocabulary item's form as its value.
+This is suitable for annotations like grammatical categories, POS tags, lemmas, and morphological features.
+
+.Alloformic Vocabulary
+Alloformic vocabularies are used with token layers, and help address the fact that formal units of linguistic analysis such as words of morphemes often do not surface in texts in their citation form: for example, the Turkish plural marker may surface as either _-lar_ or _-ler_ depending on vowel harmony, but we would like them both to correspond to a single vocabulary item for a morphemic analysis.
+An alloformic vocabulary therefore still requires that each item have a canonical **form** which is to serve as a citation form, but it relaxes the requirement that an instantiation of this item have exactly the canonical form.
+
+== Universality
+The five layer types described above are technically and conceptually simple.
+Recall that one of Glam's goals is to allow you to record any kind of data.
+Can we really expect to accommodate any kind of data using just the five layer types?
+
+Cautiously, we expect that the answer is yes.
+Researchers in https://corpus-tools.org/salt/[NLP] and https://corpus-tools.org/salt/[corpus linguistics], among others, have already described very similar data models and expressed faith (supported by experimental successes) in their ability to express almost any linguistic formalism.
+So, if there is some kind of data you wish to annotate, you can expect that Glam's layer system will be able to handle it.
+
+NOTE: If you're struggling to come up with a plan for your data, don't hesitate to make a post on the https://github.com/lgessler/glam/discussions[discussions page] so others can give you advice.
+
+However, what is not necessarily guaranteed is that Glam will provide you with an ergonomic interface for annotating documents in your layer system.
+Glam tries to provide sensible interfaces for the most common kinds of linguistic annotation (such as interlinear glossing), but if your needs are more complex (as they would be with something like constituency treebanking), Glam's interfaces may not be especially ergonomic, and you should consider developing your own UI.
 
 = User Workflows
 
@@ -137,16 +172,17 @@ To shift the boundaries of an existing token, hover over the token with your mou
 - `SHIFT+D` / `SHIFT+→`: shrink token right
 
 === Interlinear
-TODO
+The interlinear interface allows <<Project Configuration,properly configured span layers>> to be edited.
+For each token, each token-level span layer will have a single field, and for each sentence, each sentence-level span layer will also have a single field.
+Changes in the spans' values will be propagated to other users as soon as your cursor leaves a field.
 
 = Administrator Workflows
-
-Administrators are privileged users that can
+Administrators are privileged users that can configure all aspects of a Glam instance.
 
 == User Management
+Administrators can create new users and manage existing users (`/admin/user`).
 
 == Project Configuration
-
 Each project has its own configuration of layers which will determine the structure of documents inside that project.
 Most projects will only need one text layer and one token layer, though one may want to have e.g. tokenizations at both the morpheme and the word level.
 Span layers will vary most across projects, as they contain the span-level linguistic annotations that will constitute the bulk of a document's linguistic annotations.
@@ -154,6 +190,10 @@ Span layers will vary most across projects, as they contain the span-level lingu
 .Span Configuration for Interlinear Editor
 The interlinear editor needs to know which span layers represent token-level information (e.g. a POS tag or a grammatical category), and which represent sentence-level information (e.g. a translation).
 Once you have configured your project's layers, go to the "Interfaces" tab of the admin's project management activity and configure the span layers you wish to use in the interlinear editor.
+
+.Read and Write Privileges
+By default, non-admin users are not allowed to view or edit any projects.
+To grant them access, navigate to a project in the Project Management admin activity, visit the "Access" tab, and grant each user the appropriate privileges.
 
 = Developer's Guide
 
