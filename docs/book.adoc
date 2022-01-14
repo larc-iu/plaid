@@ -19,28 +19,54 @@
 Glam is an app for linguistic annotation.
 While Glam is usable for many different kinds of annotation projects, it was originally developed to serve https://en.wikipedia.org/wiki/Language_documentation[**language documentation**] projects, and in pursuit of that, aims to achieve the following core goals:
 
-- **Flexible Data Model**: users should be able to record however much data and whatever kind of data they desire.
+- **Flexible Data**: you should be able to record however much data and whatever kind of data you desire.
 Annotating anything from good old-fashioned https://en.wikipedia.org/wiki/Interlinear_gloss[interlinear glossed text] to more complicated formats like https://universaldependencies.org/format.html[Universal Dependencies] should be possible and easy.
-- **Seamless collaboration**: working with others should be frictionless--users should be able to share data without thinking about it, changes made to data should be viewable by everyone in real time, and new users should be able to be onboarded quickly.
+- **Seamless Collaboration**: working with others should be frictionless--you should be able to share data without even clicking a button, changes should be viewable by everyone in real time, and everyone should be able to pick the system up quickly.
 - **Durability**: data should never be lost--all past states of the database should be recorded and accessible.
-- **NLP model integration**: it should be easy to configure cutting-edge NLP models to provide best possible annotations to be corrected by humans, and have them train incrementally as new gold annotations become available.
-- **Hackable UIs**: Programmers who want to provide new UIs for different kinds of annotation (e.g. entity recognition, syntax, and coreference) should be able to do so just by writing JavaScript using the Glam API, with no backend changes required.
+- **NLP Model Integration**: it should be easy to configure cutting-edge NLP models to provide best possible annotations to be corrected by humans, and have them train incrementally as new gold annotations become available.
+- **Pluggable UIs**: if you want to code new UIs for different kinds of annotation (e.g. entity recognition, syntax, and coreference), you should be able to do so just by writing JavaScript using the Glam API, with no backend changes required.
 
 = Core Concepts
+Glam allows different **users** to collaborate on different **projects**.
+Administrators may grant users read or write privileges on different projects, and projects are otherwise simply collections of **documents**.
+Documents may have different kinds of data, and a project's layer configuration determines what kind of data will be created for that project.
 
-== Document Structure
+
+== Layers
+At the heart of Glam is the concept of a **layer**.
+A layer represents a single kind of data that is to be captured in documents in a project.
+By the addition and combination of layers, different projects are able to record whatever data is most appropriate in their documents.
+Projects may have as many or as few of each layer as is appropriate.
 
 === Text
+A text layer represents strings of text that form the foundation of documents.
+Most projects will only have one text layer, though it is possible to create more than one.
+(One such rare situation might be one where the same text has been given in two different languages, and both versions of the text need to be annotated.)
+
+There are no constraints on what texts can contain, except one: many of Glam's core interfaces assume that one line in the text will roughly correspond to something like a sentence.
+Texts should be edited accordingly.
+
+NOTE: Some things that you might feel like modeling with multiple text layers might actually be better modeled with other layers.
+For example, you might want to model different speakers in conversational texts with different text layers, but speakers are different and variable across documents, so this is actually better modeled by having a span layer for speakers.
 
 === Token
+A token layer contains tokens, which are defined as non-overlapping, non-empty, continuous substrings of a text layer which the token layer depends on.
+Tokens provide basic units for further linguistic analysis, and will most commonly capture something like a morpheme or a word.
+It therefore may be desirable to have multiple token layers in some situations.
+
+TODO: note on vocab
 
 === Span
+A span layer contains spans and depends on a token layer.
+Spans are anchored to tokens from the token layer it depends on: each span must be linked to at least one token from that token layer.
+(Associated tokens do not need to be contiguous.)
+Spans may also have a **value**, which is either a plain text value or an entry in a vocabulary (see below).
+
+Many kinds of span layers will have spans which always span exactly one token--these might express common information such as grammatical category, or part of speech.
+Other span layers will have much wider spans, such as a translation span layer, whose spans would cover entire sentences.
 
 === Relation
-
 === Vocabulary
-
-== Projects
 
 = User Workflows
 
