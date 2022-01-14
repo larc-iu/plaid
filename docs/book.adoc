@@ -95,7 +95,7 @@ Recall that one of Glam's goals is to allow you to record any kind of data.
 Can we really expect to accommodate any kind of data using just the five layer types?
 
 Cautiously, we expect that the answer is yes.
-Researchers in https://corpus-tools.org/salt/[NLP] and https://corpus-tools.org/salt/[corpus linguistics], among others, have already described very similar data models and expressed faith (supported by experimental successes) in their ability to express almost any linguistic formalism.
+Researchers in https://aclanthology.org/2020.acl-main.192/[NLP] and https://corpus-tools.org/salt/[corpus linguistics], among others, have already described very similar data models and expressed faith (supported by experimental successes) in their ability to express almost any linguistic formalism.
 So, if there is some kind of data you wish to annotate, you can expect that Glam's layer system will be able to handle it.
 
 NOTE: If you're struggling to come up with a plan for your data, don't hesitate to make a post on the https://github.com/lgessler/glam/discussions[discussions page] so others can give you advice.
