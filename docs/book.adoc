@@ -200,3 +200,4 @@ To grant them access, navigate to a project in the Project Management admin acti
 CAUTION: This section is intended only for people who want to extend Glam. You do not need to read this section in order to use Glam.
 
 TODO
+
