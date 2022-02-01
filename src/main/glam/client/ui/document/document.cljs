@@ -126,11 +126,11 @@
                                    )))))
    :componentDidMount    (fn [this]
                            (let [props (c/props this)
-                                 doc-id (:document/id props)
-                                 tab (:ui/active-tab props)]
+                                 doc-id (:document/id props)]
                              (let [unregister! (gas/register-subscription!
                                                  [:document/id doc-id]
-                                                 #(do-load! this doc-id tab {}))]
+                                                 #(let [tab (get-in (app/current-state this) [:document/id doc-id :ui/active-tab])]
+                                                    (do-load! this doc-id tab {})))]
                                (c/set-state! this {:unregister-fn unregister!}))))
    :componentWillUnmount (fn [this]
                            (when-let [unregister! (:unregister-fn (c/get-state this))]
