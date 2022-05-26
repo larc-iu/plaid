@@ -1,6 +1,6 @@
-# What's this?
+# Introduction
 
-An app for linguistic data annotation that's still under construction. It's built using [Clojure](https://clojure.org/)([Script](https://clojurescript.org/)), [Material-UI](https://material-ui.com/), [Fulcro](https://fulcro.fulcrologic.com/), and [XTDB](https://xtdb.com/main/index.html). 
+Glam is an app for linguistic data annotation that's still under construction. It's built using [Clojure](https://clojure.org/)([Script](https://clojurescript.org/)), [Material-UI](https://material-ui.com/), [Fulcro](https://fulcro.fulcrologic.com/), and [XTDB](https://xtdb.com/main/index.html). 
 Check back soon 🚧
 
 Resources:
