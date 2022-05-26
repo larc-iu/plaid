@@ -1,10 +1,12 @@
 # What's this?
 
 An app for linguistic data annotation that's still under construction. It's built using [Clojure](https://clojure.org/)([Script](https://clojurescript.org/)), [Material-UI](https://material-ui.com/), [Fulcro](https://fulcro.fulcrologic.com/), and [XTDB](https://xtdb.com/main/index.html). 
-For a short summary of this app's goals and vision, see [this post](https://forum.docling.net/t/glam-a-new-linguistic-annotation-app/606).
-Demo is live at https://demo.use-glam.app/ (ask Luke for login credentials).
-Documentation is available at http://lgessler.com/glam/.
 Check back soon 🚧
+
+Resources:
+- For a short summary of this app's goals and vision, see [this post](https://forum.docling.net/t/glam-a-new-linguistic-annotation-app/606).
+- Demo is live at https://demo.use-glam.app/ (ask Luke for login credentials).
+- Documentation is available at http://lgessler.com/glam/.
 
 # Installation
 *(These instructions are a sketch--more detailed instructions will be given later.)*
