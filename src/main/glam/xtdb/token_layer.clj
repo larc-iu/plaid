@@ -46,7 +46,9 @@
   [node eid m]
   (gxe/merge node eid (select-keys m [:token-layer/name])))
 
-(defn get-existing-tokens [node eid document-id]
+(defn get-existing-tokens
+  "Find all tokens with their two indices for a given token layer and document."
+  [node eid document-id]
   (map first (xt/q (xt/db node) '{:find  [(pull ?tok [:token/begin :token/end])]
                                   :where [[?prj :project/text-layers ?txtl]
                                           [?doc :document/project ?prj]
@@ -57,6 +59,11 @@
                                   :in    [[?tokl ?doc]]}
                    [eid document-id])))
 
+;; TODO: refactor this and morpheme-tokenize--tokenization should be:
+;; (1) factored into a multimethod
+;; (2) provide standard ways of tokenizing via implementations of that multimethod
+;; (3) allow external tokenizers to do their work, somehow
+;; (4) what if a tokenizer also supplies glosses? punt on that--a tokenization-only deal is fine to start with
 (gxe/deftx whitespace-tokenize [node eid document-id text-id]
   (let [existing-tokens (get-existing-tokens node eid document-id)
         text-body (-> (txt/get node text-id) :text/body)
@@ -94,14 +101,17 @@
           body-update-txs (txt/update-body** node text-id ops)]
       (into body-update-txs new-token-txs))))
 
+;; TODO: should be generalized away from morpheme tokenization
 (gxe/deftx update-body-and-morpheme-tokenize [node tokl-id text-id ops]
   (let [{doc-id :text/document} (gxe/entity node text-id)]
     (into (txt/update-body** node text-id ops) (morpheme-tokenize** node tokl-id doc-id text-id))))
 
+;; Separate this and other `-internal` methods so that we can provide...
 (gxe/deftx create-text-and-morpheme-tokenize-internal [node text tokl-id]
   (into [(gxe/put* text)]
         (morpheme-tokenize** node tokl-id (:text/document text) (:text/id text))))
 
+;; ... a map with the new ID and whether we succeeded
 (defn create-text-and-morpheme-tokenize [node text tokl-id]
   (let [{:text/keys [id] :as text} (xutil/create-record "text" nil text txt/attr-keys)]
     {:success (create-text-and-morpheme-tokenize-internal node text tokl-id)

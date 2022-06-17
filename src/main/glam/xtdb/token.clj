@@ -93,6 +93,7 @@
       :else
       [(gxe/put* token)])))
 
+;; Difference from above: we already have `other-tokens` here
 (declare safe-create-internal2**)
 (gxe/deftx safe-create-internal2 [node other-tokens {:token/keys [begin end text] :as token}]
   (let [sorted-tokens (sort-by :token/begin (conj other-tokens token))
