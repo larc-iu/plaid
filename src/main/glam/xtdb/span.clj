@@ -88,10 +88,8 @@
 (defn merge [node eid m]
   (gxe/merge node eid (select-keys m [:span/value :span/tokens])))
 
-(defn delete** [node eid]
+(gxe/deftx delete [node eid]
   [(gxe/delete* eid)])
-(defn delete [node eid]
-  (gxe/submit-tx-sync node (delete** node eid)))
 
 (declare add-token**)
 (gxe/deftx add-token [node span-id token-id]

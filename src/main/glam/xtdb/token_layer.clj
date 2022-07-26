@@ -117,17 +117,13 @@
     {:success (create-text-and-morpheme-tokenize-internal node text tokl-id)
      :id      id}))
 
-(defn add-span-layer** [node token-layer-id span-layer-id]
+(gxe/deftx add-span-layer [node token-layer-id span-layer-id]
   (xutil/add-join** node token-layer-id :token-layer/span-layers span-layer-id))
-(defn add-span-layer [node token-layer-id span-layer-id]
-  (gxe/submit! node (add-span-layer** node token-layer-id span-layer-id)))
 
-(defn remove-span-layer** [node token-layer-id span-layer-id]
+(gxe/deftx remove-span-layer [node token-layer-id span-layer-id]
   (xutil/remove-join** node token-layer-id :token-layer/span-layers span-layer-id))
-(defn remove-span-layer [node token-layer-id span-layer-id]
-  (gxe/submit! node (remove-span-layer** node token-layer-id span-layer-id)))
 
-(defn delete** [node eid]
+(gxe/deftx delete [node eid]
   (let [span-layers (:token-layer/span-layers (gxe/entity node eid))
         span-layer-deletions (reduce into (map #(sl/delete** node %) span-layers))
         token-ids (map first (xt/q (xt/db node) '{:find  [?tok]
@@ -138,7 +134,4 @@
     (reduce into
             [span-layer-deletions
              token-deletions
-             [(gxe/match* eid (gxe/entity node eid))
-              (gxe/delete* eid)]])))
-(defn delete [node eid]
-  (gxe/submit-tx-sync node (delete** node eid)))
+             [(gxe/delete* eid)]])))

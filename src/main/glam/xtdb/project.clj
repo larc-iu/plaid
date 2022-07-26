@@ -75,48 +75,30 @@
        (map xt->pathom)))
 
 ;; Mutations --------------------------------------------------------------------------------
-(defn delete** [node eid]
+(gxe/deftx delete [node eid]
   (let [text-layers (:project/text-layers (gxe/entity node eid))
         txtl-txs (reduce into (map #(txtl/delete** node %) text-layers))
         ;; note: do NOT use doc/delete since the layer deletions will take care of annos
         documents (get-document-ids node eid)
         doc-txs (map #(gxe/delete* %) documents)
-        project-txs [(gxe/match* eid (gxe/entity node eid))
-                     (gxe/delete* eid)]
+        project-txs [(gxe/delete* eid)]
         all-txs (reduce into [txtl-txs doc-txs project-txs])]
     all-txs))
-(defn delete [node eid]
-  ;; TODO: extend with deleting sublayers
-  (gxe/submit-tx-sync node (delete** node eid)))
 
-(defn add-text-layer** [node project-id text-layer-id]
+(gxe/deftx add-text-layer [node project-id text-layer-id]
   (xutil/add-join** node project-id :project/text-layers text-layer-id))
-(defn add-text-layer [node project-id text-layer-id]
-  (gxe/submit! node (add-text-layer** node project-id text-layer-id)))
 
-(defn remove-text-layer** [node project-id text-layer-id]
+(gxe/deftx remove-text-layer [node project-id text-layer-id]
   (xutil/remove-join** node project-id :project/text-layers text-layer-id))
-(defn remove-text-layer [node project-id text-layer-id]
-  (gxe/submit! node (remove-text-layer** node project-id text-layer-id)))
 
-(defn add-reader** [node project-id user-id]
+(gxe/deftx add-reader [node project-id user-id]
   (xutil/add-join** node project-id :project/readers user-id))
-(defn add-reader [node project-id user-id]
-  (gxe/submit! node (add-reader** node project-id user-id)))
 
-(defn remove-reader** [node project-id user-id]
+(gxe/deftx remove-reader [node project-id user-id]
   (xutil/remove-from-multi-joins** node project-id [:project/readers :project/writers] user-id))
-(defn remove-reader [node project-id user-id]
-  (gxe/submit! node (remove-reader** node project-id user-id)))
 
-(defn add-writer** [node project-id user-id]
+(gxe/deftx add-writer [node project-id user-id]
   (xutil/add-to-multi-joins** node project-id [:project/readers :project/writers] user-id))
-(defn add-writer [node project-id user-id]
-  (gxe/submit! node (add-writer** node project-id user-id)))
 
-(defn remove-writer** [node project-id user-id]
+(gxe/deftx remove-writer [node project-id user-id]
   (xutil/remove-join** node project-id :project/writers user-id))
-(defn remove-writer [node project-id user-id]
-  (gxe/submit! node (remove-writer** node project-id user-id)))
-
-

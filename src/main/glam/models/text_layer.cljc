@@ -87,8 +87,8 @@
        :else
        (let [name (:text-layer/name (gxe/entity node id))
              parent-id (txtl/parent-id node id)
-             tx (into (prj/remove-text-layer** node parent-id id)
-                      (txtl/delete** node id))
+             tx (into (txtl/delete** node id)
+                      (prj/remove-text-layer** node parent-id id))
              success (gxe/submit! node tx)]
          (if-not success
            (server-error (str "Failed to delete text layer " name ". Please refresh and try again"))

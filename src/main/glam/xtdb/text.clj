@@ -65,7 +65,7 @@
 
 ;; We don't follow the usual pattern of relying on child nodes' delete** functions here because
 ;; this would lead to children being included multiple times. Instead, we write a bespoke fn.
-(defn delete** [node eid]
+(gxe/deftx delete [node eid]
   (let [span-deletes (mapv gxe/delete* (get-span-ids node eid))
         token-deletes (mapv gxe/delete* (get-token-ids node eid))
         text-delete [(gxe/delete* eid)]]
@@ -73,5 +73,3 @@
             [span-deletes
              token-deletes
              text-delete])))
-(defn delete [node eid]
-  (gxe/submit-tx-sync node (delete** node eid)))

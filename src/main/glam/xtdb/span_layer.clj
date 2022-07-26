@@ -37,7 +37,8 @@
 (defn merge
   [node eid m]
   (gxe/merge node eid (select-keys m [:span-layer/name])))
-(defn delete** [node eid]
+
+(gxe/deftx delete [node eid]
   (let [remove-from-project-tx (prjc/update-span-layer-scope** node eid nil)
         span-ids (map first (xt/q (xt/db node) '{:find  [?s]
                                                  :where [[?s :span/layer ?sl]]
@@ -48,7 +49,3 @@
     (reduce into [remove-from-project-tx
                   span-deletions
                   span-layer-deletion])))
-(defn delete [node eid]
-  (gxe/submit-tx-sync node (delete** node eid)))
-
-

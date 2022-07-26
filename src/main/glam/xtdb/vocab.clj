@@ -1,0 +1,1 @@
+(ns glam.xtdb.vocab)

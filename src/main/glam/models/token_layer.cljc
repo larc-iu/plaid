@@ -234,8 +234,8 @@
        :else
        (let [name (:token-layer/name (gxe/entity node id))
              parent-id (tokl/parent-id node id)
-             tx (into (txtl/remove-token-layer** node parent-id id)
-                      (tokl/delete** node id))
+             tx (into (tokl/delete** node id)
+                      (txtl/remove-token-layer** node parent-id id))
              success (gxe/submit! node tx)]
          (if-not success
            (server-error (str "Failed to delete token layer " name ". Please refresh and try again"))

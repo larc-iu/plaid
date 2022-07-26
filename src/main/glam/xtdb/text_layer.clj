@@ -42,17 +42,13 @@
   [node eid m]
   (gxe/merge node eid (select-keys m [:text-layer/name])))
 
-(defn add-token-layer** [node text-layer-id token-layer-id]
+(gxe/deftx add-token-layer [node text-layer-id token-layer-id]
   (xutil/add-join** node text-layer-id :text-layer/token-layers token-layer-id))
-(defn add-token-layer [node text-layer-id token-layer-id]
-  (gxe/submit! node (add-token-layer** node text-layer-id token-layer-id)))
 
-(defn remove-token-layer** [node text-layer-id token-layer-id]
+(gxe/deftx remove-token-layer [node text-layer-id token-layer-id]
   (xutil/remove-join** node text-layer-id :text-layer/token-layers token-layer-id))
-(defn remove-token-layer [node text-layer-id token-layer-id]
-  (gxe/submit! node (remove-token-layer** node text-layer-id token-layer-id)))
 
-(defn delete** [node eid]
+(gxe/deftx delete [node eid]
   (let [token-layers (:text-layer/token-layers (gxe/entity node eid))
         token-layer-deletions (reduce into (mapv #(tokl/delete** node %) token-layers))
         text-ids (map first (xt/q (xt/db node) '{:find  [?txt]
@@ -66,5 +62,3 @@
        text-deletions
        [(gxe/match* eid (gxe/entity node eid))
         (gxe/delete* eid)]])))
-(defn delete [node eid]
-  (gxe/submit-tx-sync node (delete** node eid)))

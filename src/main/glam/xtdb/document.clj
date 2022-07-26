@@ -43,7 +43,7 @@
   [node eid m]
   (gxe/merge node eid (select-keys m [:document/name])))
 
-(defn delete** [node eid]
+(gxe/deftx delete [node eid]
   (let [text-ids (map first (xt/q (xt/db node)
                                   '{:find  [?txt]
                                     :where [[?txt :text/document ?doc]]
@@ -51,5 +51,4 @@
                                   eid))
         text-deletes (reduce into (map #(text/delete** node %) text-ids))]
     (conj text-deletes (gxe/delete* eid))))
-(defn delete [node eid]
-  (gxe/submit-tx-sync node (delete** node eid)))
+

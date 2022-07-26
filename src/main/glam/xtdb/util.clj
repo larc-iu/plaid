@@ -1,10 +1,6 @@
 (ns glam.xtdb.util
   (:require [glam.xtdb.easy :as gxe]
-            [xtdb.api :as xt]
-            [mount.core :as mount]
-            [glam.server.id-counter :refer [id-counter]]
-            [taoensso.timbre :as log]
-            [duratom.core :as duratom])
+            [glam.server.id-counter :refer [id-counter]])
   (:import (java.util UUID)))
 
 (defn identize
@@ -63,12 +59,9 @@
   This function also includes match clauses for both entities, guarding against race
   conditions."
   [node e1-id join-keys e2-id]
-  (let [e1 (gxe/entity node e1-id)
-        e2 (gxe/entity node e2-id)]
-    [;;(gxe/match* e1-id e1)
-     ;;(gxe/match* e2-id e2)
-     (gxe/put* (reduce (fn [project join-key]
-                         (-> project
+  (let [e1 (gxe/entity node e1-id)]
+    [(gxe/put* (reduce (fn [entity join-key]
+                         (-> entity
                              (update join-key conj-unique e2-id)
                              ;; in case this is the first assoc, turn the list into a vector
                              (update join-key vec)))
@@ -86,14 +79,11 @@
   This function also includes match clauses for both entities, guarding against race
   conditions."
   [node e1-id join-keys e2-id]
-  (let [e1 (gxe/entity node e1-id)
-        e2 (gxe/entity node e2-id)]
-    (into [;;(gxe/match* e1-id e1)
-           ;;(gxe/match* e2-id e2)
-           (gxe/put* (reduce (fn [project join-key]
-                               (remove-id project join-key e2-id))
-                             e1
-                             join-keys))])))
+  (let [e1 (gxe/entity node e1-id)]
+    [(gxe/put* (reduce (fn [entity join-key]
+                         (remove-id entity join-key e2-id))
+                       e1
+                       join-keys))]))
 
 (defn remove-join**
   "See `remove-from-multi-joins**`"

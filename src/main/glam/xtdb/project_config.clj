@@ -1,8 +1,7 @@
 (ns glam.xtdb.project-config
   "Separated from project.clj to avoid circular imports"
   (:require [xtdb.api :as xt]
-            [glam.xtdb.easy :as gxe]
-            [taoensso.timbre :as log]))
+            [glam.xtdb.easy :as gxe]))
 
 (declare update-span-layer-scope**)
 (gxe/deftx update-span-layer-scope [node span-layer-id scope]
