@@ -15,7 +15,7 @@
                      {:status 200
                       :body {:total (+ x y)}})}]])
 
-(def rest-handler
+(defn rest-handler []
   (ring/ring-handler
     (ring/router
       [routes]

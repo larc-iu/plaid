@@ -121,17 +121,18 @@
   e.g. `/projects/` will simply serve the index, after which the client-side
   routing setup will ensure that the proper components are displayed."
   [ring-handler]
-  (fn [{:keys [uri anti-forgery-token] :as req}]
-    (cond
-      (re-matches #"^/chsk|^/api" uri)
-      (ring-handler req)
+  (let [rest-handler (rest-handler)]
+    (fn [{:keys [uri anti-forgery-token] :as req}]
+      (cond
+        (re-matches #"^/chsk|^/api" uri)
+        (ring-handler req)
 
-      (re-matches #"^/rest-api/.*" uri)
-      (rest-handler req)
+        (re-matches #"^/rest-api/.*" uri)
+        (rest-handler req)
 
-      :else
-      (-> (resp/response (index anti-forgery-token))
-          (resp/content-type "text/html")))))
+        :else
+        (-> (resp/response (index anti-forgery-token))
+            (resp/content-type "text/html"))))))
 
 (defn wrap-ajax-api
   "AJAX remote for Fulcro, registered on the client as the :remote remote"
