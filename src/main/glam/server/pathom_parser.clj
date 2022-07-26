@@ -123,6 +123,7 @@
         ;; In the future, this can be fixed with more heavily relying on crux.tx/matching more, but
         ;; doing things this way is cheaper for the moment.
         ;; Thanks to Souenzzo for this implementation.
+        ;; TODO: consider whether still necessary after heavy adoption of tx functions
         serial-parser (let [in (async/chan)]
                         (async/thread
                           (loop []
