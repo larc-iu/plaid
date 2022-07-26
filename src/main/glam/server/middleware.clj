@@ -17,6 +17,7 @@
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser mutation?]]
     [glam.server.xtdb :refer [xtdb-node xtdb-session-node]]
+    [glam.server.rest-wrappers.core :refer [rest-handler]]
     [glam.algos.subs :as subs]
     [glam.xtdb.easy :as gxe]
     [glam.xtdb.common :as gcc]
@@ -124,6 +125,9 @@
     (cond
       (re-matches #"^/chsk|^/api" uri)
       (ring-handler req)
+
+      (re-matches #"^/rest-api/.*" uri)
+      (rest-handler req)
 
       :else
       (-> (resp/response (index anti-forgery-token))
