@@ -34,7 +34,7 @@
 
 
 ;; Mutations ----------------------------------------------------------------------
-(defn- get-span-ids [node eid]
+(defn get-span-ids [node eid]
   (map first (xt/q (xt/db node)
                    '{:find  [?span]
                      :where [[?span :span/tokens ?tok]
