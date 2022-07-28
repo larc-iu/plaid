@@ -30,3 +30,4 @@ xtdb-store
 builds/
 xtdb_data/
 xtdb_session_data/
+mutations.ednl

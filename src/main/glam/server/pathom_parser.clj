@@ -92,7 +92,16 @@
 (defn has-mutation? [tx]
   (some mutation? tx))
 
-(defn make-parser [config node]
+(defn log-mutation [mutation-writer input output]
+  (let [m {:input  (dissoc input :out)
+           :output output
+           :time   (.getTime (java.util.Date.))}
+        ;; For now, just log the pathom tx
+        m (get-in m [:input :tx])]
+    (log/info m)
+    (.write mutation-writer (str m "\n"))))
+
+(defn make-parser [config node mutation-writer]
   (let [{:keys [trace?
                 fail-fast?
                 log-requests?
@@ -147,11 +156,13 @@
             _ (log/debug (if mutation? "Pathom tx has a mutation--using global write lock"
                                        "Pathom tx only has reads--performing concurrently"))
             result (cond mutation?
-                         (let [out (async/chan)]
-                           (async/>!! serial-parser {:env env :tx tx :out out})
-                           (let [resp (async/<!! out)]
+                         (let [out (async/chan)
+                               input {:env env :tx tx :out out}]
+                           (async/>!! serial-parser input)
+                           (let [resp (force (async/<!! out))]
                              #_(log/info "Resetting cache")
                              #_(reset! cache {})
+                             (log-mutation mutation-writer input resp)
                              resp))
 
                          #_#_(@cache tx)
@@ -164,6 +175,10 @@
           (swap! cache assoc tx result))
         result))))
 
+(mount/defstate mutation-writer
+  :start (clojure.java.io/writer (or (System/getProperty "mutation_log_path") "mutations.ednl"))
+  :stop (.close mutation-writer))
+
 (mount/defstate parser
-  :start (make-parser config xtdb-node))
+  :start (make-parser config xtdb-node mutation-writer))
 
