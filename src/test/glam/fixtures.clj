@@ -30,7 +30,7 @@
   ;; Note: normally none of the things we'll do with this parser would work without auth, but `-Dpathom_auth=disabled`
   ;; in the :test profile bypasses all auth checks
   (with-redefs [config (load-config! {:config-path "config/dev.edn"})
-                parser (make-parser config xtdb-node)]
+                parser (make-parser config xtdb-node nil)]
     (f)))
 
 (defn with-users [f]

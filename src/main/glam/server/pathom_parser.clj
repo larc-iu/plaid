@@ -162,7 +162,8 @@
                            (let [resp (force (async/<!! out))]
                              #_(log/info "Resetting cache")
                              #_(reset! cache {})
-                             (log-mutation mutation-writer input resp)
+                             (when mutation-writer
+                               (log-mutation mutation-writer input resp))
                              resp))
 
                          #_#_(@cache tx)
