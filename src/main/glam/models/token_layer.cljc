@@ -36,9 +36,9 @@
 
 
 (defn get-token-span-layers [layer-ids]
-  (->> layer-ids (filter #(= (second %) :token)) keys set))
+  (->> layer-ids (filter #(= (second %) :token)) keys))
 (defn get-sentence-span-layers [layer-ids]
-  (->> layer-ids (filter #(= (second %) :sentence)) keys set))
+  (->> layer-ids (filter #(= (second %) :sentence)) keys))
 
 (defn reshape-into-token-grid
   "Given a token layer's data tree with :token-layer/spans, returns the sequence of tokens
