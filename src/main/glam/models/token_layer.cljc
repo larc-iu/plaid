@@ -161,7 +161,6 @@
              sentence-sl-ids (get-sentence-span-layers (:span-layer-scopes config))
              sentence-level-spans (mapcat #(span/get-spans node doc-id %) sentence-sl-ids)
              sentence-span-layers (map #(sl/get node %) sentence-sl-ids)]
-         (log/info (vec sentence-span-layers))
          {:token-layer/name                 (:token-layer/name (gxe/entity node id))
           :token-layer/columnar-tokens      line-enriched-tokens
           :token-layer/sentence-level-spans sentence-level-spans
