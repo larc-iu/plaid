@@ -3,8 +3,6 @@
             [com.wsscode.pathom.connect :as pc]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [taoensso.timbre :as log]
-            #?(:clj [xtdb.api :as xt])
-            #?(:clj [glam.xtdb.span-layer :as sl])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.models.common :as mc :refer [server-message server-error]])
             #?(:clj [glam.xtdb.token-layer :as tokl])
@@ -90,8 +88,8 @@
        :else
        (let [name (:span-layer/name (gxe/entity node id))
              parent-id (sl/parent-id node id)
-             tx (into (tokl/remove-span-layer** node parent-id id)
-                      (sl/delete** node id))
+             tx (into (sl/delete** node id)
+                      (tokl/remove-span-layer** node parent-id id))
              success (gxe/submit! node tx)]
          (if-not success
            (server-error (str "Failed to delete span layer " name ". Please refresh and try again"))
