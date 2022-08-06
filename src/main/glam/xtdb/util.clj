@@ -1,7 +1,6 @@
 (ns glam.xtdb.util
   (:require [glam.xtdb.easy :as gxe]
-            [glam.server.id-counter :refer [id-counter]])
-  (:import (java.util UUID)))
+            [glam.server.id-counter :refer [id-counter]]))
 
 (defn identize
   "Turn a single id or seq of ids into a (Pathom-style) ident or vec of idents, respectively.
