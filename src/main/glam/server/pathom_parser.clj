@@ -155,6 +155,8 @@
             mutation? (has-mutation? tx)
             _ (log/debug (if mutation? "Pathom tx has a mutation--using global write lock"
                                        "Pathom tx only has reads--performing concurrently"))
+
+            start-time (. System (nanoTime))
             result (cond mutation?
                          (let [out (async/chan)
                                input {:env env :tx tx :out out}]
@@ -170,7 +172,8 @@
                          (do (log/info "Using cached result") (@cache tx))
 
                          :else
-                         (parser env tx))]
+                         (parser env tx))
+            _ (log/info (str "Elapsed time: " (/ (double (- (. System (nanoTime)) start-time)) 1000000.0) " msecs"))]
         #_(spit "/tmp/foo" result)
         #_(when-not (contains? @cache tx)
           (swap! cache assoc tx result))
