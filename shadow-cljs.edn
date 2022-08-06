@@ -23,6 +23,7 @@
 
                                                 ;; if using the electron app:
                                                 ;com.fulcrologic.fulcro.inspect.websocket-preload
+                                                com.fulcrologic.fulcro.inspect.dom-picker-preload
 
                                                 glam.client.development-preload]}}
 
