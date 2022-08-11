@@ -365,7 +365,7 @@
    :initLocalState       (fn [this props]
                            {:on-page-change #(m/set-integer! this :ui/page :value %2)})
    :pre-merge            (fn [{:keys [data-tree current-normalized]}]
-                           (assoc data-tree :ui/page 1 (or (:ui/page current-normalized) 1)))
+                           (assoc data-tree :ui/page (or (:ui/page current-normalized) 1)))
    :componentWillUnmount (fn [this] (m/set-value! this :ui/page 1))
    :ident                :token-layer/id}
   ;; TODO remap lines to avoid empty lines
