@@ -140,6 +140,8 @@
                                                          :in    [?doc]}
                                           doc-id))
                             [:editors :interlinear])
+             tokl (tokl/get node id)
+             sl-ids (map :span-layer/id (:token-layer/span-layers tokl))
              text (ffirst (xt/q (xt/db node)
                                 '{:find  [(pull ?txt [:text/id :text/body])]
                                   :where [[?txt :text/document ?doc]]
@@ -148,8 +150,7 @@
              tokens (mapv (fn [token]
                             (-> token (update :token/layer (fn [id] {:token-layer/id id}))))
                           (tok/get-tokens node id doc-id))
-             token-sl-ids (get-token-span-layers (:span-layer-scopes config))
-
+             token-sl-ids (filter #(some (hash-set %) (get-token-span-layers (:span-layer-scopes config))) sl-ids)
              token-span-layers (mapv #(sl/get node %) token-sl-ids)
              token-spans (mapcat #(span/get-spans node doc-id %) token-sl-ids)
 
@@ -158,7 +159,7 @@
                                                                       (ta/add-untokenized-substrings text)
                                                                       (ta/separate-into-lines text))))
 
-             sentence-sl-ids (get-sentence-span-layers (:span-layer-scopes config))
+             sentence-sl-ids (filter #(some (hash-set %) (get-sentence-span-layers (:span-layer-scopes config))) sl-ids)
              sentence-level-spans (mapcat #(span/get-spans node doc-id %) sentence-sl-ids)
              sentence-span-layers (map #(sl/get node %) sentence-sl-ids)]
          {:token-layer/name                 (:token-layer/name (gxe/entity node id))
