@@ -143,7 +143,6 @@
 
       :else
       (let [new-tl (assoc tl :token-layer/span-layers (gc/shift sls span-layer-id up?))]
-        (println new-tl)
         [(gxe/put* new-tl)]))))
 
 (gxe/deftx delete [node eid]
