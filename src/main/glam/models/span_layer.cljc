@@ -96,4 +96,17 @@
            (server-message (str "Span layer " name " deleted")))))))
 
 #?(:clj
+   (pc/defmutation shift-span-layer [{:keys [node]} {[_ id] :ident up? :up?}]
+     {::pc/transform ma/admin-required}
+     (cond
+       (not (gxe/entity node id))
+       (server-error (str "Span layer not found by ID " id))
+
+       :else
+       (let [name (:span-layer/name (gxe/entity node id))
+             parent-id (sl/parent-id node id)
+             tx (tokl/shift-span-layer node id parent-id up?)]
+         ))))
+
+#?(:clj
    (def span-layer-resolvers [get-span-layer get-spans create-span-layer save-span-layer delete-span-layer]))

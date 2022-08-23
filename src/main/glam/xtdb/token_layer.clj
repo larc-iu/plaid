@@ -1,5 +1,6 @@
 (ns glam.xtdb.token-layer
   (:require [xtdb.api :as xt]
+            [glam.common :as gc]
             [glam.xtdb.util :as xutil]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.span-layer :as sl]
@@ -122,6 +123,28 @@
 
 (gxe/deftx remove-span-layer [node token-layer-id span-layer-id]
   (xutil/remove-join** node token-layer-id :token-layer/span-layers span-layer-id))
+
+(gxe/deftx shift-span-layer [node token-layer-id span-layer-id up?]
+  ;; Shift a span layer up or down in its token layer. Attempting to shift beyond either edge will result in a no-op.
+  (let [tl (gxe/entity node token-layer-id)
+        sl (gxe/entity node span-layer-id)
+        sls (:token-layer/span-layers tl)]
+    (cond
+      (nil? sl)
+      (throw (ex-info "Span layer does not exist" {:id span-layer-id}))
+
+      (nil? tl)
+      (throw (ex-info "No token layer found for span layer" {:span-layer  span-layer-id
+                                                             :token-layer token-layer-id}))
+
+      (not (some #{span-layer-id} sls))
+      (throw (ex-info "Token layer is not linked to span layer" {:span-layer  span-layer-id
+                                                                 :token-layer token-layer-id}))
+
+      :else
+      (let [new-tl (assoc tl :token-layer/span-layers (gc/shift sls span-layer-id up?))]
+        (println new-tl)
+        [(gxe/put* new-tl)]))))
 
 (gxe/deftx delete [node eid]
   (let [span-layers (:token-layer/span-layers (gxe/entity node eid))
