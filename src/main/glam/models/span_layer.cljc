@@ -96,7 +96,7 @@
            (server-message (str "Span layer " name " deleted")))))))
 
 #?(:clj
-   (pc/defmutation shift-span-layer [{:keys [node]} {[_ id] :ident up? :up?}]
+   (pc/defmutation shift-span-layer [{:keys [node]} {id :id up? :up?}]
      {::pc/transform ma/admin-required}
      (cond
        (not (gxe/entity node id))
@@ -105,8 +105,12 @@
        :else
        (let [name (:span-layer/name (gxe/entity node id))
              parent-id (sl/parent-id node id)
-             tx (tokl/shift-span-layer node id parent-id up?)]
-         ))))
+             tx (tokl/shift-span-layer** node parent-id id up?)
+             success (gxe/submit! node tx)]
+         (if-not success
+           (server-error (str "Failed to shift span layer " name ". Please try again."))
+           (server-message (str "Span layer " name " shifted.")))))))
 
 #?(:clj
-   (def span-layer-resolvers [get-span-layer get-spans create-span-layer save-span-layer delete-span-layer]))
+   (def span-layer-resolvers [get-span-layer get-spans create-span-layer save-span-layer delete-span-layer
+                              shift-span-layer]))

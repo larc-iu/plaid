@@ -26,7 +26,6 @@
         new-index (if up?
                     (min (inc index) (- (count xs) 1))
                     (max (dec index) 0))]
-    (println index new-index)
     (if (= new-index index)
       xs
       (let [x' (clojure.core/get xs new-index)

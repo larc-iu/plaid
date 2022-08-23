@@ -10,6 +10,7 @@
             [com.fulcrologic.fulcro.components :as comp]
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]
             [com.fulcrologic.fulcro.ui-state-machines :as uism]
+            [com.fulcrologic.fulcro.mutations :as m]
             [glam.client.router :as r]
             [glam.models.project :as prj]
             [glam.models.text-layer :as txtl]
@@ -22,6 +23,28 @@
             [glam.client.util :as gcu]
             [glam.client.ui.common.forms :as forms]
             [com.fulcrologic.fulcro.algorithms.normalized-state :as fns]))
+;; Mutations --------------------------------------------------------------------------------------------
+;; ======================================================================================================
+(m/defmutation shift-span-layer
+  [{:keys [id up? load-fn]}]
+  (action [{:keys [state ref]}]
+          (swap! state (fn [s]
+                         (-> s
+                             (assoc-in (conj ref :ui/busy?) true)))))
+  (remote [{:keys [ast]}]
+          (log/info ast)
+          (let [ast (-> ast
+                        (assoc :key `sl/shift-span-layer)
+                        (update :params dissoc :load-fn))]
+            ast))
+  (result-action [{:keys [state ref app component] :as env}]
+                 (swap! state (fn [s] (assoc-in s (conj ref :ui/busy?) false)))
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `sl/shift-span-layer])]
+                   (when message
+                     (if error?
+                       (snack/message! {:message  message
+                                        :severity (if error? "error" "success")}))))
+                 (load-fn app)))
 
 ;; Side panel components --------------------------------------------------------------------------------
 ;; ======================================================================================================
@@ -235,7 +258,7 @@
       (log/warn "Tried to exit a UISM, but didn't recognize the type. Props :" props))))
 
 (defsc SpanLayerForm
-  [this {:span-layer/keys [id name] :ui/keys [busy?] :as props}]
+  [this {:span-layer/keys [id name] :ui/keys [busy?] :as props} {:keys [load-fn]}]
   {:query                  [:span-layer/name :span-layer/id
                             fs/form-config-join :ui/busy?]
    :ident                  :span-layer/id
@@ -256,6 +279,17 @@
       (mui/vertical-grid
         {:spacing 2}
         (mui/typography {:variant "h5"} "Span Layer: " name)
+        (mui/horizontal-grid
+          (mui/button
+            {:variant   "outlined"
+             :onClick   #(c/transact! this [(shift-span-layer {:id id :up? false :load-fn load-fn})])
+             :startIcon (muic/arrow-upward)}
+            "Shift up")
+          (mui/button
+            {:variant   "outlined"
+             :onClick   #(c/transact! this [(shift-span-layer {:id id :up? true :load-fn load-fn})])
+             :startIcon (muic/arrow-downward)}
+            "Shift down"))
         (forms/text-input-with-label this :span-layer/name "Name" "Must have 1 to 80 characters"
           {:fullWidth true
            :disabled  busy?})
@@ -276,7 +310,7 @@
                                 busy?)
            :reset-disabled  (not (and dirty (not busy?)))})))))
 
-(def ui-span-layer-form (comp/factory SpanLayerForm))
+(def ui-span-layer-form (comp/computed-factory SpanLayerForm))
 
 (defsc TokenLayerForm
   [this {:token-layer/keys [id name] :ui/keys [busy? modal-open? add-span-layer] :as props}]
@@ -411,7 +445,7 @@
 
 ;; We need a union to account for the fact that we have one location that will have entities of
 ;; potentially many types.
-(defsc LayerUnion [this props]
+(defsc LayerUnion [this props {:keys [load-fn]}]
   {:ident (fn []
             (cond
               (:text-layer/id props) [:text-layer/id (:text-layer/id props)]
@@ -430,7 +464,7 @@
   (cond
     (:text-layer/id props) (ui-text-layer-form props)
     (:token-layer/id props) (ui-token-layer-form props)
-    (:span-layer/id props) (ui-span-layer-form props)
+    (:span-layer/id props) (ui-span-layer-form props {:load-fn load-fn})
     (or (nil? props)
         (and (map? props)
              (not (some #(= (name %) "id") props)))) (mui/typography
@@ -439,7 +473,7 @@
                                                        "Select a layer")
     :else (dom/div "Unknown layer type!")))
 
-(def ui-layer-union (comp/factory LayerUnion))
+(def ui-layer-union (comp/computed-factory LayerUnion))
 
 ;; User permissions -----------------------------------------------------------------------------------
 ;; ====================================================================================================
@@ -601,7 +635,8 @@
   (let [set-active-layer (fn set-active-layer [ident]
                            (when active-layer
                              (exit-layer-uism this active-layer))
-                           (m/set-value! this :ui/active-layer ident))]
+                           (m/set-value! this :ui/active-layer ident))
+        load-fn #(df/load! % [:project/id id] ProjectSettings)]
     (mui/container {:maxWidth "lg" :style {:position "relative"}}
       (mui/page-title name)
       (mui/arrow-breadcrumbs {}
@@ -658,7 +693,7 @@
               (mui/padded-paper {}
                 (if (empty? text-layers)
                   (mui/zero-state "No layers configured.")
-                  (ui-layer-union (:ui/active-layer props)))))))
+                  (ui-layer-union (:ui/active-layer props) {:load-fn load-fn}))))))
 
         ;; Tab 2: user permissions
         (mui/tab-panel {:value "access"}
