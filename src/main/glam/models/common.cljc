@@ -56,11 +56,15 @@
   the query will have a join on the document ident in the root of the first item in
   the transaction, something like `[{[:document/id :doc1] ...}]`"
   [env]
-  (->> env
-       :com.wsscode.pathom.core/root-query
-       first
-       keys
-       (filter #(and (= 2 (count %))
-                     (vector? %)
-                     (= :document/id (first %))))
-       first))
+  (let [ident (->> env
+                   :com.wsscode.pathom.core/root-query
+                   first
+                   keys
+                   (filter #(and (= 2 (count %))
+                                 (vector? %)
+                                 (= :document/id (first %))))
+                   first)]
+    (if (nil? ident)
+      (throw (ex-info "try-get-document-ident couldn't find a document ident!"
+                      {:query (:com.wsscode.pathom.core/root-query env)}))
+      ident)))
