@@ -69,6 +69,7 @@
                                  (= :document/id (first %))))
                    first)]
     (if (nil? ident)
-      (throw (ex-info "try-get-document-ident couldn't find a document ident!"
-                      {:query (:com.wsscode.pathom.core/root-query env)}))
+      (log/warn (str "try-get-document-ident couldn't find a document ident! This isn't necessarily a problem unless "
+                     "you were trying to query for document-level structures and not just layer information. ")
+                "query: " (:com.wsscode.pathom.core/root-query env))
       ident)))
