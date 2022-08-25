@@ -54,7 +54,11 @@
   "Use within a Pathom resolver to attempt to extract a document ID from the query.
   Used to facilitate implementation of all document-level resolvers. Assumes that
   the query will have a join on the document ident in the root of the first item in
-  the transaction, something like `[{[:document/id :doc1] ...}]`"
+  the transaction, something like `[{[:document/id :doc1] ...}]`.
+
+  Maybe this should have been expressed on the ::pc/input of every resolver that needs
+  it somehow, but this is a more ergonomic solution, and if it's OK for a resolver to
+  fail for pretty much any reason, perhaps a query not looking right ought to be one."
   [env]
   (let [ident (->> env
                    :com.wsscode.pathom.core/root-query
