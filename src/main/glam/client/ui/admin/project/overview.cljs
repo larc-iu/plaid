@@ -79,10 +79,9 @@
 (defsc ProjectListItem [this {:project/keys [id name] :as props}]
   {:ident :project/id
    :query [:project/id :project/name]}
-  (mui/list-item {:key     id
-                  :button  true
-                  :onClick #(r/route-to! :project-settings {:id id})}
-    (mui/typography {:variant "h6"} name)))
+  (mui/link {:href (r/route-for :project-settings {:id id}) :color "inherit"}
+    (mui/list-item {:key id :button true}
+      (mui/typography {:variant "h6"} name))))
 (def ui-project-list-item (c/factory ProjectListItem {:keyfn :project/id}))
 
 (defsc ProjectOverview [this {:keys [all-projects add-project] :ui/keys [modal-open?] :as props}]

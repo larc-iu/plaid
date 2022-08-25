@@ -12,9 +12,9 @@
   [this {:project/keys [id name] :as props}]
   {:query [:project/id :project/name]
    :ident :project/id}
-  (mui/list-item {:button  true
-                  :onClick #(r/route-to! :project {:id id})}
-    (mui/list-item-text {:primary name})))
+  (mui/link {:href (r/route-for :project {:id id}) :color "inherit"}
+    (mui/list-item {:button true}
+      (mui/list-item-text {:primary name}))))
 
 (def ui-project-list-item (c/factory ProjectListItem {:keyfn :project/id}))
 

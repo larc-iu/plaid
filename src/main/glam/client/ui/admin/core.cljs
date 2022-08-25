@@ -17,14 +17,14 @@
 (def md-card-media (mui/styled-card-media {:height "120px"}))
 (defn link-card [route text icon]
   (mui/card {}
-    (mui/card-action-area {:onClick #(r/route-to! route)
-                           :style   {:textAlign "center"}}
-      (md-card-media {}
-        (icon {:color "secondary"
-               :style {:fontSize  120
-                       :marginTop "10px"}}))
-      (mui/card-content {}
-        (mui/typography {:variant "h5"} text)))))
+    (mui/link {:href (r/route-for route) :color "inherit"}
+      (mui/card-action-area {:style {:textAlign "center"}}
+        (md-card-media {}
+                       (icon {:color "secondary"
+                              :style {:fontSize  120
+                                      :marginTop "10px"}}))
+        (mui/card-content {}
+          (mui/typography {:variant "h5"} text))))))
 
 (defsc AdminHome [this props]
   {:ident         (fn [_] ident)

@@ -17,15 +17,15 @@
 (def ident [:component/id :drawer])
 
 (defn drawer-item
-  ([path text icon onClose]
-   (drawer-item path text icon onClose nil))
-  ([path text icon onClose divider]
+  ([route-key text icon onClose]
+   (drawer-item route-key text icon onClose nil))
+  ([route-key text icon onClose divider]
    (mui/list-item {:key     text
                    :button  true
                    :divider (boolean divider)
                    :onClick (fn [e]
                               (onClose)
-                              (r/route-to! path))}
+                              (r/route-to! route-key))}
      (mui/list-item-icon {} (icon))
      (mui/list-item-text {} text))))
 

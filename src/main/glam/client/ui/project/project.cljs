@@ -67,11 +67,10 @@
   [this {:document/keys [id name] :as props}]
   {:query [:document/id :document/name]
    :ident :document/id}
-
-  ;; todo: fix link once document view is implemented
-  (mui/list-item {:button  true
-                  :onClick #(r/route-to! :document {:id id})}
-    (mui/list-item-text {:primary name})))
+  (mui/link {:href (r/route-for :document {:id id}) :color "inherit"}
+    (mui/list-item {:button  true
+                    :onClick #(r/route-to! :document {:id id})}
+      (mui/list-item-text {:primary name}))))
 
 (def ui-document-list-item (c/computed-factory DocumentListItem {:keyfn :document/id}))
 
