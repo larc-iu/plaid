@@ -26,7 +26,7 @@ jobs:
         uses: DeLaGuardo/setup-clojure@11.0
         with:
           # Install just one or all simultaneously
-          cli: 1.11.1 # Clojure CLI based on tools.deps
+          cli: 1.10.3.1075 # Clojure CLI based on tools.deps
 
       - name: Install node libs
         run: |
