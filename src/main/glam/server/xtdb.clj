@@ -7,13 +7,13 @@
   (:import [xtdb.api IXtdb]
            (java.io StringWriter)))
 
-(defn ^IXtdb start-lmdb-node [{:keys [db-dir http-server-port]}]
+(defn ^IXtdb start-lmdb-node [{:keys [db-dir use-inspector]}]
   (let [dirf #(str db-dir "/" %)]
     (xt/start-node
       (-> {:xtdb/tx-log         {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "tx-log")}}
            :xtdb/document-store {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "docs")}}
            :xtdb/index-store    {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "indexes")}}}
-          (cond-> http-server-port (assoc :xtdb.http-server/server {:port http-server-port}))))))
+          (cond-> use-inspector (assoc :xtdb-inspector.metrics/reporter {}))))))
 
 (defn start-main-lmdb-node []
   (start-lmdb-node {:db-dir           (-> config ::config :main-db-dir)

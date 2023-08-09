@@ -14,6 +14,7 @@
     [ring.util.response :as resp :refer [response file-response resource-response]]
     [ring.middleware.defaults :refer [wrap-defaults]]
     [ring.middleware.session.store :as store]
+    [xtdb-inspector.core :refer [inspector-handler]]
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser mutation?]]
     [glam.server.xtdb :refer [xtdb-node xtdb-session-node]]
@@ -188,6 +189,16 @@
   :stop
   (fws/stop! websockets))
 
+(defn wrap-xtdb-inspector [ring-handler]
+  (let [inspector? (and (-> config :glam.server.xtdb/config :use-inspector))
+        handler (and inspector? (inspector-handler xtdb-node))]
+    (fn [request]
+      (if (and inspector?
+               (map? request)
+               (-> request :uri (clojure.string/split #"/") (get 1) (get 0) (= \_)))
+        (handler request)
+        (ring-handler request)))))
+
 (mount/defstate middleware
   :start
   (let [defaults-config (:ring.middleware/defaults-config config)]
@@ -196,5 +207,6 @@
         wrap-transit-response
         (fws/wrap-api websockets)
         wrap-html-routes
+        wrap-xtdb-inspector
         (wrap-defaults (-> defaults-config
                            (assoc :session {:store session-store}))))))
