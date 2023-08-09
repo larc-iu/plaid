@@ -39,6 +39,8 @@
            ;; xtdb
            com.xtdb/xtdb-core                   {:mvn/version "1.24.0"}
            com.xtdb/xtdb-lmdb                   {:mvn/version "1.24.0"}
+           com.github.tatut/xtdb-inspector      {:git/url "https://github.com/tatut/xtdb-inspector.git"
+                                                 :sha     "b04e59edc7ce7ba11557be5d6cebd25ebe404efa"}
            duratom/duratom                      {:mvn/version "0.5.8"}
 
            ;; Password hashing
@@ -70,16 +72,14 @@
                          :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"
                                        "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
 
-                         :extra-deps  {org.clojure/clojurescript       {:mvn/version "1.11.60"}
-                                       org.clojure/test.check          {:mvn/version "1.1.1"}
-                                       thheller/shadow-cljs            {:mvn/version "2.25.2"}
-                                       org.clojure/tools.namespace     {:mvn/version "1.4.4"}
+                         :extra-deps  {org.clojure/clojurescript   {:mvn/version "1.11.60"}
+                                       org.clojure/test.check      {:mvn/version "1.1.1"}
+                                       thheller/shadow-cljs        {:mvn/version "2.25.2"}
+                                       org.clojure/tools.namespace {:mvn/version "1.4.4"}
                                        ;; Formats spec explain.
-                                       expound/expound                 {:mvn/version "0.9.0"}
-                                       fulcrologic/fulcro-spec         {:mvn/version "3.1.12"}
-                                       binaryage/devtools              {:mvn/version "1.0.7"}
-                                       com.github.awkay/workspaces     {:mvn/version "1.0.3"}
-                                       com.github.tatut/xtdb-inspector {:git/url "https://github.com/tatut/xtdb-inspector.git"
-                                                                        :sha     "b04e59edc7ce7ba11557be5d6cebd25ebe404efa"}
-                                       com.xtdb/xtdb-http-server       {:mvn/version "1.24.0"}}}
+                                       expound/expound             {:mvn/version "0.9.0"}
+                                       fulcrologic/fulcro-spec     {:mvn/version "3.1.12"}
+                                       binaryage/devtools          {:mvn/version "1.0.7"}
+                                       com.github.awkay/workspaces {:mvn/version "1.0.3"}
+                                       com.xtdb/xtdb-http-server   {:mvn/version "1.24.0"}}}
            :shadow-cljs {:extra-deps {thheller/shadow-cljs {:mvn/version "2.25.2"}}}}}
