@@ -22,7 +22,7 @@ jobs:
           java-version: 1.11
 
       - name: Install clojure tools
-        uses: DeLaGuardo/setup-clojure@3.5
+        uses: DeLaGuardo/setup-clojure@11.0
         with:
           # Install just one or all simultaneously
           cli: 1.11.1 # Clojure CLI based on tools.deps
