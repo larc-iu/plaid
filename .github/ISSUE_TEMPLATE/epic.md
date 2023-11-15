@@ -1,5 +1,5 @@
 ---
-name: Epic Template
+name: Epic
 about: Use to introduce large or multifacted pieces of functionality.
 title: ''
 labels: epic
