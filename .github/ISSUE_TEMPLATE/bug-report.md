@@ -2,7 +2,7 @@
 name: Bug Report
 about: Tell us about a malfunction in the system.
 title: ''
-labels: bug
+labels: bug, enhancement, feature request
 assignees: ''
 
 ---

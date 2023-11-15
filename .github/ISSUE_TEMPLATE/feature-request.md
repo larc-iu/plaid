@@ -1,8 +1,8 @@
 ---
-name: Feature Request
+name: Enhancement
 about: Suggest a modification to the system.
 title: ''
-labels: feature request
+labels: enhancement
 assignees: ''
 
 ---
