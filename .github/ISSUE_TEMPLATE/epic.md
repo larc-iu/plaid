@@ -23,6 +23,6 @@ Succinctly describe the problem that the functionality will try to address.
 
 Describe your favored solution for the issue, or describe elements of possible solutions.
 
-**Child issues**
+**Child Issues**
 
 (List child issues here as they are created. This issue should not be closed until all child issues are closed.)
