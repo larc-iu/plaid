@@ -7,22 +7,17 @@ assignees: ''
 
 ---
 
-**Introduction**
-
+# Introduction
 Briefly introduce the problem in a few sentences.
 
-**Background**
-
+# Background
 Give context for the functionality explaining why it is needed and, if applicable, why alternatives don't work.
 
-**Problem**
-
+# Problem
 Succinctly describe the problem that the functionality will try to address.
 
-**Proposal**
-
+# Proposal
 Describe your favored solution for the issue, or describe elements of possible solutions.
 
-**Child Issues**
-
+# Child Issues
 (List child issues here as they are created. This issue should not be closed until all child issues are closed.)
