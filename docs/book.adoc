@@ -199,5 +199,63 @@ To grant them access, navigate to a project in the Project Management admin acti
 
 CAUTION: This section is intended only for people who want to extend Glam. You do not need to read this section in order to use Glam.
 
-TODO
+== Code Atlas
+
+Glam's code is divided into https://clojure.org/reference/namespaces[Clojure namespaces].
+If you're not familiar, a Clojure namespace is like a Python module in that it is a contained unit of code that lives in a single file, and the path of the file (relative to the root directory) determines the name of the namespace.
+For example, a file at `glam/xtdb/span_layer.clj` holds code the for namespace `glam.xtdb.span-layer`.
+
+WARNING: Note that for historical reasons a `_` in the file name corresponds to a `-` in the namespace name and vice versa. Clojure will complain if this condition is not met.
+
+Most of Glam's code is in the `src/main` root directory.
+(There are two other root directories: `src/test`, which contains tests, and `src/dev`, which contains a small amount code that is only used during development.)
+Here is a high-level view of some important namespaces under `src/main`:
+
+.glam.server
+This namespace contains the heart of the backend.
+All the components of the backend that are stateful live here.
+These include:
+
+* `glam.server.main`: the programmatic entry point
+* `glam.server.config`: the object that holds the configuration object for the backend
+* `glam.server.http-server`: the HTTP server which serves the app and handles requests
+* `glam.server.pathom-parser`: the setup required for the https://blog.wsscode.com/pathom/v2/pathom/2.2.0/introduction.html[Pathom 2] resolvers defined in `glam.models` (see below)
+* `glam.server.xtdb`: the separate https://xtdb.com/[XTDB databases] that are used to manage session information and the rest of all the application's data
+* `glam.server.middleware`: the middleware that lets the HTTP server interact with the other major components of the application in order to fulfill requests, i.e. the Pathom parser, the database, and a couple other things.
+
+.glam.xtdb
+Each namespace under this one (aside from `access`, `common`, and `util`) contains functions which help you read from and write to the database for the entity whose name is on the namespace.
+Think of this as analogous to where your SQL queries would go if you were using a SQL database.
+Beware: these functions require you to have a more or less complete understanding of both Glam's data model and XTDB before you can write or modify them successfully.
+
+.glam.models
+This is perhaps a bit of an uninformative name.
+`glam.models` contains all the functions for the backend which clients invoke when they want to read or write data from the server.
+For example, `glam.models.span/create-span` is invoked by clients whenever a client wants to create a span on the server.
+Typically, each function under `glam.models` will correspond to a single function under the `glam.xtdb` namespace (e.g. `glam.xtdb.span/create`).
+
+Why have `glam.models`, then?
+Because `glam.models` is where validation happens: arguments are checked for validity, users are checked for proper authentication and authorization, and additionally, clients are given helpful error or success messages in response to the `glam.xtdb` function's success.
+`glam.xtdb` do not attempt to check any of these things before executing.
+
+Additionally, the `glam.models` namespace sometimes contains validation logic related to certain fields.
+For example, `glam.models.document` has a validation function that checks whether the name of the document is between 1 and 80 characters in length.
+For this reason, many of the files in this namespace end with the `.cljc` extension, which indicates to the Clojure[Script] compilers that the file can be read both as valid Clojure and ClojureScript.
+This helps us write validation logic exactly once, precluding inconsistency on client and server.
+
+.glam.client
+This is the namespace that almost all of the ClojureScript code lives under.
+The majority of this code by volume is under `glam.client.ui`, but the namespaces which are not under that contain important bureaucratic information, mostly for Fulcro (`glam.client.application`), but also for the router (`glam.client.router`).
+
+.glam.client.ui
+This is where all of the https://fulcro.fulcrologic.com/[Fulcro] components live.
+A Fulcro component is a React component with some extra bits specific to Fulcro.
+Fulcro is too much of a thing to even try to explain here, so consult the documents if you need to understand it.
+However, note that it is possible for this code to interoperate with plain React components written in JavaScript.
+As of the writing of this section, this has not been done yet, but this may change soon.
+
+.glam.algos
+There are some data operations that are quite complicated (e.g. taking two versions of a string and finding the shortest sequence of string edits that can produce one from the other) that have been separate out into this namespace to keep the places where they are consumed from being overrun by their length.
+This is where they live.
+
 
