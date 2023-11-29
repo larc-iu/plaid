@@ -154,8 +154,8 @@
             ["@mui/material/Typography" :default Typography]
             ["@mui/material/Zoom" :default Zoom]
     ;; END AUTO GEN
-            ["@mui/x-tree-view" :default TreeView]
-            ["@mui/x-tree-view/TreeItem" :default TreeItem]
+            ["@mui/x-tree-view/TreeView" :refer [TreeView]]
+            ["@mui/x-tree-view/TreeItem" :refer [TreeItem]]
             [glam.client.ui.material-ui-icon :as muic]
             [taoensso.timbre :as log]))
 

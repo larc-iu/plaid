@@ -640,9 +640,9 @@
     (mui/container {:maxWidth "lg" :style {:position "relative"}}
       (mui/page-title name)
       (mui/arrow-breadcrumbs {}
-        (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
-        (mui/link {:color "inherit" :href (r/route-for :project-overview) :key "project"} "Project Management")
-        (mui/link {:color "textPrimary" :underline "none" :key id} name))
+        (mui/link {:variant "subtitle1" :color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
+        (mui/link {:variant "subtitle1" :color "inherit" :href (r/route-for :project-overview) :key "project"} "Project Management")
+        (mui/link {:variant "subtitle1" :color "textPrimary" :underline "none" :key id} name))
 
       ;; add text layer modal
       (mui/dialog {:open    modal-open?

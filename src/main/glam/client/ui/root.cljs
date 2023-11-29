@@ -59,7 +59,7 @@
                             :disabled (not session?)
                             :onClick  #(c/transact! this [(set-open {:open? true})])}
             (muic/menu {:fontSize "large"}))
-          ((mui/styled-typography {:flex-grow 1}) {:variant "h5"} "Glam")
+          ((mui/styled-typography {:flex-grow "1"}) {:variant "h5"} "Glam")
           (logout-button this session?)))
       (when session?
         (ui-drawer

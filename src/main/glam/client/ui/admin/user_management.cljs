@@ -252,8 +252,8 @@
   (mui/container {:maxWidth "md"}
     (mui/page-title "User Management")
     (mui/arrow-breadcrumbs {}
-      (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
-      (mui/link {:color "textPrimary" :underline "none" :key "user"} "User Management"))
+      (mui/link {:variant "subtitle1" :color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
+      (mui/link {:variant "subtitle1" :color "textPrimary" :underline "none" :key "user"} "User Management"))
 
     ;; add user button
     (mui/dialog {:open modal-open? :onClose #(uism/trigger! this ::add-user :event/cancel)}
