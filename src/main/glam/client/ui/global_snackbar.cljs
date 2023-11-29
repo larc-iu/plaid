@@ -2,7 +2,8 @@
   (:require [com.fulcrologic.fulcro.components :as c :refer [defsc]]
             [glam.client.ui.material-ui :as mui]
             [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            ["@mui/material/Grow" :default Grow]))
 
 (def ident [:component/id :global-snackbar])
 
@@ -50,7 +51,7 @@
                                           (m/set-value!! this :open false)
                                           (close! this)))
                  :autoHideDuration    5000
-                 :TransitionComponent mui/Grow}
+                 :TransitionComponent Grow}
     (mui/alert {:severity severity} message)))
 
 (def ui-global-snackbar (c/factory GlobalSnackbar))

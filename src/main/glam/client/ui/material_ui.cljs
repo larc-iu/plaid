@@ -155,6 +155,7 @@
             ["@mui/material/Zoom" :default Zoom]
     ;; END AUTO GEN
             ["@mui/x-tree-view" :default TreeView]
+            ["@mui/x-tree-view/TreeItem" :default TreeItem]
             [glam.client.ui.material-ui-icon :as muic]
             [taoensso.timbre :as log]))
 
@@ -297,6 +298,7 @@
 (def zoom (interop/react-factory Zoom))
 ;; END AUTO GEN
 (def tree-view (interop/react-factory TreeView))
+(def tree-item (interop/react-factory TreeItem))
 
 ;; styled variants
 (defn- wrap-styles
