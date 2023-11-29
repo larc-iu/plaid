@@ -6,6 +6,13 @@
             [muuntaja.core :as m]))
 
 ;; cf. https://github.com/metosin/reitit/blob/master/examples/ring-example/src/example/server.clj
+;;(defn user-by-id-handler [{:keys [pathom-boundary-interface] :as request}]
+;  (pathom-boundary-interface
+;    {:pathom/entity {:user/id (-> request :path-params :user-id)}
+;     :pathom/eql    [:user/name
+;                     :user/email
+;                     {:user/addresses
+;                      [:address/street]}]}))
 (def routes
   ["/rest-api"
    ["/plus" {:get (fn [{{:strs [x y]} :query-params :as req}]
