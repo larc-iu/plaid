@@ -108,8 +108,8 @@
 
     (mui/page-title name)
     (mui/arrow-breadcrumbs {}
-      (mui/link {:color "inherit" :href (r/route-for :projects) :key "projects"} "Projects")
-      (mui/link {:color "textPrimary" :underline "none" :key "user"} name))
+      (mui/link {:variant "subtitle1" :color "inherit" :href (r/route-for :projects) :key "projects"} "Projects")
+      (mui/link {:variant "subtitle1" :color "textPrimary" :underline "none" :key "user"} name))
 
     (mui/button
       {:variant   "outlined"

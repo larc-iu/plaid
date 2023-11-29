@@ -18,7 +18,7 @@
 ;; Queries ------------------------------------------------------------------------
 (defn get
   [node id]
-  (xt->pathom (gxe/find-entity node {:vocab/id id})))
+  #_(xt->pathom (gxe/find-entity node {:vocab/id id})))
 
 (defn parent-id [node id]
   (-> (xt/q (xt/db node)
@@ -34,7 +34,7 @@
   [node eid m]
   (gxe/merge node eid (select-keys m [:vocab/name])))
 (defn delete** [node eid]
-  (let [remove-from-project-tx (prjc/update-vocab-scope** node eid nil)
+  #_(let [remove-from-project-tx (prjc/update-vocab-scope** node eid nil)
         span-ids (map first (xt/q (xt/db node) '{:find  [?s]
                                                  :where [[?s :span/layer ?sl]]
                                                  :in    [?sl]}

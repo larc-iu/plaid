@@ -3,7 +3,7 @@
             [glam.client.ui.material-ui :as mui]
             [com.fulcrologic.fulcro.mutations :as m :refer [defmutation]]
             [taoensso.timbre :as log]
-            ["@material-ui/core/Grow" :default Grow]))
+            ["@mui/material/Grow" :default Grow]))
 
 (def ident [:component/id :global-snackbar])
 

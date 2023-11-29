@@ -105,9 +105,8 @@
   (mui/container {:maxWidth "md" :style {:position "relative"}}
     (mui/page-title "Project Management")
     (mui/arrow-breadcrumbs {}
-      (mui/link {:color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
-      (mui/link {:color "textPrimary" :underline "none" :key "project"} "Project Management"))
-
+      (mui/link {:variant "subtitle1" :color "inherit" :href (r/route-for :admin-home) :key "admin"} "Admin Settings")
+      (mui/link {:variant "subtitle1" :color "textPrimary" :underline "none" :key "project"} "Project Management"))
     ;; add project button
     (mui/dialog {:open modal-open? :onClose #(uism/trigger! this ::add-project :event/cancel)}
       (mui/dialog-title {} "Create Project")
