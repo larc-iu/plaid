@@ -12,7 +12,8 @@
 
 (def attr-keys [:token-layer/id
                 :token-layer/name
-                :token-layer/span-layers])
+                :token-layer/span-layers
+                :config])
 
 (defn xt->pathom [doc]
   (when doc

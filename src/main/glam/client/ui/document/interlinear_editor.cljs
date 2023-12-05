@@ -355,7 +355,7 @@
   [this
    {:token-layer/keys [id name columnar-tokens sentence-level-spans token-span-layers sentence-span-layers]
     :ui/keys          [page] :as token-layer}
-   {:keys [text config]}]
+   {:keys [text]}]
   {:query                [:token-layer/id :token-layer/name
                           {:token-layer/columnar-tokens (c/get-query ColumnarToken)}
                           {:token-layer/sentence-level-spans (c/get-query SpanCell)}
@@ -459,18 +459,18 @@
 (def ui-text (c/computed-factory Text {:keyfn :text/id}))
 
 (defsc TextLayer
-  [this {:text-layer/keys [id name text token-layers]} {:keys [config]}]
+  [this {:text-layer/keys [id name text token-layers]}]
   {:query [:text-layer/name :text-layer/id
            {:text-layer/text (c/get-query Text)}
            {:text-layer/token-layers (c/get-query TokenLayer)}]
    :ident :text-layer/id}
   (dom/div
     ;; (ui-text (c/computed text {:text-layer/name name}))
-    (mapv ui-token-layer (map #(c/computed % {:text text :config config}) token-layers))))
+    (mapv ui-token-layer (map #(c/computed % {:text text}) token-layers))))
 
 (def ui-text-layer (c/computed-factory TextLayer {:keyfn :text-layer/id}))
 
-(defsc ProjectQuery [_ _] {:ident :project/id :query [:project/config :project/id]})
+(defsc ProjectQuery [_ _] {:ident :project/id :query [:project/id]})
 (defsc InterlinearEditor [this {:document/keys [id name text-layers project] :ui/keys [busy?] :as props}]
   {:query     [:document/id :document/name
                {:document/text-layers (c/get-query TextLayer)}
@@ -480,16 +480,12 @@
                 (merge {:ui/busy? false}
                        data-tree))
    :ident     :document/id}
-  ;;(if (empty? (-> props :document/project :project/config))
-  ;;  (dom/p "The interlinear editor must have at least one span layer designated as ")
-  ;;  )
   (dom/div
     (if busy?
       (loader)
       (when text-layers
         (c/fragment
-          (mapv ui-text-layer (map #(c/computed % {:config (-> project :project/config :editors :interlinear)})
-                                   text-layers)))))))
+          (mapv ui-text-layer text-layers))))))
 
 (def ui-interlinear-editor (c/factory InterlinearEditor))
 
