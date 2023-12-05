@@ -11,8 +11,7 @@
                 :project/name
                 :project/readers
                 :project/writers
-                :project/text-layers
-                :project/config])
+                :project/text-layers])
 
 (defn xt->pathom [doc]
   (when doc
@@ -21,16 +20,10 @@
         (update :project/writers xutil/identize :user/id)
         (update :project/text-layers xutil/identize :text-layer/id))))
 
-;; This is used to hold on to interface-specific information that can't be known in advance,
-;; e.g. which span-layer ought to be used for free translation in the interlinear editing
-;; interface.
-(def base-config
-  {:editors {:interlinear {:span-layer-scopes {}}}})
-
 (defn create [node {:project/keys [id] :as attrs}]
   (let [{:project/keys [id] :as record}
         (merge (xutil/new-record "project" id)
-               {:project/readers [] :project/writers [] :project/text-layers [] :project/config base-config}
+               {:project/readers [] :project/writers [] :project/text-layers [] }
                (select-keys attrs attr-keys))]
     {:success (gxe/put node record)
      :id      id}))
@@ -102,3 +95,14 @@
 
 (gxe/deftx remove-writer [node project-id user-id]
   (xutil/remove-join** node project-id :project/writers user-id))
+
+;; This is not actually a project operation, but this is the most sensible place to put it
+(gxe/deftx assoc-editor-config-pair [node layer-id editor-name config-key config-value]
+  (let [layer (gxe/entity node layer-id)
+        new-layer (assoc-in layer [:config editor-name config-key] config-value)]
+    [(gxe/put* new-layer)]))
+
+(gxe/deftx dissoc-editor-config-pair [node layer-id editor-name config-key]
+  (let [layer (gxe/entity node layer-id)
+        new-layer (update-in layer [:config editor-name] dissoc config-key)]
+    [(gxe/put* new-layer)]))

@@ -3,6 +3,9 @@
             [com.wsscode.pathom.parser :as pp]
             [taoensso.timbre :as log]))
 
+(defn is-layer? [xtdb-entity]
+  (some #(contains? xtdb-entity %) [:text-layer/id :token-layer/id :span-layer/id]))
+
 #?(:cljs
    (defn get-document
      "Given a record representing a structural element of a document (e.g. span, token, ...),

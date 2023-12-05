@@ -31,7 +31,7 @@
 #?(:clj
    (pc/defresolver get-text-layer [{:keys [node]} {:text-layer/keys [id]}]
      {::pc/input     #{:text-layer/id}
-      ::pc/output    [:text-layer/id :text-layer/name :text-layer/token-layers]
+      ::pc/output    [:text-layer/id :text-layer/name :text-layer/token-layers :config]
       ::pc/transform (ma/readable-required :text-layer/id)}
      (txtl/get node id)))
 

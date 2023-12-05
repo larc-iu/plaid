@@ -4,7 +4,6 @@
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]
             [com.fulcrologic.fulcro.mutations :as m]
             #?(:clj [glam.xtdb.project :as prj])
-            #?(:clj [glam.xtdb.project-config :as prjc])
             #?(:clj [glam.xtdb.easy :as gxe])
             #?(:clj [glam.xtdb.util :as xutil])
             #?(:clj [glam.models.common :as mc])
@@ -36,7 +35,7 @@
    (pc/defresolver get-project [{:keys [node]} {:project/keys [id]}]
      {::pc/input     #{:project/id}
       ::pc/output    [:project/id :project/name :project/readers :project/writers
-                      :project/text-layers :project/documents :project/config]
+                      :project/text-layers :project/documents]
       ::pc/transform (ma/readable-required :project/id)}
      (let [doc-ids (xutil/identize (prj/get-document-ids node id) :document/id)]
        (-> (prj/get node id)
@@ -112,26 +111,80 @@
            (mc/server-error "Failed to update user privileges, please refresh and try again"))))))
 
 #?(:clj
-   (pc/defmutation set-interlinear-span-layer-scope [{:keys [node]} {:span-layer/keys [id] :keys [scope]}]
-     {::pc/transform ma/admin-required}
-     (cond
-       (not (contains? #{:token :sentence nil} scope))
-       (mc/server-error (str "Scope must be one of #{:token :sentence nil}, got " scope))
+   (pc/defmutation set-editor-config-pair [{:keys [node]} {:keys [layer-id editor-name config-key config-value]}]
+     ;; Should this actually be admin-required?
+     {::pc/transform ma/user-required}
+     (let [layer (gxe/entity node layer-id)]
+       (cond
+         (not layer)
+         (mc/server-error (str "No database entry under ID " layer-id))
 
-       (nil? id)
-       (mc/server-error "Must supply a span layer ID")
+         (not (mc/is-layer? layer))
+         (mc/server-error (str "Entity under ID " layer-id " is not a layer."))
 
-       (not (gxe/entity node id))
-       (mc/server-error (str "Span layer doesn't exist:" id))
+         (not (string? editor-name))
+         (mc/server-error "Editor name must be a string.")
 
-       :else
-       (let [success (prjc/update-span-layer-scope node id scope)]
-         (if success
-           (mc/server-message (str "Span layer marked as " (get {:token    "token-level"
-                                                                 :sentence "sentence-level"
-                                                                 nil       "excluded from interlinear editing"} scope)))
-           (mc/server-error "Failed to update span layer, please refresh and try again"))))))
+         (not (string? config-key))
+         (mc/server-error "Config key must be a string.")
+
+         :else
+         (let [success (prj/assoc-editor-config-pair node layer-id editor-name config-key config-value)]
+           (if success
+             (mc/server-message (str "Update succeeded"))
+             (mc/server-error "Failed to update editor config, please refresh and try again")))))))
+
+
 #?(:clj
-   (def project-resolvers [accessible-projects all-projects get-project create-project
-                           get-users-for-project set-user-privileges set-interlinear-span-layer-scope]))
+   (pc/defmutation set-editor-config-pair [{:keys [node]} {:keys [layer-id editor-name config-key config-value]}]
+     ;; Should this actually be admin-required?
+     {::pc/transform ma/user-required}
+     (let [layer (gxe/entity node layer-id)]
+       (cond
+         (not layer)
+         (mc/server-error (str "No database entry under ID " layer-id))
+
+         (not (mc/is-layer? layer))
+         (mc/server-error (str "Entity under ID " layer-id " is not a layer."))
+
+         (not (string? editor-name))
+         (mc/server-error "Editor name must be a string.")
+
+         (not (string? config-key))
+         (mc/server-error "Config key must be a string.")
+
+         :else
+         (let [success (prj/assoc-editor-config-pair node layer-id editor-name config-key config-value)]
+           (if success
+             (mc/server-message (str "Update succeeded"))
+             (mc/server-error "Failed to update editor config, please refresh and try again")))))))
+
+
+#?(:clj
+   (pc/defmutation delete-editor-config-pair [{:keys [node]} {:keys [layer-id editor-name config-key]}]
+     ;; Should this actually be admin-required?
+     {::pc/transform ma/user-required}
+     (let [layer (gxe/entity node layer-id)]
+       (cond
+         (not layer)
+         (mc/server-error (str "No database entry under ID " layer-id))
+
+         (not (mc/is-layer? layer))
+         (mc/server-error (str "Entity under ID " layer-id " is not a layer."))
+
+         (not (string? editor-name))
+         (mc/server-error "Editor name must be a string.")
+
+         (not (string? config-key))
+         (mc/server-error "Config key must be a string.")
+
+         :else
+         (let [success (prj/dissoc-editor-config-pair node layer-id editor-name config-key)]
+           (if success
+             (mc/server-message (str "Deletion succeeded"))
+             (mc/server-error "Failed to update editor config, please refresh and try again")))))))
+
+#?(:clj
+   (def project-resolvers [accessible-projects all-projects get-project create-project get-users-for-project
+                           set-user-privileges set-editor-config-pair delete-editor-config-pair]))
 

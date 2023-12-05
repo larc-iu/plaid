@@ -11,8 +11,7 @@
                 supported.)"
   (:require [xtdb.api :as xt]
             [glam.xtdb.util :as xutil]
-            [glam.xtdb.easy :as gxe]
-            [glam.xtdb.project-config :as prjc])
+            [glam.xtdb.easy :as gxe])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:vocab-layer/id
@@ -52,8 +51,7 @@
 
 (gxe/deftx delete [node eid]
   ;; TODO
-  #_(let [remove-from-project-tx (prjc/update-span-layer-scope** node eid nil)
-          span-ids (map first (xt/q (xt/db node) '{:find  [?s]
+  #_(let [span-ids (map first (xt/q (xt/db node) '{:find  [?s]
                                                    :where [[?s :span/layer ?sl]]
                                                    :in    [?sl]}
                                     eid))

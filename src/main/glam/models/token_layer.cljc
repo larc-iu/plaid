@@ -69,7 +69,7 @@
 #?(:clj
    (pc/defresolver get-token-layer [{:keys [node]} {:token-layer/keys [id]}]
      {::pc/input     #{:token-layer/id}
-      ::pc/output    [:token-layer/id :token-layer/name :token-layer/span-layers]
+      ::pc/output    [:token-layer/id :token-layer/name :token-layer/span-layers :config]
       ::pc/transform (ma/readable-required :token-layer/id)}
      (tokl/get node id)))
 
@@ -87,6 +87,7 @@
          {:token-layer/tokens tokens}))))
 
 #?(:clj
+   ;; TODO(LDG) this should be removed after the legacy interlinear editor is removed
    (pc/defresolver lorge-get-tokens [{:keys [node] :as env} {:token-layer/keys [id]}]
      {::pc/input     #{:token-layer/id}
       ::pc/output    [:token-layer/name
@@ -123,6 +124,7 @@
                  :token-layer/span-layers span-layers})))))
 
 #?(:clj
+   ;; TODO(LDG) this should be removed after the legacy interlinear editor is removed
    (pc/defresolver lorge-get-columnar-tokens [{:keys [node] :as env} {:token-layer/keys [id]}]
      {::pc/input     #{:token-layer/id}
       ::pc/output    [:token-layer/name
@@ -134,14 +136,23 @@
                       {:token-layer/sentence-span-layers [:span-layer/id :span-layer/name]}]
       ::pc/transform (ma/readable-required :token-layer/id)}
      (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (let [config (get-in (ffirst (xt/q (xt/db node) '{:find  [?pc]
-                                                         :where [[?doc :document/project ?prj]
-                                                                 [?prj :project/config ?pc]]
-                                                         :in    [?doc]}
-                                          doc-id))
-                            [:editors :interlinear])
-             tokl (tokl/get node id)
+       (let [tokl (tokl/get node id)
              sl-ids (map :span-layer/id (:token-layer/span-layers tokl))
+             sls (gxe/entities node (map vector sl-ids))
+             token-sl-ids (->> sls
+                               (filter #(= (-> %
+                                               :config
+                                               (get "interlinear")
+                                               (get "scope"))
+                                           "token"))
+                               (map :span-layer/id))
+             sentence-sl-ids (->> sls
+                                  (filter #(= (-> %
+                                                  :config
+                                                  (get "interlinear")
+                                                  (get "scope"))
+                                              "sentence"))
+                                  (map :span-layer/id))
              text (ffirst (xt/q (xt/db node)
                                 '{:find  [(pull ?txt [:text/id :text/body])]
                                   :where [[?txt :text/document ?doc]]
@@ -150,7 +161,6 @@
              tokens (mapv (fn [token]
                             (-> token (update :token/layer (fn [id] {:token-layer/id id}))))
                           (tok/get-tokens node id doc-id))
-             token-sl-ids (filter #(some (hash-set %) (get-token-span-layers (:span-layer-scopes config))) sl-ids)
              token-span-layers (mapv #(sl/get node %) token-sl-ids)
              token-spans (mapcat #(span/get-spans node doc-id %) token-sl-ids)
 
@@ -158,8 +168,6 @@
              line-enriched-tokens (filter :token/id (apply concat (-> sorted-tokens
                                                                       (ta/add-untokenized-substrings text)
                                                                       (ta/separate-into-lines text))))
-
-             sentence-sl-ids (filter #(some (hash-set %) (get-sentence-span-layers (:span-layer-scopes config))) sl-ids)
              sentence-level-spans (mapcat #(span/get-spans node doc-id %) sentence-sl-ids)
              sentence-span-layers (map #(sl/get node %) sentence-sl-ids)]
          {:token-layer/name                 (:token-layer/name (gxe/entity node id))
@@ -169,6 +177,7 @@
           :token-layer/sentence-span-layers sentence-span-layers}))))
 
 #?(:clj
+   ;; TODO this needs to be rethought when we refactor for NLP services
    (pc/defmutation tokenize [{:keys [node] :as env} {:token-layer/keys [id]
                                                      doc-id            :document/id
                                                      text-id           :text/id

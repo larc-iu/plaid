@@ -32,7 +32,6 @@
                          (-> s
                              (assoc-in (conj ref :ui/busy?) true)))))
   (remote [{:keys [ast]}]
-          (log/info ast)
           (let [ast (-> ast
                         (assoc :key `sl/shift-span-layer)
                         (update :params dissoc :load-fn))]
@@ -520,6 +519,7 @@
 
 ;; Interface configuration ----------------------------------------------------------------------------
 ;; ====================================================================================================
+;; TODO(LDG): This should be moved out of the admin interface
 (declare ProjectSettings)
 (defmutation set-interlinear-span-layer-scope
   [_]
@@ -528,20 +528,25 @@
                          (-> s
                              (assoc-in (conj ref :ui/busy?) true)))))
   (remote [{:keys [ast]}]
-          (let [ast (assoc ast :key `prj/set-interlinear-span-layer-scope)]
+          (let [{layer-id :span-layer/id scope :scope} (:params ast)
+                ast (-> ast
+                        (assoc :key `prj/set-editor-config-pair)
+                        (assoc :params {:layer-id layer-id
+                                        :editor-name "interlinear"
+                                        :config-key "scope"
+                                        :config-value scope}))]
             ast))
   (result-action [{:keys [state ref app component] :as env}]
                  (swap! state (fn [s] (assoc-in s (conj ref :ui/busy?) false)))
-                 (let [{:server/keys [message error?]} (get-in env [:result :body `prj/set-interlinear-span-layer-scope])]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `prj/set-editor-config-pair])]
                    (when message
                      (if error?
                        (snack/message! {:message  message
-                                        :severity (if error? "error" "success")})
-                       )))
+                                        :severity (if error? "error" "success")}))))
                  (df/load! app ref ProjectSettings)))
 (defsc SpanLayerQuery [this props]
   {:ident :span-layer/id
-   :query [:span-layer/id :span-layer/name]})
+   :query [:span-layer/id :span-layer/name :config]})
 (defsc TokenLayerQuery [this props]
   {:ident :token-layer/id
    :query [:token-layer/id :token-layer/name {:token-layer/span-layers (c/get-query SpanLayerQuery)}]})
@@ -549,17 +554,16 @@
   {:ident :text-layer/id
    :query [:text-layer/id :text-layer/name
            {:text-layer/token-layers (c/get-query TokenLayerQuery)}]})
-(defsc InterfaceConfiguration [this {:project/keys [id config text-layers] :ui/keys [busy?] :as props}]
+(defsc InterfaceConfiguration [this {:project/keys [id text-layers] :ui/keys [busy?] :as props}]
   {:ident     :project/id
    :pre-merge (fn [{:keys [data-tree]}]
                 (merge {:ui/busy? false}
                        data-tree))
-   :query     [:project/id :project/config {:project/text-layers (c/get-query TextLayerQuery)}
+   :query     [:project/id {:project/text-layers (c/get-query TextLayerQuery)}
                :ui/busy?]}
   (let [span-layers (flatten (for [text-layer text-layers]
                                (for [token-layer (:text-layer/token-layers text-layer)]
                                  (:token-layer/span-layers token-layer))))]
-    (log/info (get-in config [:editors :interlinear]))
     (dom/div
       (mui/typography {:variant "h5"} "Interlinear Interface")
       (dom/p "Select the span layers that represent sentence-level information (e.g. a free translation)
@@ -567,22 +571,21 @@
       (dom/p (dom/strong "Warning: ") "changing the layer's type will result in all existing spans "
              "on that layer being deleted.")
       (mui/list {}
-        (mapv (fn [{:span-layer/keys [id name]}]
-                (let [scope (get-in config [:editors :interlinear :span-layer-scopes id] "unused")]
-                  (js/console.log scope)
+        (mapv (fn [{:span-layer/keys [id name] config :config}]
+                (let [scope (get-in config ["interlinear" "scope"])]
                   (mui/list-item {:key (str id) :style {:marginBottom "1em"}}
                     (mui/list-item-text {:primary name})
                     (mui/list-item-secondary-action
                       {}
                       (mui/minw-100-select
                         {:variant  "filled"
-                         :value    scope
+                         :value    (or scope "unused")
                          :disabled busy?
                          :onChange (fn [e]
                                      (let [v (.-value (.-target e))]
                                        (c/transact! this [(set-interlinear-span-layer-scope
                                                             {:span-layer/id id
-                                                             :scope         (if (= "unused" v) nil (keyword v))})])))}
+                                                             :scope         v})])))}
                         (mui/menu-item {:value "unused"} "Not used")
                         (mui/menu-item {:value "token"} "Token")
                         (mui/menu-item {:value "sentence"} "Sentence"))))))
