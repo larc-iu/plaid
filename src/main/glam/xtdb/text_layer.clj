@@ -7,7 +7,8 @@
 
 (def attr-keys [:text-layer/id
                 :text-layer/name
-                :text-layer/token-layers])
+                :text-layer/token-layers
+                :config])
 
 (defn xt->pathom [doc]
   (when doc

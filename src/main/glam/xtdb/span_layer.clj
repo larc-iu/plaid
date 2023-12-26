@@ -1,12 +1,12 @@
 (ns glam.xtdb.span-layer
   (:require [xtdb.api :as xt]
             [glam.xtdb.util :as xutil]
-            [glam.xtdb.easy :as gxe]
-            [glam.xtdb.project-config :as prjc])
+            [glam.xtdb.easy :as gxe])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:span-layer/id
-                :span-layer/name])
+                :span-layer/name
+                :config])
 
 (defn xt->pathom [doc]
   (when doc
@@ -39,13 +39,11 @@
   (gxe/merge node eid (select-keys m [:span-layer/name])))
 
 (gxe/deftx delete [node eid]
-  (let [remove-from-project-tx (prjc/update-span-layer-scope** node eid nil)
-        span-ids (map first (xt/q (xt/db node) '{:find  [?s]
+  (let [span-ids (map first (xt/q (xt/db node) '{:find  [?s]
                                                  :where [[?s :span/layer ?sl]]
                                                  :in    [?sl]}
                                   eid))
         span-deletions (mapv gxe/delete* span-ids)
         span-layer-deletion [(gxe/delete* eid)]]
-    (reduce into [remove-from-project-tx
-                  span-deletions
+    (reduce into [span-deletions
                   span-layer-deletion])))
