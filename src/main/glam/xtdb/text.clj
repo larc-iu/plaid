@@ -34,14 +34,6 @@
 
 
 ;; Mutations ----------------------------------------------------------------------
-(defn get-span-ids [node eid]
-  (map first (xt/q (xt/db node)
-                   '{:find  [?span]
-                     :where [[?span :span/tokens ?tok]
-                             [?tok :token/text ?txt]]
-                     :in    [?txt]}
-                   eid)))
-
 (defn get-token-ids [node eid]
   (map first (xt/q (xt/db node)
                    '{:find  [?tok]
@@ -63,13 +55,9 @@
         tx (reduce into [text-tx deletion-tx update-tx])]
     tx))
 
-;; We don't follow the usual pattern of relying on child nodes' delete** functions here because
-;; this would lead to children being included multiple times. Instead, we write a bespoke fn.
 (gxe/deftx delete [node eid]
-  (let [span-deletes (mapv gxe/delete* (get-span-ids node eid))
-        token-deletes (mapv gxe/delete* (get-token-ids node eid))
+  (let [token-deletes (reduce into (mapv #(tok/delete** node %) (get-token-ids node eid)))
         text-delete [(gxe/delete* eid)]]
     (reduce into
-            [span-deletes
-             token-deletes
+            [token-deletes
              text-delete])))

@@ -176,8 +176,6 @@
 (defn set-begin [node eid n] (set-extent node eid {:new-begin n}))
 (defn set-end [node eid n] (set-extent node eid {:new-end n}))
 
-;; We don't follow the usual pattern of relying on child nodes' delete** functions here because
-;; this would lead to children being included multiple times. Instead, we write a bespoke fn.
 (gxe/deftx delete [node eid]
   (let [spans (get-span-ids node eid)]
     (into
