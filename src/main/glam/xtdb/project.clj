@@ -1,6 +1,6 @@
 (ns glam.xtdb.project
   (:require [xtdb.api :as xt]
-            [glam.xtdb.util :as xutil]
+            [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.access :as gca]
             [glam.xtdb.text-layer :as txtl]
@@ -16,13 +16,13 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :project/readers xutil/identize :user/id)
-        (update :project/writers xutil/identize :user/id)
-        (update :project/text-layers xutil/identize :text-layer/id))))
+        (update :project/readers gxc/identize :user/id)
+        (update :project/writers gxc/identize :user/id)
+        (update :project/text-layers gxc/identize :text-layer/id))))
 
 (defn create [node {:project/keys [id] :as attrs}]
   (let [{:project/keys [id] :as record}
-        (merge (xutil/new-record "project" id)
+        (merge (gxc/new-record "project" id)
                {:project/readers [] :project/writers [] :project/text-layers [] }
                (select-keys attrs attr-keys))]
     {:success (gxe/put node record)
@@ -79,22 +79,22 @@
     all-txs))
 
 (gxe/deftx add-text-layer [node project-id text-layer-id]
-  (xutil/add-join** node project-id :project/text-layers text-layer-id))
+  (gxc/add-join** node project-id :project/text-layers text-layer-id))
 
 (gxe/deftx remove-text-layer [node project-id text-layer-id]
-  (xutil/remove-join** node project-id :project/text-layers text-layer-id))
+  (gxc/remove-join** node project-id :project/text-layers text-layer-id))
 
 (gxe/deftx add-reader [node project-id user-id]
-  (xutil/add-join** node project-id :project/readers user-id))
+  (gxc/add-join** node project-id :project/readers user-id))
 
 (gxe/deftx remove-reader [node project-id user-id]
-  (xutil/remove-from-multi-joins** node project-id [:project/readers :project/writers] user-id))
+  (gxc/remove-from-multi-joins** node project-id [:project/readers :project/writers] user-id))
 
 (gxe/deftx add-writer [node project-id user-id]
-  (xutil/add-to-multi-joins** node project-id [:project/readers :project/writers] user-id))
+  (gxc/add-to-multi-joins** node project-id [:project/readers :project/writers] user-id))
 
 (gxe/deftx remove-writer [node project-id user-id]
-  (xutil/remove-join** node project-id :project/writers user-id))
+  (gxc/remove-join** node project-id :project/writers user-id))
 
 ;; This is not actually a project operation, but this is the most sensible place to put it
 (gxe/deftx assoc-editor-config-pair [node layer-id editor-name config-key config-value]

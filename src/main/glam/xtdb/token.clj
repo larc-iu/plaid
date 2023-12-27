@@ -1,6 +1,6 @@
 (ns glam.xtdb.token
   (:require [xtdb.api :as xt]
-            [glam.xtdb.util :as xutil]
+            [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.span :as s]
             [taoensso.timbre :as log])
@@ -15,11 +15,11 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :token/layer xutil/identize :token-layer/id)
-        (update :token/text xutil/identize :text/id))))
+        (update :token/layer gxc/identize :token-layer/id)
+        (update :token/text gxc/identize :text/id))))
 
 (defn create* [{:token/keys [id] :as attrs}]
-  (gxe/put* (xutil/create-record "token" id attrs attr-keys)))
+  (gxe/put* (gxc/create-record "token" id attrs attr-keys)))
 
 (defn create [node attrs]
   (let [[_ {:token/keys [id]} :as put] (create* attrs)
@@ -123,7 +123,7 @@
       [(gxe/put* token)])))
 
 (defn safe-create [node token]
-  (let [new-record (xutil/create-record "token" nil token (filterv #(not= % :token/id) attr-keys))
+  (let [new-record (gxc/create-record "token" nil token (filterv #(not= % :token/id) attr-keys))
         success (safe-create-internal node new-record)]
     {:success success :id (:token/id new-record)}))
 

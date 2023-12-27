@@ -1,6 +1,6 @@
 (ns glam.xtdb.text-layer
   (:require [xtdb.api :as xt]
-            [glam.xtdb.util :as xutil]
+            [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.token-layer :as tokl])
   (:refer-clojure :exclude [get merge]))
@@ -13,10 +13,10 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :text-layer/token-layers xutil/identize :token-layer/id))))
+        (update :text-layer/token-layers gxc/identize :token-layer/id))))
 
 (defn create [node {:text-layer/keys [id] :as attrs}]
-  (let [{:text-layer/keys [id] :as record} (clojure.core/merge (xutil/new-record "text-layer" id)
+  (let [{:text-layer/keys [id] :as record} (clojure.core/merge (gxc/new-record "text-layer" id)
                                                                {:text-layer/token-layers []}
                                                                (select-keys attrs attr-keys))
         tx-status (gxe/submit! node [[:xtdb.api/put record]])]
@@ -44,10 +44,10 @@
   (gxe/merge node eid (select-keys m [:text-layer/name])))
 
 (gxe/deftx add-token-layer [node text-layer-id token-layer-id]
-  (xutil/add-join** node text-layer-id :text-layer/token-layers token-layer-id))
+  (gxc/add-join** node text-layer-id :text-layer/token-layers token-layer-id))
 
 (gxe/deftx remove-token-layer [node text-layer-id token-layer-id]
-  (xutil/remove-join** node text-layer-id :text-layer/token-layers token-layer-id))
+  (gxc/remove-join** node text-layer-id :text-layer/token-layers token-layer-id))
 
 (gxe/deftx delete [node eid]
   (let [token-layers (:text-layer/token-layers (gxe/entity node eid))

@@ -1,6 +1,6 @@
 (ns glam.xtdb.document
   (:require [xtdb.api :as xt]
-            [glam.xtdb.util :as xutil]
+            [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.text :as text])
   (:refer-clojure :exclude [get merge]))
@@ -12,10 +12,10 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :document/project xutil/identize :project/id))))
+        (update :document/project gxc/identize :project/id))))
 
 (defn create* [{:document/keys [id] :as attrs}]
-  (gxe/put* (xutil/create-record "document" id attrs attr-keys)))
+  (gxe/put* (gxc/create-record "document" id attrs attr-keys)))
 
 (defn create [node attrs]
   (let [[_ {:document/keys [id]} :as put] (create* attrs)

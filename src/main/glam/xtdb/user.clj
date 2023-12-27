@@ -1,7 +1,7 @@
 (ns glam.xtdb.user
   (:require [xtdb.api :as xt]
             [clojure.spec.alpha :as s]
-            [glam.xtdb.util :as xutil]
+            [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.project :as prj])
   (:refer-clojure :exclude [get merge]))
@@ -24,7 +24,7 @@
   (let [;; make the first user to sign up an admin
         first-signup? (= 0 (count (get-all node)))
         {:user/keys [id] :as record}
-        (clojure.core/merge (xutil/new-record "user" id)
+        (clojure.core/merge (gxc/new-record "user" id)
                             {:user/name          name
                              :user/email         email
                              :user/password-hash password-hash

@@ -10,7 +10,7 @@
                 key-value pairs inside vocabulary items. (Currently only string values are
                 supported.)"
   (:require [xtdb.api :as xt]
-            [glam.xtdb.util :as xutil]
+            [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe])
   (:refer-clojure :exclude [get merge]))
 
@@ -24,7 +24,7 @@
     (-> doc)))
 
 (defn create [node {:vocab-layer/keys [id] :as attrs}]
-  (let [{:vocab-layer/keys [id] :as record} (clojure.core/merge (xutil/new-record "vocab-layer" id)
+  (let [{:vocab-layer/keys [id] :as record} (clojure.core/merge (gxc/new-record "vocab-layer" id)
                                                                 (select-keys attrs attr-keys))
         tx-status (gxe/submit! node [[:xtdb.api/put record]])]
     {:success tx-status

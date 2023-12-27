@@ -1,7 +1,7 @@
 (ns glam.xtdb.span
   (:require [xtdb.api :as xt]
-            [glam.xtdb.util :as xutil]
             [glam.xtdb.easy :as gxe]
+            [glam.xtdb.common :as gxc]
             [taoensso.timbre :as log])
   (:refer-clojure :exclude [get merge]))
 
@@ -15,11 +15,11 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :span/layer xutil/identize :span-layer/id)
-        (update :span/tokens xutil/identize :token/id))))
+        (update :span/layer gxc/identize :span-layer/id)
+        (update :span/tokens gxc/identize :token/id))))
 
 (defn create* [{:span/keys [id] :as attrs}]
-  (gxe/put* (xutil/create-record "span" id attrs attr-keys)))
+  (gxe/put* (gxc/create-record "span" id attrs attr-keys)))
 
 (defn create [node attrs]
   (let [[_ {:span/keys [id]} :as put] (create* attrs)
@@ -93,11 +93,11 @@
 
 (declare add-token**)
 (gxe/deftx add-token [node span-id token-id]
-  (xutil/add-join** node span-id :span/tokens token-id))
+  (gxc/add-join** node span-id :span/tokens token-id))
 
 (declare remove-token**)
 (gxe/deftx remove-token [node span-id token-id]
-  (let [base-txs (xutil/remove-join** node span-id :span/tokens token-id)]
+  (let [base-txs (gxc/remove-join** node span-id :span/tokens token-id)]
     (if (= 1 (-> (gxe/entity node span-id) :span/tokens count))
       (into base-txs (delete** node span-id))
       base-txs)))

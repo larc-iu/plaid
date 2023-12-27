@@ -1,7 +1,7 @@
 (ns glam.xtdb.token-layer
   (:require [xtdb.api :as xt]
             [glam.common :as gc]
-            [glam.xtdb.util :as xutil]
+            [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.span-layer :as sl]
             [glam.xtdb.text :as txt]
@@ -18,10 +18,10 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :token-layer/span-layers xutil/identize :span-layer/id))))
+        (update :token-layer/span-layers gxc/identize :span-layer/id))))
 
 (defn create [node {:token-layer/keys [id] :as attrs}]
-  (let [{:token-layer/keys [id] :as record} (clojure.core/merge (xutil/new-record "token-layer" id)
+  (let [{:token-layer/keys [id] :as record} (clojure.core/merge (gxc/new-record "token-layer" id)
                                                                 {:token-layer/span-layers []}
                                                                 (select-keys attrs attr-keys))
         tx-status (gxe/submit! node [[:xtdb.api/put record]])]
@@ -77,7 +77,7 @@
                                       :token/end   e
                                       :token/text  text-id
                                       :token/layer eid}
-                               token (xutil/create-record "token" nil token (filterv #(not= % :token/id) tok/attr-keys))]
+                               token (gxc/create-record "token" nil token (filterv #(not= % :token/id) tok/attr-keys))]
                            (tok/safe-create-internal2** node existing-tokens token)))
                        offsets))))
 
@@ -97,7 +97,7 @@
                                                           :token/end   e
                                                           :token/text  text-id
                                                           :token/layer eid}
-                                                   token (xutil/create-record "token" nil token (filterv #(not= % :token/id) tok/attr-keys))]
+                                                   token (gxc/create-record "token" nil token (filterv #(not= % :token/id) tok/attr-keys))]
                                                (tok/safe-create-internal2** node existing-tokens token)))
                                            offsets))
           body-update-txs (txt/update-body** node text-id ops)]
@@ -115,15 +115,15 @@
 
 ;; ... a map with the new ID and whether we succeeded
 (defn create-text-and-morpheme-tokenize [node text tokl-id]
-  (let [{:text/keys [id] :as text} (xutil/create-record "text" nil text txt/attr-keys)]
+  (let [{:text/keys [id] :as text} (gxc/create-record "text" nil text txt/attr-keys)]
     {:success (create-text-and-morpheme-tokenize-internal node text tokl-id)
      :id      id}))
 
 (gxe/deftx add-span-layer [node token-layer-id span-layer-id]
-  (xutil/add-join** node token-layer-id :token-layer/span-layers span-layer-id))
+  (gxc/add-join** node token-layer-id :token-layer/span-layers span-layer-id))
 
 (gxe/deftx remove-span-layer [node token-layer-id span-layer-id]
-  (xutil/remove-join** node token-layer-id :token-layer/span-layers span-layer-id))
+  (gxc/remove-join** node token-layer-id :token-layer/span-layers span-layer-id))
 
 (gxe/deftx shift-span-layer [node token-layer-id span-layer-id up?]
   ;; Shift a span layer up or down in its token layer. Attempting to shift beyond either edge will result in a no-op.

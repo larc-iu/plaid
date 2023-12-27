@@ -1,7 +1,7 @@
 (ns glam.xtdb.span-layer
   (:require [xtdb.api :as xt]
-            [glam.xtdb.util :as xutil]
-            [glam.xtdb.easy :as gxe])
+            [glam.xtdb.easy :as gxe]
+            [glam.xtdb.util :as gxc])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:span-layer/id
@@ -13,7 +13,7 @@
     (-> doc)))
 
 (defn create [node {:span-layer/keys [id] :as attrs}]
-  (let [{:span-layer/keys [id] :as record} (clojure.core/merge (xutil/new-record "span-layer" id)
+  (let [{:span-layer/keys [id] :as record} (clojure.core/merge (gxc/new-record "span-layer" id)
                                                                (select-keys attrs attr-keys))
         tx-status (gxe/submit! node [[:xtdb.api/put record]])]
     {:success tx-status

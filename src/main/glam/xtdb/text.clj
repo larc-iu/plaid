@@ -1,7 +1,7 @@
 (ns glam.xtdb.text
   (:require [xtdb.api :as xt]
-            [glam.xtdb.util :as xutil]
             [glam.xtdb.easy :as gxe]
+            [glam.xtdb.common :as gxc]
             [glam.xtdb.token :as tok]
             [glam.algos.text :as ta]
             [taoensso.timbre :as log])
@@ -15,11 +15,11 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :text/layer xutil/identize :text-layer/id)
-        (update :text/document xutil/identize :document/id))))
+        (update :text/layer gxc/identize :text-layer/id)
+        (update :text/document gxc/identize :document/id))))
 
 (defn create* [{:text/keys [id] :as attrs}]
-  (gxe/put* (xutil/create-record "text" id attrs attr-keys)))
+  (gxe/put* (gxc/create-record "text" id attrs attr-keys)))
 
 (defn create [node attrs]
   (let [[_ {:text/keys [id]} :as put] (create* attrs)

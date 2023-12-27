@@ -1,6 +1,6 @@
 (ns glam.xtdb.vocab
   (:require [xtdb.api :as xt]
-            [glam.xtdb.util :as xutil]
+            [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe])
   (:refer-clojure :exclude [get merge]))
 
@@ -8,7 +8,7 @@
                 :vocab/name])
 
 (defn create [node {:vocab/keys [id] :as attrs}]
-  (let [{:vocab/keys [id] :as record} (clojure.core/merge (xutil/new-record "vocab" id)
+  (let [{:vocab/keys [id] :as record} (clojure.core/merge (gxc/new-record "vocab" id)
                                                           (select-keys attrs attr-keys))
         tx-status (gxe/submit! node [[:xtdb.api/put record]])]
     {:success tx-status
