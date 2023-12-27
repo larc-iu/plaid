@@ -5,7 +5,7 @@
             [com.fulcrologic.fulcro.mutations :as m]
             #?(:clj [glam.xtdb.project :as prj])
             #?(:clj [glam.xtdb.easy :as gxe])
-            #?(:clj [glam.xtdb.util :as xutil])
+            #?(:clj [glam.xtdb.common :as gxc])
             #?(:clj [glam.models.common :as mc])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.xtdb.user :as usr])))
@@ -37,7 +37,7 @@
       ::pc/output    [:project/id :project/name :project/readers :project/writers
                       :project/text-layers :project/documents]
       ::pc/transform (ma/readable-required :project/id)}
-     (let [doc-ids (xutil/identize (prj/get-document-ids node id) :document/id)]
+     (let [doc-ids (gxc/identize (prj/get-document-ids node id) :document/id)]
        (-> (prj/get node id)
            (assoc :project/documents doc-ids)))))
 

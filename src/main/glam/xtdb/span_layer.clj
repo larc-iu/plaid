@@ -1,7 +1,7 @@
 (ns glam.xtdb.span-layer
   (:require [xtdb.api :as xt]
             [glam.xtdb.easy :as gxe]
-            [glam.xtdb.util :as gxc])
+            [glam.xtdb.common :as gxc])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:span-layer/id
