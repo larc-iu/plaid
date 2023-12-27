@@ -19,8 +19,8 @@
     "clojure-outdated": "clojure -M:outdated",
     "npm-outdated": "yarn outdated",
     "loc": "cloc src/main",
-    "docs/html": "asciidoctor -o target/book.html -b html5 -r asciidoctor-diagram docs/book.adoc",
-    "docs/pdf": "asciidoctor-pdf -o target/book.pdf -b pdf -r asciidoctor-diagram docs/book.adoc",
+    "docs/html": "asciidoctor -a allow-uri-read -o target/book.html -b html5 -r asciidoctor-diagram docs/book.adoc",
+    "docs/pdf": "asciidoctor-pdf -a allow-uri-read -o target/book.pdf -b pdf -r asciidoctor-diagram docs/book.adoc",
     "docs": "yarn docs/pdf && yarn docs/html",
     "docs/publish": "yarn docs && git checkout gh-pages && mv target/book.html index.html && git add index.html && git commit -m 'update docs' && git push && git checkout master"
   },
