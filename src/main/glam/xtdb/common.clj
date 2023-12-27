@@ -115,7 +115,7 @@
 
 (defn remove-from-multi-joins**
   "Remove joins from e1 to e2 at all keys specified in `join-keys`. This function is
-  idemponent: if an e1->e2 join does not exist at some join key on e1, nothing will change.
+  idempotent: if an e1->e2 join does not exist at some join key on e1, nothing will change.
   This function also includes match clauses for both entities, guarding against race
   conditions."
   [node e1-id join-keys e2-id]
