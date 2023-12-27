@@ -13,6 +13,7 @@
 :imagesoutdir: img/out
 :favicon: favicon.ico
 :hide-uri-scheme: 1
+:source-highlighter: coderay
 
 = Introduction
 
@@ -258,4 +259,136 @@ As of the writing of this section, this has not been done yet, but this may chan
 There are some data operations that are quite complicated (e.g. taking two versions of a string and finding the shortest sequence of string edits that can produce one from the other) that have been separate out into this namespace to keep the places where they are consumed from being overrun by their length.
 This is where they live.
 
+== glam.xtdb
+
+Instead of a SQL database, Glam uses https://www.xtdb.com/[XTDB] for data persistence.
+XTDB has some unusual features.
+One very exciting one for us is that it is immutable, meaning that whenever a write happens, the previous state of the database is not overwritten.
+Because of this, every past state of the database is viewable.
+XTDB has other features which make it well suited to our task.
+
+In this section, we'll review how Glam implements its core data model using XTDB.
+This section assumes familiarity with the basics of XTDB and Glam's data model.
+Consult the https://www.xtdb.com/learn[XTDB learning materials] and the earlier sections of this document respectively before proceeding.
+
+=== Basics
+Just as you might expect the data for a document to be spread out across different tables for a SQL approach, in XTDB, we make a separate document for every different kind of data that makes up a project or a document.
+Every token, for example, will have its own document.
+Each document has attributes, which you can again think of as analogous to a SQL column.
+
+Let's consider an example. A `token` document has the following attributes:
+
+* `:token/id`: the ID of this token. Note this is also stored on `:xt/id`, which is a required property for all XTDB documents. The reason why we also have `:token/id` in addition to `:xt/id` even though their values are the same is that querying for `:token/id` will allow us to easily find documents that represent tokens. Every other document also has an `:x/id` attribute like this, e.g. `:project/id`.
+* `:token/layer`: the ID of the layer that this token belongs to, i.e. the `:token-layer/id` of the `token-layer` associated document. In SQL, this would be a foreign key that you could use to facilitate joins.
+* `:token/text`: the ID of the text that this token is a token of, i.e. the `:text/id` of the associated text.
+* `:token/begin`, `:token/end`: substring indices for the text which indicate the bounds of this token.
+
+Putting that all together (ignoring layers):
+
+[,clojure]
+----
+;; A text object
+{:xt/id      1
+ :text/id    1
+ :text/layer ...
+ :text/body  "Hello, world"}
+
+{:xt/id       2
+ :token/id    2
+ :token/layer ...
+ :token/text  1
+ :token/begin 0
+ :token/end   5}
+----
+
+The token represented by the second document captures the substring `"Hello"` in the text.
+
+=== Transaction Functions
+The data structures we just described are highly relational, and as such we need to take care to never allow an invalid state to occur.
+Every attribute which refers to another document with an ID must always be valid, or bad things will start happening.
+Consider, for example, what must happen when we delete a `text` object.
+If a `text` no longer exists, then we must be sure to delete all of the `token` objects that depend on it, and so on for dependents of `token` objects.
+And importantly, we must make sure that this deletion is an all-or-nothing affair: it would be bad if the deletion process succeeded only on some documents, or if database reads occurred while the deletion was in progress, yielding a view that would have invalid joins.
+
+XTDB has an elegant solution for this in the form of the https://www.xtdb.com/blog/xtdb-transaction-functions[transaction function].
+First of all, recall that all writes happen with XTDB's `submit-tx` function, which takes a vector of transaction operations which are executed in order.
+This alone isn't enough, since XTDB's primitive `:xtdb.api/delete` transaction operation isn't sufficiently expressive for the detailed behavior our data model requires.
+For example, when a token is deleted, a span that contains that token should be deleted if and only if the token was the only one contained in the span.
+This is where the transaction function comes in: it allows us to define our own transaction operations that have the freedom of arbitrary code and the guarantees associated with being executed within a transaction by XTDB.
+
+To make using transaction functions as convenient as possible, we define new transaction functions using `glam.xtdb.easy/deftx`.
+Consider an example: `glam.xtdb.token/delete`:
+
+[,clojure]
+----
+(gxe/deftx delete [node eid]
+  (let [spans (get-span-ids node eid)]
+    (into
+      (reduce into (map #(s/remove-token** node % eid) spans))
+      [(gxe/delete* eid)])))
+----
+
+This looks a lot like a normal function definition, but there are a few things to note about this.
+First of all, the first argument to the function must always be `node`, which will be bound to the XTDB node executing the function.
+Second, `deftx` actually defines _two_ things.
+There is an internal version of the function that is trailed with `pass:[**]`, and invoking this prepares an XTDB transaction which contains only the invocation of this transaction function.
+The normal version of this function without the `pass:[**]` at the end does the same but also invokes the transaction immediately.
+Having these two variants allows us to use the asterisk-less version whenever we're interested in that operation as our top-level goal, and the asterisk-ful version whenever we want to use that operation as a part of another operation.
+In the example above, we can see that this transaction function relies on another transaction function, `glam.xtdb.span/remove-token**`.
+
+NOTE: Throughout glam.xtdb, it is a convention that any function ending with `pass:[*]` will return a transaction operation, and any function ending with `pass:[**]` will return a transaction (i.e., a vector of transaction operations).
+
+Let's go through an example to make all of that concrete, continuing with `glam.xtdb.token/delete`.
+First, let's observe that this function is stored in the database:
+
+[,clojure]
+----
+(gxe/entity user/node :glam.xtdb.token/delete)
+=>
+{:xt/id :glam.xtdb.token/delete
+ :xt/fn
+ (clojure.core/fn
+  [node eid]
+  (let
+   [spans (glam.xtdb.token/get-span-ids node eid)]
+    (into
+     (reduce into (map (fn* [p1__98802#] (glam.xtdb.span/remove-token** node p1__98802# eid)) spans))
+     [(glam.xtdb.easy/delete* eid)]))))}
+----
+
+This code should look very familiar--it's what we saw above!
+(Don't worry about the minor differences on variable names--that's an implementation detail that you can safely ignore.)
+Now let's see what the result of invoking `delete**` is:
+
+[,clojure]
+----
+(glam.xtdb.token/delete** node 5)
+=> [[:xtdb.api/fn :glam.xtdb.token/delete 5]]
+----
+
+As you can see, not much happens: all this does is to prepare the transaction function's invocation by formatting it with its arguments.
+Nothing has happened to the database.
+Invoking `(glam.xtdb.token/delete node 5)`, on the other hand, would have submitted this to the database, equivalent to `(xtdb.api/submit-tx node (glam.xtdb.token/delete** node 5))`.
+
+=== Idents
+In most places in Glam, we will refer to an entity simply with its ID.
+This is true, for example, in all XTDB documents: `:token/text` has as its associated value the ID of the associated `text`.
+However, in some places, you will see idents, which are two-item vectors where the first value is a keyword like `:text/id` and the second value is the ID.
+This is called an *ident*, and it is another way of referring to an entity which encodes its type.
+We use idents because https://blog.wsscode.com/pathom/v2/pathom/2.2.0/introduction.html[Pathom] (the library we use for graph query processing) works in terms of them.
+For this reason, you will see that many namespaces have an `xt->pathom` function which will convert IDs to idents.
+
+=== Namespace Overview
+
+All namespaces under `glam.xtdb` are devoted to a particular data type, with the following exceptions:
+
+* `glam.xtdb.easy` has functions which offer a higher-level interface to XTDB.
+* `glam.xtdb.common` has mostly low-level helper functions which are used by other namespaces.
+* `glam.xtdb.access` contains the logic used in `glam.models` namespaces to determine whether a user is authorized to perform certain actions.
+
+
+// [,clojure]
+// ----
+// include::https://raw.githubusercontent.com/lgessler/glam/master/src/workspaces/glam/main_ws.cljs[lines=1..3]
+// ----
 
