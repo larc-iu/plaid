@@ -94,7 +94,7 @@
 
 ;; join conveniences
 (defn add-to-multi-joins**
-  "Joins from e1 to e2 at all keys specified in `join-keys`. This function is idemponent:
+  "Joins from e1 to e2 at all keys specified in `join-keys`. This function is idempotent:
   if an e1->e2 join already exists at some join key on e1, nothing will change.
   This function also includes match clauses for both entities, guarding against race
   conditions."
