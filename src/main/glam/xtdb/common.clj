@@ -1,5 +1,6 @@
 (ns glam.xtdb.common
   (:require [glam.xtdb.easy :as gxe]
+            [glam.server.id-counter :refer [id-counter]]
             [taoensso.timbre :as log]
             [clojure.pprint :refer [pprint]]
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]))
