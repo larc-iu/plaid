@@ -60,6 +60,11 @@
         id (param-key params)]
     (access/ident-writeable? node user-id [id-key id])))
 
+;; id-key is something like :token/id, which specifies the kind of document
+;; we need to check permissions for. param-key is the key under which we will
+;; find the actual value of this ID in the parameters when we're doing a real
+;; auth check. These are typically the same, but we provide the arity 2 version
+;; of these functions in case they're not.
 (defn readable-required
   ([id-key]
    (readable-required id-key id-key))
@@ -84,3 +89,7 @@
         (and (= level :user) valid?))))
 (def admin-required (make-auth-transform (partial level-authorized :admin) "admin required"))
 (def user-required (make-auth-transform (partial level-authorized :user) "valid login required"))
+
+(defn ident-locked? [env ident]
+  (let [user-id (get-in env [:ring/request :session :user/id])]
+    (access/ident-locked? (:node env) user-id ident)))

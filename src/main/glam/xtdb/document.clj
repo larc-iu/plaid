@@ -52,3 +52,9 @@
         text-deletes (reduce into (map #(text/delete** node %) text-ids))]
     (conj text-deletes (gxe/delete* eid))))
 
+(gxe/deftx acquire-lock [node eid user-id]
+  (let [{existing :document/lock-holder :as doc} (gxe/entity node eid)]
+    (if (and (nil? existing)
+             (some? doc))
+      [(gxe/put* (assoc doc :document/lock-holder user-id))]
+      [])))

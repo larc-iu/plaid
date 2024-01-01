@@ -1,5 +1,6 @@
 (ns glam.xtdb.access
-  (:require [xtdb.api :as xt]
+  (:require [glam.xtdb.easy :as gxe]
+            [xtdb.api :as xt]
             [taoensso.timbre :as log]))
 
 (def key-symbol-map
@@ -124,5 +125,26 @@
       (log/info query)
       (not (empty? (xt/q (xt/db node) query))))))
 
+(defn ident-locked?
+  "Test whether a given ident belongs to a document that is locked by the current user."
+  [node user-id [k v :as ident]]
+  (let [where (loop [where [] k k]
+                (case k
+                  :document/id where
+                  :text/id (recur (conj where ['?txt :text/document '?d]) :document/id)
+                  :token/id (recur (conj where ['?tok :token/text '?txt]) :text/id)
+                  :span/id (recur (conj where ['?s :span/tokens '?tok]) :token/id)
+                  []))]
+    (if (and (not= k :document/id) (empty? where))
+      (do
+        (log/warn (str "\n\n!!Unknown ident passed to ident-locked?\n\n" ident "\n\nDid you add a new data type?\n\n"))
+        false)
+      (let [query {:find '[?d] :where where :in [(key-symbol-map k)]}
+            doc-id (if (= k :document/id) v (ffirst (xt/q (xt/db node) query v)))]
+        (if (or (nil? doc-id) (nil? user-id))
+          false
+          (= (:document/lock-holder (gxe/entity node doc-id))
+             user-id))))))
+
 (comment
-  (build-query {:find '[?p] :where [['?u :user/id 1]] :rules []} :text-layer/id))
+  (build-query {:find '[?p] :where [['?u :user/id 1]] :rules []} {:writeable true} :text-layer/id))
