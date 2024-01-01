@@ -6,6 +6,7 @@
     [com.fulcrologic.fulcro.algorithms.tx-processing.synchronous-tx-processing :as stx]
     [com.fulcrologic.fulcro.rendering.keyframe-render :as kfr]
     [com.fulcrologic.fulcro.rendering.keyframe-render2 :as kfr2]
+    [com.fulcrologic.fulcro.react.version18 :refer [with-react18]]
     [com.fulcrologic.fulcro.rendering.ident-optimized-render :as ier]
     [com.fulcrologic.fulcro.mutations :as m]
     [taoensso.timbre :as log])
@@ -84,22 +85,23 @@
     resp))
 
 (defonce SPA
-         (stx/with-synchronous-transactions
-           (app/fulcro-app
-             {:remote-error?     remote-error?
-              :remotes           {:remote (api-remote)}
-              :optimized-render! kfr2/render!
-              ;; Modify the default result action so that it looks for :on-result, :on-ok and :on-error
-              ;; see, for an example, change_password.cljs
-              :default-result-action!
-              (fn [{:keys [transacted-ast result] ::txp/keys [options] :as env}]
-                (js/console.log (pr-str options))
-                (js/console.log (pr-str (keys env)))
-                (m/default-result-action! env)
-                (when-let [on-result (:on-result options)]
-                  (on-result (get-in result [:body (:dispatch-key transacted-ast)])))
-                (if (remote-error? result)
-                  (when-let [on-error (:on-error options)]
-                    (on-error (get-in result [:body (:dispatch-key transacted-ast)])))
-                  (when-let [on-ok (:on-ok options)]
-                    (on-ok (get-in result [:body (:dispatch-key transacted-ast)])))))})))
+  (-> (app/fulcro-app
+        {:remote-error?     remote-error?
+         :remotes           {:remote (api-remote)}
+         :optimized-render! kfr2/render!
+         ;; Modify the default result action so that it looks for :on-result, :on-ok and :on-error
+         ;; see, for an example, change_password.cljs
+         :default-result-action!
+         (fn [{:keys [transacted-ast result] ::txp/keys [options] :as env}]
+           (js/console.log (pr-str options))
+           (js/console.log (pr-str (keys env)))
+           (m/default-result-action! env)
+           (when-let [on-result (:on-result options)]
+             (on-result (get-in result [:body (:dispatch-key transacted-ast)])))
+           (if (remote-error? result)
+             (when-let [on-error (:on-error options)]
+               (on-error (get-in result [:body (:dispatch-key transacted-ast)])))
+             (when-let [on-ok (:on-ok options)]
+               (on-ok (get-in result [:body (:dispatch-key transacted-ast)])))))})
+      stx/with-synchronous-transactions
+      with-react18))
