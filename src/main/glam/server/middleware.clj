@@ -113,21 +113,19 @@
 
 ;; Route handling
 (defn wrap-html-routes
-  "Allows all requests to `/chsk` and `/api` to continue down the handler chain,
-  and otherwise terminates the handler chain by serving the index page. This
-  allows page refresh to work 'right' from a user's perspective, as refreshing on
-  e.g. `/projects/` will simply serve the index, after which the client-side
-  routing setup will ensure that the proper components are displayed."
+  "Allows all requests to `/api` to continue down the handler chain, and otherwise terminates
+  the handler chain by serving the index page. This allows page refresh to work 'right' from
+  a user's perspective, as refreshing on e.g. `/projects/` will simply serve the index, after
+  which the client-side routing setup will ensure that the proper components are displayed."
   [ring-handler]
-  (let [rest-handler (rest-handler)]
-    (fn [{:keys [uri anti-forgery-token] :as req}]
-      (cond
-        (re-matches #"^/api/.*" uri)
-        (rest-handler req)
+  (fn [{:keys [uri anti-forgery-token] :as req}]
+    (cond
+      (re-matches #"^/api" uri)
+      (ring-handler req)
 
-        :else
-        (-> (resp/response (index anti-forgery-token))
-            (resp/content-type "text/html"))))))
+      :else
+      (-> (resp/response (index anti-forgery-token))
+          (resp/content-type "text/html")))))
 
 (defn wrap-ajax-api
   "AJAX remote for Fulcro, registered on the client as the :remote remote"
@@ -136,17 +134,6 @@
     (handle-api-request
       (:transit-params request)
       (fn [tx] (parser {:ring/request request} tx)))))
-
-(mount/defstate client-ids
-  :start
-  (atom #{}))
-
-(defrecord ClientListener []
-  WSListener
-  (client-added [this ws-net cid]
-    (swap! client-ids conj cid))
-  (client-dropped [this ws-net cid]
-    (swap! client-ids disj cid)))
 
 (defn wrap-xtdb-inspector [ring-handler]
   (let [inspector? (and (-> config :glam.server.xtdb/config :use-inspector))
