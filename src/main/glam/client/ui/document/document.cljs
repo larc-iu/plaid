@@ -5,7 +5,6 @@
             [glam.client.router :as r]
             [glam.client.util :as gcu]
             [glam.client.ui.material-ui :as mui]
-            [glam.algos.subs :as gas]
             [glam.client.ui.document.text-editor :refer [TextEditor ui-text-editor]]
             [glam.client.ui.document.token-editor :refer [TokenEditor ui-token-editor]]
             [glam.client.ui.document.interlinear-editor :as ied :refer [InterlinearEditor ui-interlinear-editor]]
@@ -123,18 +122,7 @@
                                    ;; spans with sentences. The route shouldn't be completed until all of this is over.
                                    ;; Pass a lambda that will call target ready, perhaps?
                                    ;; (c/transact! this [(do-corrections {:target-ready-fn ...})])
-                                   )))))
-   :componentDidMount    (fn [this]
-                           (let [props (c/props this)
-                                 doc-id (:document/id props)]
-                             (let [unregister! (gas/register-subscription!
-                                                 [:document/id doc-id]
-                                                 #(let [tab (get-in (app/current-state this) [:document/id doc-id :ui/active-tab])]
-                                                    (do-load! this doc-id tab {})))]
-                               (c/set-state! this {:unregister-fn unregister!}))))
-   :componentWillUnmount (fn [this]
-                           (when-let [unregister! (:unregister-fn (c/get-state this))]
-                             (unregister!)))}
+                                   )))))}
 
   (mui/container {:maxWidth "xl"}
     (mui/page-title name)

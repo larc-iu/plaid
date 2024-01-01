@@ -62,7 +62,7 @@
         (-> env
             (clear)
             (sm/assoc-aliased :username "" :session-valid? false :current-user "")
-            (sm/trigger-remote-mutation :actor/login-form `logout {::sm/mutation-remote :session})
+            (sm/trigger-remote-mutation :actor/login-form `logout {})
             (sm/activate :state/logged-out))]
     (r/route-to! :home)
     env))
@@ -76,8 +76,7 @@
                                    :password            (:password event-data)
                                    ::m/returning        (sm/actor-class env :actor/current-session)
                                    ::sm/ok-event        :event/complete
-                                   ::sm/error-event     :event/failed
-                                   ::sm/mutation-remote :session})
+                                   ::sm/error-event     :event/failed})
       (sm/activate :state/checking-session)))
 
 (defn process-session-result
