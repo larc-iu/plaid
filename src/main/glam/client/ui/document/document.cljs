@@ -86,7 +86,8 @@
                         (assoc :key `doc/acquire-lock))]
             ast))
   (result-action [{:keys [state ref app component] :as env}]
-                 (let [{:server/keys [message error?]} (get-in env [:result :body `doc/acquire-lock])]
+                 (let [{:server/keys [message error?] :as resp} (get-in env [:result :body `doc/acquire-lock])]
+                   (log/info resp)
                    (when message
                      (if error?
                        (snack/message! {:message  message
@@ -101,7 +102,8 @@
                         (assoc :key `doc/release-lock))]
             ast))
   (result-action [{:keys [state ref app component] :as env}]
-                 (let [{:server/keys [message error?]} (get-in env [:result :body `doc/release-lock])]
+                 (let [{:server/keys [message error?] :as resp} (get-in env [:result :body `doc/release-lock])]
+                   (log/info resp)
                    (when message
                      (if error?
                        (snack/message! {:message  message
@@ -135,10 +137,9 @@
                                     data-tree
                                     {sn/session-ident (sn/session-assoc session tab-session-key tab)})))
    :route-segment        (r/last-route-segment :document)
-   :componentDidMount    (fn [this]
-                           (c/transact! this [(acquire-lock {:document/id (-> this c/props :document/id)})]))
    :componentWillUnmount (fn [this]
-                           (c/transact! this [(release-lock {:document/id (-> this c/props :document/id)})]))
+                           (when-let [id (-> this c/props :document/id)]
+                             (c/transact! this [(release-lock {:document/id id})])))
    :will-enter           (fn [app {:keys [id] :as route-params}]
                            (let [parsed-id (gcu/parse-id id)
                                  session (get-in (app/current-state app) sn/session-ident)
@@ -152,6 +153,7 @@
                                  [:document/id parsed-id]
                                  (fn []
                                    (do-load! app parsed-id tab {} true)
+                                   (c/transact! app [(acquire-lock {:document/id parsed-id})])
                                    ;; TODO: here (and in tab onclick, and in refresh lambda) is where I should
                                    ;; call a function defined in interlinear  which scans the state that was just
                                    ;; loaded and triggers any maintenance that might need to happen, e.g. realigning
