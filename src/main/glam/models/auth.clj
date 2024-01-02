@@ -97,7 +97,7 @@
     (if (nil? user-id)
       nil
       (let [{:user/keys [name email]} (gxe/entity node user-id)]
-        (str name "[" email "]")))))
+        (str name " [" email "]")))))
 
 (defn lock-holder-error-msg [env ident]
   (if-let [name (lock-holder-name env ident)]

@@ -58,3 +58,9 @@
              (some? doc))
       [(gxe/put* (assoc doc :document/lock-holder user-id))]
       [])))
+
+(gxe/deftx release-lock [node eid]
+  (let [doc (gxe/entity node eid)]
+    (if (some? doc)
+      [(gxe/put* (dissoc doc :document/lock-holder))]
+      [])))

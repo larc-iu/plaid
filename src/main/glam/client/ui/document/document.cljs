@@ -3,6 +3,7 @@
             [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
             [com.fulcrologic.fulcro.data-fetch :as df]
             [glam.client.router :as r]
+            [glam.client.ui.global-snackbar :as snack]
             [glam.client.util :as gcu]
             [glam.client.ui.material-ui :as mui]
             [glam.client.ui.document.text-editor :refer [TextEditor ui-text-editor]]
@@ -16,7 +17,8 @@
             [com.fulcrologic.fulcro.algorithms.normalize :as fnorm]
             [com.fulcrologic.fulcro.ui-state-machines :as uism]
             [glam.client.ui.common.forms :as forms]
-            [glam.models.session :as sn]))
+            [glam.models.session :as sn]
+            [glam.models.document :as doc]))
 
 (defsc ProjectNameQuery
   [this props]
@@ -75,6 +77,36 @@
                              (assoc-in sn/session-ident (sn/session-assoc (get-in s sn/session-ident) (conj ref ::tab) tab)))))
           (do-load! component (last ref) tab {:post-action #(m/set-value! component :ui/busy? false)})))
 
+(m/defmutation acquire-lock
+  [{document-id :document/id}]
+  (action [{:keys [state ref]}]
+          nil)
+  (remote [{:keys [ast]}]
+          (let [ast (-> ast
+                        (assoc :key `doc/acquire-lock))]
+            ast))
+  (result-action [{:keys [state ref app component] :as env}]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `doc/acquire-lock])]
+                   (when message
+                     (if error?
+                       (snack/message! {:message  message
+                                        :severity (if error? "error" "success")}))))))
+
+(m/defmutation release-lock
+  [{document-id :document/id}]
+  (action [{:keys [state ref]}]
+          nil)
+  (remote [{:keys [ast]}]
+          (let [ast (-> ast
+                        (assoc :key `doc/release-lock))]
+            ast))
+  (result-action [{:keys [state ref app component] :as env}]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `doc/release-lock])]
+                   (when message
+                     (if error?
+                       (snack/message! {:message  message
+                                        :severity (if error? "error" "success")}))))))
+
 (defsc Document
   [this {:document/keys [id name project] :ui/keys [active-tab busy?]
          :>/keys        [text-editor token-editor interlinear-editor settings] :as props}]
@@ -103,6 +135,10 @@
                                     data-tree
                                     {sn/session-ident (sn/session-assoc session tab-session-key tab)})))
    :route-segment        (r/last-route-segment :document)
+   :componentDidMount    (fn [this]
+                           (c/transact! this [(acquire-lock {:document/id (-> this c/props :document/id)})]))
+   :componentWillUnmount (fn [this]
+                           (c/transact! this [(release-lock {:document/id (-> this c/props :document/id)})]))
    :will-enter           (fn [app {:keys [id] :as route-params}]
                            (let [parsed-id (gcu/parse-id id)
                                  session (get-in (app/current-state app) sn/session-ident)
