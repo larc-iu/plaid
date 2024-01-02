@@ -15,9 +15,6 @@
             [glam.client.ui.material-ui :as mui]
             [com.fulcrologic.fulcro.algorithms.form-state :as fs]))
 
-(defn toggle-modal! [this] (sm/trigger! this ::session/session :event/toggle-modal))
-(defn close-modal! [this] (sm/trigger! this ::session/session :event/close-modal))
-
 (defn form-valid [form field]
   (let [v (get form field)]
     (case field
