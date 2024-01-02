@@ -1,5 +1,6 @@
 (ns glam.xtdb.access
-  (:require [xtdb.api :as xt]
+  (:require [glam.xtdb.easy :as gxe]
+            [xtdb.api :as xt]
             [taoensso.timbre :as log]))
 
 (def key-symbol-map
@@ -124,5 +125,31 @@
       (log/info query)
       (not (empty? (xt/q (xt/db node) query))))))
 
+(defn ident->lock-holder
+  "Given the ident of a document-level record such as [:span/id 23], return the ID of the user
+  which holds the lock for the associated document record, or nil if no lock is held."
+  [node [k v :as ident]]
+  (let [where (loop [where [] k k]
+                (case k
+                  :document/id where
+                  :text/id (recur (conj where ['?txt :text/document '?d]) :document/id)
+                  :token/id (recur (conj where ['?tok :token/text '?txt]) :text/id)
+                  :span/id (recur (conj where ['?s :span/tokens '?tok]) :token/id)
+                  []))]
+    (if (and (not= k :document/id) (empty? where))
+      (do
+        (log/warn (str "\n\n!!Unknown ident passed to ident-locked?\n\n" ident "\n\nDid you add a new data type?\n\n"))
+        nil)
+      (let [query {:find '[?d] :where where :in [(key-symbol-map k)]}
+            doc-id (if (= k :document/id) v (ffirst (xt/q (xt/db node) query v)))]
+        (:document/lock-holder (gxe/entity node doc-id))))))
+
+(defn ident-locked?
+  "True iff an ident (see ident->lock-holder) is locked by the user indicated by user-id.
+  NB this means this function returns false even if no lock is held."
+  [node user-id ident]
+  (let [lock-holder-id (ident->lock-holder node ident)]
+    (and (some? user-id) (= user-id lock-holder-id))))
+
 (comment
-  (build-query {:find '[?p] :where [['?u :user/id 1]] :rules []} :text-layer/id))
+  (build-query {:find '[?p] :where [['?u :user/id 1]] :rules []} {:writeable true} :text-layer/id))

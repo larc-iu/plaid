@@ -8,8 +8,6 @@
     [hiccup.page :refer [html5]]
     [xtdb.api :as xt]
     [com.fulcrologic.fulcro.server.api-middleware :refer [handle-api-request wrap-transit-params wrap-transit-response]]
-    [com.fulcrologic.fulcro.networking.websockets :as fws]
-    [com.fulcrologic.fulcro.networking.websocket-protocols :refer [WSListener WSNet] :as fwsp]
     [taoensso.sente.server-adapters.http-kit :refer [get-sch-adapter]]
     [ring.util.response :as resp :refer [response file-response resource-response]]
     [ring.middleware.defaults :refer [wrap-defaults]]
@@ -19,7 +17,6 @@
     [glam.server.pathom-parser :refer [parser mutation?]]
     [glam.server.xtdb :refer [xtdb-node xtdb-session-node]]
     [glam.server.rest-wrappers.core :refer [rest-handler]]
-    [glam.algos.subs :as subs]
     [glam.xtdb.easy :as gxe]
     [glam.xtdb.common :as gcc]
     [com.fulcrologic.fulcro.algorithms.tempid :as tempid])
@@ -116,24 +113,19 @@
 
 ;; Route handling
 (defn wrap-html-routes
-  "Allows all requests to `/chsk` and `/api` to continue down the handler chain,
-  and otherwise terminates the handler chain by serving the index page. This
-  allows page refresh to work 'right' from a user's perspective, as refreshing on
-  e.g. `/projects/` will simply serve the index, after which the client-side
-  routing setup will ensure that the proper components are displayed."
+  "Allows all requests to `/api` to continue down the handler chain, and otherwise terminates
+  the handler chain by serving the index page. This allows page refresh to work 'right' from
+  a user's perspective, as refreshing on e.g. `/projects/` will simply serve the index, after
+  which the client-side routing setup will ensure that the proper components are displayed."
   [ring-handler]
-  (let [rest-handler (rest-handler)]
-    (fn [{:keys [uri anti-forgery-token] :as req}]
-      (cond
-        (re-matches #"^/chsk|^/api" uri)
-        (ring-handler req)
+  (fn [{:keys [uri anti-forgery-token] :as req}]
+    (cond
+      (re-matches #"^/api" uri)
+      (ring-handler req)
 
-        (re-matches #"^/rest-api/.*" uri)
-        (rest-handler req)
-
-        :else
-        (-> (resp/response (index anti-forgery-token))
-            (resp/content-type "text/html"))))))
+      :else
+      (-> (resp/response (index anti-forgery-token))
+          (resp/content-type "text/html")))))
 
 (defn wrap-ajax-api
   "AJAX remote for Fulcro, registered on the client as the :remote remote"
@@ -142,52 +134,6 @@
     (handle-api-request
       (:transit-params request)
       (fn [tx] (parser {:ring/request request} tx)))))
-
-(mount/defstate client-ids
-  :start
-  (atom #{}))
-
-(defrecord ClientListener []
-  WSListener
-  (client-added [this ws-net cid]
-    (swap! client-ids conj cid))
-  (client-dropped [this ws-net cid]
-    (swap! client-ids disj cid)))
-
-;; websockets remote for fulcro, registered as :remote
-(mount/defstate websockets
-  :start
-  (let [wrapped-parser (fn wrapped-parser [{:keys [request cid] :as env} tx]
-                         ;; It seems like when requests come in via websockets, they don't always get hit by the
-                         ;; request half of ring's wrap-session. To get around this, read session data directly from
-                         ;; the store just before it goes into pathom. TODO: figure out whether this story is right
-                         (let [{session :session session-key :session/key} request
-                               augmented-session (merge session (store/read-session session-store session-key))
-                               augmented-request (assoc request :session augmented-session)
-                               response (parser {:ring/request augmented-request} tx)
-                               messages (subs/get-messages xtdb-node tx response)]
-                           ;; broadcast mutation messages
-                           (doseq [[verb body] messages]
-                             (doseq [other-cid @client-ids]
-                               (when-not (= cid other-cid)
-                                 (fwsp/push websockets other-cid verb body))))
-                           response))]
-    (let [ws (fws/start! (fws/make-websockets
-                           wrapped-parser
-                           {:http-server-adapter (get-sch-adapter)
-                            :parser-accepts-env? true
-                            ;; See Sente for CSRF instructions
-                            :sente-options       {:csrf-token-fn #_nil :anti-forgery-token
-                                                  ;; todo: revisit this implementation if we ever want to do targeted push
-                                                  ;; current problem is that login makes the read of :session stale
-                                                  ;; maybe rely on using a client-id that can be mapped to session
-                                                  ;; actually, :session/key looks right
-                                                  #_#_:user-id-fn (fn [r]
-                                                                    [(:client-id r) (get-in r [:session :user/id])])}}))]
-      (fwsp/add-listener ws (->ClientListener))
-      ws))
-  :stop
-  (fws/stop! websockets))
 
 (defn wrap-xtdb-inspector [ring-handler]
   (let [inspector? (and (-> config :glam.server.xtdb/config :use-inspector))
@@ -205,7 +151,6 @@
     (-> (wrap-ajax-api parser)
         wrap-transit-params
         wrap-transit-response
-        (fws/wrap-api websockets)
         wrap-html-routes
         wrap-xtdb-inspector
         (wrap-defaults (-> defaults-config

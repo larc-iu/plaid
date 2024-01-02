@@ -35,6 +35,9 @@
        (nil? (txtl/get node tl-id))
        (server-error (str "Text layer does not exist: " tl-id))
 
+       (not (ma/ident-locked? env [:document/id document-id]))
+       (server-error (ma/lock-holder-error-msg env [:document/id document-id]))
+
        ;; TODO: we actually need a match here in the tx to ensure no other text exists
        :else
        (let [{:keys [success] new-id :id} (text/create node {:text/body     body
@@ -56,6 +59,9 @@
 
            (nil? (txtl/get node tl-id))
            (server-error (str "Text layer does not exist: " tl-id))
+
+           (not (ma/ident-locked? env [:document/id document-id]))
+           (server-error (ma/lock-holder-error-msg env [:document/id document-id]))
 
            :else
            (if (text/update-body node id ops)
@@ -79,6 +85,9 @@
            (nil? (tokl/get node tokl-id))
            (server-error (str "Token layer does not exist: " tokl-id))
 
+           (not (ma/ident-locked? env [:text/id id]))
+           (server-error (ma/lock-holder-error-msg env [:text/id id]))
+
            :else
            (if (tokl/update-body-and-morpheme-tokenize node tokl-id id ops)
              (server-message "Update successful")
@@ -100,6 +109,9 @@
 
        (nil? (tokl/get node tokl-id))
        (server-error (str "Token layer does not exist: " tokl-id))
+
+       (not (ma/ident-locked? env [:text/id id]))
+       (server-error (ma/lock-holder-error-msg env [:text/id id]))
 
        :else
        (let [{:keys [success] new-id :id} (tokl/create-text-and-morpheme-tokenize

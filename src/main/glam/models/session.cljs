@@ -62,7 +62,7 @@
         (-> env
             (clear)
             (sm/assoc-aliased :username "" :session-valid? false :current-user "")
-            (sm/trigger-remote-mutation :actor/login-form `logout {::sm/mutation-remote :session})
+            (sm/trigger-remote-mutation :actor/login-form `logout {})
             (sm/activate :state/logged-out))]
     (r/route-to! :home)
     env))
@@ -76,8 +76,7 @@
                                    :password            (:password event-data)
                                    ::m/returning        (sm/actor-class env :actor/current-session)
                                    ::sm/ok-event        :event/complete
-                                   ::sm/error-event     :event/failed
-                                   ::sm/mutation-remote :session})
+                                   ::sm/error-event     :event/failed})
       (sm/activate :state/checking-session)))
 
 (defn process-session-result
@@ -106,9 +105,7 @@
            {::sm/ok-event    :event/complete
             ::sm/error-event :event/failed}))
 
-(def global-events
-  {:event/close-modal  {::sm/handler (fn [env] (sm/assoc-aliased env :modal-open? false))}
-   :event/toggle-modal {::sm/handler (fn [env] (sm/update-aliased env :modal-open? not))}})
+(def global-events {})
 
 (defn get-server-mutation-err
   [result-or-env]
@@ -188,7 +185,7 @@
   (error-action [{:keys [app]}]
                 (df/remove-load-marker! app ::signup))
 
-  (session [{:keys [state] :as env}]
+  (remote [{:keys [state] :as env}]
            (let [{:account/keys [email password password-again]} (get-in @state signup-ident)]
              (let [valid? (boolean (and (valid-email email) (valid-password password)
                                         (= password password-again)))]

@@ -49,7 +49,7 @@
            {:tempids {temp-id id}})))))
 
 #?(:clj
-   (pc/defmutation save-document [{:keys [node]} {delta :delta [_ id] :ident :as params}]
+   (pc/defmutation save-document [{:keys [node] :as env} {delta :delta [_ id] :ident :as params}]
      {::pc/transform (ma/writeable-required :document/id (comp second :ident))}
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
@@ -59,26 +59,85 @@
          (not valid?)
          (server-error (str "Document is not valid, refusing to save: " delta))
 
+         (not (ma/ident-locked? env [:document/id id]))
+         (server-error (ma/lock-holder-error-msg env [:document/id id]))
+
          :else
          (if (doc/merge node id (mc/apply-delta {} delta))
            (server-message "Document saved")
            (server-error "Document failed to save"))))))
 
 #?(:clj
-   (pc/defmutation delete-document [{:keys [node]} {[_ id] :ident :as params}]
+   (pc/defmutation delete-document [{:keys [node] :as env} {[_ id] :ident :as params}]
      {::pc/transform (ma/writeable-required :document/id (comp second :ident))}
      (let [{:document/keys [name] :as record} (gxe/entity node id)]
        (cond
          (nil? record)
          (server-error (str "Document not found with ID: " id))
 
+         (not (ma/ident-locked? env [:document/id id]))
+         (server-error (ma/lock-holder-error-msg env [:document/id id]))
+
          :else
          (if-not (doc/delete node id)
            (server-error (str "Failed to delete document " name ". Please refresh and try again"))
            (server-message (str "Document " name " deleted")))))))
 
+#?(:clj
+   (pc/defmutation acquire-lock [{:keys [node] :as env} {doc-id :document/id user-id :user/id}]
+     {::pc/transform (ma/writeable-required :document/id)}
+     (let [{name :document/name :as doc} (gxe/entity node doc-id)
+           user (gxe/entity node user-id)]
+       (cond
+         (nil? doc)
+         (server-error (str "Document not found with ID: " doc-id))
+
+         (nil? user)
+         (server-error (str "User not found with ID: " user-id))
+
+         (some? (:document/lock-holder doc))
+         (server-error (ma/lock-holder-error-msg env [:document/id doc-id]))
+
+         :else
+         (if-not (doc/acquire-lock node doc-id user-id)
+           (server-error (str "Failed to acquire lock on " name "."))
+           (server-message (str "Lock acquired on document " name ".")))))))
+
+#?(:clj
+   (pc/defmutation acquire-lock [{:keys [node current-user] :as env} {doc-id :document/id}]
+     {::pc/transform (ma/writeable-required :document/id)}
+     (let [{name :document/name :as doc} (gxe/entity node doc-id)]
+       (cond
+         (nil? doc)
+         (server-error (str "Document not found with ID: " doc-id))
+
+         (some? (:document/lock-holder doc))
+         (server-error (ma/lock-holder-error-msg env [:document/id doc-id]))
+
+         :else
+         (if-not (doc/acquire-lock node doc-id current-user)
+           (server-error (str "Failed to acquire lock on " name "."))
+           (server-message (str "Lock acquired on document " name ".")))))))
+
+#?(:clj
+   (pc/defmutation release-lock [{:keys [node current-user] :as env} {doc-id :document/id}]
+     {::pc/transform (ma/writeable-required :document/id)}
+     (let [{name :document/name :as doc} (gxe/entity node doc-id)]
+       (cond
+         (nil? doc)
+         (server-error (str "Document not found with ID: " doc-id))
+
+         (and (some? (:document/lock-holder doc)) (not= current-user (:document/lock-holder doc)))
+         (server-error "Locks may only be released by their owners.")
+
+         :else
+         (if-not (doc/release-lock node doc-id)
+           (server-error (str "Failed to release lock on " name "."))
+           (server-message (str "Lock released on document " name ".")))))))
+
 ;; admin --------------------------------------------------------------------------------
 
 #?(:clj
-   (def document-resolvers [get-document create-document save-document delete-document]))
+   (def document-resolvers [get-document create-document save-document delete-document
+                            acquire-lock release-lock]))
 
