@@ -45,8 +45,6 @@
                      :resolver-env env})))
   (let [user-id (get-in env [:ring/request :session :user/id])
         id (param-key params)]
-    ;; for pathom-viz
-    #_true
     (access/ident-readable? node user-id [id-key id])))
 
 (defn- writeable-required-fn [id-key param-key {:keys [node] :as env} params]
@@ -93,3 +91,15 @@
 (defn ident-locked? [env ident]
   (let [user-id (get-in env [:ring/request :session :user/id])]
     (access/ident-locked? (:node env) user-id ident)))
+
+(defn lock-holder-name [{:keys [node]} ident]
+  (let [user-id (access/ident->lock-holder node ident)]
+    (if (nil? user-id)
+      nil
+      (let [{:user/keys [name email]} (gxe/entity node user-id)]
+        (str name "[" email "]")))))
+
+(defn lock-holder-error-msg [env ident]
+  (if-let [name (lock-holder-name env ident)]
+    (str "Lock required for this operation but is held by " name)
+    "Lock required for this operation. Acquire it before proceeding."))

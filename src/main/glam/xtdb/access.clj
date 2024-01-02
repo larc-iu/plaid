@@ -125,9 +125,10 @@
       (log/info query)
       (not (empty? (xt/q (xt/db node) query))))))
 
-(defn ident-locked?
-  "Test whether a given ident belongs to a document that is locked by the current user."
-  [node user-id [k v :as ident]]
+(defn ident->lock-holder
+  "Given the ident of a document-level record such as [:span/id 23], return the ID of the user
+  which holds the lock for the associated document record, or nil if no lock is held."
+  [node [k v :as ident]]
   (let [where (loop [where [] k k]
                 (case k
                   :document/id where
@@ -138,13 +139,17 @@
     (if (and (not= k :document/id) (empty? where))
       (do
         (log/warn (str "\n\n!!Unknown ident passed to ident-locked?\n\n" ident "\n\nDid you add a new data type?\n\n"))
-        false)
+        nil)
       (let [query {:find '[?d] :where where :in [(key-symbol-map k)]}
             doc-id (if (= k :document/id) v (ffirst (xt/q (xt/db node) query v)))]
-        (if (or (nil? doc-id) (nil? user-id))
-          false
-          (= (:document/lock-holder (gxe/entity node doc-id))
-             user-id))))))
+        (:document/lock-holder (gxe/entity node doc-id))))))
+
+(defn ident-locked?
+  "True iff an ident (see ident->lock-holder) is locked by the user indicated by user-id.
+  NB this means this function returns false even if no lock is held."
+  [node user-id ident]
+  (let [lock-holder-id (ident->lock-holder node ident)]
+    (and (some? user-id) (= user-id lock-holder-id))))
 
 (comment
   (build-query {:find '[?p] :where [['?u :user/id 1]] :rules []} {:writeable true} :text-layer/id))
