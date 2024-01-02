@@ -7,9 +7,9 @@
   {:ns-whitelist []
    ;; you can selectively edit this blacklist, or toggle "Verbose" mode in the browser dev tools logging
    ;; to optionally prevent all trace level logs.
-   :ns-blacklist [;;"com.fulcrologic.fulcro.algorithms.tx-processing"
-                  ;;"com.fulcrologic.fulcro.algorithms.indexing"
-                  ;;"com.fulcrologic.fulcro.ui-state-machines"
-                  ;;"com.fulcrologic.fulcro.routing.dynamic-routing"
-                  ;;"com.fulcrologic.fulcro.inspect.inspect-ws"
+   :ns-blacklist ["com.fulcrologic.fulcro.algorithms.tx-processing"
+                  "com.fulcrologic.fulcro.algorithms.indexing"
+                  "com.fulcrologic.fulcro.ui-state-machines"
+                  "com.fulcrologic.fulcro.routing.dynamic-routing"
+                  "com.fulcrologic.fulcro.inspect.inspect-ws"
                   "shadow.cljs.devtools.server.worker.impl"]}}}
