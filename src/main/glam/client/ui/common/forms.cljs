@@ -301,6 +301,7 @@
                  save-mutation (-> FormClass c/component-options ::save-mutation)
                  message (some-> event-data ::uism/mutation-result :body (get save-mutation) :server/message)]
              (log/info "edit form: save failed")
+             (c/transact! SPA [(fs/reset-form! {:form-ident (::uism/source-actor-ident env)})])
              (snack/message! {:message  (if message message "Error occurred, save has failed.")
                               :severity "error"})
              (-> env

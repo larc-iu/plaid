@@ -54,8 +54,7 @@
         (dom/form
           {:onSubmit (fn [e]
                        (.preventDefault e)
-                       (uism/trigger! this ::settings :event/save)
-                       (c/transact! this [(fs/clear-complete! {:entity-ident [:document/id id]})]))}
+                       (uism/trigger! this ::settings :event/save))}
           (mui/vertical-grid
             {:spacing 2}
             (forms/text-input-with-label this :document/name "Name" "Must have 1 to 80 characters"
