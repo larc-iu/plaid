@@ -40,6 +40,9 @@
        (not (string? value))
        (server-error "Value must be a string.")
 
+       (not (ma/ident-locked? env [:span/id id]))
+       (server-error (ma/lock-holder-error-msg env [:span/id id]))
+
        :else
        (if-let [result (s/merge node id {:span/value value})]
          (server-message "Successfully saved span")
@@ -60,6 +63,9 @@
        (some nil? (map #(tok/get node %) tokens))
        (server-error "Not all tokens exist for this span")
 
+       (not (ma/ident-locked? env [:span/id id]))
+       (server-error (ma/lock-holder-error-msg env [:span/id id]))
+
        :else
        (let [{:keys [success] new-id :id} (s/create node {:span/value  value
                                                           :span/layer  layer
@@ -76,6 +82,10 @@
                               updates        :updates
                               :as            args}]
      {::pc/transform (ma/writeable-required :span-layer/id)}
+
+     (not (ma/ident-locked? env [:document/id document-id]))
+     (server-error (ma/lock-holder-error-msg env [:document/id document-id]))
+
      (let [success (s/batched-update node document-id span-layer-id span-snapshots updates)]
        (if-not success
          (server-error "Failed to update document, please try again")
@@ -87,6 +97,10 @@
                               batches     :batches
                               :as         args}]
      {::pc/transform (ma/writeable-required :document/id)}
+
+     (not (ma/ident-locked? env [:document/id document-id]))
+     (server-error (ma/lock-holder-error-msg env [:document/id document-id]))
+
      (let [success (s/multi-batched-update node document-id batches)]
        (if-not success
          (server-error "Failed to update document, please try again")

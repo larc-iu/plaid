@@ -33,13 +33,16 @@
            (log/error (str "Exception message: " (.getMessage e))))))))
 
 #?(:clj
-   (pc/defmutation set-extent [{:keys [node]} {:token/keys [id] :as params}]
+   (pc/defmutation set-extent [{:keys [node] :as env} {:token/keys [id] :as params}]
      {::pc/output    [:server/message :server/error?]
       ::pc/transform (ma/writeable-required :token/id)}
      (let [token (gxe/entity node id)]
        (cond
          (nil? token)
          (server-error (str "Token does not exist with id: " id))
+
+         (not (ma/ident-locked? env [:token/id id]))
+         (server-error (ma/lock-holder-error-msg env [:token/id id]))
 
          :else
          (if-not (tok/set-extent node id (select-keys params [:new-begin :new-end :delta-begin :delta-end]))
@@ -47,7 +50,7 @@
            (server-message "Token boundaries updated"))))))
 
 #?(:clj
-   (pc/defmutation delete [{:keys [node]} {:token/keys [id] :as params}]
+   (pc/defmutation delete [{:keys [node] :as env} {:token/keys [id] :as params}]
      {::pc/output    [:server/message :server/error?]
       ::pc/transform (ma/writeable-required :token/id)}
      (let [token (gxe/entity node id)]
@@ -55,19 +58,30 @@
          (nil? token)
          (server-error (str "Token does not exist with id: " id))
 
+         (not (ma/ident-locked? env [:token/id id]))
+         (server-error (ma/lock-holder-error-msg env [:token/id id]))
+
          :else
          (if-not (tok/delete node id)
            (server-error "Token deletion failed")
            (server-message "Token deleted"))))))
 
 #?(:clj
-   (pc/defmutation create [{:keys [node]} token]
+   (pc/defmutation create [{:keys [node] :as env} token]
      {::pc/output    [:server/message :server/error?]
       ::pc/transform (ma/writeable-required :token-layer/id :token/layer)}
-     (let [{:keys [success] new-id :id} (tok/safe-create node token)]
-       (if-not success
-         (server-error "Token creation failed")
-         (merge {:tempids {(:token/id token) new-id}} (server-message "Text created"))))))
+     (cond
+       (nil? (:token/text token))
+       (server-error "Token must have an associated text.")
+
+       (not (ma/ident-locked? env [:text/id (:token/text token)]))
+       (server-error (ma/lock-holder-error-msg env [:text/id (:token/text token)]))
+
+       :else
+       (let [{:keys [success] new-id :id} (tok/safe-create node token)]
+         (if-not success
+           (server-error "Token creation failed")
+           (merge {:tempids {(:token/id token) new-id}} (server-message "Text created")))))))
 
 ;; admin --------------------------------------------------------------------------------
 

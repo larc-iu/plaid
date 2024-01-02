@@ -49,7 +49,7 @@
            {:tempids {temp-id id}})))))
 
 #?(:clj
-   (pc/defmutation save-document [{:keys [node]} {delta :delta [_ id] :ident :as params}]
+   (pc/defmutation save-document [{:keys [node] :as env} {delta :delta [_ id] :ident :as params}]
      {::pc/transform (ma/writeable-required :document/id (comp second :ident))}
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
@@ -59,18 +59,24 @@
          (not valid?)
          (server-error (str "Document is not valid, refusing to save: " delta))
 
+         (not (ma/ident-locked? env [:document/id id]))
+         (server-error (ma/lock-holder-error-msg env [:document/id id]))
+
          :else
          (if (doc/merge node id (mc/apply-delta {} delta))
            (server-message "Document saved")
            (server-error "Document failed to save"))))))
 
 #?(:clj
-   (pc/defmutation delete-document [{:keys [node]} {[_ id] :ident :as params}]
+   (pc/defmutation delete-document [{:keys [node] :as env} {[_ id] :ident :as params}]
      {::pc/transform (ma/writeable-required :document/id (comp second :ident))}
      (let [{:document/keys [name] :as record} (gxe/entity node id)]
        (cond
          (nil? record)
          (server-error (str "Document not found with ID: " id))
+
+         (not (ma/ident-locked? env [:document/id id]))
+         (server-error (ma/lock-holder-error-msg env [:document/id id]))
 
          :else
          (if-not (doc/delete node id)

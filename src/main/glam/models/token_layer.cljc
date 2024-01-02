@@ -196,6 +196,9 @@
        (not (#{:tokenization/whitespace :tokenization/morpheme} tokenization-scheme))
        (server-error (str "Unrecognized tokenization scheme:" tokenization-scheme))
 
+       (not (ma/ident-locked? env [:document/id doc-id]))
+       (server-error (ma/lock-holder-error-msg env [:document/id doc-id]))
+
        :else
        (let [success (condp = tokenization-scheme
                        :tokenization/whitespace (tokl/whitespace-tokenize node id doc-id text-id)
