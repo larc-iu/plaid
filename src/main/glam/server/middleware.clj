@@ -16,7 +16,7 @@
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser mutation?]]
     [glam.server.xtdb :refer [xtdb-node xtdb-session-node]]
-    [glam.server.rest-wrappers.core :refer [rest-handler]]
+    [glam.server.rest-api.core :refer [rest-handler]]
     [glam.xtdb.easy :as gxe]
     [glam.xtdb.common :as gcc]
     [com.fulcrologic.fulcro.algorithms.tempid :as tempid])
@@ -120,6 +120,9 @@
   [ring-handler]
   (fn [{:keys [uri anti-forgery-token] :as req}]
     (cond
+      (re-matches #"^/rest-api/.*" uri)
+      (rest-handler req)
+
       (re-matches #"^/api" uri)
       (ring-handler req)
 
