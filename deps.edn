@@ -27,6 +27,7 @@
            metosin/reitit                       {:mvn/version "0.6.0"}
            metosin/reitit-pedestal              {:mvn/version "0.6.0"}
            clj-commons/pushy                    {:mvn/version "0.3.10"}
+           luminus-transit/luminus-transit      {:mvn/version "0.1.6"}
 
            ;; backend --------------------------------------------------------------------------------
            mount/mount                          {:mvn/version "0.1.17"}
@@ -39,8 +40,8 @@
            ;; xtdb
            com.xtdb/xtdb-core                   {:mvn/version "1.24.1"}
            com.xtdb/xtdb-lmdb                   {:mvn/version "1.24.1"}
-           com.github.tatut/xtdb-inspector      {:git/url "https://github.com/tatut/xtdb-inspector.git"
-                                                 :sha     "b04e59edc7ce7ba11557be5d6cebd25ebe404efa"}
+           com.github.tatut/xtdb-inspector      {:git/url "https://github.com/lgessler/xtdb-inspector.git"
+                                                 :sha     "6fdb3cad812c99ad93e35cb4b7436f0258fff6ab"}
            duratom/duratom                      {:mvn/version "0.5.8"}
 
            ;; Password hashing
