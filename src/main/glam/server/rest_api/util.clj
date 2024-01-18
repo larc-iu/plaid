@@ -1,6 +1,11 @@
 (ns glam.server.rest-api.util
   (:require [clojure.walk :refer [postwalk]]))
 
+(defn get-created-id [data]
+  (-> data
+      (assoc :id (-> data :tempids first second))
+      (dissoc :tempids)))
+
 (defn- response-format [request]
   (-> request
       (dissoc :reitit.core/match)
@@ -29,9 +34,14 @@
     response
     (let [new-body (postwalk
                      (fn [x]
-                       (if (keyword? x)
-                         (keyword (name x))
-                         x))
+                       (cond (= x :server/error?)
+                             :error
+
+                             (keyword? x)
+                             (keyword (name x))
+
+                             :else
+                             x))
                      response)]
       (assoc response :body new-body))))
 
