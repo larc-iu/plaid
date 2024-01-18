@@ -10,11 +10,14 @@
             [reitit.ring.middleware.multipart :as multipart]
             [reitit.ring.middleware.parameters :as parameters]
             [ring.util.response :as resp]
+            [taoensso.timbre :as log]
             [muuntaja.core :as m]
             [glam.server.id-counter :refer [id?]]
             [glam.server.pathom-parser :refer [parser]]
             [glam.server.rest-api.util :refer [postprocess-middleware]]
             [glam.server.rest-api.session :refer [session-routes]]
+            [glam.server.rest-api.span :refer [span-routes]]
+            [malli.experimental.lite :as ml]
             [malli.util :as mu]))
 
 ;; cf. https://github.com/metosin/reitit/blob/master/examples/ring-example/src/example/server.clj
@@ -82,19 +85,12 @@
    [""
     {:middleware [auth-middleware postprocess-middleware]}
     ["/pluss"
-     {:post {:parameters  {:query {:x int? :y int?}}
+     {:post {:parameters  {:query {:x int? :y int? :cake [:enum "yes" "no"]}}
              :description "Add two numbers"
              :handler     (fn [{{{:keys [x y]} :query} :parameters :as req}]
                             {:status 200
                              :body   {:total (+ x y)}})}}]
-
-    ["/span"
-     ["/:id"
-      {:get {:parameters {:path {:id id?}}
-             :handler    (fn [{{{:keys [id]} :path} :parameters :as req}]
-                           {:status 200
-                            :body   (get (parser req [{[:span/id id] [:span/id :span/value :span/layer :span/tokens]}])
-                                         [:span/id id])})}}]]]
+    span-routes]
    session-routes
 
    ;; swagger documentation
