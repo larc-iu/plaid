@@ -9,7 +9,7 @@
   :trace?          true
   :log-responses?  true
   :log-requests?   true
-  :handle-errors?  false
+  :handle-errors?  true
   :sensitive-keys  [:password :user/password :user/new-password :user/password-hash]}
 
  :glam.server.xtdb/config
