@@ -9,6 +9,7 @@
             [reitit.ring.middleware.exception :as exception]
             [reitit.ring.middleware.multipart :as multipart]
             [reitit.ring.middleware.parameters :as parameters]
+            [ring.util.response :as resp]
             [muuntaja.core :as m]
             [clojure.pprint :refer [pprint]]
             [glam.server.id-counter :refer [id?]]
@@ -62,16 +63,29 @@
    :compile (fn [_ _]
               {:wrap wrap-auth})})
 
+(defn wrap-csrf
+  [handler]
+  (fn [req]
+    (resp/set-cookie (handler req)
+                     "csrf-token"
+                     (-> req :session :ring.middleware.anti-forgery/anti-forgery-token)
+                     {:http-only true :path "/" :same-site :strict})))
+
+(def csrf-middleware
+  {:name ::csrf-middleware
+   :compile (fn [_ _]
+              {:wrap wrap-csrf})})
+
 (def routes
   ["/rest-api"
    [""
     {:middleware [auth-middleware]}
     ["/pluss"
-     {:get {:parameters  {:query {:x int? :y int?}}
-            :description "Add two numbers"
-            :handler     (fn [{{{:keys [x y]} :query} :parameters :as req}]
-                           {:status 200
-                            :body   {:total (+ x y)}})}}]
+     {:post {:parameters  {:query {:x int? :y int?}}
+             :description "Add two numbers"
+             :handler     (fn [{{{:keys [x y]} :query} :parameters :as req}]
+                            {:status 200
+                             :body   {:total (+ x y)}})}}]
 
     ["/span"
      ["/:id"
@@ -94,10 +108,11 @@
      {:get (swagger/create-swagger-handler)}]
 
     ["/docs/*"
-     {:get (swagger-ui/create-swagger-ui-handler
-             {:url    "/rest-api/swagger.json"
-              :config {:validatorUrl nil
-                       :tryItOutEnabled true}})}]]])
+     {:middleware [csrf-middleware]
+      :get        (swagger-ui/create-swagger-ui-handler
+                    {:url "/rest-api/swagger.json"
+                     :config {:validatorUrl nil
+                              :tryItOutEnabled true}})}]]])
 
 (defn rest-handler []
   (ring/ring-handler
