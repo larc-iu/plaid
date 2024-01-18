@@ -80,7 +80,8 @@
 
         :else
         (-> (resp/response (index anti-forgery-token))
-            (resp/content-type "text/html"))))))
+            (resp/content-type "text/html")
+            (resp/set-cookie "csrf-token" anti-forgery-token {:http-only true :path "/" :same-site :strict}))))))
 
 (defn wrap-ajax-api
   "AJAX remote for Fulcro, registered on the client as the :remote remote"
@@ -100,6 +101,14 @@
         (handler request)
         (ring-handler request)))))
 
+;; Override ring anti forgery's way of getting the CSRF token
+(defn- form-params [request]
+  (merge (:form-params request)
+         (:multipart-params request)))
+(defn- read-token [request]
+  (or (-> request form-params (get "__anti-forgery-token"))
+      (-> request :cookies (get "csrf-token") :value)))
+
 (mount/defstate middleware
   :start
   (let [defaults-config (:ring.middleware/defaults-config config)]
@@ -109,4 +118,5 @@
         wrap-html-routes
         wrap-xtdb-inspector
         (wrap-defaults (-> defaults-config
-                           (assoc :session {:store session-store}))))))
+                           (assoc :session {:store session-store})
+                           (assoc-in [:security :anti-forgery] {:read-token read-token}))))))
