@@ -11,6 +11,10 @@
       (log/warn "Pathom auth is disabled! This should never be done in production."))
     disabled))
 
+(defn get-session [m]
+  (or (get-in m [:ring/request :session])
+      (get m :session)))
+
 ;; pathom security transforms
 (defn make-auth-transform [auth-fn failure-message]
   "Make a transform for a Pathom resolver that checks whether the user has sufficient
@@ -28,7 +32,7 @@
                 ;;(log/info (str "Hit resolver/mutator: " (pr-str (::pc/resolver-data env))))
                 (if (auth-fn env params)
                   (pathom-action env params)
-                  (let [msg (str "Unauthorized pathom action: session " (get-in env [:ring/request :session])
+                  (let [msg (str "Unauthorized pathom action: session " (get-session env)
                                  " does not satisfy authorization requirement: " failure-message)]
                     (log/warn (str "Unauthorized request: " msg))
                     (mc/server-error msg))))))))))
@@ -43,7 +47,7 @@
                      :param-key    param-key
                      :params       params
                      :resolver-env env})))
-  (let [user-id (get-in env [:ring/request :session :user/id])
+  (let [user-id (:user/id (get-session env))
         id (param-key params)]
     (access/ident-readable? node user-id [id-key id])))
 
@@ -54,7 +58,7 @@
                      :param-key    param-key
                      :params       params
                      :resolver-env env})))
-  (let [user-id (get-in env [:ring/request :session :user/id])
+  (let [user-id (:user/id (get-session env))
         id (param-key params)]
     (access/ident-writeable? node user-id [id-key id])))
 
@@ -81,7 +85,7 @@
 (defn- level-authorized
   "Given a resolver's environment, say whether it is authorized for a given level"
   [level env params]
-  (let [{:keys [session/valid? user/admin?]} (get-in env [:ring/request :session])]
+  (let [{:keys [session/valid? user/admin?]} (get-session env)]
     (or (nil? level)
         (and (= level :admin) admin?)
         (and (= level :user) valid?))))
@@ -89,7 +93,7 @@
 (def user-required (make-auth-transform (partial level-authorized :user) "valid login required"))
 
 (defn ident-locked? [env ident]
-  (let [user-id (get-in env [:ring/request :session :user/id])]
+  (let [user-id (:user/id (get-session env))]
     (access/ident-locked? (:node env) user-id ident)))
 
 (defn lock-holder-name [{:keys [node]} ident]
