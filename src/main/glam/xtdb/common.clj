@@ -1,6 +1,6 @@
 (ns glam.xtdb.common
   (:require [glam.xtdb.easy :as gxe]
-            [glam.server.id-counter :refer [id-counter]]
+            [glam.server.id-counter :as id-counter]
             [taoensso.timbre :as log]
             [clojure.pprint :refer [pprint]]
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]))
@@ -53,9 +53,6 @@
            {id-attr id}))
     {id-attr id-or-id-seq}))
 
-(defn new-id! []
-  (swap! id-counter inc))
-
 ;; conveniences
 (defn new-record
   "Create a blank record with a UUID in :xt/id. If ns is provided,
@@ -64,7 +61,7 @@
   of a random UUID. If eid is passed but is nil, will fall back to a UUID."
   ([] (new-record nil))
   ([ns]
-   (let [eid (new-id!)]
+   (let [eid (id-counter/new-id!)]
      (new-record ns eid)))
   ([ns eid]
    (cond
