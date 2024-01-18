@@ -7,6 +7,7 @@
     [glam.models.user :as user]
     [glam.models.common :refer [server-error]]
     [glam.xtdb.user :as cuser]
+    [glam.models.auth :refer [get-session]]
     [taoensso.timbre :as log]
     [glam.xtdb.easy :as gxe]))
 
@@ -16,7 +17,7 @@
   ([mutation-env new-session-data]
    (augment-session-resp mutation-env new-session-data (or new-session-data {})))
   ([mutation-env new-session-data data]
-   (let [existing-session (some-> mutation-env :ring/request :session)]
+   (let [existing-session (get-session mutation-env)]
      (fmw/augment-response
        data
        (fn [resp]
@@ -77,7 +78,7 @@
 
 (defresolver current-session-resolver [env _]
   {::pc/output [{::current-session [:session/valid? :user/email :user/id :user/admin?]}]}
-  (let [{:keys [user/email session/valid? user/admin? user/id] :as session} (get-in env [:ring/request :session])]
+  (let [{:keys [user/email session/valid? user/admin? user/id] :as session} (get-session env)]
     (log/info " in current sesh resolver: " session)
     (if valid?
       (do
