@@ -11,9 +11,10 @@
             [reitit.ring.middleware.parameters :as parameters]
             [ring.util.response :as resp]
             [muuntaja.core :as m]
-            [clojure.pprint :refer [pprint]]
             [glam.server.id-counter :refer [id?]]
             [glam.server.pathom-parser :refer [parser]]
+            [glam.server.rest-api.util :refer [postprocess-middleware]]
+            [glam.server.rest-api.session :refer [session-routes]]
             [malli.util :as mu]))
 
 ;; cf. https://github.com/metosin/reitit/blob/master/examples/ring-example/src/example/server.clj
@@ -79,7 +80,7 @@
 (def routes
   ["/rest-api"
    [""
-    {:middleware [auth-middleware]}
+    {:middleware [auth-middleware postprocess-middleware]}
     ["/pluss"
      {:post {:parameters  {:query {:x int? :y int?}}
              :description "Add two numbers"
@@ -91,12 +92,10 @@
      ["/:id"
       {:get {:parameters {:path {:id id?}}
              :handler    (fn [{{{:keys [id]} :path} :parameters :as req}]
-                           ;; TODO:
-                           ;; 1. Write generic function for transforming between keywords?
-                           ;; 2. Write generic function to turn "leaf" idents in to plain IDs?
                            {:status 200
                             :body   (get (parser req [{[:span/id id] [:span/id :span/value :span/layer :span/tokens]}])
                                          [:span/id id])})}}]]]
+   session-routes
 
    ;; swagger documentation
    [""
@@ -131,3 +130,4 @@
                            coercion/coerce-request-middleware
                            multipart/multipart-middleware]}})
     (ring/create-default-handler)))
+
