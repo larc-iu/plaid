@@ -3,12 +3,16 @@
             [reitit.ring.coercion :as coercion]
             [reitit.swagger :as swagger]
             [reitit.swagger-ui :as swagger-ui]
+            [reitit.coercion.malli]
             [reitit.ring.middleware.muuntaja :as muuntaja]
             [reitit.ring.middleware.parameters :as parameters]
             [reitit.ring.middleware.exception :as exception]
             [reitit.ring.middleware.multipart :as multipart]
             [reitit.ring.middleware.parameters :as parameters]
             [muuntaja.core :as m]
+            [clojure.pprint :refer [pprint]]
+            [glam.server.id-counter :refer [id?]]
+            [glam.server.pathom-parser :refer [parser]]
             [malli.util :as mu]))
 
 ;; cf. https://github.com/metosin/reitit/blob/master/examples/ring-example/src/example/server.clj
@@ -45,20 +49,46 @@
      ;; malli options
      :options          nil}))
 
+(defn wrap-auth
+  [handler]
+  (fn [req]
+    (if (nil? (-> req :session :user/id))
+      {:status 401
+       :body "User not authorized."}
+      (handler req))))
+
+(def auth-middleware
+  {:name ::auth-middleware
+   :compile (fn [_ _]
+              {:wrap wrap-auth})})
+
 (def routes
   ["/rest-api"
-   ["/pluss"
-    {:get {:parameters  {:query {:x int? :y int?}}
-           :description "Add two numbers"
-           :handler     (fn [{{{:keys [x y]} :query} :parameters :as req}]
-                          {:status 200
-                           :body   {:total (+ x y)}})}}]
+   [""
+    {:middleware [auth-middleware]}
+    ["/pluss"
+     {:get {:parameters  {:query {:x int? :y int?}}
+            :description "Add two numbers"
+            :handler     (fn [{{{:keys [x y]} :query} :parameters :as req}]
+                           {:status 200
+                            :body   {:total (+ x y)}})}}]
+
+    ["/span"
+     ["/:id"
+      {:get {:parameters {:path {:id id?}}
+             :handler    (fn [{{{:keys [id]} :path} :parameters :as req}]
+                           ;; TODO:
+                           ;; 1. Write generic function for transforming between keywords?
+                           ;; 2. Write generic function to turn "leaf" idents in to plain IDs?
+                           {:status 200
+                            :body   (get (parser req [{[:span/id id] [:span/id :span/value :span/layer :span/tokens]}])
+                                         [:span/id id])})}}]]]
 
    ;; swagger documentation
    [""
-    {:no-doc  true
-     :swagger {:info {:title       "glam-rest-api"
-                      :description "Glam REST API"}}}
+    {:no-doc              true
+     :swagger             {:info {:title       "glam-rest-api"
+                                  :description "Glam REST API"}}}
 
     ["/swagger.json"
      {:get (swagger/create-swagger-handler)}]
@@ -66,14 +96,16 @@
     ["/docs/*"
      {:get (swagger-ui/create-swagger-ui-handler
              {:url    "/rest-api/swagger.json"
-              :config {:validator-url nil}})}]]])
+              :config {:validatorUrl nil
+                       :tryItOutEnabled true}})}]]])
 
-(def rest-handler
+(defn rest-handler []
   (ring/ring-handler
     (ring/router
       [routes]
       {:data {:coercion   coercion
               :muuntaja   m/instance
+              :swagger    {:id ::api}
               :middleware [swagger/swagger-feature
                            parameters/parameters-middleware
                            muuntaja/format-negotiate-middleware
@@ -82,6 +114,5 @@
                            muuntaja/format-request-middleware
                            coercion/coerce-response-middleware
                            coercion/coerce-request-middleware
-                           multipart/multipart-middleware]
-              :swagger    {:id ::api}}})
+                           multipart/multipart-middleware]}})
     (ring/create-default-handler)))

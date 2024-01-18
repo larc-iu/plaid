@@ -1,28 +1,20 @@
 (ns glam.server.middleware
   (:require
-    [clojure.pprint :refer [pprint]]
     [clojure.java.io :as io]
     [clojure.tools.reader.edn :as edn]
     [mount.core :as mount]
     [taoensso.timbre :as log]
     [hiccup.page :refer [html5]]
-    [xtdb.api :as xt]
     [com.fulcrologic.fulcro.server.api-middleware :refer [handle-api-request wrap-transit-params wrap-transit-response]]
-    [taoensso.sente.server-adapters.http-kit :refer [get-sch-adapter]]
     [ring.util.response :as resp :refer [response file-response resource-response]]
     [ring.middleware.defaults :refer [wrap-defaults]]
-    [ring.middleware.session.store :as store]
     [xtdb-inspector.core :refer [inspector-handler]]
     [glam.server.config :refer [config]]
     [glam.server.pathom-parser :refer [parser mutation?]]
-    [glam.server.xtdb :refer [xtdb-node xtdb-session-node]]
-    [glam.server.rest-api.core :refer [rest-handler]]
-    [glam.xtdb.easy :as gxe]
-    [glam.xtdb.common :as gcc]
-    [com.fulcrologic.fulcro.algorithms.tempid :as tempid])
-  (:import (java.io PushbackReader IOException)
-           (ring.middleware.session.store SessionStore)
-           (java.util UUID)))
+    [glam.server.xtdb :refer [xtdb-node]]
+    [glam.server.session-store :refer [session-store]]
+    [glam.server.rest-api.core :refer [rest-handler]])
+  (:import (java.io PushbackReader IOException)))
 
 (def manifest-file "public/js/main/manifest.edn")
 
@@ -70,47 +62,6 @@
     The filename is nil, you probably need to wait for the shadow-cljs build to complete or start it again.
     Check manifest.edn in the shadow-cljs build directory.")))))
 
-;; Xtdb session store --------------------------------------------------------------------------------
-;; Replace the default in-memory session store with this. Makes it so you don't need to log in every time
-;; you restart your server.
-
-;; see: https://ring-clojure.github.io/ring-anti-forgery/ring.middleware.anti-forgery.html
-(defn make-session-data
-  [key data]
-  (-> data
-      (assoc :xt/id key
-             ::session? true)))
-
-(deftype XtdbSessionStore [xtdb-node]
-  SessionStore
-
-  (read-session [this key]
-    (if (some? key)
-      (try
-        (xt/entity (xt/db xtdb-node) (UUID/fromString key))
-        (catch Exception e
-          (log/error "Invalid session. Error reading xt/entity for key: " key)
-          {}))
-      {}))
-
-  (write-session [_ key data]
-    (let [key (try (cond-> key (some? key) UUID/fromString)
-                   (catch Exception e (UUID/randomUUID)))
-          key (or key (UUID/randomUUID))
-          tx-data (make-session-data key data)]
-      (gxe/put xtdb-node tx-data)
-      key))
-
-  (delete-session [_ key]
-    (gxe/delete xtdb-node key)
-    nil))
-
-(defn xtdb-session-store [xtdb-node]
-  (XtdbSessionStore. xtdb-node))
-
-(mount/defstate session-store
-  :start (xtdb-session-store xtdb-session-node))
-
 ;; Route handling
 (defn wrap-html-routes
   "Allows all requests to `/api` to continue down the handler chain, and otherwise terminates
@@ -118,17 +69,18 @@
   a user's perspective, as refreshing on e.g. `/projects/` will simply serve the index, after
   which the client-side routing setup will ensure that the proper components are displayed."
   [ring-handler]
-  (fn [{:keys [uri anti-forgery-token] :as req}]
-    (cond
-      (re-matches #"^/rest-api/.*" uri)
-      (rest-handler req)
+  (let [rest-handler (rest-handler)]
+    (fn [{:keys [uri anti-forgery-token] :as req}]
+      (cond
+        (re-matches #"^/rest-api/.*" uri)
+        (rest-handler req)
 
-      (re-matches #"^/api" uri)
-      (ring-handler req)
+        (re-matches #"^/api" uri)
+        (ring-handler req)
 
-      :else
-      (-> (resp/response (index anti-forgery-token))
-          (resp/content-type "text/html")))))
+        :else
+        (-> (resp/response (index anti-forgery-token))
+            (resp/content-type "text/html"))))))
 
 (defn wrap-ajax-api
   "AJAX remote for Fulcro, registered on the client as the :remote remote"
