@@ -93,6 +93,17 @@
            (server-message "Successfully updated span's associated tokens")
            (server-error (str "Failed to update span " id)))))))
 
+#?(:clj
+   (pc/defmutation delete-span [{:keys [node] :as env} {:span/keys [id] :as span}]
+     {::pc/transform (ma/writeable-required :span/id)}
+     (cond
+       (nil? (:span/id (gxe/entity node id)))
+       (server-error (str "Span does not exist with ID " id))
+
+       :else
+       (if-let [result (s/delete node id)]
+         (server-message (str "Successfully deleted span " id))
+         (server-error (str "Failed to delete span " id))))))
 
 #?(:clj
    ;; TODO this needs span-snapshots
@@ -165,4 +176,5 @@
 
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
-   (def span-resolvers [get-span update-value update-tokens create-span batched-update multi-layer-batched-update]))
+   (def span-resolvers [get-span update-value update-tokens create-span batched-update multi-layer-batched-update
+                        delete-span]))
