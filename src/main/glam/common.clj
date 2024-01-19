@@ -24,8 +24,8 @@
   (assert (vector? xs))
   (let [index (first (positions #(= x %) xs))
         new-index (if up?
-                    (min (inc index) (- (count xs) 1))
-                    (max (dec index) 0))]
+                    (max (dec index) 0)
+                    (min (inc index) (- (count xs) 1)))]
     (if (= new-index index)
       xs
       (let [x' (clojure.core/get xs new-index)
