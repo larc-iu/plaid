@@ -17,6 +17,7 @@
             [glam.server.rest-api.util :refer [postprocess-middleware]]
             [glam.server.rest-api.session :refer [session-routes]]
             [glam.server.rest-api.span :refer [span-routes]]
+            [glam.server.rest-api.span-layer :refer [span-layer-routes]]
             [malli.experimental.lite :as ml]
             [malli.util :as mu]))
 
@@ -84,13 +85,13 @@
   ["/rest-api/v1"
    [""
     {:middleware [auth-middleware postprocess-middleware]}
-    ["/pluss"
-     {:post {:parameters  {:query {:x int? :y int? :cake [:enum "yes" "no"]}}
-             :description "Add two numbers"
-             :handler     (fn [{{{:keys [x y]} :query} :parameters :as req}]
-                            {:status 200
-                             :body   {:total (+ x y)}})}}]
-    span-routes]
+    ["/document"
+     span-routes
+     ]
+    ["/admin"
+     ["/layers"
+      span-layer-routes
+      ]]]
    session-routes
 
    ;; swagger documentation

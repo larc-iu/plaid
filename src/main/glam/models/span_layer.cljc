@@ -57,11 +57,16 @@
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [new-span-layer (-> {} (mc/apply-delta delta) (select-keys span-layer-keys))]
-       (let [{:keys [id success]} (sl/create node new-span-layer)]
-         (tokl/add-span-layer node parent-id id)
-         (if-not success
-           (server-error (str "Failed to create span-layer, please refresh and try again"))
-           {:tempids {temp-id id}})))))
+       (cond
+         (nil? (:token-layer/id (gxe/entity node parent-id)))
+         (server-error (str "Parent of span layer must be a valid token layer."))
+
+         :else
+         (let [{:keys [id success]} (sl/create node new-span-layer)]
+           (tokl/add-span-layer node parent-id id)
+           (if-not success
+             (server-error (str "Failed to create span-layer, please refresh and try again"))
+             {:tempids {temp-id id}}))))))
 
 #?(:clj
    (pc/defmutation save-span-layer [{:keys [node]} {delta :delta [_ id] :ident :as params}]
@@ -69,9 +74,15 @@
       ::pc/output    [:server/error? :server/message]}
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
-         ;; must be valid
          (not valid?)
          (server-error (str "Span layer delta invalid: " delta))
+
+         (not (gxe/entity node id))
+         (server-error (str "Span layer not found by ID " id))
+
+         (nil? (:span-layer/id (gxe/entity node id)))
+         (server-error (str "Span layer not found by ID " id))
+
          :else
          (if-not (sl/merge node id (mc/apply-delta {} delta))
            (server-error (str "Failed to save span-layer information, please refresh and try again"))
@@ -81,10 +92,12 @@
    (pc/defmutation delete-span-layer [{:keys [node]} {[_ id] :ident :as params}]
      {::pc/transform ma/admin-required}
      (cond
-       ;; ensure the span layer to be deleted exists
        (not (gxe/entity node id))
        (server-error (str "Span layer not found by ID " id))
-       ;; otherwise, go ahead
+
+       (nil? (:span-layer/id (gxe/entity node id)))
+       (server-error (str "Span layer not found by ID " id))
+
        :else
        (let [name (:span-layer/name (gxe/entity node id))
              parent-id (sl/parent-id node id)
@@ -102,6 +115,12 @@
        (not (gxe/entity node id))
        (server-error (str "Span layer not found by ID " id))
 
+       (nil? (:span-layer/id (gxe/entity node id)))
+       (server-error (str "Span layer not found by ID " id))
+
+       (not (boolean? up?))
+       (server-error (str "Param up? must be a boolean."))
+
        :else
        (let [name (:span-layer/name (gxe/entity node id))
              parent-id (sl/parent-id node id)
@@ -109,8 +128,8 @@
              success (gxe/submit! node tx)]
          (if-not success
            (server-error (str "Failed to shift span layer " name ". Please try again."))
-           (server-message (str "Span layer " name " shifted.")))))))
+           (server-message (str "Span layer " name " shifted " (if up? "up" "down") ".")))))))
 
 #?(:clj
-   (def span-layer-resolvers [get-span-layer get-spans create-span-layer save-span-layer delete-span-layer
-                              shift-span-layer]))
+   (def span-layer-resolvers [get-span-layer get-spans create-span-layer create-span-layer
+                              save-span-layer delete-span-layer shift-span-layer]))
