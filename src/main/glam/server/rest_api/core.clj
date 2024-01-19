@@ -96,9 +96,13 @@
 
    ;; swagger documentation
    [""
-    {:no-doc              true
-     :swagger             {:info {:title       "glam-rest-api"
-                                  :description "Glam REST API"}}}
+    {:no-doc  true
+     :swagger {:info {:title       "glam-rest-api"
+                      :description (str "Glam's REST API. Note that most functions will return a JSON containing "
+                                        " `message`, a string,  and `error`, a boolean. POST requests will"
+                                        " usually contain an `id` in the response body. Error codes are not always"
+                                        " accurate, as we only guarantee that they'll be right at the 2xx and 4xx"
+                                        " level.")}}}
 
     ["/swagger.json"
      {:get (swagger/create-swagger-handler)}]
