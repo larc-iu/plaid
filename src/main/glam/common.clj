@@ -32,5 +32,5 @@
             left (take (min index new-index) xs)
             right (drop (inc (max index new-index)) xs)]
         (reduce into [] [left
-                         (if up? [x' x] [x x'])
+                         (if up? [x x'] [x' x])
                          right])))))
