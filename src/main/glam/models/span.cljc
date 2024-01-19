@@ -37,9 +37,6 @@
        (nil? (s/get node id))
        (server-error (str "Span with id " id " does not exist."))
 
-       (not (string? value))
-       (server-error "Value must be a string.")
-
        (not (ma/ident-locked? env [:span/id id]))
        (server-error (ma/lock-holder-error-msg env [:span/id id]))
 
@@ -54,9 +51,6 @@
      [{:keys [node] :as env} {:span/keys [id value layer tokens] :as span}]
      {::pc/transform (ma/writeable-required :span-layer/id :span/layer)}
      (cond
-       (not (string? value))
-       (server-error "Value must be a string.")
-
        (not (sl/get node layer))
        (server-error "Span layer does not exist")
 
