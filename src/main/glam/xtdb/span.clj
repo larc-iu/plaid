@@ -44,6 +44,15 @@
             :in    [?s]}
           span-id)))
 
+(defn get-associated-token-layer [node span-id]
+  (ffirst
+    (xt/q (xt/db node)
+          '{:find  [?tokl]
+            :where [[?s :span/layer ?sl]
+                    [?tokl :token-layer/span-layers ?sl]]
+            :in    [?s]}
+          span-id)))
+
 (defn get-span-ids
   "Get span ids for a given doc and layer"
   [node doc-id span-layer-id]
