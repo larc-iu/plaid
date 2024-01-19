@@ -39,5 +39,6 @@
     {:get {:parameters {:path {:id id?}}
            :handler    get-span}
      :patch {:parameters {:path {:id id?}
-                          :body {:action [:enum "setValue"] :value string?}}
+                          :body {:action [:enum "setValue"] :value any?}}
+             :description "setValue: sets the span's `value` to body param `value`."
              :handler patch-span}}]])

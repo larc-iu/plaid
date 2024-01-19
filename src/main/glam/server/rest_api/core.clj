@@ -81,7 +81,7 @@
               {:wrap wrap-csrf})})
 
 (def routes
-  ["/rest-api"
+  ["/rest-api/v1"
    [""
     {:middleware [auth-middleware postprocess-middleware]}
     ["/pluss"
@@ -105,7 +105,7 @@
     ["/docs/*"
      {:middleware [csrf-middleware]
       :get        (swagger-ui/create-swagger-ui-handler
-                    {:url "/rest-api/swagger.json"
+                    {:url "/rest-api/v1/swagger.json"
                      :config {:validatorUrl nil
                               :tryItOutEnabled true}})}]]])
 
