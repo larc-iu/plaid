@@ -9,7 +9,7 @@
   (let [result (parser req [(list `span/create-span {:span/layer layer :span/value value :span/tokens tokens})])
         data (get result `span/create-span)]
     (if (:server/error? data)
-      {:status 403
+      {:status 400
        :body   data}
       {:status 200
        :body   (util/get-created-id data)})))

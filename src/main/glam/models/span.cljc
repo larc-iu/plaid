@@ -51,8 +51,14 @@
      {::pc/transform (ma/writeable-required :span/id)}
 
      (let [associated-doc-id (s/get-doc-id-of-span node id)
-           token-doc-ids (set (map #(tok/get-doc-id-of-token node %) tokens))]
-       (println token-doc-ids)
+           token-doc-ids (set (map #(tok/get-doc-id-of-token node %) tokens))
+           new-token-layers (->> tokens
+                                 (map vector)
+                                 (gxe/entities node)
+                                 (map :token/layer)
+                                 (filter some?)
+                                 set)
+           orig-token-layer (s/get-associated-token-layer node id)]
        (cond
          (nil? (s/get node id))
          (server-error (str "Span with id " id " does not exist."))
@@ -73,6 +79,12 @@
          (not= associated-doc-id (first token-doc-ids))
          (server-error (str "Associated tokens must appear in the same document as this span."))
 
+         (not= 1 (count new-token-layers))
+         (server-error (str "Associated tokens must all appear in the same token layer."))
+
+         (not= (first new-token-layers) orig-token-layer)
+         (server-error (str "New tokens must belong to the same token layer as the original tokens."))
+
          (not (ma/ident-locked? env [:span/id id]))
          (server-error (ma/lock-holder-error-msg env [:span/id id]))
 
@@ -87,23 +99,37 @@
    (pc/defmutation create-span
      [{:keys [node] :as env} {:span/keys [id value layer tokens] :as span}]
      {::pc/transform (ma/writeable-required :span-layer/id :span/layer)}
-     (cond
-       (not (sl/get node layer))
-       (server-error "Span layer does not exist")
+     (let [token-doc-ids (set (map #(tok/get-doc-id-of-token node %) tokens))
+           new-token-layers (->> tokens
+                                 (map vector)
+                                 (gxe/entities node)
+                                 (map :token/layer)
+                                 (filter some?)
+                                 set)]
+       (cond
+         (not (sl/get node layer))
+         (server-error "Span layer does not exist.")
 
-       (some nil? (map #(tok/get node %) tokens))
-       (server-error "Not all tokens exist for this span")
+         (some nil? (map #(tok/get node %) tokens))
+         (server-error "Not all tokens exist for this span.")
 
-       (not (ma/ident-locked? env [:span/id id]))
-       (server-error (ma/lock-holder-error-msg env [:span/id id]))
+         (not (and (= 1 (count token-doc-ids))
+                   (id? (first token-doc-ids))))
+         (server-error "All tokens associated with span must be in a single document.")
 
-       :else
-       (let [{:keys [success] new-id :id} (s/create node {:span/value  value
-                                                          :span/layer  layer
-                                                          :span/tokens (into [] tokens)})]
-         (if-not success
-           (server-error "Failed to create span, please try again")
-           (merge {:tempids {id new-id}} (server-message "Span created")))))))
+         (not= 1 (count new-token-layers))
+         (server-error "All tokens associated with span must belong to a single token layer.")
+
+         (not (ma/ident-locked? env [:span/id id]))
+         (server-error (ma/lock-holder-error-msg env [:span/id id]))
+
+         :else
+         (let [{:keys [success] new-id :id} (s/create node {:span/value  value
+                                                            :span/layer  layer
+                                                            :span/tokens (into [] tokens)})]
+           (if-not success
+             (server-error "Failed to create span, please try again")
+             (merge {:tempids {id new-id}} (server-message "Span created"))))))))
 
 #?(:clj
    (pc/defmutation batched-update
