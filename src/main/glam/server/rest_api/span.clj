@@ -32,7 +32,7 @@
 (def span-routes
   ["/span"
    [""
-    {:post {:parameters {:body {:value string? :layer id? :tokens [:vector id?]}}
+    {:post {:parameters {:body {:value any? :layer id? :tokens [:vector id?]}}
             :handler    create-span}}]
 
    ["/:id"
