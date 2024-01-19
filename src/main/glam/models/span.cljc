@@ -9,6 +9,7 @@
             #?(:clj [glam.xtdb.span-layer :as sl])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.xtdb.easy :as gxe])
+            #?(:clj [glam.server.id-counter :refer [id?]])
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]))
 
 #?(:cljs
@@ -31,7 +32,7 @@
 
 #?(:clj
    ;; TODO this needs span-snapshots
-   (pc/defmutation save-span [{:keys [node] :as env} {:span/keys [id value] :as span}]
+   (pc/defmutation update-value [{:keys [node] :as env} {:span/keys [id value] :as span}]
      {::pc/transform (ma/writeable-required :span/id)}
      (cond
        (nil? (s/get node id))
@@ -42,8 +43,44 @@
 
        :else
        (if-let [result (s/merge node id {:span/value value})]
-         (server-message "Successfully saved span")
-         (server-error (str "Failed to save span " id))))))
+         (server-message "Successfully updated span's value")
+         (server-error (str "Failed to update span " id))))))
+
+#?(:clj
+   (pc/defmutation update-tokens [{:keys [node] :as env} {:span/keys [id tokens] :as span}]
+     {::pc/transform (ma/writeable-required :span/id)}
+
+     (let [associated-doc-id (s/get-doc-id-of-span node id)
+           token-doc-ids (set (map #(tok/get-doc-id-of-token node %) tokens))]
+       (println token-doc-ids)
+       (cond
+         (nil? (s/get node id))
+         (server-error (str "Span with id " id " does not exist."))
+
+         (not (every? #(some? (:token/id %)) (gxe/entities node (map vector tokens))))
+         (server-error (str "IDs provided do not all point to valid tokens."))
+
+         (not (= (count (set tokens)) (count tokens)))
+         (server-error (str "Tokens must not be associated more than once with a span."))
+
+         (= (count tokens) 0)
+         (server-error (str "Empty spans are not allowed."))
+
+         (not (and (= 1 (count token-doc-ids))
+                   (id? (first token-doc-ids))))
+         (server-error (str "All tokens must exist within the same document."))
+
+         (not= associated-doc-id (first token-doc-ids))
+         (server-error (str "Associated tokens must appear in the same document as this span."))
+
+         (not (ma/ident-locked? env [:span/id id]))
+         (server-error (ma/lock-holder-error-msg env [:span/id id]))
+
+         :else
+         (if-let [result (s/merge node id {:span/tokens tokens})]
+           (server-message "Successfully updated span's associated tokens")
+           (server-error (str "Failed to update span " id)))))))
+
 
 #?(:clj
    ;; TODO this needs span-snapshots
@@ -102,4 +139,4 @@
 
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
-   (def span-resolvers [get-span save-span create-span batched-update multi-layer-batched-update]))
+   (def span-resolvers [get-span update-value update-tokens create-span batched-update multi-layer-batched-update]))

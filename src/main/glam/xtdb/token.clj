@@ -50,6 +50,17 @@
             (log/error (vec tokens))
             [])))))
 
+(defn get-doc-id-of-token
+  "Get document id of a token"
+  [node token-id]
+  (ffirst
+    (xt/q (xt/db node)
+          '{:find  [?doc]
+            :where [[?tok :token/text ?txt]
+                    [?txt :text/document ?doc]]
+            :in    [?tok]}
+          token-id)))
+
 ;; Mutations --------------------------------------------------------------------------------
 (defn get-span-ids [node eid]
   (map first (xt/q (xt/db node)
