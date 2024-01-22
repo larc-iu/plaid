@@ -64,7 +64,7 @@
     (walk/postwalk
       (fn [x]
         (cond
-          (and (symbol? x) (some? (namespace x)))
+          (and (symbol? x) (some? (namespace x)) (some? (ns-resolve *ns* x)))
           (symbol (ns-resolve *ns* x))
 
           (and (symbol? x) (contains? ns-vars x))
