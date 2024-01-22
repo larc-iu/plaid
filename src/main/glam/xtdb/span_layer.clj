@@ -54,8 +54,8 @@
         relation-layer-deletions (reduce into (map #(rl/delete** node %) relation-layers))]
     (reduce into [unlink
                   span-deletions
-                  relation-layer-deletions
-                  span-layer-deletion])))
+                  span-layer-deletion
+                  relation-layer-deletions])))
 
 (gxe/deftx add-relation-layer [node span-layer-id relation-layer-id]
   (gxc/add-join** node span-layer-id :span-layer/relation-layers relation-layer-id))
