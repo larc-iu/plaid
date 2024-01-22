@@ -40,13 +40,16 @@
   (gxe/merge node eid (select-keys m [:span-layer/name])))
 
 (gxe/deftx delete [node eid]
-  (let [span-ids (map first (xt/q (xt/db node) '{:find  [?s]
+  (let [parent-layer (parent-id node eid)
+        unlink (glam.xtdb.token-layer/remove-span-layer** node parent-layer eid)
+        span-ids (map first (xt/q (xt/db node) '{:find  [?s]
                                                  :where [[?s :span/layer ?sl]]
                                                  :in    [?sl]}
                                   eid))
         span-deletions (mapv gxe/delete* span-ids)
         span-layer-deletion [(gxe/delete* eid)]]
-    (reduce into [span-deletions
+    (reduce into [unlink
+                  span-deletions
                   span-layer-deletion])))
 
 (gxe/deftx add-relation-layer [node span-layer-id relation-layer-id]
