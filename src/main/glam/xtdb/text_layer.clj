@@ -50,7 +50,9 @@
   (gxc/remove-join** node text-layer-id :text-layer/token-layers token-layer-id))
 
 (gxe/deftx delete [node eid]
-  (let [token-layers (:text-layer/token-layers (gxe/entity node eid))
+  (let [parent-layer (parent-id node eid)
+        unlink (glam.xtdb.project/remove-text-layer** node parent-layer eid)
+        token-layers (:text-layer/token-layers (gxe/entity node eid))
         token-layer-deletions (reduce into (mapv #(tokl/delete** node %) token-layers))
         text-ids (map first (xt/q (xt/db node) '{:find  [?txt]
                                                  :where [[?txt :text/layer ?txtl]]
@@ -59,7 +61,7 @@
         text-deletions (mapv gxe/delete* text-ids)]
     (reduce
       into
-      [token-layer-deletions
+      [unlink
+       token-layer-deletions
        text-deletions
-       [(gxe/match* eid (gxe/entity node eid))
-        (gxe/delete* eid)]])))
+       [(gxe/delete* eid)]])))
