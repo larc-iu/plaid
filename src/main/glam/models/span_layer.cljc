@@ -77,9 +77,6 @@
          (not valid?)
          (server-error (str "Span layer delta invalid: " delta))
 
-         (not (gxe/entity node id))
-         (server-error (str "Span layer not found by ID " id))
-
          (nil? (:span-layer/id (gxe/entity node id)))
          (server-error (str "Span layer not found by ID " id))
 
@@ -92,9 +89,6 @@
    (pc/defmutation delete-span-layer [{:keys [node]} {[_ id] :ident :as params}]
      {::pc/transform ma/admin-required}
      (cond
-       (not (gxe/entity node id))
-       (server-error (str "Span layer not found by ID " id))
-
        (nil? (:span-layer/id (gxe/entity node id)))
        (server-error (str "Span layer not found by ID " id))
 
