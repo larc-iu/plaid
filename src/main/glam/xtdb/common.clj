@@ -5,8 +5,6 @@
             [clojure.pprint :refer [pprint]]
             [com.fulcrologic.fulcro.algorithms.tempid :as tempid]))
 
-(defmulti get-affected-doc (fn [xtdb-node [id-kwd id :as ident]] id-kwd))
-
 (defn document-mutation? [mutation]
   (#{"glam.models.document"
      "glam.models.text"
@@ -92,9 +90,7 @@
 ;; join conveniences
 (defn add-to-multi-joins**
   "Joins from e1 to e2 at all keys specified in `join-keys`. This function is idempotent:
-  if an e1->e2 join already exists at some join key on e1, nothing will change.
-  This function also includes match clauses for both entities, guarding against race
-  conditions."
+  if an e1->e2 join already exists at some join key on e1, nothing will change."
   [node e1-id join-keys e2-id]
   (let [e1 (gxe/entity node e1-id)]
     [(gxe/put* (reduce (fn [entity join-key]
@@ -112,9 +108,7 @@
 
 (defn remove-from-multi-joins**
   "Remove joins from e1 to e2 at all keys specified in `join-keys`. This function is
-  idempotent: if an e1->e2 join does not exist at some join key on e1, nothing will change.
-  This function also includes match clauses for both entities, guarding against race
-  conditions."
+  idempotent: if an e1->e2 join does not exist at some join key on e1, nothing will change."
   [node e1-id join-keys e2-id]
   (let [e1 (gxe/entity node e1-id)]
     [(gxe/put* (reduce (fn [entity join-key]
