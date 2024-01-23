@@ -18,6 +18,7 @@
             [glam.server.rest-api.session :refer [session-routes]]
             [glam.server.rest-api.span :refer [span-routes]]
             [glam.server.rest-api.span-layer :refer [span-layer-routes]]
+            [glam.server.rest-api.token-layer :refer [token-layer-routes]]
             [malli.experimental.lite :as ml]
             [malli.util :as mu]))
 
@@ -90,6 +91,7 @@
      ]
     ["/admin"
      ["/layers"
+      token-layer-routes
       span-layer-routes
       ]]]
    session-routes
@@ -125,7 +127,7 @@
                            parameters/parameters-middleware
                            muuntaja/format-negotiate-middleware
                            muuntaja/format-response-middleware
-                           #_exception/exception-middleware
+                           exception/exception-middleware
                            muuntaja/format-request-middleware
                            coercion/coerce-response-middleware
                            coercion/coerce-request-middleware
