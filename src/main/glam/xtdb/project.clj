@@ -1,5 +1,6 @@
 (ns glam.xtdb.project
-  (:require [xtdb.api :as xt]
+  (:require [glam.common :as gc]
+            [xtdb.api :as xt]
             [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.access :as gca]
@@ -83,6 +84,27 @@
 
 (gxe/deftx remove-text-layer [node project-id text-layer-id]
   (gxc/remove-join** node project-id :project/text-layers text-layer-id))
+
+(gxe/deftx shift-text-layer [node project-id text-layer-id up?]
+  ;; Shift a text layer up or down in its project. Attempting to shift beyond either edge will result in a no-op.
+  (let [prj (gxe/entity node project-id)
+        txtl (gxe/entity node text-layer-id)
+        txtls (:project/text-layers prj)]
+    (cond
+      (nil? txtl)
+      (throw (ex-info "Text layer does not exist" {:id text-layer-id}))
+
+      (nil? prj)
+      (throw (ex-info "No project found for text layer" {:text-layer text-layer-id
+                                                         :project project-id}))
+
+      (not (some #{text-layer-id} txtls))
+      (throw (ex-info "Text layer is not linked to project" {:text-layer text-layer-id
+                                                             :project project-id}))
+
+      :else
+      (let [new-prj (assoc prj :project/text-layers (gc/shift txtls text-layer-id up?))]
+        [(gxe/put* new-prj)]))))
 
 (gxe/deftx add-reader [node project-id user-id]
   (gxc/add-join** node project-id :project/readers user-id))
