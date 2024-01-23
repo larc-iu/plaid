@@ -71,7 +71,7 @@
    (defn get-current-user
      "Reads username (email) from the ring session and returns the ID"
      [{:keys [node] :ring/keys [request] :as env}]
-     (when-let [session (:session request)]
+     (when-let [session (or (:session request) (:session env))]
        (when (:session/valid? session)
          (if-let [email (:user/email session)]
            (do (log/info "Resolved current user: " email)
