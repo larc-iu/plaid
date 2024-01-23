@@ -214,11 +214,16 @@
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [new-token-layer (-> {} (mc/apply-delta delta) (select-keys token-layer-keys))]
-       (let [{:keys [id success]} (tokl/create node new-token-layer)]
-         (txtl/add-token-layer node parent-id id)
-         (if-not success
-           (server-error (str "Failed to create token-layer, please refresh and try again"))
-           {:tempids {temp-id id}})))))
+       (cond
+         (nil? (:text-layer/id (gxe/entity node parent-id)))
+         (server-error (str "Parent of token layer must be a valid text layer."))
+
+         :else
+         (let [{:keys [id success]} (tokl/create node new-token-layer)]
+           (txtl/add-token-layer node parent-id id)
+           (if-not success
+             (server-error (str "Failed to create token-layer, please refresh and try again"))
+             {:tempids {temp-id id}}))))))
 
 #?(:clj
    (pc/defmutation save-token-layer [{:keys [node]} {delta :delta [_ id] :ident :as params}]
@@ -227,9 +232,12 @@
      (log/info (str "id:" (:ident params)))
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
-         ;; must be valid
          (not valid?)
          (server-error (str "Token layer delta invalid: " delta))
+
+         (nil? (:token-layer/id (gxe/entity node id)))
+         (server-error (str "Token layer not found by ID " id))
+
          :else
          (if-not (tokl/merge node id (mc/apply-delta {} delta))
            (server-error (str "Failed to save token-layer information, please refresh and try again"))
@@ -239,10 +247,9 @@
    (pc/defmutation delete-token-layer [{:keys [node]} {[_ id] :ident :as params}]
      {::pc/transform ma/admin-required}
      (cond
-       ;; ensure the token layer to be deleted exists
-       (not (gxe/entity node id))
+       (nil? (:token-layer/id (gxe/entity node id)))
        (server-error (str "Token layer not found by ID " id))
-       ;; otherwise, go ahead
+
        :else
        (let [name (:token-layer/name (gxe/entity node id))
              tx (tokl/delete** node id)
@@ -251,7 +258,27 @@
            (server-error (str "Failed to delete token layer " name ". Please refresh and try again"))
            (server-message (str "Token layer " name " deleted")))))))
 
+
+#?(:clj
+   (pc/defmutation shift-token-layer [{:keys [node]} {id :id up? :up?}]
+     {::pc/transform ma/admin-required}
+     (cond
+       (nil? (:token-layer/id (gxe/entity node id)))
+       (server-error (str "Token layer not found by ID " id))
+
+       (not (boolean? up?))
+       (server-error (str "Param up? must be a boolean."))
+
+       :else
+       (let [name (:token-layer/name (gxe/entity node id))
+             parent-id (tokl/parent-id node id)
+             tx (txtl/shift-token-layer** node parent-id id up?)
+             success (gxe/submit! node tx)]
+         (if-not success
+           (server-error (str "Failed to shift token layer " name ". Please try again."))
+           (server-message (str "Span layer " name " shifted " (if up? "up" "down") ".")))))))
+
 #?(:clj
    (def token-layer-resolvers [get-token-layer get-tokens lorge-get-tokens lorge-get-columnar-tokens
-                               create-token-layer save-token-layer delete-token-layer tokenize]))
+                               create-token-layer save-token-layer delete-token-layer tokenize shift-token-layer]))
 
