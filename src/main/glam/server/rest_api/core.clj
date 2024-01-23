@@ -10,15 +10,13 @@
             [reitit.ring.middleware.multipart :as multipart]
             [reitit.ring.middleware.parameters :as parameters]
             [ring.util.response :as resp]
-            [taoensso.timbre :as log]
             [muuntaja.core :as m]
-            [glam.server.id-counter :refer [id?]]
-            [glam.server.pathom-parser :refer [parser]]
             [glam.server.rest-api.util :refer [postprocess-middleware]]
             [glam.server.rest-api.session :refer [session-routes]]
             [glam.server.rest-api.span :refer [span-routes]]
             [glam.server.rest-api.span-layer :refer [span-layer-routes]]
             [glam.server.rest-api.token-layer :refer [token-layer-routes]]
+            [glam.server.rest-api.text-layer :refer [text-layer-routes]]
             [malli.experimental.lite :as ml]
             [malli.util :as mu]))
 
@@ -91,6 +89,7 @@
      ]
     ["/admin"
      ["/layers"
+      text-layer-routes
       token-layer-routes
       span-layer-routes
       ]]]
