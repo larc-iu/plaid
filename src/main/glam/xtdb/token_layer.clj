@@ -139,7 +139,7 @@
                                                              :token-layer token-layer-id}))
 
       (not (some #{span-layer-id} sls))
-      (throw (ex-info "Token layer is not linked to span layer" {:span-layer  span-layer-id
+      (throw (ex-info "Span layer is not linked to token layer" {:span-layer  span-layer-id
                                                                  :token-layer token-layer-id}))
 
       :else

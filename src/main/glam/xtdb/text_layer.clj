@@ -57,15 +57,15 @@
         tokls (:text-layer/token-layers txtl)]
     (cond
       (nil? tokl)
-      (throw (ex-info "Span layer does not exist" {:id token-layer-id}))
+      (throw (ex-info "Token layer does not exist" {:id token-layer-id}))
 
       (nil? txtl)
       (throw (ex-info "No text layer found for token layer" {:token-layer token-layer-id
                                                              :text-layer text-layer-id}))
 
       (not (some #{token-layer-id} tokls))
-      (throw (ex-info "Token layer is not linked to token layer" {:token-layer token-layer-id
-                                                                  :text-layer text-layer-id}))
+      (throw (ex-info "Token layer is not linked to text layer" {:token-layer token-layer-id
+                                                                 :text-layer text-layer-id}))
 
       :else
       (let [new-txtl (assoc txtl :text-layer/token-layers (gc/shift tokls token-layer-id up?))]
