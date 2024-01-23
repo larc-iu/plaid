@@ -276,7 +276,7 @@
              success (gxe/submit! node tx)]
          (if-not success
            (server-error (str "Failed to shift token layer " name ". Please try again."))
-           (server-message (str "Span layer " name " shifted " (if up? "up" "down") ".")))))))
+           (server-message (str "Token layer " name " shifted " (if up? "up" "down") ".")))))))
 
 #?(:clj
    (def token-layer-resolvers [get-token-layer get-tokens lorge-get-tokens lorge-get-columnar-tokens
