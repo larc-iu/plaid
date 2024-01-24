@@ -74,19 +74,6 @@
      (tokl/get node id)))
 
 #?(:clj
-   (pc/defresolver get-tokens [{:keys [node] :as env} {:token-layer/keys [id]}]
-     {::pc/input     #{:token-layer/id}
-      ::pc/output    [{:token-layer/tokens [:token/id :token/text :token/begin :token/end :token/layer :token/value]}]
-      ::pc/transform (ma/readable-required :token-layer/id)}
-     (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (when-let [tokens (mapv (fn [token]
-                                 (-> token
-                                     (update :token/text (fn [id] {:text/id id}))
-                                     (update :token/layer (fn [id] {:token-layer/id id}))))
-                               (tok/get-tokens node id doc-id))]
-         {:token-layer/tokens tokens}))))
-
-#?(:clj
    ;; TODO(LDG) this should be removed after the legacy interlinear editor is removed
    (pc/defresolver lorge-get-tokens [{:keys [node] :as env} {:token-layer/keys [id]}]
      {::pc/input     #{:token-layer/id}
@@ -279,6 +266,6 @@
            (server-message (str "Token layer " name " shifted " (if up? "up" "down") ".")))))))
 
 #?(:clj
-   (def token-layer-resolvers [get-token-layer get-tokens lorge-get-tokens lorge-get-columnar-tokens
+   (def token-layer-resolvers [get-token-layer lorge-get-tokens lorge-get-columnar-tokens
                                create-token-layer save-token-layer delete-token-layer tokenize shift-token-layer]))
 
