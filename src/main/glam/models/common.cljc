@@ -50,7 +50,6 @@
 (defn validate-delta [record-valid-fn delta]
   (let [new-vals (into {} (for [[k {:keys [after]}] delta]
                             [k after]))]
-    (println new-vals)
     (record-valid-fn new-vals)))
 
 (defn try-get-document-ident
@@ -63,16 +62,11 @@
   it somehow, but this is a more ergonomic solution, and if it's OK for a resolver to
   fail for pretty much any reason, perhaps a query not looking right ought to be one."
   [env]
-  (let [ident (->> env
-                   :com.wsscode.pathom.core/root-query
-                   first
-                   keys
-                   (filter #(and (= 2 (count %))
-                                 (vector? %)
-                                 (= :document/id (first %))))
-                   first)]
-    (if (nil? ident)
-      (log/warn (str "try-get-document-ident couldn't find a document ident! This isn't necessarily a problem unless "
-                     "you were trying to query for document-level structures and not just layer information. ")
-                "query: " (:com.wsscode.pathom.core/root-query env))
-      ident)))
+  (let [[key id :as maybe-ident] (-> env :com.wsscode.pathom.core/path first)]
+    (if (and (= 2 (count maybe-ident)) (vector? maybe-ident) (= key :document/id))
+      maybe-ident
+      (do
+        (log/warn (str "try-get-document-ident couldn't find a document ident! This isn't necessarily a problem unless "
+                       "you were trying to query for document-level structures and not just layer information. ")
+                  "query: " (:com.wsscode.pathom.core/root-query env))
+        nil))))
