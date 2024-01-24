@@ -64,12 +64,12 @@
         result (parser req [(list `prj/create-project params)])
         data (get result `prj/create-project)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body   data}
       {:status 200
-       :body   {:id (-> data
-                        (dissoc :tempids)
-                        (assoc :id (-> data :tempids first second)))
+       :body   {:id      (-> data
+                             (dissoc :tempids)
+                             (assoc :id (-> data :tempids first second)))
                 :message "Project created."}})))
 
 (defn patch-project [{{{:keys [id]} :path
@@ -84,7 +84,7 @@
       (let [result (parser req [(list action-symbol action-params)])
             data (get result action-symbol)]
         (if (:server/error? data)
-          {:status 400
+          {:status (:server/code data)
            :body   data}
           {:status 200
            :body   (if (= action-symbol `prj/save-project)

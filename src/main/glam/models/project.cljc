@@ -60,12 +60,12 @@
        (cond
          ;; project name must be unique
          (gxe/find-entity node {:project/name name})
-         (mc/server-error (str "Project already exists with name " name))
+         (mc/server-error 400 (str "Project already exists with name " name))
          :else
          (let [{:keys [id success]} (prj/create node new-project)]
            (if success
              {:tempids {temp-id id}}
-             (mc/server-error "Project creation failed, please refresh and try again")))))))
+             (mc/server-error 500 "Project creation failed, please refresh and try again")))))))
 
 
 #?(:clj
@@ -75,14 +75,14 @@
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
          (not valid?)
-         (server-error (str "Project delta invalid: " delta))
+         (server-error 400 (str "Project delta invalid: " delta))
 
          (nil? (:project/id (gxe/entity node id)))
-         (server-error (str "Project not found by ID " id))
+         (server-error 404 (str "Project not found by ID " id))
 
          :else
          (if-not (prj/merge node id (mc/apply-delta {} delta))
-           (server-error (str "Failed to save project information, please refresh and try again"))
+           (server-error 500 (str "Failed to save project information, please refresh and try again"))
            (gxe/entity node id))))))
 
 
@@ -112,13 +112,13 @@
      {::pc/transform ma/admin-required}
      (cond
        (nil? (:project/id (gxe/entity node project-id)))
-       (mc/server-error (str "Project doesn't exist: " project-id))
+       (mc/server-error 404 (str "Project doesn't exist: " project-id))
 
        (nil? (:user/id (gxe/entity node user-id)))
-       (mc/server-error (str "User doesn't exist: " user-id))
+       (mc/server-error 400 (str "User doesn't exist: " user-id))
 
        (not (some #{privileges} ["reader" "writer" "none"]))
-       (mc/server-error (str "Unknown privileges type: " privileges))
+       (mc/server-error 400 (str "Unknown privileges type: " privileges))
 
        :else
        (let [tx (into (prj/remove-reader** node project-id user-id)
@@ -131,7 +131,7 @@
              success (gxe/submit! node tx)]
          (if success
            (mc/server-message "Updated privileges")
-           (mc/server-error "Failed to update user privileges, please refresh and try again"))))))
+           (mc/server-error 500 "Failed to update user privileges, please refresh and try again"))))))
 
 
 #?(:clj
@@ -140,22 +140,22 @@
      (let [layer (gxe/entity node layer-id)]
        (cond
          (not layer)
-         (mc/server-error (str "No database entry under ID " layer-id))
+         (mc/server-error 400 (str "No database entry under ID " layer-id))
 
          (not (mc/is-layer? layer))
-         (mc/server-error (str "Entity under ID " layer-id " is not a layer."))
+         (mc/server-error 400 (str "Entity under ID " layer-id " is not a layer."))
 
          (not (string? editor-name))
-         (mc/server-error "Editor name must be a string.")
+         (mc/server-error 400 "Editor name must be a string.")
 
          (not (string? config-key))
-         (mc/server-error "Config key must be a string.")
+         (mc/server-error 400 "Config key must be a string.")
 
          :else
          (let [success (prj/assoc-editor-config-pair node layer-id editor-name config-key config-value)]
            (if success
              (mc/server-message (str "Update succeeded"))
-             (mc/server-error "Failed to update editor config, please refresh and try again")))))))
+             (mc/server-error 500 "Failed to update editor config, please refresh and try again")))))))
 
 
 #?(:clj
@@ -164,22 +164,22 @@
      (let [layer (gxe/entity node layer-id)]
        (cond
          (not layer)
-         (mc/server-error (str "No database entry under ID " layer-id))
+         (mc/server-error 400 (str "No database entry under ID " layer-id))
 
          (not (mc/is-layer? layer))
-         (mc/server-error (str "Entity under ID " layer-id " is not a layer."))
+         (mc/server-error 400 (str "Entity under ID " layer-id " is not a layer."))
 
          (not (string? editor-name))
-         (mc/server-error "Editor name must be a string.")
+         (mc/server-error 400 "Editor name must be a string.")
 
          (not (string? config-key))
-         (mc/server-error "Config key must be a string.")
+         (mc/server-error 400 "Config key must be a string.")
 
          :else
          (let [success (prj/dissoc-editor-config-pair node layer-id editor-name config-key)]
            (if success
              (mc/server-message (str "Deletion succeeded"))
-             (mc/server-error "Failed to update editor config, please refresh and try again")))))))
+             (mc/server-error 500 "Failed to update editor config, please refresh and try again")))))))
 
 #?(:clj
    (def project-resolvers [accessible-projects all-projects get-project create-project save-project

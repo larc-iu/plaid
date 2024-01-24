@@ -70,8 +70,8 @@
                                      :user/id                  id}))
         (do
           (log/error "Invalid credentials supplied for" username)
-          (server-error "Invalid credentials")))
-      (server-error "Invalid credentials"))))
+          (server-error 401 "Invalid credentials")))
+      (server-error 401 "Invalid credentials"))))
 
 (defmutation logout [env params]
   {::pc/output [:session/valid?

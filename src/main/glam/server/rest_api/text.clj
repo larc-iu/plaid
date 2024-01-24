@@ -9,7 +9,7 @@
   (let [result (parser req [(list `txt/create-text {:text/layer layer :text/body body :text/document document})])
         data (get result `txt/create-text)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body   data}
       {:status 200
        :body   (util/get-created-id data)})))
@@ -26,7 +26,7 @@
 (defn delete-text [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [(list `txt/delete-text {:text/id id})])
         data (get result `txt/delete-text)]
-    {:status (if (:server/error? data) 400 200)
+    {:status (:server/code data)
      :body data}))
 
 (defn patch-text [{{{:keys [id]} :path
@@ -38,7 +38,7 @@
        :body {:error true :message (str "Unknown action: `" action "`")}}
       (let [result (parser req [(list action-symbol (merge {:text/id id} action-params))])
             data (get result action-symbol)]
-        {:status (if (:server/error? data) 400 200)
+        {:status (:server/code data)
          :body   data}))))
 
 (def text-routes

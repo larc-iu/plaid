@@ -34,12 +34,19 @@
        (log/error "Unrecognized record type" record))))
 
 (defn server-message [msg]
-  {:server/message msg
+  {:server/code    200
+   :server/message msg
    :server/error?  false})
 
-(defn server-error [msg]
-  {:server/message msg
-   :server/error?  true})
+(defn server-error
+  ([code msg]
+   {:server/code   code
+    :server/message msg
+    :server/error?  true})
+  ([msg]
+   {:server/code    400
+    :server/message msg
+    :server/error?  true}))
 
 (defn apply-delta [entity delta]
   (let [new-vals (into {} (for [[k {:keys [after]}] delta]

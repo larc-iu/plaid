@@ -20,13 +20,13 @@
   (let [result (parser req [(list `usr/change-own-password {:current-password currentPassword :new-password newPassword})])
         data (get result `usr/change-own-password)]
     {:body data
-     :status (if (:server/error? data) 400 200)}))
+     :status (:server/code data)}))
 
 (defn change-own-name [{{{:keys [name]} :body} :parameters :as req}]
   (let [result (parser req [(list `usr/change-own-name {:name name})])
         data (get result `usr/change-own-name)]
     {:body data
-     :status (if (:server/error? data) 400 200)}))
+     :status (:server/code data)}))
 
 (def user-routes
   ["/user"
@@ -64,7 +64,7 @@
         result (parser req [(list `usr/create-user params)])
         data (get result `usr/create-user)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body   data}
       {:status 200
        :body   {:id (-> data
@@ -76,7 +76,7 @@
   (let [result (parser req [(list `usr/delete-user {:ident [:user/id id]})])
         data (get result `usr/delete-user)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body {:error true :message "User does not exist."}}
       {:status 200
        :body data})))
@@ -91,7 +91,7 @@
     (let [result (parser req [(list action-symbol action-params)])
           data (get result action-symbol)]
       (if (:server/error? data)
-        {:status 400
+        {:status (:server/code data)
          :body   data}
         {:status 200
          :body   data}))))

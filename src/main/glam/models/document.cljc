@@ -58,15 +58,15 @@
                             (select-keys [:document/name])
                             (assoc :document/project parent-id))]
        (cond (nil? (:project/id (gxe/entity node parent-id)))
-             (server-error "Invalid project.")
+             (server-error 400 "Invalid project.")
 
              (mc/validate-delta record-valid? delta)
-             (server-error (str "Document is not valid, refusing to create: " delta))
+             (server-error 400 (str "Document is not valid, refusing to create: " delta))
 
              :else
              (let [{:keys [id success]} (doc/create node new-document)]
                (if-not success
-                 (server-error (str "Failed to create document, please refresh and try again"))
+                 (server-error 500 (str "Failed to create document, please refresh and try again"))
                  {:tempids {temp-id id}}))))))
 
 #?(:clj
@@ -75,18 +75,18 @@
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
          (nil? (:document/id (gxe/entity node id)))
-         (server-error (str "Document doesn't exist with ID: " id))
+         (server-error 404 (str "Document doesn't exist with ID: " id))
 
          (not valid?)
-         (server-error (str "Document is not valid, refusing to save: " delta))
+         (server-error 400 (str "Document is not valid, refusing to save: " delta))
 
          (not (ma/ident-locked? env [:document/id id]))
-         (server-error (ma/lock-holder-error-msg env [:document/id id]))
+         (server-error 403 (ma/lock-holder-error-msg env [:document/id id]))
 
          :else
          (if (doc/merge node id (mc/apply-delta {} delta))
            (server-message "Document saved")
-           (server-error "Document failed to save"))))))
+           (server-error 500 "Document failed to save"))))))
 
 #?(:clj
    (pc/defmutation delete-document [{:keys [node] :as env} {[_ id] :ident :as params}]
@@ -94,14 +94,14 @@
      (let [{:document/keys [name] :as record} (gxe/entity node id)]
        (cond
          (nil? (:document/id record))
-         (server-error (str "Document not found with ID: " id))
+         (server-error 404 (str "Document not found with ID: " id))
 
          (not (ma/ident-locked? env [:document/id id]))
-         (server-error (ma/lock-holder-error-msg env [:document/id id]))
+         (server-error 403 (ma/lock-holder-error-msg env [:document/id id]))
 
          :else
          (if-not (doc/delete node id)
-           (server-error (str "Failed to delete document " name ". Please refresh and try again"))
+           (server-error 500 (str "Failed to delete document " name ". Please refresh and try again"))
            (server-message (str "Document " name " deleted")))))))
 
 #?(:clj
@@ -110,14 +110,14 @@
      (let [{name :document/name :as doc} (gxe/entity node doc-id)]
        (cond
          (nil? (:document/id doc))
-         (server-error (str "Document not found with ID: " doc-id))
+         (server-error 404 (str "Document not found with ID: " doc-id))
 
          (some? (:document/lock-holder doc))
-         (server-error (ma/lock-holder-error-msg env [:document/id doc-id]))
+         (server-error 403 (ma/lock-holder-error-msg env [:document/id doc-id]))
 
          :else
          (if-not (doc/acquire-lock node doc-id current-user)
-           (server-error (str "Failed to acquire lock on " name "."))
+           (server-error 500 (str "Failed to acquire lock on " name "."))
            (server-message (str "Lock acquired on document " name ".")))))))
 
 #?(:clj
@@ -126,14 +126,14 @@
      (let [{name :document/name :as doc} (gxe/entity node doc-id)]
        (cond
          (nil? (:document/id doc))
-         (server-error (str "Document not found with ID: " doc-id))
+         (server-error 404 (str "Document not found with ID: " doc-id))
 
          (and (some? (:document/lock-holder doc)) (not= current-user (:document/lock-holder doc)))
-         (server-error "Locks may only be released by their owners.")
+         (server-error 403 "Locks may only be released by their owners.")
 
          :else
          (if-not (doc/release-lock node doc-id)
-           (server-error (str "Failed to release lock on " name "."))
+           (server-error 500 (str "Failed to release lock on " name "."))
            (server-message (str "Lock released on document " name ".")))))))
 
 ;; admin --------------------------------------------------------------------------------

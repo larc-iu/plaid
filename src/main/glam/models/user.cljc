@@ -105,16 +105,16 @@
        (cond
          ;; user must be valid
          (nil? id)
-         (server-error "Invalid session")
+         (server-error 401 "Invalid session")
          ;; current password must be correct
          (not (verify-password current-password password-hash))
-         (server-error (str "Current password incorrect"))
+         (server-error 401 (str "Current password incorrect"))
          ;; new password must be valid
          (not (valid-password new-password))
-         (server-error "New password is invalid")
+         (server-error 400 "New password is invalid")
          :else
          (if-not (user/merge node id {:user/password-hash (hash-password new-password)})
-           (server-error (str "Failed to change password. Please refresh and try again"))
+           (server-error 500 (str "Failed to change password. Please refresh and try again"))
            (server-message "Password change successful"))))))
 
 #?(:cljs
@@ -132,16 +132,16 @@
        (cond
          ;; user must be valid
          (nil? user-id)
-         (server-error (str "No valid user found while attempting to change name"))
+         (server-error 401 (str "No valid user found while attempting to change name"))
          ;; name must not be taken
          (and (not (empty? same-names)) (not= user-id (-> same-names first :user/id)))
-         (server-error (str "Name \"" name "\" already taken"))
+         (server-error 400 (str "Name \"" name "\" already taken"))
          ;; name must be valid
          (not (valid-name name))
-         (server-error (str "Name \"" name "\" is invalid"))
+         (server-error 400 (str "Name \"" name "\" is invalid"))
          :else
          (if-not (user/merge node user-id {:user/name name})
-           (server-error (str "Failed to change name to " name ". Please refresh and try again"))
+           (server-error 500 (str "Failed to change name to " name ". Please refresh and try again"))
            (server-message (str "Name changed to " name)))))))
 
 ;; admin level -------------------------------------------------------------------------------
@@ -157,16 +157,16 @@
      (cond
        ;; ensure the user to be deleted exists
        (nil? (:user/id (gxe/entity node id)))
-       (server-error (str "User not found by ID " id))
+       (server-error 404 (str "User not found by ID " id))
        ;; ensure we're not deleting the last admin
        (and (:user/admin? (user/get node id))
             (= 1 (count (filter :user/admin? (user/get-all node)))))
-       (server-error (str "Cannot delete the last admin user (ID: " id ")"))
+       (server-error 400 (str "Cannot delete the last admin user (ID: " id ")"))
        ;; otherwise, go ahead
        :else
        (let [name (:user/name (gxe/entity node id))]
          (if-not (user/delete node id)
-           (server-error (str "Failed to delete user " name ". Please refresh and try again"))
+           (server-error 500 (str "Failed to delete user " name ". Please refresh and try again"))
            (server-message (str "User " name " deleted")))))))
 
 #?(:clj
@@ -181,21 +181,21 @@
        (cond
          ;; email must be unique if it's being changed
          (and new-email (gxe/find-entity node {:user/email new-email}))
-         (server-error (str "User already exists with email " new-email))
+         (server-error 400 (str "User already exists with email " new-email))
          ;; name must be unique if it's being changed
          (and new-name (gxe/find-entity node {:user/name new-name}))
-         (server-error (str "User already exists with name " new-name))
+         (server-error 400 (str "User already exists with name " new-name))
          ;; must be valid
          (not valid?)
-         (server-error (str "User delta invalid: " delta))
+         (server-error 400 (str "User delta invalid: " delta))
          ;; if password is present, must be valid
          (and new-password? (not (valid-password new-password)))
-         (server-error (str "New password is invalid"))
+         (server-error 400 (str "New password is invalid"))
          :else
          (if-not (user/merge node id (-> (mc/apply-delta {} delta)
                                          (cond-> (and new-password? (valid-password new-password))
                                                  (merge {:user/password-hash (hash-password new-password)}))))
-           (server-error (str "Failed to save user information, please refresh and try again"))
+           (server-error 500 (str "Failed to save user information, please refresh and try again"))
            (dissoc (gxe/entity node id) :user/password-hash))))))
 #?(:clj
    (pc/defmutation create-user [{:keys [node]} {delta :delta [_ temp-id] :ident :as params}]
@@ -205,17 +205,17 @@
        (cond
          ;; email must be unique
          (gxe/find-entity node {:user/email email})
-         (server-error (str "User already exists with email " email))
+         (server-error 400 (str "User already exists with email " email))
          ;; name must be unique
          (gxe/find-entity node {:user/name name})
-         (server-error (str "User already exists with name " name))
+         (server-error 400 (str "User already exists with name " name))
          ;; password must be valid
          (not (valid-password password))
-         (server-error (str "Password is invalid"))
+         (server-error 400 (str "Password is invalid"))
          :else
          (let [{:keys [id success]} (user/create node (merge new-user {:user/password-hash (hash-password password)}))]
            (if-not success
-             (server-error (str "Failed to create user, please refresh and try again"))
+             (server-error 500 (str "Failed to create user, please refresh and try again"))
              {:tempids {temp-id id}}))))))
 
 #?(:clj

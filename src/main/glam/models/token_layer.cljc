@@ -172,19 +172,19 @@
      {::pc/transform (ma/writeable-required :token-layer/id)}
      (cond
        (nil? (tokl/get node id))
-       (server-error (str "Token layer does not exist:" id))
+       (server-error 404 (str "Token layer does not exist:" id))
 
        (nil? (txt/get node text-id))
-       (server-error (str "Text does not exist:" text-id))
+       (server-error 400 (str "Text does not exist:" text-id))
 
        (nil? (doc/get node doc-id))
-       (server-error (str "Doc does not exist:" doc-id))
+       (server-error 400 (str "Doc does not exist:" doc-id))
 
        (not (#{:tokenization/whitespace :tokenization/morpheme} tokenization-scheme))
-       (server-error (str "Unrecognized tokenization scheme:" tokenization-scheme))
+       (server-error 400 (str "Unrecognized tokenization scheme:" tokenization-scheme))
 
        (not (ma/ident-locked? env [:document/id doc-id]))
-       (server-error (ma/lock-holder-error-msg env [:document/id doc-id]))
+       (server-error 403 (ma/lock-holder-error-msg env [:document/id doc-id]))
 
        :else
        (let [success (condp = tokenization-scheme
@@ -192,7 +192,7 @@
                        :tokenization/morpheme (tokl/morpheme-tokenize node id doc-id text-id))]
          (if success
            (server-message "Tokenization successful")
-           (server-error "Tokenization failed"))))))
+           (server-error 500 "Tokenization failed"))))))
 
 ;; admin --------------------------------------------------------------------------------
 ;;
@@ -203,13 +203,13 @@
      (let [new-token-layer (-> {} (mc/apply-delta delta) (select-keys token-layer-keys))]
        (cond
          (nil? (:text-layer/id (gxe/entity node parent-id)))
-         (server-error (str "Parent of token layer must be a valid text layer."))
+         (server-error 400 (str "Parent of token layer must be a valid text layer."))
 
          :else
          (let [{:keys [id success]} (tokl/create node new-token-layer)]
            (txtl/add-token-layer node parent-id id)
            (if-not success
-             (server-error (str "Failed to create token-layer, please refresh and try again"))
+             (server-error 500 (str "Failed to create token-layer, please refresh and try again"))
              {:tempids {temp-id id}}))))))
 
 #?(:clj
@@ -220,14 +220,14 @@
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
          (not valid?)
-         (server-error (str "Token layer delta invalid: " delta))
+         (server-error 400 (str "Token layer delta invalid: " delta))
 
          (nil? (:token-layer/id (gxe/entity node id)))
-         (server-error (str "Token layer not found by ID " id))
+         (server-error 404 (str "Token layer not found by ID " id))
 
          :else
          (if-not (tokl/merge node id (mc/apply-delta {} delta))
-           (server-error (str "Failed to save token-layer information, please refresh and try again"))
+           (server-error 500 (str "Failed to save token-layer information, please refresh and try again"))
            (gxe/entity node id))))))
 
 #?(:clj
@@ -235,14 +235,14 @@
      {::pc/transform ma/admin-required}
      (cond
        (nil? (:token-layer/id (gxe/entity node id)))
-       (server-error (str "Token layer not found by ID " id))
+       (server-error 404 (str "Token layer not found by ID " id))
 
        :else
        (let [name (:token-layer/name (gxe/entity node id))
              tx (tokl/delete** node id)
              success (gxe/submit! node tx)]
          (if-not success
-           (server-error (str "Failed to delete token layer " name ". Please refresh and try again"))
+           (server-error 500 (str "Failed to delete token layer " name ". Please refresh and try again"))
            (server-message (str "Token layer " name " deleted")))))))
 
 
@@ -251,10 +251,10 @@
      {::pc/transform ma/admin-required}
      (cond
        (nil? (:token-layer/id (gxe/entity node id)))
-       (server-error (str "Token layer not found by ID " id))
+       (server-error 404 (str "Token layer not found by ID " id))
 
        (not (boolean? up?))
-       (server-error (str "Param up? must be a boolean."))
+       (server-error 400 (str "Param up? must be a boolean."))
 
        :else
        (let [name (:token-layer/name (gxe/entity node id))
@@ -262,7 +262,7 @@
              tx (txtl/shift-token-layer** node parent-id id up?)
              success (gxe/submit! node tx)]
          (if-not success
-           (server-error (str "Failed to shift token layer " name ". Please try again."))
+           (server-error 500 (str "Failed to shift token layer " name ". Please try again."))
            (server-message (str "Token layer " name " shifted " (if up? "up" "down") ".")))))))
 
 #?(:clj

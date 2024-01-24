@@ -39,14 +39,14 @@
      (let [token (gxe/entity node id)]
        (cond
          (nil? (:token/id token))
-         (server-error (str "Token does not exist with id: " id))
+         (server-error 404 (str "Token does not exist with id: " id))
 
          (not (ma/ident-locked? env [:token/id id]))
-         (server-error (ma/lock-holder-error-msg env [:token/id id]))
+         (server-error 403 (ma/lock-holder-error-msg env [:token/id id]))
 
          :else
          (if-not (tok/set-extent node id (select-keys params [:new-begin :new-end :delta-begin :delta-end]))
-           (server-error "Retokenization failed")
+           (server-error 500 "Retokenization failed")
            (server-message "Token boundaries updated"))))))
 
 #?(:clj
@@ -56,14 +56,14 @@
      (let [token (gxe/entity node id)]
        (cond
          (nil? (:token/id token))
-         (server-error (str "Token does not exist with id: " id))
+         (server-error 404 (str "Token does not exist with id: " id))
 
          (not (ma/ident-locked? env [:token/id id]))
-         (server-error (ma/lock-holder-error-msg env [:token/id id]))
+         (server-error 403 (ma/lock-holder-error-msg env [:token/id id]))
 
          :else
          (if-not (tok/delete node id)
-           (server-error "Token deletion failed")
+           (server-error 500 "Token deletion failed")
            (server-message "Token deleted"))))))
 
 #?(:clj
@@ -75,21 +75,21 @@
            text-layer (gxe/entity node (:text/layer text))]
        (cond
          (nil? (:text/id text))
-         (server-error "Token must have an associated text.")
+         (server-error 400 "Token must have an associated text.")
 
          (nil? (:token-layer/id token-layer))
-         (server-error (str "Token layer does not exist with ID " layer))
+         (server-error 400 (str "Token layer does not exist with ID " layer))
 
          (not (contains? (set (:text-layer/token-layers text-layer)) layer))
-         (server-error (str "Text associated with a token must have a text layer associated with the token layer."))
+         (server-error 400 (str "Text associated with a token must have a text layer associated with the token layer."))
 
          (not (ma/ident-locked? env [:text/id (:token/text token)]))
-         (server-error (ma/lock-holder-error-msg env [:text/id (:token/text token)]))
+         (server-error 403 (ma/lock-holder-error-msg env [:text/id (:token/text token)]))
 
          :else
          (let [{:keys [success] new-id :id} (tok/safe-create node token)]
            (if-not success
-             (server-error "Token creation failed")
+             (server-error 500 "Token creation failed")
              (merge {:tempids {(:token/id token) new-id}} (server-message "Text created"))))))))
 
 ;; admin --------------------------------------------------------------------------------

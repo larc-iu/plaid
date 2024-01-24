@@ -14,7 +14,7 @@
         result (parser req [(list `sl/create-span-layer params)])
         data (get result `sl/create-span-layer)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body   data}
       {:status 200
        :body   {:id (-> data
@@ -35,7 +35,7 @@
   (let [result (parser req [(list `sl/delete-span-layer {:ident [:span-layer/id id]})])
         data (get result `sl/delete-span-layer)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body {:error true :message "Span layer does not exist."}}
       {:status 200
        :body data})))
@@ -52,7 +52,7 @@
       (let [result (parser req [(list action-symbol action-params)])
             data (get result action-symbol)]
         (if (:server/error? data)
-          {:status 400
+          {:status (:server/code data)
            :body   data}
           {:status 200
            :body   (if (= action-symbol `sl/save-span-layer)

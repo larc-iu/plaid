@@ -14,7 +14,7 @@
         result (parser req [(list `txtl/create-text-layer params)])
         data (get result `txtl/create-text-layer)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body   data}
       {:status 200
        :body   {:id (-> data
@@ -35,7 +35,7 @@
   (let [result (parser req [(list `txtl/delete-text-layer {:ident [:text-layer/id id]})])
         data (get result `txtl/delete-text-layer)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body {:error true :message "Text layer does not exist."}}
       {:status 200
        :body data})))
@@ -52,7 +52,7 @@
       (let [result (parser req [(list action-symbol action-params)])
             data (get result action-symbol)]
         (if (:server/error? data)
-          {:status 400
+          {:status (:server/code data)
            :body   data}
           {:status 200
            :body   (if (= action-symbol `txtl/save-text-layer)
