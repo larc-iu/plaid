@@ -14,7 +14,7 @@
 #?(:clj
    (pc/defresolver get-token [{:keys [node] :as env} {:token/keys [id]}]
      {::pc/input     #{:token/id}
-      ::pc/output    [:token/id :token/begin :token/end]
+      ::pc/output    [:token/id :token/begin :token/end :token/layer]
       ::pc/transform (ma/readable-required :token/id)}
      (tok/get node id)))
 
