@@ -57,17 +57,24 @@
                             (mc/apply-delta delta)
                             (select-keys [:document/name])
                             (assoc :document/project parent-id))]
-       (let [{:keys [id success]} (doc/create node new-document)]
-         (if-not success
-           (server-error (str "Failed to create document, please refresh and try again"))
-           {:tempids {temp-id id}})))))
+       (cond (nil? (:project/id (gxe/entity node parent-id)))
+             (server-error "Invalid project.")
+
+             (mc/validate-delta record-valid? delta)
+             (server-error (str "Document is not valid, refusing to create: " delta))
+
+             :else
+             (let [{:keys [id success]} (doc/create node new-document)]
+               (if-not success
+                 (server-error (str "Failed to create document, please refresh and try again"))
+                 {:tempids {temp-id id}}))))))
 
 #?(:clj
    (pc/defmutation save-document [{:keys [node] :as env} {delta :delta [_ id] :ident :as params}]
      {::pc/transform (ma/writeable-required :document/id (comp second :ident))}
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
-         (nil? (gxe/entity node id))
+         (nil? (:document/id (gxe/entity node id)))
          (server-error (str "Document doesn't exist with ID: " id))
 
          (not valid?)
@@ -86,7 +93,7 @@
      {::pc/transform (ma/writeable-required :document/id (comp second :ident))}
      (let [{:document/keys [name] :as record} (gxe/entity node id)]
        (cond
-         (nil? record)
+         (nil? (:document/id record))
          (server-error (str "Document not found with ID: " id))
 
          (not (ma/ident-locked? env [:document/id id]))
@@ -98,31 +105,11 @@
            (server-message (str "Document " name " deleted")))))))
 
 #?(:clj
-   (pc/defmutation acquire-lock [{:keys [node] :as env} {doc-id :document/id user-id :user/id}]
-     {::pc/transform (ma/writeable-required :document/id)}
-     (let [{name :document/name :as doc} (gxe/entity node doc-id)
-           user (gxe/entity node user-id)]
-       (cond
-         (nil? doc)
-         (server-error (str "Document not found with ID: " doc-id))
-
-         (nil? user)
-         (server-error (str "User not found with ID: " user-id))
-
-         (some? (:document/lock-holder doc))
-         (server-error (ma/lock-holder-error-msg env [:document/id doc-id]))
-
-         :else
-         (if-not (doc/acquire-lock node doc-id user-id)
-           (server-error (str "Failed to acquire lock on " name "."))
-           (server-message (str "Lock acquired on document " name ".")))))))
-
-#?(:clj
    (pc/defmutation acquire-lock [{:keys [node current-user] :as env} {doc-id :document/id}]
      {::pc/transform (ma/writeable-required :document/id)}
      (let [{name :document/name :as doc} (gxe/entity node doc-id)]
        (cond
-         (nil? doc)
+         (nil? (:document/id doc))
          (server-error (str "Document not found with ID: " doc-id))
 
          (some? (:document/lock-holder doc))
@@ -138,7 +125,7 @@
      {::pc/transform (ma/writeable-required :document/id)}
      (let [{name :document/name :as doc} (gxe/entity node doc-id)]
        (cond
-         (nil? doc)
+         (nil? (:document/id doc))
          (server-error (str "Document not found with ID: " doc-id))
 
          (and (some? (:document/lock-holder doc)) (not= current-user (:document/lock-holder doc)))
