@@ -17,6 +17,7 @@
             [glam.server.rest-api.span-layer :refer [span-layer-routes]]
             [glam.server.rest-api.token-layer :refer [token-layer-routes]]
             [glam.server.rest-api.text-layer :refer [text-layer-routes]]
+            [glam.server.rest-api.project :refer [project-routes project-admin-routes]]
             [malli.experimental.lite :as ml]
             [malli.util :as mu]))
 
@@ -85,10 +86,12 @@
    [""
     {:middleware [auth-middleware postprocess-middleware]}
     ["/document"
+     project-routes
      span-routes
      ]
     ["/admin"
      ["/layers"
+      project-admin-routes
       text-layer-routes
       token-layer-routes
       span-layer-routes

@@ -4,8 +4,7 @@
             [glam.xtdb.common :as gxc]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.access :as gca]
-            [glam.xtdb.text-layer :as txtl]
-            [glam.xtdb.document :as doc])
+            [glam.xtdb.text-layer :as txtl])
   (:refer-clojure :exclude [get]))
 
 (def attr-keys [:project/id
@@ -69,6 +68,10 @@
        (map xt->pathom)))
 
 ;; Mutations --------------------------------------------------------------------------------
+(defn merge
+  [node eid m]
+  (gxe/merge node eid (select-keys m [:project/name])))
+
 (gxe/deftx delete [node eid]
   (let [text-layers (:project/text-layers (gxe/entity node eid))
         txtl-txs (reduce into (map #(txtl/delete** node %) text-layers))
