@@ -7,9 +7,10 @@
             #?(:clj [glam.xtdb.document :as doc])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.xtdb.easy :as gxe])
-            #?(:clj [glam.models.common :as mc :refer [server-error server-message]])))
+            #?(:clj [glam.models.common :as mc :refer [server-error server-message]])
+            #?(:clj [xtdb.api :as xt])))
 
-(def document-keys [:document/name :document/project])
+(def document-keys [:document/name :document/project :document/text-layers])
 
 (defn valid-name [name] (and (string? name) (<= 1 (count name) 80)))
 (defn- field-valid [field v]
@@ -30,10 +31,23 @@
 #?(:clj
    (pc/defresolver get-document [{:keys [node]} {:document/keys [id]}]
      {::pc/input     #{:document/id}
-      ::pc/output    [:document/id :document/name :document/text-layers]
+      ::pc/output    [:document/id :document/name]
       ::pc/transform (ma/readable-required :document/id)}
-     (-> (doc/get node id)
-         (assoc :document/text-layers (doc/get-text-layers node id)))))
+     (doc/get node id)))
+
+#?(:clj
+   (pc/defresolver get-full-document [{:keys [node]} {:document/keys [id]}]
+     {::pc/input #{:document/id}
+      ::pc/output [{:document/text-layers
+                    [:text-layer/id
+                     {:text-layer/text [:text/id :text/body]}
+                     {:text-layer/token-layers
+                      [:token-layer/id
+                       {:token-layer/tokens [:token/id :token/begin :token/end :token/text]}
+                       {:token-layer/span-layers
+                        [:span-layer/id
+                         :span-layer/spans]}]}]}]}
+     (doc/get-with-layer-data-for-pathom node id)))
 
 #?(:clj
    (pc/defmutation create-document [{:keys [node]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
@@ -138,6 +152,6 @@
 ;; admin --------------------------------------------------------------------------------
 
 #?(:clj
-   (def document-resolvers [get-document create-document save-document delete-document
+   (def document-resolvers [get-document get-full-document create-document save-document delete-document
                             acquire-lock release-lock]))
 
