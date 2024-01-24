@@ -35,20 +35,6 @@
       ::pc/transform (ma/readable-required :text-layer/id)}
      (txtl/get node id)))
 
-#?(:clj
-   (pc/defresolver get-text [{:keys [node] :as env} {:text-layer/keys [id]}]
-     {::pc/input     #{:text-layer/id}
-      ::pc/output    [:text-layer/text]
-      ::pc/transform (ma/readable-required :text-layer/id)}
-     (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (when-let [text-id (ffirst (xt/q (xt/db node)
-                                          '{:find  [?txt]
-                                            :where [[?txt :text/document ?doc]
-                                                    [?txt :text/layer ?txtl]]
-                                            :in    [[?txtl ?doc]]}
-                                          [id doc-id]))]
-         {:text-layer/text {:text/id text-id}}))))
-
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
    (pc/defmutation create-text-layer [{:keys [node]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
@@ -119,6 +105,6 @@
            (server-message (str "Text layer " name " shifted " (if up? "up" "down") ".")))))))
 
 #?(:clj
-   (def text-layer-resolvers [get-text-layer get-text create-text-layer save-text-layer delete-text-layer
+   (def text-layer-resolvers [get-text-layer create-text-layer save-text-layer delete-text-layer
                               shift-text-layer]))
 

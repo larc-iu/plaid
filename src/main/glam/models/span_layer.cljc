@@ -36,19 +36,6 @@
       ::pc/transform (ma/readable-required :span-layer/id)}
      (sl/get node id)))
 
-#?(:clj
-   (pc/defresolver get-spans [{:keys [node] :as env} {:span-layer/keys [id]}]
-     {::pc/input     #{:span-layer/id}
-      ::pc/output    [{:span-layer/spans [:span/id :span/value :span/layer :span/tokens]}]
-      ::pc/transform (ma/readable-required :span-layer/id)}
-     (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (when-let [spans (mapv (fn [s]
-                                (-> s
-                                    (update :span/tokens #(mapv (fn [id] {:token/id id}) %))
-                                    (update :span/layer (fn [id] {:span-layer/id id}))))
-                              (s/get-spans node doc-id id))]
-         {:span-layer/spans spans}))))
-
 ;; admin --------------------------------------------------------------------------------
 ;;
 
@@ -120,5 +107,5 @@
            (server-message (str "Span layer " name " shifted " (if up? "up" "down") ".")))))))
 
 #?(:clj
-   (def span-layer-resolvers [get-span-layer get-spans create-span-layer create-span-layer
+   (def span-layer-resolvers [get-span-layer create-span-layer create-span-layer
                               save-span-layer delete-span-layer shift-span-layer]))
