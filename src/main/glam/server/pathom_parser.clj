@@ -99,11 +99,10 @@
 (defn log-mutation [mutation-writer input output]
   (let [m {:input  (dissoc input :out)
            :output output
-           :time   (.getTime (java.util.Date.))}
-        ;; For now, just log the pathom tx
-        m (get-in m [:input :tx])]
-    (log/info m)
-    (.write mutation-writer (str m "\n"))))
+           :time   (.getTime (java.util.Date.))}]
+    (log/info (get-in m [:input :tx]))
+    (.write mutation-writer (str m "\n"))
+    (.flush mutation-writer)))
 
 (defn make-parser [config node mutation-writer]
   (let [{:keys [trace?
