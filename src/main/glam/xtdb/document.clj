@@ -29,6 +29,7 @@
   (xt->pathom (gxe/find-entity node {:document/id id})))
 
 (defmulti get-doc-info (fn [node doc-id parent-id [key id]] key))
+
 (defmethod get-doc-info :document/id [node doc-id parent-id [key id]]
   (let [txtl-ids (map first (xt/q
                               (xt/db node)
@@ -39,17 +40,21 @@
                               id))]
     {:document/id          id
      :document/text-layers (mapv #(get-doc-info node doc-id id [:text-layer/id %]) txtl-ids)}))
+
 (defmethod get-doc-info :text-layer/id [node doc-id parent-id [key id]]
   (let [tokl-ids (map first (xt/q
                               (xt/db node)
                               '{:find  [?tokl]
                                 :where [[?txtl :text-layer/token-layers ?tokl]]
                                 :in    [?txtl]}
-                              id))]
-    {:text-layer/id id
-     :text-layer/text {:text/id (gxe/find-entity-id node [[:text/document parent-id]
-                                                          [:text/layer id]])}
-     :text-layer/token-layers (mapv #(get-doc-info node doc-id id [:token-layer/id %]) tokl-ids)}))
+                              id))
+        text (gxe/find-entity-id node [[:text/document parent-id]
+                                       [:text/layer id]])
+        token-layers (mapv #(get-doc-info node doc-id id [:token-layer/id %]) tokl-ids)]
+    (cond-> {:text-layer/id           id
+             :text-layer/token-layers token-layers}
+            (some? text) (assoc :text-layer/text {:text/id text}))))
+
 (defmethod get-doc-info :token-layer/id [node doc-id parent-id [key id]]
   (let [sl-ids (map first (xt/q (xt/db node)
                                '{:find  [?sl]
@@ -68,6 +73,7 @@
     {:token-layer/id          id
      :token-layer/tokens      tokens
      :token-layer/span-layers (mapv #(get-doc-info node doc-id id [:span-layer/id %]) sl-ids)}))
+
 (defmethod get-doc-info :span-layer/id [node doc-id parent-id [key id]]
   (let [spans (->> (xt/q (xt/db node)
                          '{:find [(pull ?s [:span/id :span/value :span/tokens])]
