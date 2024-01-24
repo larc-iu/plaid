@@ -15,7 +15,7 @@
 
 (defn entities [node id-vecs]
   "get entities given a seq of 1-tuples of :xt/id"
-  (map #(entity node (first %)) id-vecs))
+  (map #(entity node (if (coll? %) (first %) %)) id-vecs))
 
 (defn q [node query]
   (xt/q (xt/db node) query))
