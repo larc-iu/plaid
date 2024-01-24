@@ -3,6 +3,7 @@
             [glam.server.id-counter :refer [id?]]
             [glam.models.span-layer :as sl]
             [glam.server.rest-api.util :as util]
+            [glam.server.rest-api.common :refer [config-fragment]]
             [malli.experimental.lite :as ml])
   (:import (java.util UUID)))
 
@@ -67,16 +68,18 @@
             :description "Creates a new span layer. ID is given in the response under \"id\"."
             :handler    create-span-layer}}]
    ["/:id"
-    {:get {:parameters {:path {:id id?}}
-           :handler    get-span-layer}
-     :delete {:parameters {:path {:id id?}}
-              :handler    delete-span-layer}
-     :patch
-     {:parameters {:path {:id id?}
-                   :body {:action [:enum "setName" "shift"]
-                          :name (ml/optional string?)
-                          :up   (ml/optional boolean?)}}
-      :description (str "setName: sets the span layer's `name` to body param `name`."
-                        "\nshift: Moves the span layer up or down relative to other span layers, "
-                        "depending on whether `up` is true or false.")
-      :handler patch-span-layer}}]])
+    [""
+     {:get    {:parameters {:path {:id id?}}
+               :handler    get-span-layer}
+      :delete {:parameters {:path {:id id?}}
+               :handler    delete-span-layer}
+      :patch
+      {:parameters  {:path {:id id?}
+                     :body {:action [:enum "setName" "shift"]
+                            :name   (ml/optional string?)
+                            :up     (ml/optional boolean?)}}
+       :description (str "setName: sets the span layer's `name` to body param `name`."
+                         "\nshift: Moves the span layer up or down relative to other span layers, "
+                         "depending on whether `up` is true or false.")
+       :handler     patch-span-layer}}]
+    config-fragment]])

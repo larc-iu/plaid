@@ -3,6 +3,7 @@
             [glam.server.id-counter :refer [id?]]
             [glam.models.text-layer :as txtl]
             [glam.server.rest-api.util :as util]
+            [glam.server.rest-api.common :refer [config-fragment]]
             [malli.experimental.lite :as ml])
   (:import (java.util UUID)))
 
@@ -67,17 +68,19 @@
             :description "Creates a new text layer. ID is given in the response under \"id\"."
             :handler    create-text-layer}}]
    ["/:id"
-    {:get {:parameters {:path {:id id?}}
-           :handler    get-text-layer}
-     :delete {:parameters {:path {:id id?}}
-              :handler    delete-text-layer}
-     :patch
-     {:parameters {:path {:id id?}
-                   :body {:action [:enum "setName" "shift"]
-                          :name (ml/optional string?)
-                          :up   (ml/optional boolean?)}}
-      :description (str "setName: sets the text layer's `name` to body param `name`."
-                        "\nshift: Moves the text layer up or down relative to other text layers, "
-                        "depending on whether `up` is true or false.")
-      :handler patch-text-layer}}]])
+    [""
+     {:get    {:parameters {:path {:id id?}}
+               :handler    get-text-layer}
+      :delete {:parameters {:path {:id id?}}
+               :handler    delete-text-layer}
+      :patch
+      {:parameters  {:path {:id id?}
+                     :body {:action [:enum "setName" "shift"]
+                            :name   (ml/optional string?)
+                            :up     (ml/optional boolean?)}}
+       :description (str "setName: sets the text layer's `name` to body param `name`."
+                         "\nshift: Moves the text layer up or down relative to other text layers, "
+                         "depending on whether `up` is true or false.")
+       :handler     patch-text-layer}}]
+    config-fragment]])
 
