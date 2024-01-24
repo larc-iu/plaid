@@ -38,7 +38,7 @@
       ::pc/transform (ma/writeable-required :token/id)}
      (let [token (gxe/entity node id)]
        (cond
-         (nil? token)
+         (nil? (:token/id token))
          (server-error (str "Token does not exist with id: " id))
 
          (not (ma/ident-locked? env [:token/id id]))
@@ -55,7 +55,7 @@
       ::pc/transform (ma/writeable-required :token/id)}
      (let [token (gxe/entity node id)]
        (cond
-         (nil? token)
+         (nil? (:token/id token))
          (server-error (str "Token does not exist with id: " id))
 
          (not (ma/ident-locked? env [:token/id id]))

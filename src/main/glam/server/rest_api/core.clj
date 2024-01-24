@@ -15,6 +15,7 @@
             [glam.server.rest-api.session :refer [session-routes]]
             [glam.server.rest-api.span :refer [span-routes]]
             [glam.server.rest-api.token :refer [token-routes]]
+            [glam.server.rest-api.text :refer [text-routes]]
             [glam.server.rest-api.span-layer :refer [span-layer-routes]]
             [glam.server.rest-api.token-layer :refer [token-layer-routes]]
             [glam.server.rest-api.text-layer :refer [text-layer-routes]]
@@ -88,6 +89,7 @@
     {:middleware [auth-middleware postprocess-middleware]}
     ["/document"
      project-routes
+     text-routes
      token-routes
      span-routes
      ]

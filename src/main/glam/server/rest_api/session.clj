@@ -18,7 +18,6 @@
 
 (defn register [{{{:keys [username password]} :body} :parameters :as req}]
   (let [result (parser req [(list `gms/signup {:username username :password password})])
-        _ (println (`gms/signup result))
         {valid? :session/valid? message :session/server-error-msg :as session-updates} (`gms/signup result)
         new-session (merge (:session req) session-updates)]
     (if valid?
