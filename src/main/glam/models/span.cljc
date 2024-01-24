@@ -35,7 +35,7 @@
    (pc/defmutation update-value [{:keys [node] :as env} {:span/keys [id value] :as span}]
      {::pc/transform (ma/writeable-required :span/id)}
      (cond
-       (nil? (s/get node id))
+       (nil? (:span/id (s/get node id)))
        (server-error (str "Span with id " id " does not exist."))
 
        (not (ma/ident-locked? env [:span/id id]))
@@ -60,7 +60,7 @@
                                  set)
            orig-token-layer (s/get-associated-token-layer node id)]
        (cond
-         (nil? (s/get node id))
+         (nil? (:span/id (s/get node id)))
          (server-error (str "Span with id " id " does not exist."))
 
          (not (every? #(some? (:token/id %)) (gxe/entities node (map vector tokens))))
@@ -118,7 +118,7 @@
                                  (filter some?)
                                  set)]
        (cond
-         (not (sl/get node layer))
+         (not (:span-layer/id (sl/get node layer)))
          (server-error "Span layer does not exist.")
 
          (some nil? (map #(tok/get node %) tokens))
@@ -130,6 +130,10 @@
 
          (not= 1 (count new-token-layers))
          (server-error "All tokens associated with span must belong to a single token layer.")
+
+         (not ((->> new-token-layers first (gxe/entity node) :token-layer/span-layers set)
+               layer))
+         (server-error "Span must belong to a layer that is associated with its tokens' layer.")
 
          (not (ma/ident-locked? env [:span/id id]))
          (server-error (ma/lock-holder-error-msg env [:span/id id]))
