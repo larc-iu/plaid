@@ -71,7 +71,7 @@
    (defn get-current-user
      "Reads username (email) from the ring session and returns the ID"
      [{:keys [node] :ring/keys [request] :as env}]
-     (when-let [session (:session request)]
+     (when-let [session (or (:session request) (:session env))]
        (when (:session/valid? session)
          (if-let [email (:user/email session)]
            (do (log/info "Resolved current user: " email)
@@ -156,7 +156,7 @@
      {::pc/transform ma/admin-required}
      (cond
        ;; ensure the user to be deleted exists
-       (not (gxe/entity node id))
+       (nil? (:user/id (gxe/entity node id)))
        (server-error (str "User not found by ID " id))
        ;; ensure we're not deleting the last admin
        (and (:user/admin? (user/get node id))
@@ -196,7 +196,7 @@
                                          (cond-> (and new-password? (valid-password new-password))
                                                  (merge {:user/password-hash (hash-password new-password)}))))
            (server-error (str "Failed to save user information, please refresh and try again"))
-           (gxe/entity node id))))))
+           (dissoc (gxe/entity node id) :user/password-hash))))))
 #?(:clj
    (pc/defmutation create-user [{:keys [node]} {delta :delta [_ temp-id] :ident :as params}]
      {::pc/transform ma/admin-required

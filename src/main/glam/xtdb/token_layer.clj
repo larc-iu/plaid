@@ -139,7 +139,7 @@
                                                              :token-layer token-layer-id}))
 
       (not (some #{span-layer-id} sls))
-      (throw (ex-info "Token layer is not linked to span layer" {:span-layer  span-layer-id
+      (throw (ex-info "Span layer is not linked to token layer" {:span-layer  span-layer-id
                                                                  :token-layer token-layer-id}))
 
       :else
@@ -147,7 +147,9 @@
         [(gxe/put* new-tl)]))))
 
 (gxe/deftx delete [node eid]
-  (let [span-layers (:token-layer/span-layers (gxe/entity node eid))
+  (let [parent-layer (parent-id node eid)
+        unlink (glam.xtdb.text-layer/remove-token-layer** node parent-layer eid)
+        span-layers (:token-layer/span-layers (gxe/entity node eid))
         span-layer-deletions (reduce into (map #(sl/delete** node %) span-layers))
         token-ids (map first (xt/q (xt/db node) '{:find  [?tok]
                                                   :where [[?tok :token/layer ?tokl]]
@@ -155,6 +157,7 @@
                                    eid))
         token-deletions (mapv gxe/delete* token-ids)]
     (reduce into
-            [span-layer-deletions
+            [unlink
+             span-layer-deletions
              token-deletions
              [(gxe/delete* eid)]])))

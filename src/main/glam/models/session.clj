@@ -7,6 +7,7 @@
     [glam.models.user :as user]
     [glam.models.common :refer [server-error]]
     [glam.xtdb.user :as cuser]
+    [glam.models.auth :refer [get-session]]
     [taoensso.timbre :as log]
     [glam.xtdb.easy :as gxe]))
 
@@ -16,7 +17,7 @@
   ([mutation-env new-session-data]
    (augment-session-resp mutation-env new-session-data (or new-session-data {})))
   ([mutation-env new-session-data data]
-   (let [existing-session (some-> mutation-env :ring/request :session)]
+   (let [existing-session (get-session mutation-env)]
      (fmw/augment-response
        data
        (fn [resp]
@@ -26,32 +27,40 @@
 (pc/defmutation signup
   [{:keys [node] :as env} {:keys [email password]}]
   {}
-  (if-let [{:user/keys [id]} (cuser/get-by-email node email)]
+  (println (cuser/get-by-email node email))
+  (if-let [{:user/keys [id]} (and (string? email) (cuser/get-by-email node email))]
     (augment-session-resp env {:session/valid?           false
                                :user/email               email
                                :user/id                  id
                                :user/admin?              false
                                :session/server-error-msg "Problem signing up."})
-    (do (log/info "doing signup")
-        (log/info "inserting user: " email)
+    (do (log/info "signing up user: " email)
         ;; TODO should also check for error
-        (let [id (:id (cuser/create node {:user/name          email
-                                          :user/email         email
-                                          :user/password-hash (user/hash-password password)}))
-              admin? (:user/admin? (gxe/entity node id))]
-          (augment-session-resp env {:session/valid?           true
-                                     :session/server-error-msg nil
-                                     :user/email               email
-                                     :user/id                  id
-                                     :user/admin?              admin?})))))
+        (cond
+          (not (and (string? email) (user/valid-email email)))
+          (augment-session-resp env {:session/server-error-msg "Invalid email. User not created."})
+
+          (not (and (string? password) (user/valid-password password)))
+          (augment-session-resp env {:session/server-error-msg "Invalid password. User not created."})
+
+          :else
+          (let [id (:id (cuser/create node {:user/name          email
+                                            :user/email         email
+                                            :user/password-hash (user/hash-password password)}))
+                admin? (:user/admin? (gxe/entity node id))]
+            (augment-session-resp env {:session/valid?           true
+                                       :session/server-error-msg nil
+                                       :user/email               email
+                                       :user/id                  id
+                                       :user/admin?              admin?}))))))
 
 ;; todo use a protocol to support pluggable auth
 (defmutation login [{:keys [node] :as env} {:keys [username password]}]
   {::pc/output [:session/valid? :user/email :user/id :user/admin?]}
   (do
     (log/info "Authenticating" username)
-    (if-let [{:user/keys [id password-hash admin?] :as user} (cuser/get-by-email node username)]
-      (if (user/verify-password password password-hash)
+    (if-let [{:user/keys [id password-hash admin?] :as user} (and (string? username) (cuser/get-by-email node username))]
+      (if (and (string? password) (user/verify-password password password-hash))
         (do
           (log/info "Successful login: " (dissoc user :user/password-hash))
           (augment-session-resp env {:session/valid?           true
@@ -77,7 +86,7 @@
 
 (defresolver current-session-resolver [env _]
   {::pc/output [{::current-session [:session/valid? :user/email :user/id :user/admin?]}]}
-  (let [{:keys [user/email session/valid? user/admin? user/id] :as session} (get-in env [:ring/request :session])]
+  (let [{:keys [user/email session/valid? user/admin? user/id] :as session} (get-session env)]
     (log/info " in current sesh resolver: " session)
     (if valid?
       (do

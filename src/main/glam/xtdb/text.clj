@@ -32,6 +32,14 @@
   [node id]
   (xt->pathom (gxe/find-entity node {:text/id id})))
 
+(defn get-text-for-doc [node txtl doc]
+  (ffirst
+    (xt/q (xt/db node)
+          '{:find  [?txt]
+            :where [[?txt :text/layer ?txtl]
+                    [?txt :text/document ?doc]]
+            :in    [[?txtl ?doc]]}
+          [txtl doc])))
 
 ;; Mutations ----------------------------------------------------------------------
 (defn get-token-ids [node eid]

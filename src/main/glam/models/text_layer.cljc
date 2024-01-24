@@ -35,31 +35,22 @@
       ::pc/transform (ma/readable-required :text-layer/id)}
      (txtl/get node id)))
 
-#?(:clj
-   (pc/defresolver get-text [{:keys [node] :as env} {:text-layer/keys [id]}]
-     {::pc/input     #{:text-layer/id}
-      ::pc/output    [:text-layer/text]
-      ::pc/transform (ma/readable-required :text-layer/id)}
-     (when-let [[_ doc-id] (mc/try-get-document-ident env)]
-       (when-let [text-id (ffirst (xt/q (xt/db node)
-                                          '{:find  [?txt]
-                                            :where [[?txt :text/document ?doc]
-                                                    [?txt :text/layer ?txtl]]
-                                            :in    [[?txtl ?doc]]}
-                                          [id doc-id]))]
-         {:text-layer/text {:text/id text-id}}))))
-
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
    (pc/defmutation create-text-layer [{:keys [node]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [new-text-layer (-> {} (mc/apply-delta delta) (select-keys text-layer-keys))]
-       (let [{:keys [id success]} (txtl/create node new-text-layer)]
-         (prj/add-text-layer node parent-id id)
-         (if-not success
-           (server-error (str "Failed to create text-layer, please refresh and try again"))
-           {:tempids {temp-id id}})))))
+       (cond
+         (nil? (:project/id (gxe/entity node parent-id)))
+         (server-error (str "Parent of text layer must be a valid project."))
+
+         :else
+         (let [{:keys [id success]} (txtl/create node new-text-layer)]
+           (prj/add-text-layer node parent-id id)
+           (if-not success
+             (server-error (str "Failed to create text-layer, please refresh and try again"))
+             {:tempids {temp-id id}}))))))
 
 #?(:clj
    (pc/defmutation save-text-layer [{:keys [node]} {delta :delta [_ id] :ident :as params}]
@@ -68,9 +59,12 @@
      (log/info (str "id:" (:ident params)))
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
-         ;; must be valid
          (not valid?)
          (server-error (str "Text layer delta invalid: " delta))
+
+         (nil? (:text-layer/id (gxe/entity node id)))
+         (server-error (str "Text layer not found by ID " id))
+
          :else
          (if-not (txtl/merge node id (mc/apply-delta {} delta))
            (server-error (str "Failed to save text-layer information, please refresh and try again"))
@@ -80,20 +74,37 @@
    (pc/defmutation delete-text-layer [{:keys [node]} {[_ id] :ident :as params}]
      {::pc/transform ma/admin-required}
      (cond
-       ;; ensure the text layer to be deleted exists
-       (not (gxe/entity node id))
+       (nil? (:text-layer/id (gxe/entity node id)))
        (server-error (str "Text layer not found by ID " id))
-       ;; otherwise, go ahead
+
        :else
        (let [name (:text-layer/name (gxe/entity node id))
-             parent-id (txtl/parent-id node id)
-             tx (into (txtl/delete** node id)
-                      (prj/remove-text-layer** node parent-id id))
+             tx (txtl/delete** node id)
              success (gxe/submit! node tx)]
          (if-not success
            (server-error (str "Failed to delete text layer " name ". Please refresh and try again"))
            (server-message (str "Text layer " name " deleted")))))))
 
 #?(:clj
-   (def text-layer-resolvers [get-text-layer get-text create-text-layer save-text-layer delete-text-layer]))
+   (pc/defmutation shift-text-layer [{:keys [node]} {id :id up? :up?}]
+     {::pc/transform ma/admin-required}
+     (cond
+       (nil? (:text-layer/id (gxe/entity node id)))
+       (server-error (str "Text layer not found by ID " id))
+
+       (not (boolean? up?))
+       (server-error (str "Param up? must be a boolean."))
+
+       :else
+       (let [name (:text-layer/name (gxe/entity node id))
+             parent-id (txtl/parent-id node id)
+             tx (prj/shift-text-layer** node parent-id id up?)
+             success (gxe/submit! node tx)]
+         (if-not success
+           (server-error (str "Failed to shift text layer " name ". Please try again."))
+           (server-message (str "Text layer " name " shifted " (if up? "up" "down") ".")))))))
+
+#?(:clj
+   (def text-layer-resolvers [get-text-layer create-text-layer save-text-layer delete-text-layer
+                              shift-text-layer]))
 

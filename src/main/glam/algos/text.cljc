@@ -3,6 +3,22 @@
             #?(:cljs ["fast-diff" :as fd])))
 
 
+(defn valid-delete? [{:keys [type index value] :as op}]
+  (and (map? op)
+       (= :delete type)
+       (int? index)
+       (int? value)))
+
+(defn valid-insert? [{:keys [type index value] :as op}]
+  (and (map? op)
+       (= :insert type)
+       (int? index)
+       (string? value)))
+
+(defn valid-ops? [ops]
+  (every? #(or (valid-delete? %)
+               (valid-insert? %))
+          ops))
 
 (defn delete-op [index value]
   {:type  :delete

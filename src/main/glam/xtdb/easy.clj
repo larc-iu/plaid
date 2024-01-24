@@ -15,7 +15,7 @@
 
 (defn entities [node id-vecs]
   "get entities given a seq of 1-tuples of :xt/id"
-  (map #(entity node (first %)) id-vecs))
+  (map #(entity node (if (coll? %) (first %) %)) id-vecs))
 
 (defn q [node query]
   (xt/q (xt/db node) query))
@@ -64,7 +64,7 @@
     (walk/postwalk
       (fn [x]
         (cond
-          (and (symbol? x) (some? (namespace x)))
+          (and (symbol? x) (some? (namespace x)) (some? (ns-resolve *ns* x)))
           (symbol (ns-resolve *ns* x))
 
           (and (symbol? x) (contains? ns-vars x))

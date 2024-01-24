@@ -6,7 +6,7 @@
             #?(:clj [glam.xtdb.project :as prj])
             #?(:clj [glam.xtdb.easy :as gxe])
             #?(:clj [glam.xtdb.common :as gxc])
-            #?(:clj [glam.models.common :as mc])
+            #?(:clj [glam.models.common :as mc :refer [server-error server-message]])
             #?(:clj [glam.models.auth :as ma])
             #?(:clj [glam.xtdb.user :as usr])))
 
@@ -22,6 +22,10 @@
     (field-valid field v)))
 
 (def validator (fs/make-validator project-valid))
+
+(defn record-valid? [record]
+  (every? (fn [[k v]]
+            (field-valid k v)) record))
 
 ;; user --------------------------------------------------------------------------------
 #?(:clj
@@ -63,6 +67,25 @@
              {:tempids {temp-id id}}
              (mc/server-error "Project creation failed, please refresh and try again")))))))
 
+
+#?(:clj
+   (pc/defmutation save-project [{:keys [node]} {delta :delta [_ id] :ident :as params}]
+     {::pc/transform ma/admin-required
+      ::pc/output    [:server/error? :server/message]}
+     (let [valid? (mc/validate-delta record-valid? delta)]
+       (cond
+         (not valid?)
+         (server-error (str "Project delta invalid: " delta))
+
+         (nil? (:project/id (gxe/entity node id)))
+         (server-error (str "Project not found by ID " id))
+
+         :else
+         (if-not (prj/merge node id (mc/apply-delta {} delta))
+           (server-error (str "Failed to save project information, please refresh and try again"))
+           (gxe/entity node id))))))
+
+
 #?(:clj
    (pc/defresolver get-users-for-project [{:keys [node]} {:project/keys [id]}]
      {::pc/input     #{:project/id}
@@ -88,11 +111,11 @@
                                                         privileges :user/privileges}]
      {::pc/transform ma/admin-required}
      (cond
-       (not (gxe/entity node project-id))
-       (mc/server-error (str "Project doesn't exist:" project-id))
+       (nil? (:project/id (gxe/entity node project-id)))
+       (mc/server-error (str "Project doesn't exist: " project-id))
 
-       (not (gxe/entity node user-id))
-       (mc/server-error (str "User doesn't exist:" project-id))
+       (nil? (:user/id (gxe/entity node user-id)))
+       (mc/server-error (str "User doesn't exist: " user-id))
 
        (not (some #{privileges} ["reader" "writer" "none"]))
        (mc/server-error (str "Unknown privileges type: " privileges))
@@ -110,35 +133,10 @@
            (mc/server-message "Updated privileges")
            (mc/server-error "Failed to update user privileges, please refresh and try again"))))))
 
-#?(:clj
-   (pc/defmutation set-editor-config-pair [{:keys [node]} {:keys [layer-id editor-name config-key config-value]}]
-     ;; Should this actually be admin-required?
-     {::pc/transform ma/user-required}
-     (let [layer (gxe/entity node layer-id)]
-       (cond
-         (not layer)
-         (mc/server-error (str "No database entry under ID " layer-id))
-
-         (not (mc/is-layer? layer))
-         (mc/server-error (str "Entity under ID " layer-id " is not a layer."))
-
-         (not (string? editor-name))
-         (mc/server-error "Editor name must be a string.")
-
-         (not (string? config-key))
-         (mc/server-error "Config key must be a string.")
-
-         :else
-         (let [success (prj/assoc-editor-config-pair node layer-id editor-name config-key config-value)]
-           (if success
-             (mc/server-message (str "Update succeeded"))
-             (mc/server-error "Failed to update editor config, please refresh and try again")))))))
-
 
 #?(:clj
    (pc/defmutation set-editor-config-pair [{:keys [node]} {:keys [layer-id editor-name config-key config-value]}]
-     ;; Should this actually be admin-required?
-     {::pc/transform ma/user-required}
+     {::pc/transform ma/admin-required}
      (let [layer (gxe/entity node layer-id)]
        (cond
          (not layer)
@@ -162,8 +160,7 @@
 
 #?(:clj
    (pc/defmutation delete-editor-config-pair [{:keys [node]} {:keys [layer-id editor-name config-key]}]
-     ;; Should this actually be admin-required?
-     {::pc/transform ma/user-required}
+     {::pc/transform ma/admin-required}
      (let [layer (gxe/entity node layer-id)]
        (cond
          (not layer)
@@ -185,6 +182,6 @@
              (mc/server-error "Failed to update editor config, please refresh and try again")))))))
 
 #?(:clj
-   (def project-resolvers [accessible-projects all-projects get-project create-project get-users-for-project
-                           set-user-privileges set-editor-config-pair delete-editor-config-pair]))
+   (def project-resolvers [accessible-projects all-projects get-project create-project save-project
+                           get-users-for-project set-user-privileges set-editor-config-pair delete-editor-config-pair]))
 
