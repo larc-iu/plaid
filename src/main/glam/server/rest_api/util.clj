@@ -1,5 +1,6 @@
 (ns glam.server.rest-api.util
-  (:require [clojure.walk :refer [postwalk]]))
+  (:require [clojure.walk :refer [postwalk]]
+            [clojure.string :as cljstr]))
 
 (defn get-created-id [data]
   (-> data
@@ -12,7 +13,6 @@
       :muuntaja/response
       :format))
 
-(def response {:span/id 592, :span/value "", :span/layer {:span-layer/id 7}, :span/tokens [{:token/id 302}]})
 (defn idents->ids
   "Raw pathom outputs have things like `{:span-layer/id 1}` where we just want `1`. This
   looks at everything in a response "
@@ -28,9 +28,9 @@
     (assoc response :body new-body)))
 
 (defn de-namespace
-  "If we're responding with anything other than EDN, get rid of namespaces in keys"
+  "If we're responding with JSON, get rid of namespaces in keys"
   [request response]
-  (if (= (response-format request) "application/edn")
+  (if (not= (response-format request) "application/json")
     response
     (let [new-body (postwalk
                      (fn [x]
@@ -42,8 +42,18 @@
 
                              :else
                              x))
-                     response)]
-      (assoc response :body new-body))))
+                     (:body response))
+          new-body2 (postwalk
+                      (fn [x]
+                        (if (and (keyword? x)
+                                 (re-matches #"^.*-layers?$" (name x)))
+                          (-> (name x)
+                              (cljstr/replace "-layers" "Layers")
+                              (cljstr/replace "-layer" "Layer")
+                              keyword)
+                          x))
+                      new-body)]
+      (assoc response :body new-body2))))
 
 (defn postprocess-response [request response]
   (->> response
