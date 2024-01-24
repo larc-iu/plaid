@@ -35,7 +35,7 @@
                   (let [msg (str "Unauthorized pathom action: session " (get-session env)
                                  " does not satisfy authorization requirement: " failure-message)]
                     (log/warn (str "Unauthorized request: " msg))
-                    (mc/server-error msg))))))))))
+                    (mc/server-error 403 msg))))))))))
 
 ;; TODO: this auth pattern might be unperformant--one idea: cache the auth check in the pathom environment
 ;; see https://blog.wsscode.com/pathom/#updating-env

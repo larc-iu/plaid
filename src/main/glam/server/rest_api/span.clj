@@ -9,7 +9,7 @@
   (let [result (parser req [(list `span/create-span {:span/layer layer :span/value value :span/tokens tokens})])
         data (get result `span/create-span)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body   data}
       {:status 200
        :body   (util/get-created-id data)})))
@@ -26,7 +26,7 @@
 (defn delete-span [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [(list `span/delete-span {:span/id id})])
         data (get result `span/delete-span)]
-    {:status (if (:server/error? data) 400 200)
+    {:status (:server/code data)
      :body data}))
 
 (defn patch-span [{{{:keys [id]} :path
@@ -40,7 +40,7 @@
        :body {:error true :message (str "Unknown action: `" action "`")}}
       (let [result (parser req [(list action-symbol (merge {:span/id id} action-params))])
             data (get result action-symbol)]
-        {:status (if (:server/error? data) 400 200)
+        {:status (:server/code data)
          :body   data}))))
 
 (def span-routes

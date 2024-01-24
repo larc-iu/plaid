@@ -43,13 +43,13 @@
      (let [new-text-layer (-> {} (mc/apply-delta delta) (select-keys text-layer-keys))]
        (cond
          (nil? (:project/id (gxe/entity node parent-id)))
-         (server-error (str "Parent of text layer must be a valid project."))
+         (server-error 400 (str "Parent of text layer must be a valid project."))
 
          :else
          (let [{:keys [id success]} (txtl/create node new-text-layer)]
            (prj/add-text-layer node parent-id id)
            (if-not success
-             (server-error (str "Failed to create text-layer, please refresh and try again"))
+             (server-error 500 (str "Failed to create text-layer, please refresh and try again"))
              {:tempids {temp-id id}}))))))
 
 #?(:clj
@@ -60,14 +60,14 @@
      (let [valid? (mc/validate-delta record-valid? delta)]
        (cond
          (not valid?)
-         (server-error (str "Text layer delta invalid: " delta))
+         (server-error 400 (str "Text layer delta invalid: " delta))
 
          (nil? (:text-layer/id (gxe/entity node id)))
-         (server-error (str "Text layer not found by ID " id))
+         (server-error 404 (str "Text layer not found by ID " id))
 
          :else
          (if-not (txtl/merge node id (mc/apply-delta {} delta))
-           (server-error (str "Failed to save text-layer information, please refresh and try again"))
+           (server-error 500 (str "Failed to save text-layer information, please refresh and try again"))
            (gxe/entity node id))))))
 
 #?(:clj
@@ -75,14 +75,14 @@
      {::pc/transform ma/admin-required}
      (cond
        (nil? (:text-layer/id (gxe/entity node id)))
-       (server-error (str "Text layer not found by ID " id))
+       (server-error 404 (str "Text layer not found by ID " id))
 
        :else
        (let [name (:text-layer/name (gxe/entity node id))
              tx (txtl/delete** node id)
              success (gxe/submit! node tx)]
          (if-not success
-           (server-error (str "Failed to delete text layer " name ". Please refresh and try again"))
+           (server-error 500 (str "Failed to delete text layer " name ". Please refresh and try again"))
            (server-message (str "Text layer " name " deleted")))))))
 
 #?(:clj
@@ -90,10 +90,10 @@
      {::pc/transform ma/admin-required}
      (cond
        (nil? (:text-layer/id (gxe/entity node id)))
-       (server-error (str "Text layer not found by ID " id))
+       (server-error 404 (str "Text layer not found by ID " id))
 
        (not (boolean? up?))
-       (server-error (str "Param up? must be a boolean."))
+       (server-error 400 (str "Param up? must be a boolean."))
 
        :else
        (let [name (:text-layer/name (gxe/entity node id))
@@ -101,7 +101,7 @@
              tx (prj/shift-text-layer** node parent-id id up?)
              success (gxe/submit! node tx)]
          (if-not success
-           (server-error (str "Failed to shift text layer " name ". Please try again."))
+           (server-error 500 (str "Failed to shift text layer " name ". Please try again."))
            (server-message (str "Text layer " name " shifted " (if up? "up" "down") ".")))))))
 
 #?(:clj

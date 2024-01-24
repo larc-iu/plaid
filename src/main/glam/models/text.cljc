@@ -29,23 +29,23 @@
      {::pc/transform (ma/writeable-required :document/id)}
      (cond
        (not (string? body))
-       (server-error "Text body must be a string")
+       (server-error 400 "Text body must be a string")
 
        (nil? (:document/id (doc/get node document-id)))
-       (server-error (str "Document does not exist: " document-id))
+       (server-error 400 (str "Document does not exist: " document-id))
 
        (nil? (:text-layer/id (txtl/get node tl-id)))
-       (server-error (str "Text layer does not exist: " tl-id))
+       (server-error 400 (str "Text layer does not exist: " tl-id))
 
        (some? (text/get-text-for-doc node tl-id document-id))
-       (server-error (str "Document already has a text (ID=" (text/get-text-for-doc node tl-id document-id) ")"
-                          " for text layer " tl-id "."))
+       (server-error 400 (str "Document already has a text (ID=" (text/get-text-for-doc node tl-id document-id) ")"
+                              " for text layer " tl-id "."))
 
        (not ((set (map :text-layer/id (doc/get-text-layers node document-id))) tl-id))
-       (server-error (str "Document " document-id " is not associated with text layer " tl-id))
+       (server-error 400 (str "Document " document-id " is not associated with text layer " tl-id))
 
        (not (ma/ident-locked? env [:document/id document-id]))
-       (server-error (ma/lock-holder-error-msg env [:document/id document-id]))
+       (server-error 403 (ma/lock-holder-error-msg env [:document/id document-id]))
 
        ;; TODO: we actually need a match here in the tx to ensure no other text exists
        :else
@@ -53,7 +53,7 @@
                                                              :text/layer    tl-id
                                                              :text/document document-id})]
          (if-not success
-           (server-error "Failed to create text, please try again")
+           (server-error 500 "Failed to create text, please try again")
            (merge {:tempids {id new-id}} (server-message "Text created")))))))
 
 #?(:clj
@@ -61,18 +61,18 @@
      [{:keys [node] :as env} {:text/keys [id] :keys [ops]}]
      {::pc/transform (ma/writeable-required :text/id)}
      (cond (nil? (:text/id (gxe/entity node id)))
-           (server-error (str "Text not found with ID " id))
+           (server-error 404 (str "Text not found with ID " id))
 
            (not (ma/ident-locked? env [:text/id id]))
-           (server-error (ma/lock-holder-error-msg env [:text/id id]))
+           (server-error 403 (ma/lock-holder-error-msg env [:text/id id]))
 
            (not (ta/valid-ops? ops))
-           (server-error (str "Malformed ops: " ops))
+           (server-error 400 (str "Malformed ops: " ops))
 
            :else
            (if (text/update-body node id ops)
              (server-message "Update successful")
-             (server-error "Failed to create text, please try again")))))
+             (server-error 500 "Failed to create text, please try again")))))
 
 #?(:clj
    (pc/defmutation delete-text [{:keys [node] :as env} {:text/keys [id] :as params}]
@@ -81,14 +81,14 @@
      (let [text (gxe/entity node id)]
        (cond
          (nil? (:text/id text))
-         (server-error (str "Text does not exist with id: " id))
+         (server-error 404 (str "Text does not exist with id: " id))
 
          (not (ma/ident-locked? env [:text/id id]))
-         (server-error (ma/lock-holder-error-msg env [:text/id id]))
+         (server-error 403 (ma/lock-holder-error-msg env [:text/id id]))
 
          :else
          (if-not (text/delete node id)
-           (server-error "Text deletion failed")
+           (server-error 500 "Text deletion failed")
            (server-message "Text deleted"))))))
 
 #?(:clj
@@ -97,24 +97,24 @@
                               doc-id     :document/id tl-id :text-layer/id tokl-id :token-layer/id}]
      {::pc/transform (ma/writeable-required :document/id)}
      (cond (not (string? new-body))
-           (server-error "Text body must be a string")
+           (server-error 400 "Text body must be a string")
 
            (nil? (doc/get node doc-id))
-           (server-error (str "Document does not exist: " doc-id))
+           (server-error 400 (str "Document does not exist: " doc-id))
 
            (nil? (txtl/get node tl-id))
-           (server-error (str "Text layer does not exist: " tl-id))
+           (server-error 400 (str "Text layer does not exist: " tl-id))
 
            (nil? (tokl/get node tokl-id))
-           (server-error (str "Token layer does not exist: " tokl-id))
+           (server-error 400 (str "Token layer does not exist: " tokl-id))
 
            (not (ma/ident-locked? env [:text/id id]))
-           (server-error (ma/lock-holder-error-msg env [:text/id id]))
+           (server-error 403 (ma/lock-holder-error-msg env [:text/id id]))
 
            :else
            (if (tokl/update-body-and-morpheme-tokenize node tokl-id id ops)
              (server-message "Update successful")
-             (server-error "Failed to create text, please try again")))))
+             (server-error 500 "Failed to create text, please try again")))))
 
 #?(:clj
    (pc/defmutation create-and-morpheme-tokenize
@@ -122,19 +122,19 @@
      {::pc/transform (ma/writeable-required :document/id)}
      (cond
        (not (string? body))
-       (server-error "Text body must be a string")
+       (server-error 400 "Text body must be a string")
 
        (nil? (doc/get node document-id))
-       (server-error (str "Document does not exist: " document-id))
+       (server-error 400 (str "Document does not exist: " document-id))
 
        (nil? (txtl/get node tl-id))
-       (server-error (str "Text layer does not exist: " tl-id))
+       (server-error 400 (str "Text layer does not exist: " tl-id))
 
        (nil? (tokl/get node tokl-id))
-       (server-error (str "Token layer does not exist: " tokl-id))
+       (server-error 400 (str "Token layer does not exist: " tokl-id))
 
        (not (ma/ident-locked? env [:text/id id]))
-       (server-error (ma/lock-holder-error-msg env [:text/id id]))
+       (server-error 403 (ma/lock-holder-error-msg env [:text/id id]))
 
        :else
        (let [{:keys [success] new-id :id} (tokl/create-text-and-morpheme-tokenize
@@ -144,7 +144,7 @@
                                              :text/document document-id}
                                             tokl-id)]
          (if-not success
-           (server-error "Failed to create text, please try again")
+           (server-error 500 "Failed to create text, please try again")
            (merge {:tempids {id new-id}} (server-message "Text created")))))))
 
 ;; admin --------------------------------------------------------------------------------

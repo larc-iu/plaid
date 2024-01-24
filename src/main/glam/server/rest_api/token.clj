@@ -10,7 +10,7 @@
                                                :token/begin begin :token/end end})])
         data (get result `tok/create)]
     (if (:server/error? data)
-      {:status 400
+      {:status (:server/code data)
        :body   data}
       {:status 200
        :body   (util/get-created-id data)})))
@@ -27,7 +27,7 @@
 (defn delete-token [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [(list `tok/delete {:token/id id})])
         data (get result `tok/delete)]
-    {:status (if (:server/error? data) 400 200)
+    {:status (:server/code data)
      :body data}))
 
 (defn patch-token [{{{:keys [id]} :path
@@ -40,7 +40,7 @@
        :body {:error true :message (str "Unknown action: `" action "`")}}
       (let [result (parser req [(list action-symbol (merge {:token/id id} action-params))])
             data (get result action-symbol)]
-        {:status (if (:server/error? data) 400 200)
+        {:status (:server/code data)
          :body   data}))))
 
 (def token-routes
