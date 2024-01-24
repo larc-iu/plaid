@@ -88,10 +88,10 @@
                                                         privileges :user/privileges}]
      {::pc/transform ma/admin-required}
      (cond
-       (not (gxe/entity node project-id))
+       (nil? (:project/id (gxe/entity node project-id)))
        (mc/server-error (str "Project doesn't exist:" project-id))
 
-       (not (gxe/entity node user-id))
+       (nil? (:user/id (gxe/entity node user-id)))
        (mc/server-error (str "User doesn't exist:" project-id))
 
        (not (some #{privileges} ["reader" "writer" "none"]))
@@ -110,35 +110,10 @@
            (mc/server-message "Updated privileges")
            (mc/server-error "Failed to update user privileges, please refresh and try again"))))))
 
-#?(:clj
-   (pc/defmutation set-editor-config-pair [{:keys [node]} {:keys [layer-id editor-name config-key config-value]}]
-     ;; Should this actually be admin-required?
-     {::pc/transform ma/user-required}
-     (let [layer (gxe/entity node layer-id)]
-       (cond
-         (not layer)
-         (mc/server-error (str "No database entry under ID " layer-id))
-
-         (not (mc/is-layer? layer))
-         (mc/server-error (str "Entity under ID " layer-id " is not a layer."))
-
-         (not (string? editor-name))
-         (mc/server-error "Editor name must be a string.")
-
-         (not (string? config-key))
-         (mc/server-error "Config key must be a string.")
-
-         :else
-         (let [success (prj/assoc-editor-config-pair node layer-id editor-name config-key config-value)]
-           (if success
-             (mc/server-message (str "Update succeeded"))
-             (mc/server-error "Failed to update editor config, please refresh and try again")))))))
-
 
 #?(:clj
    (pc/defmutation set-editor-config-pair [{:keys [node]} {:keys [layer-id editor-name config-key config-value]}]
-     ;; Should this actually be admin-required?
-     {::pc/transform ma/user-required}
+     {::pc/transform ma/admin-required}
      (let [layer (gxe/entity node layer-id)]
        (cond
          (not layer)
@@ -162,8 +137,7 @@
 
 #?(:clj
    (pc/defmutation delete-editor-config-pair [{:keys [node]} {:keys [layer-id editor-name config-key]}]
-     ;; Should this actually be admin-required?
-     {::pc/transform ma/user-required}
+     {::pc/transform ma/admin-required}
      (let [layer (gxe/entity node layer-id)]
        (cond
          (not layer)
