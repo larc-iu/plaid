@@ -37,6 +37,9 @@
                        (cond (= x :server/error?)
                              :error
 
+                             (= x :user/admin?)
+                             :admin
+
                              (keyword? x)
                              (keyword (name x))
 

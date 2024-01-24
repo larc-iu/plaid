@@ -13,6 +13,7 @@
             [muuntaja.core :as m]
             [glam.server.rest-api.util :refer [postprocess-middleware]]
             [glam.server.rest-api.session :refer [session-routes]]
+            [glam.server.rest-api.user :refer [user-routes user-admin-routes]]
             [glam.server.rest-api.span :refer [span-routes]]
             [glam.server.rest-api.token :refer [token-routes]]
             [glam.server.rest-api.text :refer [text-routes]]
@@ -87,19 +88,19 @@
   ["/rest-api/v1"
    [""
     {:middleware [auth-middleware postprocess-middleware]}
+    user-routes
     ["/document"
      project-routes
      text-routes
      token-routes
-     span-routes
-     ]
+     span-routes]
     ["/admin"
+     user-admin-routes
      ["/layers"
       project-admin-routes
       text-layer-routes
       token-layer-routes
-      span-layer-routes
-      ]]]
+      span-layer-routes]]]
    session-routes
 
    ;; swagger documentation
