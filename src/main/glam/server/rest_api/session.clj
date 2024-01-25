@@ -16,7 +16,7 @@
     {:status 200 :body {:message "User logged out." :error false} :session new-session}))
 
 (defn register [{{{:keys [username password]} :body} :parameters parser :pathom-parser :as req}]
-  (let [result (parser req [(list `gms/signup {:username username :password password})])
+  (let [result (parser req [(list `gms/signup {:email username :password password})])
         {valid? :session/valid? message :session/server-error-msg :as session-updates} (`gms/signup result)
         new-session (merge (:session req) session-updates)]
     (if valid?
