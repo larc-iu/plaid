@@ -31,10 +31,11 @@
 #?(:clj
    (pc/defresolver get-document [{:keys [node]} {:document/keys [id]}]
      {::pc/input     #{:document/id}
-      ::pc/output    [:document/id :document/name]
+      ::pc/output    [:document/id :document/name :document/lock-holder]
       ::pc/transform (ma/readable-required :document/id)}
      (doc/get node id)))
 
+;; This should be kept in lock-step with the output of glam.server.rest-api.common/full-document-query
 #?(:clj
    (pc/defresolver get-full-document [{:keys [node]} {:document/keys [id]}]
      {::pc/input #{:document/id}
@@ -56,11 +57,12 @@
      (let [new-document (-> {}
                             (mc/apply-delta delta)
                             (select-keys [:document/name])
-                            (assoc :document/project parent-id))]
+                            (assoc :document/project parent-id))
+           valid? (mc/validate-delta record-valid? delta)]
        (cond (nil? (:project/id (gxe/entity node parent-id)))
              (server-error 400 "Invalid project.")
 
-             (mc/validate-delta record-valid? delta)
+             (not valid?)
              (server-error 400 (str "Document is not valid, refusing to create: " delta))
 
              :else
@@ -112,6 +114,10 @@
          (nil? (:document/id doc))
          (server-error 404 (str "Document not found with ID: " doc-id))
 
+         (and (some? (:document/lock-holder doc))
+              (= (:document/lock-holder doc) current-user))
+         (server-error 400 (str "User " current-user " already holds lock on document " doc-id))
+
          (some? (:document/lock-holder doc))
          (server-error 403 (ma/lock-holder-error-msg env [:document/id doc-id]))
 
@@ -127,6 +133,9 @@
        (cond
          (nil? (:document/id doc))
          (server-error 404 (str "Document not found with ID: " doc-id))
+
+         (nil? (:document/lock-holder doc))
+         (server-error 400 (str "Document " doc-id " is not locked."))
 
          (and (some? (:document/lock-holder doc)) (not= current-user (:document/lock-holder doc)))
          (server-error 403 "Locks may only be released by their owners.")

@@ -110,28 +110,33 @@
                                                         project-id :project/id
                                                         privileges :user/privileges}]
      {::pc/transform ma/admin-required}
-     (cond
-       (nil? (:project/id (gxe/entity node project-id)))
-       (mc/server-error 404 (str "Project doesn't exist: " project-id))
+     (let [{:project/keys [writers]} (gxe/entity node project-id)]
+       (cond
+         (nil? (:project/id (gxe/entity node project-id)))
+         (mc/server-error 404 (str "Project doesn't exist: " project-id))
 
-       (nil? (:user/id (gxe/entity node user-id)))
-       (mc/server-error 400 (str "User doesn't exist: " user-id))
+         (nil? (:user/id (gxe/entity node user-id)))
+         (mc/server-error 400 (str "User doesn't exist: " user-id))
 
-       (not (some #{privileges} ["reader" "writer" "none"]))
-       (mc/server-error 400 (str "Unknown privileges type: " privileges))
+         (not (some #{privileges} ["reader" "writer" "none"]))
+         (mc/server-error 400 (str "Unknown privileges type: " privileges))
 
-       :else
-       (let [tx (into (prj/remove-reader** node project-id user-id)
-                      ;; Filter out match clauses in the second--we've already guarded in the first **
-                      (filter #(not= (first %) :xtdb.api/match)
-                              (case privileges
-                                "reader" (prj/add-reader** node project-id user-id)
-                                "writer" (prj/add-writer** node project-id user-id)
-                                nil)))
-             success (gxe/submit! node tx)]
-         (if success
-           (mc/server-message "Updated privileges")
-           (mc/server-error 500 "Failed to update user privileges, please refresh and try again"))))))
+         (and (not= privileges "writer")
+              (some? ((set writers) user-id))
+              (not (empty? (gxe/find-entities node [[:document/lock-holder user-id]]))))
+         (mc/server-error 400 (str "User must release locks before their writer privileges can be revoked."))
+
+         :else
+         (let [tx (into (prj/remove-reader** node project-id user-id)
+                        (prj/remove-writer** node project-id user-id)
+                        (case privileges
+                          "reader" (prj/add-reader** node project-id user-id)
+                          "writer" (prj/add-writer** node project-id user-id)
+                          nil))
+               success (gxe/submit! node tx)]
+           (if success
+             (mc/server-message "Updated privileges")
+             (mc/server-error 500 "Failed to update user privileges, please refresh and try again")))))))
 
 
 #?(:clj

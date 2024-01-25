@@ -12,7 +12,8 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :document/project gxc/identize :project/id))))
+        (update :document/project gxc/identize :project/id)
+        (update :document/lock-holder gxc/identize :user/id))))
 
 (defn create* [{:document/keys [id] :as attrs}]
   (gxe/put* (gxc/create-record "document" id attrs attr-keys)))

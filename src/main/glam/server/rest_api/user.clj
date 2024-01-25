@@ -10,7 +10,7 @@
 (defn get-user [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [{[:user/id id] [:user/id :user/name :user/admin?]}])
         data (get result [:user/id id])]
-    (if (= 1 (count data))
+    (if (util/failed-get? data)
       {:status 404
        :body {:error true :message "User does not exist."}}
       {:status 200
@@ -50,7 +50,7 @@
 (defn admin-get-user [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [{[:user/id id] [:user/id :user/name :user/email :user/admin?]}])
         data (get result [:user/id id])]
-    (if (= 1 (count data))
+    (if (util/failed-get? data)
       {:status 404
        :body {:error true :message "User does not exist."}}
       {:status 200

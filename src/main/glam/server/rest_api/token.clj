@@ -18,7 +18,7 @@
 (defn get-token [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [{[:token/id id] [:token/id :token/layer :token/text :token/begin :token/end]}])
         data (get result [:token/id id])]
-    (if (= 1 (count data))
+    (if (util/failed-get? data)
       {:status 404
        :body   {:error true :message "Token does not exist."}}
       {:status 200
