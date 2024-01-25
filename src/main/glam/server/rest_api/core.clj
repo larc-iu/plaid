@@ -90,11 +90,13 @@
     {:middleware [auth-middleware postprocess-middleware]}
     user-routes
     ["/document"
+     {:swagger {:tags ["document"]}}
      project-routes
      text-routes
      token-routes
      span-routes]
     ["/admin"
+     {:swagger {:tags ["admin"]}}
      user-admin-routes
      ["/layers"
       project-admin-routes
@@ -109,9 +111,7 @@
      :swagger {:info {:title       "glam-rest-api"
                       :description (str "Glam's REST API. Note that most functions will return a JSON containing "
                                         " `message`, a string,  and `error`, a boolean. POST requests will"
-                                        " usually contain an `id` in the response body. Error codes are not always"
-                                        " accurate, as we only guarantee that they'll be right at the 2xx and 4xx"
-                                        " level.")}}}
+                                        " usually contain an `id` in the response body.")}}}
 
     ["/swagger.json"
      {:get (swagger/create-swagger-handler)}]
