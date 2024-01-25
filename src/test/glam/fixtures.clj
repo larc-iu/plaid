@@ -1,5 +1,6 @@
 (ns glam.fixtures
   (:require [clojure.test :refer :all]
+            [ring.middleware.defaults :refer [wrap-defaults]]
             [glam.xtdb.user :as user]
             [glam.xtdb.project :as prj]
             [xtdb.api :as xt]
@@ -13,6 +14,7 @@
             [glam.xtdb.span :as s]
             [glam.xtdb.easy :as gxe]
             [glam.server.pathom-parser :refer [make-parser]]
+            [glam.server.rest-api.core :as rest]
             [com.fulcrologic.fulcro.server.config :refer [load-config!]]))
 
 (log/set-level! :error)
@@ -20,9 +22,28 @@
 (def xtdb-node nil)
 (def config nil)
 (def parser nil)
+(def rest-handler nil)
+
+(defn with-rest-handler [f]
+  (with-redefs [rest-handler
+                (-> (rest/rest-handler parser)
+                    (wrap-defaults
+                      {:params    {:keywordize true
+                                   :multipart  true
+                                   :nested     true
+                                   :urlencoded true}
+                       :cookies   true
+                       :responses {:absolute-redirects     true
+                                   :content-types          true
+                                   :default-charset        "utf-8"
+                                   :not-modified-responses true}
+                       :session   true
+                       :security  {:anti-forgery false}}))]
+    (f)))
 
 (defn with-xtdb [f]
-  (with-redefs [xtdb-node (xt/start-node {})]
+  (with-redefs [xtdb-node (xt/start-node {})
+                glam.server.id-counter/id-counter (atom 0)]
     (gxe/install-tx-fns! xtdb-node)
     (f)))
 

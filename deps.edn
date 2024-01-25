@@ -68,13 +68,15 @@
                          :exec-fn     cognitect.test-runner.api/test
                          :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
                                                                   :sha     "7284cda41fb9edc0f3bc6b6185cfb7138fc8a023"}
-                                       thheller/shadow-cljs      {:mvn/version "2.25.2"}}}
+                                       thheller/shadow-cljs      {:mvn/version "2.25.2"}
+                                       ring/ring-mock            {:mvn/version "0.4.0"}}}
            :dev         {:extra-paths ["src/dev" "src/test"]
                          :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"
                                        "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
 
                          :extra-deps  {org.clojure/clojurescript   {:mvn/version "1.11.60"}
                                        org.clojure/test.check      {:mvn/version "1.1.1"}
+                                       ring/ring-mock              {:mvn/version "0.4.0"}
                                        thheller/shadow-cljs        {:mvn/version "2.25.2"}
                                        org.clojure/tools.namespace {:mvn/version "1.4.4"}
                                        ;; Formats spec explain.
