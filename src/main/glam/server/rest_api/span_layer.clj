@@ -25,7 +25,7 @@
 (defn get-span-layer [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [{[:span-layer/id id] [:span-layer/id :span-layer/name :config]}])
         data (get result [:span-layer/id id])]
-    (if (= 1 (count data))
+    (if (util/failed-get? data)
       {:status 404
        :body {:error true :message "Span layer does not exist."}}
       {:status 200

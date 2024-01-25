@@ -17,6 +17,7 @@
             [glam.server.rest-api.span :refer [span-routes]]
             [glam.server.rest-api.token :refer [token-routes]]
             [glam.server.rest-api.text :refer [text-routes]]
+            [glam.server.rest-api.document :refer [document-routes]]
             [glam.server.rest-api.span-layer :refer [span-layer-routes]]
             [glam.server.rest-api.token-layer :refer [token-layer-routes]]
             [glam.server.rest-api.text-layer :refer [text-layer-routes]]
@@ -89,12 +90,14 @@
    [""
     {:middleware [auth-middleware postprocess-middleware]}
     user-routes
+    project-routes
     ["/document"
      {:swagger {:tags ["document"]}}
-     project-routes
-     text-routes
-     token-routes
-     span-routes]
+     document-routes
+     ["/body"
+      text-routes
+      token-routes
+      span-routes]]
     ["/admin"
      {:swagger {:tags ["admin"]}}
      user-admin-routes

@@ -17,7 +17,7 @@
 (defn get-text [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [{[:text/id id] [:text/id :text/body :text/layer :text/document]}])
         data (get result [:text/id id])]
-    (if (= 1 (count data))
+    (if (util/failed-get? data)
       {:status 404
        :body   {:error true :message "Text does not exist."}}
       {:status 200

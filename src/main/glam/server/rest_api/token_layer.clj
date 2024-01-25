@@ -25,7 +25,7 @@
 (defn get-token-layer [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [{[:token-layer/id id] [:token-layer/id :token-layer/name :config]}])
         data (get result [:token-layer/id id])]
-    (if (= 1 (count data))
+    (if (util/failed-get? data)
       {:status 404
        :body {:error true :message "Token layer does not exist."}}
       {:status 200

@@ -25,7 +25,7 @@
 (defn get-text-layer [{{{:keys [id]} :path} :parameters :as req}]
   (let [result (parser req [{[:text-layer/id id] [:text-layer/id :text-layer/name :config]}])
         data (get result [:text-layer/id id])]
-    (if (= 1 (count data))
+    (if (util/failed-get? data)
       {:status 404
        :body {:error true :message "Text layer does not exist."}}
       {:status 200

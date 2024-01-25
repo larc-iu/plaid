@@ -11,15 +11,17 @@
      {:token-layer/span-layers
       [:span-layer/id :span-layer/name :config]}]}])
 
-(def document-layer-schema-query
-  [:text-layer/id :text-layer/name :config
-   {:text-layer/text [:text/id :text/body]}
-   {:text-layer/token-layers
-    [:token-layer/id :token-layer/name :config
-     {:token-layer/tokens [:token/id :token/begin :token/end :token/text]}
-     {:token-layer/span-layers
-      [:span-layer/id :span-layer/name :config
-       {:span-layer/spans [:span/id :span/tokens :span/value]}]}]}])
+;; This should be kept in lock-step with the output of glam.models.document/get-full-document
+(def document-body-query
+  {:document/text-layers
+   [:text-layer/id :text-layer/name :config
+    {:text-layer/text [:text/id :text/body]}
+    {:text-layer/token-layers
+     [:token-layer/id :token-layer/name :config
+      {:token-layer/tokens [:token/id :token/begin :token/end :token/text]}
+      {:token-layer/span-layers
+       [:span-layer/id :Span-layer/name :config
+        {:span-layer/spans [:span/id :span/value :span/tokens]}]}]}]})
 
 (defn patch-config [{{{:keys [id]} :path
                       {:keys [action editorName key value]} :body} :parameters :as req}]
@@ -33,8 +35,7 @@
         {:status 400
          :body   data}
         {:status 200
-         :body   data})))
-  )
+         :body   data}))))
 (def config-fragment ["/config"
                       {:patch {:handler     patch-config
                                :description (str "Modify a layer (`id`)'s config. `action` is \"set\" or \"delete\". "

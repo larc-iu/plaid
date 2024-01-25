@@ -3,6 +3,7 @@
             [glam.server.id-counter :refer [id?]]
             [glam.models.project :as prj]
             [malli.experimental.lite :as ml]
+            [glam.server.rest-api.util :as util]
             [glam.server.rest-api.common :refer [layer-schema-query]])
   (:import (java.util UUID)))
 
@@ -12,14 +13,19 @@
         data (get result :accessible-projects)]
     {:status 200 :body data}))
 
-(defn get-project [{{{:keys [id]} :path} :parameters :as req}]
-  (let [result (parser req [{[:project/id id]
-                             [:project/id :project/name
-                              {:project/writers [:user/id :user/name]}
-                              {:project/readers [:user/id :user/name]}
-                              {:project/text-layers layer-schema-query}]}])
+(defn get-project [{{{:keys [id]} :path
+                     {:keys [includeDocuments]} :query} :parameters :as req}]
+  (let [query [{[:project/id id]
+                (cond-> [:project/id :project/name
+                         {:project/writers [:user/id :user/name]}
+                         {:project/readers [:user/id :user/name]}
+                         {:project/text-layers layer-schema-query}]
+                        (true? includeDocuments) (conj {:project/documents
+                                                        [:document/id :document/name
+                                                         {:document/lock-holder [:user/id :user/name :user/email]}]}))}]
+        result (parser req query)
         data (get result [:project/id id])]
-    (if (= 1 (count data))
+    (if (util/failed-get? data)
       {:status 404
        :body   {:error true :message "Project does not exist."}}
       {:status 200
@@ -31,27 +37,8 @@
     {:get {:handler get-accessible-projects}}]
    ["/project/:id"
     {:get {:handler get-project
-           :parameters {:path {:id id?}}}}]
-   #_["/project"
-    [""
-     {:post {:parameters  {:body {:name    string?
-                                  :project id?}}
-             :description "Creates a new project layer. ID is given in the response under \"id\"."
-             :handler     create-project}}]
-    ["/:id"
-     {:get    {:parameters {:path {:id id?}}
-               :handler    get-project}
-      :delete {:parameters {:path {:id id?}}
-               :handler    delete-project}
-      :patch
-      {:parameters  {:path {:id id?}
-                     :body {:action [:enum "setName" "shift"]
-                            :name   (ml/optional string?)
-                            :up     (ml/optional boolean?)}}
-       :description (str "setName: sets the project layer's `name` to body param `name`."
-                         "\nshift: Moves the project layer up or down relative to other project layers, "
-                         "depending on whether `up` is true or false.")
-       :handler     patch-project}}]]])
+           :parameters {:path {:id id?}
+                        :query {:includeDocuments boolean?}}}}]])
 
 (defn get-projects [req]
   (let [result (parser req [{:all-projects [:project/id :project/name]}])
@@ -102,7 +89,9 @@
              :description "Creates a new project. ID is given in the response under \"id\"."
              :parameters  {:body {:name string?}}}}]
     ["/:id"
-     {:get {:handler get-project}
+     {:get {:handler get-project
+            :parameters {:query {:includeDocuments boolean?}
+                         :path {:id id?}}}
       :patch {:handler patch-project
               :description (str "setName: sets the project's `name` to body param `name`."
                                 "\nsetPrivileges: sets `userId`'s privileges on a project to `privileges`."

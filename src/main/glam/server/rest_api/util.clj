@@ -13,6 +13,9 @@
       :muuntaja/response
       :format))
 
+(defn failed-get? [data]
+  (or (nil? data) (<= (count data) 1)))
+
 (defn idents->ids
   "Raw pathom outputs have things like `{:span-layer/id 1}` where we just want `1`. This
   looks at everything in a response "
@@ -49,10 +52,12 @@
           new-body2 (postwalk
                       (fn [x]
                         (if (and (keyword? x)
-                                 (re-matches #"^.*-layers?$" (name x)))
+                                 (or (re-matches #"^.*-layers?$" (name x))
+                                     (re-matches #"^lock-holder$" (name x))))
                           (-> (name x)
                               (cljstr/replace "-layers" "Layers")
                               (cljstr/replace "-layer" "Layer")
+                              (cljstr/replace "lock-holder" "lockHolder")
                               keyword)
                           x))
                       new-body)]
