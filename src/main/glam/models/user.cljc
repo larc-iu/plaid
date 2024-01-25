@@ -158,10 +158,16 @@
        ;; ensure the user to be deleted exists
        (nil? (:user/id (gxe/entity node id)))
        (server-error 404 (str "User not found by ID " id))
+
        ;; ensure we're not deleting the last admin
        (and (:user/admin? (user/get node id))
             (= 1 (count (filter :user/admin? (user/get-all node)))))
        (server-error 400 (str "Cannot delete the last admin user (ID: " id ")"))
+
+       ;; ensure writer has no locks
+       (= 0 (count (gxe/find-entities node [[:document/lock-holder id]])))
+       (mc/server-error 400 (str "User must release locks before they can be deleted."))
+
        ;; otherwise, go ahead
        :else
        (let [name (:user/name (gxe/entity node id))]
