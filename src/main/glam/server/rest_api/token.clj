@@ -1,11 +1,10 @@
 (ns glam.server.rest-api.token
-  (:require [glam.server.pathom-parser :refer [parser]]
-            [glam.server.id-counter :refer [id?]]
+  (:require [glam.server.id-counter :refer [id?]]
             [glam.models.token :as tok]
             [glam.server.rest-api.util :as util]
             [malli.experimental.lite :as ml]))
 
-(defn create-token [{{{:keys [layer text begin end]} :body} :parameters :as req}]
+(defn create-token [{{{:keys [layer text begin end]} :body} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `tok/create {:token/layer layer :token/text text
                                                :token/begin begin :token/end end})])
         data (get result `tok/create)]
@@ -15,7 +14,7 @@
       {:status 200
        :body   (util/get-created-id data)})))
 
-(defn get-token [{{{:keys [id]} :path} :parameters :as req}]
+(defn get-token [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [{[:token/id id] [:token/id :token/layer :token/text :token/begin :token/end]}])
         data (get result [:token/id id])]
     (if (util/failed-get? data)
@@ -24,14 +23,14 @@
       {:status 200
        :body   data})))
 
-(defn delete-token [{{{:keys [id]} :path} :parameters :as req}]
+(defn delete-token [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `tok/delete {:token/id id})])
         data (get result `tok/delete)]
     {:status (:server/code data)
      :body data}))
 
 (defn patch-token [{{{:keys [id]} :path
-                     {:keys [action newBegin newEnd deltaBegin deltaEnd] :as body} :body} :parameters :as req}]
+                     {:keys [action newBegin newEnd deltaBegin deltaEnd] :as body} :body} :parameters parser :pathom-parser :as req}]
   (let [action-symbol ({"setExtent" `tok/set-extent} action)
         action-params ({"setExtent" {:new-begin newBegin :new-end newEnd
                                      :delta-begin deltaBegin :delta-end deltaEnd}} action)]

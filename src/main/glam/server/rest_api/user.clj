@@ -1,13 +1,14 @@
 (ns glam.server.rest-api.user
-  (:require [glam.server.pathom-parser :refer [parser]]
-            [glam.server.id-counter :refer [id?]]
+  (:require [glam.server.id-counter :refer [id?]]
             [glam.models.user :as usr]
             [glam.server.rest-api.util :as util]
             [malli.experimental.lite :as ml])
   (:import (java.util UUID)))
 
 
-(defn get-user [{{{:keys [id]} :path} :parameters :as req}]
+(defn get-user [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
+  (println parser)
+  (println (keys req))
   (let [result (parser req [{[:user/id id] [:user/id :user/name :user/admin?]}])
         data (get result [:user/id id])]
     (if (util/failed-get? data)
@@ -16,13 +17,13 @@
       {:status 200
        :body data})))
 
-(defn change-own-password [{{{:keys [currentPassword newPassword]} :body} :parameters :as req}]
+(defn change-own-password [{{{:keys [currentPassword newPassword]} :body} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `usr/change-own-password {:current-password currentPassword :new-password newPassword})])
         data (get result `usr/change-own-password)]
     {:body data
      :status (:server/code data)}))
 
-(defn change-own-name [{{{:keys [name]} :body} :parameters :as req}]
+(defn change-own-name [{{{:keys [name]} :body} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `usr/change-own-name {:name name})])
         data (get result `usr/change-own-name)]
     {:body data
@@ -41,13 +42,13 @@
              :parameters {:body {:name string?}}}}]])
 
 ;; Admin --------------------------------------------------------------------------------
-(defn all-users [req]
+(defn all-users [{parser :pathom-parser :as req}]
   (let [result (parser req [{:all-users [:user/id :user/name :user/email :user/admin?]}])
         data (get result :all-users)]
     {:status 200
      :body data}))
 
-(defn admin-get-user [{{{:keys [id]} :path} :parameters :as req}]
+(defn admin-get-user [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [{[:user/id id] [:user/id :user/name :user/email :user/admin?]}])
         data (get result [:user/id id])]
     (if (util/failed-get? data)
@@ -56,7 +57,7 @@
       {:status 200
        :body data})))
 
-(defn create-user [{{{:keys [name email password]} :body} :parameters :as req}]
+(defn create-user [{{{:keys [name email password]} :body} :parameters parser :pathom-parser :as req}]
   (let [params {:delta {:user/name {:after name}
                         :user/email {:after email}
                         :user/password {:after password}}
@@ -72,7 +73,7 @@
                         (assoc :id (-> data :tempids first second)))
                 :message "User created."}})))
 
-(defn delete-user [{{{:keys [id]} :path} :parameters :as req}]
+(defn delete-user [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `usr/delete-user {:ident [:user/id id]})])
         data (get result `usr/delete-user)]
     (if (:server/error? data)
@@ -82,7 +83,7 @@
        :body data})))
 
 (defn patch-user [{{{:keys [id]} :path
-                           {:keys [email name password]} :body} :parameters :as req}]
+                           {:keys [email name password]} :body} :parameters parser :pathom-parser :as req}]
   (let [action-symbol `usr/save-user
         action-params (cond-> {:ident [:user/id id] :delta {}}
                               (some? name) (update :delta assoc :user/name {:after name})

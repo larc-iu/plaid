@@ -1,11 +1,10 @@
 (ns glam.server.rest-api.text
-  (:require [glam.server.pathom-parser :refer [parser]]
-            [glam.server.id-counter :refer [id?]]
+  (:require [glam.server.id-counter :refer [id?]]
             [glam.models.text :as txt]
             [glam.server.rest-api.util :as util]
             [malli.experimental.lite :as ml]))
 
-(defn create-text [{{{:keys [layer body document]} :body} :parameters :as req}]
+(defn create-text [{{{:keys [layer body document]} :body} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `txt/create-text {:text/layer layer :text/body body :text/document document})])
         data (get result `txt/create-text)]
     (if (:server/error? data)
@@ -14,7 +13,7 @@
       {:status 200
        :body   (util/get-created-id data)})))
 
-(defn get-text [{{{:keys [id]} :path} :parameters :as req}]
+(defn get-text [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [{[:text/id id] [:text/id :text/body :text/layer :text/document]}])
         data (get result [:text/id id])]
     (if (util/failed-get? data)
@@ -23,14 +22,14 @@
       {:status 200
        :body   data})))
 
-(defn delete-text [{{{:keys [id]} :path} :parameters :as req}]
+(defn delete-text [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `txt/delete-text {:text/id id})])
         data (get result `txt/delete-text)]
     {:status (:server/code data)
      :body data}))
 
 (defn patch-text [{{{:keys [id]} :path
-                     {:keys [action ops] :as body} :body} :parameters :as req}]
+                     {:keys [action ops] :as body} :body} :parameters parser :pathom-parser :as req}]
   (let [action-symbol ({"applyEdits" `txt/save-text} action)
         action-params ({"applyEdits" {:ops (mapv #(update % :type keyword) ops)}} action)]
     (if (nil? action-symbol)

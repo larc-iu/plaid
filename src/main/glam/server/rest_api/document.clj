@@ -1,13 +1,12 @@
 (ns glam.server.rest-api.document
-  (:require [glam.server.pathom-parser :refer [parser]]
-            [glam.server.id-counter :refer [id?]]
+  (:require [glam.server.id-counter :refer [id?]]
             [glam.models.document :as doc]
             [glam.server.rest-api.util :as util]
             [glam.server.rest-api.common :refer [document-body-query]]
             [malli.experimental.lite :as ml])
   (:import (java.util UUID)))
 
-(defn create-document [{{{:keys [name project]} :body} :parameters :as req}]
+(defn create-document [{{{:keys [name project]} :body} :parameters parser :pathom-parser :as req}]
   (let [params {:delta {:document/name {:after name}}
                 :ident [:document/id (UUID/randomUUID)]
                 :parent-ident [:project/id project]
@@ -24,7 +23,8 @@
                 :message "Document created."}})))
 
 (defn get-document [{{{:keys [id]} :path
-                      {:keys [includeBody]} :query} :parameters :as req}]
+                      {:keys [includeBody]} :query} :parameters
+                     parser :pathom-parser :as req}]
   (let [query [{[:document/id id]
                 (cond-> [:document/id :document/name
                          {:document/lock-holder [:user/id :user/name :user/email]}]
@@ -37,14 +37,15 @@
       {:status 200
        :body   data})))
 
-(defn delete-document [{{{:keys [id]} :path} :parameters :as req}]
+(defn delete-document [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `doc/delete-document {:ident [:document/id id]})])
         data (get result `doc/delete-document)]
     {:status (:server/code data)
      :body data}))
 
 (defn patch-document [{{{:keys [id]} :path
-                    {:keys [action name]} :body} :parameters :as req}]
+                        {:keys [action name]} :body} :parameters
+                       parser :pathom-parser :as req}]
   (let [action-symbol ({"setName" `doc/save-document} action)
         action-params ({"setName" {:ident [:document/id id]
                                    :delta {:document/name {:after name}}}} action)]
@@ -56,7 +57,7 @@
         {:status (:server/code data)
          :body   data}))))
 
-(defn get-lock [{{{:keys [id]} :path} :parameters :as req}]
+(defn get-lock [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [query [{[:document/id id]
                 [:document/id {:document/lock-holder [:user/id :user/name :user/email]}]}]
         result (parser req query)
@@ -70,7 +71,9 @@
                  (assoc (:document/lock-holder data) :lockFree false))})))
 
 (defn patch-lock [{{{:keys [id]} :path
-                        {:keys [action]} :body} :parameters :as req}]
+                    {:keys [action]} :body} :parameters
+                   parser :pathom-parser
+                   :as req}]
   (let [action-symbol ({"acquire" `doc/acquire-lock
                         "release" `doc/release-lock} action)
         action-params ({"acquire" {:document/id id}
