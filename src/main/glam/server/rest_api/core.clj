@@ -85,6 +85,16 @@
    :compile (fn [_ _]
               {:wrap wrap-csrf})})
 
+(defn wrap-parser
+  [handler parser]
+  (fn [req]
+    (handler (assoc req :pathom-parser parser))))
+
+(def parser-middleware
+  {:name ::parser-middleware
+   :compile (fn [_ _]
+              {:wrap wrap-parser})})
+
 (def routes
   ["/rest-api/v1"
    [""
@@ -126,7 +136,7 @@
                      :config {:validatorUrl nil
                               :tryItOutEnabled true}})}]]])
 
-(defn rest-handler []
+(defn rest-handler [parser]
   (ring/ring-handler
     (ring/router
       [routes]
@@ -141,6 +151,7 @@
                            muuntaja/format-request-middleware
                            coercion/coerce-response-middleware
                            coercion/coerce-request-middleware
-                           multipart/multipart-middleware]}})
+                           multipart/multipart-middleware
+                           [wrap-parser parser]]}})
     (ring/create-default-handler)))
 

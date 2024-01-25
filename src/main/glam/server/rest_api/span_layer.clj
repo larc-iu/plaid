@@ -1,13 +1,12 @@
 (ns glam.server.rest-api.span-layer
-  (:require [glam.server.pathom-parser :refer [parser]]
-            [glam.server.id-counter :refer [id?]]
+  (:require [glam.server.id-counter :refer [id?]]
             [glam.models.span-layer :as sl]
             [glam.server.rest-api.util :as util]
             [glam.server.rest-api.common :refer [config-fragment]]
             [malli.experimental.lite :as ml])
   (:import (java.util UUID)))
 
-(defn create-span-layer [{{{:keys [name token-layer]} :body} :parameters :as req}]
+(defn create-span-layer [{{{:keys [name token-layer]} :body} :parameters parser :pathom-parser :as req}]
   (let [params {:delta {:span-layer/name {:after name}}
                 :ident [:span-layer/id (UUID/randomUUID)]
                 :parent-ident [:token-layer/id token-layer]}
@@ -22,7 +21,7 @@
                         (assoc :id (-> data :tempids first second)))
                 :message "Span layer created."}})))
 
-(defn get-span-layer [{{{:keys [id]} :path} :parameters :as req}]
+(defn get-span-layer [{{{:keys [id]} :path} :parameters parser :pathom-parser  :as req}]
   (let [result (parser req [{[:span-layer/id id] [:span-layer/id :span-layer/name :config]}])
         data (get result [:span-layer/id id])]
     (if (util/failed-get? data)
@@ -31,7 +30,7 @@
       {:status 200
        :body data})))
 
-(defn delete-span-layer [{{{:keys [id]} :path} :parameters :as req}]
+(defn delete-span-layer [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `sl/delete-span-layer {:ident [:span-layer/id id]})])
         data (get result `sl/delete-span-layer)]
     (if (:server/error? data)
@@ -41,7 +40,8 @@
        :body data})))
 
 (defn patch-span-layer [{{{:keys [id]} :path
-                          {:keys [action name up]} :body} :parameters :as req}]
+                          {:keys [action name up]} :body} :parameters
+                         parser :pathom-parser :as req}]
   (let [action-symbol ({"setName" `sl/save-span-layer
                         "shift" `sl/shift-span-layer} action)
         action-params ({"setName" {:delta {:span-layer/name {:after name}} :ident [:span-layer/id id]}

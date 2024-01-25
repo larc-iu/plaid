@@ -1,6 +1,5 @@
 (ns glam.server.rest-api.common
   (:require [glam.models.project :as prj]
-            [glam.server.pathom-parser :refer [parser]]
             [glam.server.id-counter :refer [id?]]
             [malli.experimental.lite :as ml]))
 
@@ -24,7 +23,8 @@
         {:span-layer/spans [:span/id :span/value :span/tokens]}]}]}]})
 
 (defn patch-config [{{{:keys [id]} :path
-                      {:keys [action editorName key value]} :body} :parameters :as req}]
+                      {:keys [action editorName key value]} :body} :parameters
+                     parser :pathom-parser :as req}]
   (let [action-symbol ({"set"    `prj/set-editor-config-pair
                         "delete" `prj/delete-editor-config-pair} action)
         action-params ({"set"    {:layer-id id :editor-name editorName :config-key key :config-value value}

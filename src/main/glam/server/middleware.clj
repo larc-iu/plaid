@@ -68,8 +68,8 @@
   the handler chain by serving the index page. This allows page refresh to work 'right' from
   a user's perspective, as refreshing on e.g. `/projects/` will simply serve the index, after
   which the client-side routing setup will ensure that the proper components are displayed."
-  [ring-handler]
-  (let [rest-handler (rest-handler)]
+  [ring-handler parser]
+  (let [rest-handler (rest-handler parser)]
     (fn [{:keys [uri anti-forgery-token] :as req}]
       (cond
         (re-matches #"^/rest-api/.*" uri)
@@ -115,7 +115,7 @@
     (-> (wrap-ajax-api parser)
         wrap-transit-params
         wrap-transit-response
-        wrap-html-routes
+        (wrap-html-routes parser)
         wrap-xtdb-inspector
         (wrap-defaults (-> defaults-config
                            (assoc :session {:store session-store})

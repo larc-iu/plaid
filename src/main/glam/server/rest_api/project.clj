@@ -1,6 +1,5 @@
 (ns glam.server.rest-api.project
-  (:require [glam.server.pathom-parser :refer [parser]]
-            [glam.server.id-counter :refer [id?]]
+  (:require [glam.server.id-counter :refer [id?]]
             [glam.models.project :as prj]
             [malli.experimental.lite :as ml]
             [glam.server.rest-api.util :as util]
@@ -8,13 +7,15 @@
   (:import (java.util UUID)))
 
 ;; User routes --------------------------------------------------------------------------------
-(defn get-accessible-projects [req]
+(defn get-accessible-projects [{parser :pathom-parser :as req}]
   (let [result (parser req [{:accessible-projects [:project/id :project/name]}])
         data (get result :accessible-projects)]
     {:status 200 :body data}))
 
 (defn get-project [{{{:keys [id]} :path
-                     {:keys [includeDocuments]} :query} :parameters :as req}]
+                     {:keys [includeDocuments]} :query} :parameters
+                    parser :pathom-parser
+                    :as req}]
   (let [query [{[:project/id id]
                 (cond-> [:project/id :project/name
                          {:project/writers [:user/id :user/name]}
@@ -40,12 +41,12 @@
            :parameters {:path {:id id?}
                         :query {:includeDocuments boolean?}}}}]])
 
-(defn get-projects [req]
+(defn get-projects [{parser :pathom-parser :as req}]
   (let [result (parser req [{:all-projects [:project/id :project/name]}])
         data (get result :all-projects)]
     {:status 200 :body data}))
 
-(defn create-project [{{{:keys [name]} :body} :parameters :as req}]
+(defn create-project [{{{:keys [name]} :body} :parameters parser :pathom-parser :as req}]
   (let [params {:delta {:project/name {:after name}}
                 :ident [:project/id (UUID/randomUUID)]}
         result (parser req [(list `prj/create-project params)])
@@ -60,7 +61,8 @@
                 :message "Project created."}})))
 
 (defn patch-project [{{{:keys [id]} :path
-                          {:keys [userId privileges name action]} :body} :parameters :as req}]
+                       {:keys [userId privileges name action]} :body} :parameters
+                      parser :pathom-parser :as req}]
   (let [action-symbol ({"setName" `prj/save-project
                         "setPrivileges" `prj/set-user-privileges} action)
         action-params ({"setName" {:delta {:project/name {:after name}} :ident [:project/id id]}

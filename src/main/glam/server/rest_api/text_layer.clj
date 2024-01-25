@@ -1,13 +1,12 @@
 (ns glam.server.rest-api.text-layer
-  (:require [glam.server.pathom-parser :refer [parser]]
-            [glam.server.id-counter :refer [id?]]
+  (:require [glam.server.id-counter :refer [id?]]
             [glam.models.text-layer :as txtl]
             [glam.server.rest-api.util :as util]
             [glam.server.rest-api.common :refer [config-fragment]]
             [malli.experimental.lite :as ml])
   (:import (java.util UUID)))
 
-(defn create-text-layer [{{{:keys [name project]} :body} :parameters :as req}]
+(defn create-text-layer [{{{:keys [name project]} :body} :parameters parser :pathom-parser :as req}]
   (let [params {:delta {:text-layer/name {:after name}}
                 :ident [:text-layer/id (UUID/randomUUID)]
                 :parent-ident [:project/id project]}
@@ -22,7 +21,7 @@
                         (assoc :id (-> data :tempids first second)))
                 :message "Text layer created."}})))
 
-(defn get-text-layer [{{{:keys [id]} :path} :parameters :as req}]
+(defn get-text-layer [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [{[:text-layer/id id] [:text-layer/id :text-layer/name :config]}])
         data (get result [:text-layer/id id])]
     (if (util/failed-get? data)
@@ -31,7 +30,7 @@
       {:status 200
        :body data})))
 
-(defn delete-text-layer [{{{:keys [id]} :path} :parameters :as req}]
+(defn delete-text-layer [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
   (let [result (parser req [(list `txtl/delete-text-layer {:ident [:text-layer/id id]})])
         data (get result `txtl/delete-text-layer)]
     (if (:server/error? data)
@@ -41,7 +40,7 @@
        :body data})))
 
 (defn patch-text-layer [{{{:keys [id]} :path
-                           {:keys [action name up]} :body} :parameters :as req}]
+                           {:keys [action name up]} :body} :parameters parser :pathom-parser :as req}]
   (let [action-symbol ({"setName" `txtl/save-text-layer
                         "shift" `txtl/shift-text-layer} action)
         action-params ({"setName" {:delta {:text-layer/name {:after name}} :ident [:text-layer/id id]}
