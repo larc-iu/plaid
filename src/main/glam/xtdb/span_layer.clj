@@ -6,6 +6,7 @@
 
 (def attr-keys [:span-layer/id
                 :span-layer/name
+                :span-layer/relation-layers
                 :config])
 
 (defn xt->pathom [doc]
@@ -47,3 +48,9 @@
         span-layer-deletion [(gxe/delete* eid)]]
     (reduce into [span-deletions
                   span-layer-deletion])))
+
+(gxe/deftx add-relation-layer [node span-layer-id relation-layer-id]
+  (gxc/add-join** node span-layer-id :span-layer/relation-layers relation-layer-id))
+
+(gxe/deftx remove-relation-layer [node span-layer-id relation-layer-id]
+  (gxc/remove-join** node span-layer-id :span-layer/relation-layers relation-layer-id))
