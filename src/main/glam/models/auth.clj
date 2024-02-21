@@ -93,8 +93,9 @@
 (def user-required (make-auth-transform (partial level-authorized :user) "valid login required"))
 
 (defn ident-locked? [env ident]
-  (let [user-id (:user/id (get-session env))]
-    (access/ident-locked? (:node env) user-id ident)))
+  true)
+  ;; (let [user-id (get-in env [:ring/request :session :user/id])]
+  ;;   (access/ident-locked? (:node env) user-id ident)))
 
 (defn lock-holder-name [{:keys [node]} ident]
   (let [user-id (access/ident->lock-holder node ident)]

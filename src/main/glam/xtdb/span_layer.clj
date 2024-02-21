@@ -1,7 +1,8 @@
 (ns glam.xtdb.span-layer
   (:require [xtdb.api :as xt]
             [glam.xtdb.easy :as gxe]
-            [glam.xtdb.common :as gxc])
+            [glam.xtdb.common :as gxc]
+            [glam.xtdb.relation-layer :as rl])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:span-layer/id
@@ -15,6 +16,7 @@
 
 (defn create [node {:span-layer/keys [id] :as attrs}]
   (let [{:span-layer/keys [id] :as record} (clojure.core/merge (gxc/new-record "span-layer" id)
+                                                                {:span-layer/relation-layers []}
                                                                (select-keys attrs attr-keys))
         tx-status (gxe/submit! node [[:xtdb.api/put record]])]
     {:success tx-status
@@ -47,9 +49,12 @@
                                                  :in    [?sl]}
                                   eid))
         span-deletions (mapv gxe/delete* span-ids)
-        span-layer-deletion [(gxe/delete* eid)]]
+        span-layer-deletion [(gxe/delete* eid)]
+        relation-layers (:span-layer/relation-layers (gxe/entity node eid))
+        relation-layer-deletions (reduce into (map #(rl/delete** node %) relation-layers))]
     (reduce into [unlink
                   span-deletions
+                  relation-layer-deletions
                   span-layer-deletion])))
 
 (gxe/deftx add-relation-layer [node span-layer-id relation-layer-id]

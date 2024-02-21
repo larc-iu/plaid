@@ -72,4 +72,22 @@
            (gxe/entity node id))))))
 
 #?(:clj
-   (def relation-layer-resolvers [get-relation-layer get-relations create-relation-layer save-relation-layer ]))
+   (pc/defmutation delete-relation-layer [{:keys [node]} {[_ id] :ident :as params}]
+     {::pc/transform ma/admin-required}
+     (cond
+       ;; ensure the relation layer to be deleted exists
+       (not (gxe/entity node id))
+       (server-error (str "Relation layer not found by ID " id))
+       ;; otherwise, go ahead
+       :else
+       (let [name (:relation-layer/name (gxe/entity node id))
+             parent-id (rl/parent-id node id)
+             tx (into (rl/delete** node id)
+                      (sl/remove-relation-layer** node parent-id id))
+             success (gxe/submit! node tx)]
+         (if-not success
+           (server-error (str "Failed to delete relation layer " parent-id ". Please refresh and try again"))
+           (server-message (str "Relation layer " name " deleted")))))))
+
+#?(:clj
+   (def relation-layer-resolvers [get-relation-layer get-relations create-relation-layer save-relation-layer delete-relation-layer]))

@@ -39,11 +39,11 @@
   (gxe/merge node eid (select-keys m [:relation-layer/name])))
 
 (gxe/deftx delete [node eid]
-  (let [relation-ids (map first (xt/q (xt/db node) '{:find  [?s]
-                                                 :where [[?s :relation/layer ?sl]]
-                                                 :in    [?sl]}
+  (let [relation-ids (map first (xt/q (xt/db node) '{:find  [?r]
+                                                 :where [[?r :relation/layer ?rl]]
+                                                 :in    [?rl]}
                                   eid))
-        relation-deletions (mapv gxe/delete* span-ids)
+        relation-deletions (mapv gxe/delete* relation-ids)
         relation-layer-deletion [(gxe/delete* eid)]]
     (reduce into [relation-deletions
                   relation-layer-deletion])))
