@@ -62,3 +62,4 @@
 
 (gxe/deftx remove-relation-layer [node span-layer-id relation-layer-id]
   (gxc/remove-join** node span-layer-id :span-layer/relation-layers relation-layer-id))
+
