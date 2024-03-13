@@ -258,7 +258,8 @@
 
        :else
        (let [name (:token-layer/name (gxe/entity node id))
-             tx (tokl/delete** node id)
+             parent-id (tokl/parent-id node id)
+             tx (txtl/shift-token-layer** node parent-id id up?)
              success (gxe/submit! node tx)]
          (if-not success
            (server-error 500 (str "Failed to shift token layer " name ". Please try again."))
