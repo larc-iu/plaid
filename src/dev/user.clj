@@ -17,6 +17,8 @@
     [glam.xtdb.span-layer :as sl]
     [glam.xtdb.span :as s]
     [glam.xtdb.document :as doc]
+    [glam.xtdb.relation :as r]
+    [glam.xtdb.relation-layer :as rl]
     [taoensso.timbre :as log]))
 
 ;; ==================== SERVER ====================

@@ -11,8 +11,7 @@
             #?(:clj [glam.xtdb.easy :as gxe])
             #?(:clj [glam.xtdb.span :as s])))
 
-(def relation-layer-keys [:relation-layer/name
-                      :relation-layer/relation-layers])
+(def relation-layer-keys [:relation-layer/name])
 
 (defn valid-name [name] (and (string? name) (<= 1 (count name) 80)))
 (defn- field-valid [field v]
@@ -40,8 +39,7 @@
 #?(:clj
    (pc/defresolver get-relations [{:keys [node] :as env} {:relation-layer/keys [id]}]
      {::pc/input     #{:relation-layer/id}
-      ::pc/output    [{:relation-layer/relations [:relation/id :relation/value :relation/layer :relation/source :relation/target]}]}
-     ))
+      ::pc/output    [{:relation-layer/relations [:relation/id :relation/value :relation/layer :relation/source :relation/target]}]}))
 
 ;; admin --------------------------------------------------------------------------------
 ;;

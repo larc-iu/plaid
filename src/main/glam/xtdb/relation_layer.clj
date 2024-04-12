@@ -14,7 +14,7 @@
 
 (defn create [node {:relation-layer/keys [id] :as attrs}]
   (let [{:relation-layer/keys [id] :as record} (clojure.core/merge (gxc/new-record "relation-layer" id)
-                                                               (select-keys attrs attr-keys))
+                                                                   (select-keys attrs attr-keys))
         tx-status (gxe/submit! node [[:xtdb.api/put record]])]
     {:success tx-status
      :id      id}))
@@ -40,9 +40,9 @@
 
 (gxe/deftx delete [node eid]
   (let [relation-ids (map first (xt/q (xt/db node) '{:find  [?r]
-                                                 :where [[?r :relation/layer ?rl]]
-                                                 :in    [?rl]}
-                                  eid))
+                                                     :where [[?r :relation/layer ?rl]]
+                                                     :in    [?rl]}
+                                      eid))
         relation-deletions (mapv gxe/delete* relation-ids)
         relation-layer-deletion [(gxe/delete* eid)]]
     (reduce into [relation-deletions
