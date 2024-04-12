@@ -47,17 +47,17 @@
        (not (string? value))
        (server-error "Value must be a string.")
 
-       (not (rl/get node layer))
+       (not (:relation-layer/id (rl/get node layer)))
        (server-error "Relation layer does not exist")
 
-       (not (s/get node source))
+       (not (:span/id (s/get node source)))
        (server-error "Source span does not exist")
 
-       (not (s/get node target))
+       (not (:span/id (s/get node target)))
        (server-error "Target span does not exist")
 
-       (not (ma/ident-locked? env [:relation/id id]))
-       (server-error (ma/lock-holder-error-msg env [:relation/id id]))
+       (not (ma/ident-locked? env [:span/id source]))
+       (server-error (ma/lock-holder-error-msg env [:span/id source]))
 
        :else
        (let [{:keys [success] new-id :id} (r/create node {:relation/value  value
