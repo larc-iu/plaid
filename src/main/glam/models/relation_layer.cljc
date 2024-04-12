@@ -43,7 +43,6 @@
 
 ;; admin --------------------------------------------------------------------------------
 ;;
-
 #?(:clj
    (pc/defmutation create-relation-layer [{:keys [node]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
      {::pc/transform ma/admin-required
@@ -88,4 +87,24 @@
            (server-message (str "Relation layer " name " deleted")))))))
 
 #?(:clj
-   (def relation-layer-resolvers [get-relation-layer get-relations create-relation-layer save-relation-layer delete-relation-layer]))
+   (pc/defmutation shift-relation-layer [{:keys [node]} {id :id up? :up?}]
+     {::pc/transform ma/admin-required}
+     (cond
+       (nil? (:relation-layer/id (gxe/entity node id)))
+       (server-error 404 (str "Relation layer not found by ID " id))
+
+       (not (boolean? up?))
+       (server-error 400 (str "Param up? must be a boolean."))
+
+       :else
+       (let [name (:relation-layer/name (gxe/entity node id))
+             parent-id (rl/parent-id node id)
+             tx (sl/shift-relation-layer** node parent-id id up?)
+             success (gxe/submit! node tx)]
+         (if-not success
+           (server-error 500 (str "Failed to shift relation layer " name ". Please try again."))
+           (server-message (str "Relation layer " name " shifted " (if up? "up" "down") ".")))))))
+
+#?(:clj
+   (def relation-layer-resolvers [get-relation-layer get-relations create-relation-layer save-relation-layer
+                                  delete-relation-layer shift-relation-layer]))
