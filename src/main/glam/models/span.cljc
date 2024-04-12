@@ -135,7 +135,7 @@
                layer))
          (server-error 400 "Span must belong to a layer that is associated with its tokens' layer.")
 
-         (not (ma/ident-locked? env [:span/id id]))
+         (not (ma/ident-locked? env [:token/id (first tokens)]))
          (server-error 403 (ma/lock-holder-error-msg env [:span/id id]))
 
          :else
