@@ -190,10 +190,10 @@
     (swap! state assoc-in (conj ref :span/value) value))
   (remote [{:keys [ast]}]
           (-> ast
-              (assoc :key `span/save-span)
+              (assoc :key `span/update-value)
               (update :params dissoc :ok-action)))
   (result-action [{:keys [state ref] :as env}]
-                 (let [{:server/keys [message error?]} (get-in env [:result :body `span/save-span])]
+                 (let [{:server/keys [message error?]} (get-in env [:result :body `span/update-value])]
                    (log/info ref)
                    (log/info "Save processed: " message)
                    (when message
