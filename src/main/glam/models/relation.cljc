@@ -31,6 +31,12 @@
        (not (string? value))
        (server-error "Value must be a string.")
 
+       (not (:span/id (s/get node source)))
+       (server-error "Source span does not exist")
+
+       (not (:span/id (s/get node target)))
+       (server-error "Target span does not exist")
+
        (not (ma/ident-locked? env [:relation/id id]))
        (server-error (ma/lock-holder-error-msg env [:relation/id id]))
 
