@@ -22,7 +22,7 @@
      (r/get node id)))
 
 #?(:clj
-   (pc/defmutation save-relation [{:keys [node] :as env} {:relation/keys [id value] :as relation}]
+   (pc/defmutation save-relation [{:keys [node] :as env} {:relation/keys [id value source target] :as relation}]
      {::pc/transform (ma/writeable-required :relation/id)}
      (cond
        (nil? (r/get node id))
