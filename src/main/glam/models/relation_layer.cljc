@@ -16,7 +16,7 @@
 (defn valid-name [name] (and (string? name) (<= 1 (count name) 80)))
 (defn- field-valid [field v]
   (case field
-    :span-layer/name (valid-name v)))
+    :relation-layer/name (valid-name v)))
 
 (defn relation-layer-valid [form field]
   (let [v (get form field)]
@@ -63,6 +63,7 @@
          ;; must be valid
          (not valid?)
          (server-error (str "Relation layer delta invalid: " delta))
+
          :else
          (if-not (rl/merge node id (mc/apply-delta {} delta))
            (server-error (str "Failed to save relation-layer information, please refresh and try again"))
