@@ -13,7 +13,8 @@
 
 (defn xt->pathom [doc]
   (when doc
-    (-> doc)))
+    (-> doc
+        (update :span-layer/relation-layers gxc/identize :relation-layer/id))))
 
 (defn create [node {:span-layer/keys [id] :as attrs}]
   (let [{:span-layer/keys [id] :as record} (clojure.core/merge (gxc/new-record "span-layer" id)
