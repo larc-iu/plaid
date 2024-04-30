@@ -1,17 +1,12 @@
 (ns glam.models.relation
-  (:require [clojure.set :refer [rename-keys]]
-            [com.wsscode.pathom.connect :as pc]
-            [taoensso.timbre :as log]
+  (:require [com.wsscode.pathom.connect :as pc]
             #?(:cljs [glam.models.common :as mc]
                :clj  [glam.models.common :as mc :refer [server-error server-message]])
-            #?(:clj [glam.xtdb.token :as tok])
             #?(:clj [glam.xtdb.span :as s])
             #?(:clj [glam.xtdb.relation :as r])
             #?(:clj [glam.xtdb.relation-layer :as rl])
-            #?(:clj [glam.xtdb.span-layer :as sl])
             #?(:clj [glam.models.auth :as ma])
-            #?(:clj [glam.xtdb.easy :as gxe])
-            [com.fulcrologic.fulcro.algorithms.tempid :as tempid]))
+            #?(:clj [glam.xtdb.easy :as gxe])))
 
 ;; user --------------------------------------------------------------------------------
 #?(:clj
