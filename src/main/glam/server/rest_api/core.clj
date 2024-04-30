@@ -18,6 +18,7 @@
             [glam.server.rest-api.token :refer [token-routes]]
             [glam.server.rest-api.text :refer [text-routes]]
             [glam.server.rest-api.document :refer [document-routes]]
+            [glam.server.rest-api.relation-layer :refer [relation-layer-routes]]
             [glam.server.rest-api.span-layer :refer [span-layer-routes]]
             [glam.server.rest-api.token-layer :refer [token-layer-routes]]
             [glam.server.rest-api.text-layer :refer [text-layer-routes]]
@@ -115,7 +116,8 @@
       project-admin-routes
       text-layer-routes
       token-layer-routes
-      span-layer-routes]]]
+      span-layer-routes
+      relation-layer-routes]]]
    session-routes
 
    ;; swagger documentation
