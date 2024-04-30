@@ -17,7 +17,7 @@
      (r/get node id)))
 
 #?(:clj
-   (pc/defmutation save-relation [{:keys [node] :as env} {:relation/keys [id value source target] :as relation}]
+   (pc/defmutation set-value [{:keys [node] :as env} {:relation/keys [id value] :as relation}]
      {::pc/transform (ma/writeable-required :relation/id)}
      (cond
        (nil? (r/get node id))
@@ -26,19 +26,61 @@
        (not (string? value))
        (server-error "Value must be a string.")
 
-       (not (:span/id (s/get node source)))
-       (server-error "Source span does not exist")
-
-       (not (:span/id (s/get node target)))
-       (server-error "Target span does not exist")
-
        (not (ma/ident-locked? env [:relation/id id]))
        (server-error (ma/lock-holder-error-msg env [:relation/id id]))
 
        :else
        (if-let [result (r/merge node id {:relation/value value})]
-         (server-message "Successfully saved relation")
-         (server-error (str "Failed to save relation " id))))))
+         (server-message (str "Successfully set relation value to " value))
+         (server-error (str "Failed to modify relation " id))))))
+
+#?(:clj
+   (pc/defmutation set-source [{:keys [node] :as env} {:relation/keys [id source] :as relation}]
+     {::pc/transform (ma/writeable-required :relation/id)}
+     (cond
+       (nil? (r/get node id))
+       (server-error (str "Relation with id " id " does not exist."))
+
+       (not (:span/id (s/get node source)))
+       (server-error "Source span does not exist")
+
+       (not (ma/ident-locked? env [:relation/id id]))
+       (server-error (ma/lock-holder-error-msg env [:relation/id id]))
+
+       :else
+       (if-let [result (r/merge node id {:relation/source source})]
+         (server-message (str "Successfully set relation source to " source))
+         (server-error (str "Failed to modify relation " id))))))
+
+#?(:clj
+   (pc/defmutation set-target [{:keys [node] :as env} {:relation/keys [id target] :as relation}]
+     {::pc/transform (ma/writeable-required :relation/id)}
+     (cond
+       (nil? (r/get node id))
+       (server-error (str "Relation with id " id " does not exist."))
+
+       (not (:span/id (s/get node target)))
+       (server-error "Source span does not exist")
+
+       (not (ma/ident-locked? env [:relation/id id]))
+       (server-error (ma/lock-holder-error-msg env [:relation/id id]))
+
+       :else
+       (if-let [result (r/merge node id {:relation/target target})]
+         (server-message (str "Successfully set relation target to " target))
+         (server-error (str "Failed to modify relation " id))))))
+
+#?(:clj
+   (pc/defmutation delete-relation [{:keys [node] :as env} {:relation/keys [id] :as relation}]
+     {::pc/transform (ma/writeable-required :relation/id)}
+     (cond
+       (nil? (:relation/id (gxe/entity node id)))
+       (server-error 404 (str "Relation does not exist with ID " id))
+
+       :else
+       (if-let [result (s/delete node id)]
+         (server-message (str "Successfully deleted relation " id))
+         (server-error 500 (str "Failed to delete relation " id))))))
 
 #?(:clj
    (pc/defmutation create-relation
@@ -71,4 +113,4 @@
 
 ;; admin --------------------------------------------------------------------------------
 #?(:clj
-   (def relation-resolvers [get-relation save-relation create-relation]))
+   (def relation-resolvers [get-relation set-value set-source set-target delete-relation create-relation]))

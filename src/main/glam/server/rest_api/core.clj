@@ -14,6 +14,7 @@
             [glam.server.rest-api.util :refer [postprocess-middleware]]
             [glam.server.rest-api.session :refer [session-routes]]
             [glam.server.rest-api.user :refer [user-routes user-admin-routes]]
+            [glam.server.rest-api.relation :refer [relation-routes]]
             [glam.server.rest-api.span :refer [span-routes]]
             [glam.server.rest-api.token :refer [token-routes]]
             [glam.server.rest-api.text :refer [text-routes]]
@@ -108,7 +109,8 @@
      ["/body"
       text-routes
       token-routes
-      span-routes]]
+      span-routes
+      relation-routes]]
     ["/admin"
      {:swagger {:tags ["admin"]}}
      user-admin-routes

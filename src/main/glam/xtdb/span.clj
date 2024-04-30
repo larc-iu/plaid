@@ -16,8 +16,7 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :span/layer gxc/identize :span-layer/id)
-        (update :span/tokens gxc/identize :token/id))))
+        (update :span/layer gxc/identize :span-layer/id))))
 
 (defn create* [{:span/keys [id] :as attrs}]
   (gxe/put* (gxc/create-record "span" id attrs attr-keys)))

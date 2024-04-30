@@ -36,11 +36,6 @@
       ::pc/transform (ma/readable-required :relation-layer/id)}
      (rl/get node id)))
 
-#?(:clj
-   (pc/defresolver get-relations [{:keys [node] :as env} {:relation-layer/keys [id]}]
-     {::pc/input     #{:relation-layer/id}
-      ::pc/output    [{:relation-layer/relations [:relation/id :relation/value :relation/layer :relation/source :relation/target]}]}))
-
 ;; admin --------------------------------------------------------------------------------
 ;;
 #?(:clj
@@ -107,5 +102,5 @@
            (server-message (str "Relation layer " name " shifted " (if up? "up" "down") ".")))))))
 
 #?(:clj
-   (def relation-layer-resolvers [get-relation-layer get-relations create-relation-layer save-relation-layer
+   (def relation-layer-resolvers [get-relation-layer create-relation-layer save-relation-layer
                                   delete-relation-layer shift-relation-layer]))

@@ -11,8 +11,6 @@
                 :relation/target
                 :relation/value])
 
-(def snapshot-attrs [:relation/id :relation/value :relation/source :relation/target])
-
 (defn xt->pathom [doc]
   (when doc
     (-> doc
@@ -36,7 +34,7 @@
 
 ;; Mutations --------------------------------------------------------------------------------
 (defn merge [node eid m]
-  (gxe/merge node eid (select-keys m [:relation/value])))
+  (gxe/merge node eid (select-keys m [:relation/value :relation/source :relation/target])))
 
 (gxe/deftx delete [node eid]
   [(gxe/delete* eid)])
