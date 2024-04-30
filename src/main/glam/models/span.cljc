@@ -136,7 +136,7 @@
          (server-error 400 "Span must belong to a layer that is associated with its tokens' layer.")
 
          (not (ma/ident-locked? env [:token/id (first tokens)]))
-         (server-error 403 (ma/lock-holder-error-msg env [:span/id id]))
+         (server-error 403 (ma/lock-holder-error-msg env [:token/id (first tokens)]))
 
          :else
          (let [{:keys [success] new-id :id} (s/create node {:span/value  value
