@@ -6,10 +6,10 @@
             [malli.experimental.lite :as ml])
   (:import (java.util UUID)))
 
-(defn create-relation-layer [{{{:keys [name span-layer]} :body} :parameters parser :pathom-parser :as req}]
+(defn create-relation-layer [{{{:keys [name spanLayer]} :body} :parameters parser :pathom-parser :as req}]
   (let [params {:delta {:relation-layer/name {:after name}}
                 :ident [:relation-layer/id (UUID/randomUUID)]
-                :parent-ident [:span-layer/id span-layer]}
+                :parent-ident [:span-layer/id spanLayer]}
         result (parser req [(list `rl/create-relation-layer params)])
         data (get result `rl/create-relation-layer)]
     (if (:server/error? data)
@@ -63,8 +63,8 @@
 (def relation-layer-routes
   ["/relation"
    [""
-    {:post {:parameters  {:body {:name        string?
-                                 :span-layer id?}}
+    {:post {:parameters  {:body {:name      string?
+                                 :spanLayer id?}}
             :description "Creates a new relation layer. ID is given in the response under \"id\"."
             :handler    create-relation-layer}}]
    ["/:id"
