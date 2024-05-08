@@ -81,6 +81,15 @@
                       :error   false}
                      data)})))))
 
+(defn delete-project [{{{:keys [id]} :path} :parameters parser :pathom-parser :as req}]
+  (let [result (parser req [(list `prj/delete-project {:ident [:project/id id]})])
+        data (get result `prj/delete-project)]
+    (if (:server/error? data)
+      {:status (:server/code data)
+       :body {:error true :message "Project does not exist."}}
+      {:status 200
+       :body data})))
+
 (def project-admin-routes
   [""
    ["/projects"
@@ -94,6 +103,8 @@
      {:get {:handler get-project
             :parameters {:query {:includeDocuments boolean?}
                          :path {:id id?}}}
+      :delete {:handler delete-project
+               :parameters {:path {:id id?}}}
       :patch {:handler patch-project
               :description (str "setName: sets the project's `name` to body param `name`."
                                 "\nsetPrivileges: sets `userId`'s privileges on a project to `privileges`."
