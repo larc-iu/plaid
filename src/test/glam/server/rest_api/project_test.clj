@@ -5,7 +5,8 @@
             [glam.xtdb.easy :as gxe]
             [glam.server.rest-api.fixtures :refer [with-user-cookies
                                                    admin-req user-req
-                                                   admin-id user-id]]
+                                                   admin-id user-id
+                                                   project-ids with-project-and-doc]]
             [glam.fixtures :refer [xtdb-node
                                    with-xtdb
                                    with-parser
@@ -13,7 +14,7 @@
                                    rest-handler]]))
 
 ;; Get a fresh system set up for each test that only has two registered users
-(use-fixtures :each with-xtdb with-parser with-rest-handler with-user-cookies)
+(use-fixtures :each with-xtdb with-parser with-rest-handler with-user-cookies with-project-and-doc)
 
 (deftest projects-admin
   (let [prj-id (atom nil)]
@@ -43,7 +44,8 @@
     (testing "Admin can see all projects"
       (let [{:keys [status body]} (rest-handler (admin-req :get "/rest-api/v1/projects"))
             body (read-string (slurp body))]
-        (is (= 1 (count body))))
+        ;; 2 because of the fixture
+        (is (= 2 (count body))))
       (let [{:keys [status body]} (rest-handler (-> (admin-req :get (str "/rest-api/v1/project/" @prj-id))
                                                     (mock/query-string {:includeDocuments false})))]
         (is (= 200 status))))
@@ -79,7 +81,8 @@
         (is (= 200 status)))
       (let [{:keys [status body]} (rest-handler (admin-req :get "/rest-api/v1/projects"))
             body (read-string (slurp body))]
-        (is (= 0 (count body))))
+        ;; 1 because of the fixture
+        (is (= 1 (count body))))
       (let [{:keys [status body]} (rest-handler (-> (admin-req :get (str "/rest-api/v1/project/" @prj-id))
                                                     (mock/query-string {:includeDocuments false})))]
         (is (= 404 status))))))
