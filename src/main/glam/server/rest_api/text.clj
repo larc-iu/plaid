@@ -5,7 +5,7 @@
             [malli.experimental.lite :as ml]))
 
 (defn create-text [{{{:keys [layer body document]} :body} :parameters parser :pathom-parser :as req}]
-  (let [result (parser req [(list `txt/create-text {:text/layer layer :text/body body :text/document document})])
+  (let [result (parser req [(list `txt/create-text {:text-layer/id layer :text/body body :document/id document})])
         data (get result `txt/create-text)]
     (if (:server/error? data)
       {:status (:server/code data)
