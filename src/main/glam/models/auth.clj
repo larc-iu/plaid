@@ -5,12 +5,6 @@
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.access :as access]))
 
-(def ^:private auth-disabled
-  (let [disabled (= (System/getProperty "pathom_auth") "disabled")]
-    (when disabled
-      (log/warn "Pathom auth is disabled! This should never be done in production."))
-    disabled))
-
 (defn get-session [m]
   (or (get-in m [:ring/request :session])
       (get m :session)))
@@ -22,20 +16,18 @@
   (fn auth-transform [{::pc/keys [mutate resolve] :as outer-env}]
     (let [pathom-action (if mutate mutate resolve)
           pathom-action-kwd (if mutate ::pc/mutate ::pc/resolve)]
-      (if (= (System/getProperty "pathom_auth") "disabled")
-        outer-env
-        (-> outer-env
-            ;; apply the transformation
-            (assoc
-              pathom-action-kwd
-              (fn [env params]
-                ;;(log/info (str "Hit resolver/mutator: " (pr-str (::pc/resolver-data env))))
-                (if (auth-fn env params)
-                  (pathom-action env params)
-                  (let [msg (str "Unauthorized pathom action: session " (get-session env)
-                                 " does not satisfy authorization requirement: " failure-message)]
-                    (log/warn (str "Unauthorized request: " msg))
-                    (mc/server-error 403 msg))))))))))
+      (-> outer-env
+          ;; apply the transformation
+          (assoc
+            pathom-action-kwd
+            (fn [env params]
+              ;;(log/info (str "Hit resolver/mutator: " (pr-str (::pc/resolver-data env))))
+              (if (auth-fn env params)
+                (pathom-action env params)
+                (let [msg (str "Unauthorized pathom action: session " (get-session env)
+                               " does not satisfy authorization requirement: " failure-message)]
+                  (log/warn (str "Unauthorized request: " msg))
+                  (mc/server-error 403 msg)))))))))
 
 ;; TODO: this auth pattern might be unperformant--one idea: cache the auth check in the pathom environment
 ;; see https://blog.wsscode.com/pathom/#updating-env

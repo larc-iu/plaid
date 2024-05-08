@@ -22,13 +22,13 @@
 
 (defn with-user-cookies [f]
   (let [_ (rest-handler (-> (mock/request :post "/rest-api/v1/session/register")
-                            (mock/json-body {:username "a@b.com" :password "fake-password"})))
+                            (mock/json-body {:username "a@b.com" :password "fake-password1"})))
         _ (rest-handler (-> (mock/request :post "/rest-api/v1/session/register")
-                            (mock/json-body {:username "b@b.com" :password "fake-password"})))
+                            (mock/json-body {:username "b@b.com" :password "fake-password2"})))
         a-cookie (get-session-cookie (rest-handler (-> (mock/request :post "/rest-api/v1/session/login")
-                                                       (mock/json-body {:username "a@b.com" :password "fake-password"}))))
+                                                       (mock/json-body {:username "a@b.com" :password "fake-password1"}))))
         b-cookie (get-session-cookie (rest-handler (-> (mock/request :post "/rest-api/v1/session/login")
-                                                       (mock/json-body {:username "b@b.com" :password "fake-password"}))))]
+                                                       (mock/json-body {:username "b@b.com" :password "fake-password2"}))))]
     (with-redefs [admin-cookie a-cookie
                   user-cookie b-cookie]
       (f))))

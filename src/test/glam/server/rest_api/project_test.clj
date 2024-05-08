@@ -4,7 +4,8 @@
             [ring.mock.request :as mock]
             [glam.xtdb.easy :as gxe]
             [glam.server.rest-api.fixtures :refer [with-user-cookies admin-req user-req]]
-            [glam.fixtures :refer [with-xtdb
+            [glam.fixtures :refer [xtdb-node
+                                   with-xtdb
                                    with-parser
                                    with-rest-handler
                                    rest-handler]]))
@@ -28,4 +29,22 @@
             {:keys [status body]} (rest-handler req)
             body (read-string (slurp body))]
         (is (= 200 status))
-        (is (= "test-project" (:project/name body)))))))
+        (is (= "test-project" (:project/name body)))))
+
+    (testing "User can not create projects"
+      (let [req (-> (user-req :post "/rest-api/v1/admin/layers/project")
+                    (mock/json-body {:name "test-project2"}))
+            {:keys [status body]} (rest-handler req)
+            body (read-string (slurp body))]
+        (is (= 403 status))
+        (reset! prj-id (:id body))))
+
+    (testing "Admin can see all projects"
+      (let [{:keys [status body]} (rest-handler (admin-req :get "/rest-api/v1/projects"))
+            body (read-string (slurp body))]
+        (is (= 1 (count body)))))
+
+    (testing "User sees no projects by default"
+      (let [{:keys [status body]} (rest-handler (user-req :get "/rest-api/v1/projects"))
+            body (read-string (slurp body))]
+        (is (= 0 (count body)))))))
