@@ -127,12 +127,13 @@
          (mc/server-error 400 (str "User must release locks before their writer privileges can be revoked."))
 
          :else
-         (let [tx (into (prj/remove-reader** node project-id user-id)
-                        (prj/remove-writer** node project-id user-id)
-                        (case privileges
-                          "reader" (prj/add-reader** node project-id user-id)
-                          "writer" (prj/add-writer** node project-id user-id)
-                          nil))
+         (let [tx (reduce into
+                          [(prj/remove-reader** node project-id user-id)
+                           (prj/remove-writer** node project-id user-id)
+                           (case privileges
+                             "reader" (prj/add-reader** node project-id user-id)
+                             "writer" (prj/add-writer** node project-id user-id)
+                             nil)])
                success (gxe/submit! node tx)]
            (if success
              (mc/server-message "Updated privileges")
