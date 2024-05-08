@@ -43,10 +43,9 @@
 (def text-routes
   ["/text"
    [""
-    {:post {:parameters {:body {:begin int?
-                                :end int?
-                                :layer id?
-                                :text id?}}
+    {:post {:parameters {:body {:layer id?
+                                :document id?
+                                :body string?}}
             :description "Creates a new text. ID is given in the response under \"id\"."
             :handler    create-text}}]
 
