@@ -3,7 +3,9 @@
             [clojure.string]
             [ring.mock.request :as mock]
             [glam.xtdb.easy :as gxe]
-            [glam.server.rest-api.fixtures :refer [with-user-cookies admin-req user-req]]
+            [glam.server.rest-api.fixtures :refer [with-user-cookies
+                                                   admin-req user-req
+                                                   admin-id user-id]]
             [glam.fixtures :refer [xtdb-node
                                    with-xtdb
                                    with-parser
@@ -36,15 +38,50 @@
                     (mock/json-body {:name "test-project2"}))
             {:keys [status body]} (rest-handler req)
             body (read-string (slurp body))]
-        (is (= 403 status))
-        (reset! prj-id (:id body))))
+        (is (= 403 status))))
 
     (testing "Admin can see all projects"
       (let [{:keys [status body]} (rest-handler (admin-req :get "/rest-api/v1/projects"))
             body (read-string (slurp body))]
-        (is (= 1 (count body)))))
+        (is (= 1 (count body))))
+      (let [{:keys [status body]} (rest-handler (-> (admin-req :get (str "/rest-api/v1/project/" @prj-id))
+                                                    (mock/query-string {:includeDocuments false})))]
+        (is (= 200 status))))
 
     (testing "User sees no projects by default"
       (let [{:keys [status body]} (rest-handler (user-req :get "/rest-api/v1/projects"))
             body (read-string (slurp body))]
-        (is (= 0 (count body)))))))
+        (is (= 0 (count body))))
+      (let [{:keys [status body] :as resp} (rest-handler (-> (user-req :get (str "/rest-api/v1/project/" @prj-id))
+                                                             (mock/query-string {:includeDocuments false})))]
+        (is (= 404 status))))
+
+    (testing "User can see a project after being granted read access"
+      (let [{:keys [status]} (rest-handler (-> (admin-req :patch (str "/rest-api/v1/admin/layers/project/" @prj-id))
+                                               (mock/json-body {:action "setPrivileges"
+                                                                :userId user-id
+                                                                :privileges "reader"})))]
+        (is (= 200 status)))
+      (let [{:keys [status body]} (rest-handler (user-req :get "/rest-api/v1/projects"))
+            body (read-string (slurp body))]
+        (is (= 200 status))
+        (is (= 1 (count body))))
+      (let [{:keys [status body]} (rest-handler (-> (user-req :get (str "/rest-api/v1/project/" @prj-id))
+                                                    (mock/query-string {:includeDocuments false})))]
+        (is (= 200 status))))
+
+    (testing "User cannot delete projects"
+      (let [{:keys [status body]} (rest-handler (user-req :delete (str "/rest-api/v1/admin/layers/project/" @prj-id)))]
+        (is (= 403 status))))
+
+    (testing "Admin can delete projects"
+      (let [{:keys [status body]} (rest-handler (admin-req :delete (str "/rest-api/v1/admin/layers/project/" @prj-id)))]
+        (is (= 200 status)))
+      (let [{:keys [status body]} (rest-handler (admin-req :get "/rest-api/v1/projects"))
+            body (read-string (slurp body))]
+        (is (= 0 (count body))))
+      (let [{:keys [status body]} (rest-handler (-> (admin-req :get (str "/rest-api/v1/project/" @prj-id))
+                                                    (mock/query-string {:includeDocuments false})))]
+        (is (= 404 status))))))
+
+;; TODO: add some deletion tests to make sure we get everything
