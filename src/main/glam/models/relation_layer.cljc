@@ -43,11 +43,16 @@
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
      (let [new-relation-layer (-> {} (mc/apply-delta delta) (select-keys relation-layer-keys))]
-       (let [{:keys [id success]} (rl/create node new-relation-layer)]
-         (sl/add-relation-layer node parent-id id)
-         (if-not success
-           (server-error (str "Failed to create relation-layer, please refresh and try again"))
-           {:tempids {temp-id id}})))))
+       (cond
+         (nil? (:span-layer/id (gxe/entity node parent-id)))
+         (server-error 400 (str "Parent of relation layer must be a valid span layer."))
+
+         :else
+         (let [{:keys [id success]} (rl/create node new-relation-layer)]
+           (sl/add-relation-layer node parent-id id)
+           (if-not success
+             (server-error (str "Failed to create relation-layer, please refresh and try again"))
+             {:tempids {temp-id id}}))))))
 
 #?(:clj
    (pc/defmutation save-relation-layer [{:keys [node]} {delta :delta [_ id] :ident :as params}]
