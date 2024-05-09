@@ -87,3 +87,9 @@ ClojureScript Client Profile:
 * `docs/html`: Compile `docs/book.adoc` into HTML at `target/book.html`
 * `docs/pdf`: Compile `docs/book.adoc` into a PDF at `target/book.pdf`
 * `docs`: Perform `docs/html` and `docs/pdf`
+
+## Swagger UI for REST API 
+Navigate to http://localhost:8085/rest-api/v1/docs/index.html
+
+## XTDB Inspector
+Set the environment variable `XTDB_INSPECTOR_URI_PREFIX=/_inspector` (e.g. `XTDB_INSPECTOR_URI_PREFIX=/_inspector yarn server`), and see http://localhost:8085/_inspector/attr
