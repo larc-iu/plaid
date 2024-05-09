@@ -77,9 +77,9 @@
         relation-layers (:span-layer/relation-layers (gxe/entity node eid))
         relation-layer-deletions (reduce into (map #(rl/delete** node %) relation-layers))]
     (reduce into [unlink
+                  relation-layer-deletions
                   span-deletions
-                  span-layer-deletion
-                  relation-layer-deletions])))
+                  span-layer-deletion])))
 
 (gxe/deftx add-relation-layer [node span-layer-id relation-layer-id]
   (gxc/add-join** node span-layer-id :span-layer/relation-layers relation-layer-id))
