@@ -97,6 +97,9 @@
    (pc/defmutation delete-span [{:keys [node] :as env} {:span/keys [id] :as span}]
      {::pc/transform (ma/writeable-required :span/id)}
      (cond
+       (not (ma/ident-locked? env [:span/id id]))
+       (server-error 403 (ma/lock-holder-error-msg env [:span/id id]))
+
        (nil? (:span/id (gxe/entity node id)))
        (server-error 404 (str "Span does not exist with ID " id))
 
