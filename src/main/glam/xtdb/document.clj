@@ -76,7 +76,12 @@
      :token-layer/span-layers (mapv #(get-doc-info node doc-id id [:span-layer/id %]) sl-ids)}))
 
 (defmethod get-doc-info :span-layer/id [node doc-id parent-id [key id]]
-  (let [spans (->> (xt/q (xt/db node)
+  (let [rl-ids (map first (xt/q (xt/db node)
+                                '{:find  [?rl]
+                                  :where [[?sl :span-layer/relation-layers ?rl]]
+                                  :in    [?sl]}
+                                id))
+        spans (->> (xt/q (xt/db node)
                          '{:find [(pull ?s [:span/id :span/value :span/tokens])]
                            :where [[?s :span/tokens ?tok]
                                    [?s :span/layer ?sl]
@@ -87,7 +92,23 @@
                          [parent-id doc-id id])
                    (mapv (fn [[id]] {:span/id id})))]
     {:span-layer/id     id
-     :span-layer/spans spans}))
+     :span-layer/spans spans
+     :span-layer/relation-layers (mapv #(get-doc-info node doc-id id [:relation-layer/id %]) rl-ids)}))
+
+(defmethod get-doc-info :relation-layer/id [node doc-id parent-id [key id]]
+  (let [relations (->> (xt/q (xt/db node)
+                             '{:find [(pull ?r [:relation/id :relation/value :relation/source :relation/target])]
+                               :where [[?r :relation/source ?s]
+                                       [?r :relation/layer ?rl]
+                                       [?s :span/layer ?sl]
+                                       [?s :span/tokens ?tok]
+                                       [?tok :token/text ?txt]
+                                       [?txt :text/document ?doc]]
+                               :in [[?sl ?doc ?rl]]}
+                             [parent-id doc-id id])
+                       (mapv (fn [[id]] {:relation/id id})))]
+    {:relation-layer/id        id
+     :relation-layer/relations relations}))
 
 (defn get-with-layer-data-for-pathom
   [node id]

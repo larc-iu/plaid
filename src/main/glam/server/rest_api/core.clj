@@ -14,10 +14,12 @@
             [glam.server.rest-api.util :refer [postprocess-middleware]]
             [glam.server.rest-api.session :refer [session-routes]]
             [glam.server.rest-api.user :refer [user-routes user-admin-routes]]
+            [glam.server.rest-api.relation :refer [relation-routes]]
             [glam.server.rest-api.span :refer [span-routes]]
             [glam.server.rest-api.token :refer [token-routes]]
             [glam.server.rest-api.text :refer [text-routes]]
             [glam.server.rest-api.document :refer [document-routes]]
+            [glam.server.rest-api.relation-layer :refer [relation-layer-routes]]
             [glam.server.rest-api.span-layer :refer [span-layer-routes]]
             [glam.server.rest-api.token-layer :refer [token-layer-routes]]
             [glam.server.rest-api.text-layer :refer [text-layer-routes]]
@@ -107,7 +109,8 @@
      ["/body"
       text-routes
       token-routes
-      span-routes]]
+      span-routes
+      relation-routes]]
     ["/admin"
      {:swagger {:tags ["admin"]}}
      user-admin-routes
@@ -115,7 +118,8 @@
       project-admin-routes
       text-layer-routes
       token-layer-routes
-      span-layer-routes]]]
+      span-layer-routes
+      relation-layer-routes]]]
    session-routes
 
    ;; swagger documentation

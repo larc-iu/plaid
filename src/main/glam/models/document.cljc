@@ -47,7 +47,10 @@
                        {:token-layer/tokens [:token/id :token/begin :token/end :token/text]}
                        {:token-layer/span-layers
                         [:span-layer/id
-                         {:span-layer/spans [:span/id :span/value :span/tokens]}]}]}]}]}
+                         {:span-layer/spans [:span/id :span/value :span/tokens]}
+                         {:span-layer/relation-layers
+                          [:relation-layer/id
+                           {:relation-layer/relations [:relation/id :relation/value :relation/source :relation/target]}]}]}]}]}]}
      (doc/get-with-layer-data-for-pathom node id)))
 
 #?(:clj

@@ -97,6 +97,9 @@
    (pc/defmutation delete-span [{:keys [node] :as env} {:span/keys [id] :as span}]
      {::pc/transform (ma/writeable-required :span/id)}
      (cond
+       (not (ma/ident-locked? env [:span/id id]))
+       (server-error 403 (ma/lock-holder-error-msg env [:span/id id]))
+
        (nil? (:span/id (gxe/entity node id)))
        (server-error 404 (str "Span does not exist with ID " id))
 
@@ -135,8 +138,8 @@
                layer))
          (server-error 400 "Span must belong to a layer that is associated with its tokens' layer.")
 
-         (not (ma/ident-locked? env [:span/id id]))
-         (server-error 403 (ma/lock-holder-error-msg env [:span/id id]))
+         (not (ma/ident-locked? env [:token/id (first tokens)]))
+         (server-error 403 (ma/lock-holder-error-msg env [:token/id (first tokens)]))
 
          :else
          (let [{:keys [success] new-id :id} (s/create node {:span/value  value

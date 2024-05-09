@@ -4,14 +4,16 @@
             [taoensso.timbre :as log]))
 
 (def key-symbol-map
-  {:project/id     '?p
-   :document/id    '?d
-   :text-layer/id  '?txtl
-   :text/id        '?txt
-   :token-layer/id '?tokl
-   :token/id       '?tok
-   :span-layer/id  '?sl
-   :span/id        '?s})
+  {:project/id        '?p
+   :document/id       '?d
+   :text-layer/id     '?txtl
+   :text/id           '?txt
+   :token-layer/id    '?tokl
+   :token/id          '?tok
+   :span-layer/id     '?sl
+   :span/id           '?s
+   :relation-layer/id '?rl
+   :relation/id       '?r})
 
 (defmulti build-query
   "Build up a query for finding whether a target piece of information is accessible for
@@ -85,6 +87,21 @@
                             [?s :span/layer ?sl]])
       (build-query opts :span-layer/id)))
 
+(defmethod build-query :relation-layer/id [query-map opts _]
+  (-> query-map
+      (update :where conj '(relation-layer-accessible ?rl ?sl))
+      (update :rules conj '[(relation-layer-accessible ?rl ?sl)
+                            [?sl :span-layer/relation-layers ?rl]])
+      (build-query opts :span-layer/id)))
+
+(defmethod build-query :relation/id [query-map opts _]
+  (-> query-map
+      (update :where conj '(relation-accessible ?r ?rl))
+      (update :rules conj '[(relation-accessible ?r ?rl)
+                            [?r :relation/layer ?rl]])
+      (build-query opts :relation-layer/id)))
+
+
 (defn get-accessible-ids
   "Get all accessible IDs of a certain type given a user's privileges on projects.
   `target-key` is something like :project/id"
@@ -135,6 +152,7 @@
                   :text/id (recur (conj where ['?txt :text/document '?d]) :document/id)
                   :token/id (recur (conj where ['?tok :token/text '?txt]) :text/id)
                   :span/id (recur (conj where ['?s :span/tokens '?tok]) :token/id)
+                  :relation/id (recur (conj where ['?r :relation/source '?s]) :span/id)
                   []))]
     (if (and (not= k :document/id) (empty? where))
       (do

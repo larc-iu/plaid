@@ -6,10 +6,10 @@
             [malli.experimental.lite :as ml])
   (:import (java.util UUID)))
 
-(defn create-span-layer [{{{:keys [name token-layer]} :body} :parameters parser :pathom-parser :as req}]
+(defn create-span-layer [{{{:keys [name tokenLayer]} :body} :parameters parser :pathom-parser :as req}]
   (let [params {:delta {:span-layer/name {:after name}}
                 :ident [:span-layer/id (UUID/randomUUID)]
-                :parent-ident [:token-layer/id token-layer]}
+                :parent-ident [:token-layer/id tokenLayer]}
         result (parser req [(list `sl/create-span-layer params)])
         data (get result `sl/create-span-layer)]
     (if (:server/error? data)
@@ -63,8 +63,8 @@
 (def span-layer-routes
   ["/span"
    [""
-    {:post {:parameters  {:body {:name        string?
-                                 :token-layer id?}}
+    {:post {:parameters  {:body {:name       string?
+                                 :tokenLayer id?}}
             :description "Creates a new span layer. ID is given in the response under \"id\"."
             :handler    create-span-layer}}]
    ["/:id"

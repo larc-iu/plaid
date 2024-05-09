@@ -9,6 +9,8 @@
             [glam.models.token :refer [token-resolvers]]
             [glam.models.span-layer :refer [span-layer-resolvers]]
             [glam.models.span :refer [span-resolvers]]
+            [glam.models.relation :refer [relation-resolvers]]
+            [glam.models.relation-layer :refer [relation-layer-resolvers]]
             [glam.models.session :as session]
             [glam.models.user :as user]
             [glam.models.common :refer [server-error]]
@@ -74,7 +76,9 @@
    token-layer-resolvers
    token-resolvers
    span-layer-resolvers
-   span-resolvers])
+   span-resolvers
+   relation-layer-resolvers
+   relation-resolvers])
 
 (defn env-additions [config node]
   (fn [env]

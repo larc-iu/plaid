@@ -8,7 +8,9 @@
    {:text-layer/token-layers
     [:token-layer/id :token-layer/name :config
      {:token-layer/span-layers
-      [:span-layer/id :span-layer/name :config]}]}])
+      [:span-layer/id :span-layer/name :config
+       {:span-layer/relation-layers
+        [:relation-layer/id :relation-layer/name :config]}]}]}])
 
 ;; This should be kept in lock-step with the output of glam.models.document/get-full-document
 (def document-body-query
@@ -19,8 +21,11 @@
      [:token-layer/id :token-layer/name :config
       {:token-layer/tokens [:token/id :token/begin :token/end :token/text]}
       {:token-layer/span-layers
-       [:span-layer/id :Span-layer/name :config
-        {:span-layer/spans [:span/id :span/value :span/tokens]}]}]}]})
+       [:span-layer/id :span-layer/name :config
+        {:span-layer/spans [:span/id :span/value :span/tokens]}
+        {:span-layer/relation-layers
+         [:relation-layer/id :relation-layer/name :config
+          {:relation-layer/relations [:relation/id :relation/source :relation/target :relation/value]}]}]}]}]})
 
 (defn patch-config [{{{:keys [id]} :path
                       {:keys [action editorName key value]} :body} :parameters

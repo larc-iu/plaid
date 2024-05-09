@@ -2,6 +2,7 @@
   (:require [xtdb.api :as xt]
             [glam.xtdb.easy :as gxe]
             [glam.xtdb.common :as gxc]
+            [glam.xtdb.relation :as r]
             [taoensso.timbre :as log])
   (:refer-clojure :exclude [get merge]))
 
@@ -15,8 +16,7 @@
 (defn xt->pathom [doc]
   (when doc
     (-> doc
-        (update :span/layer gxc/identize :span-layer/id)
-        (update :span/tokens gxc/identize :token/id))))
+        (update :span/layer gxc/identize :span-layer/id))))
 
 (defn create* [{:span/keys [id] :as attrs}]
   (gxe/put* (gxc/create-record "span" id attrs attr-keys)))
@@ -97,8 +97,19 @@
 (defn merge [node eid m]
   (gxe/merge node eid (select-keys m [:span/value :span/tokens])))
 
+(defn get-relation-ids [node eid]
+  (map first (xt/q (xt/db node)
+                   '{:find  [?relation]
+                     :where [(or [?relation :relation/source ?id] [?relation :relation/target ?id])]
+                     :in    [?id]}
+                   eid)))
+
 (gxe/deftx delete [node eid]
-  [(gxe/delete* eid)])
+  (let [relation-deletes (reduce into (mapv #(r/delete** node %) (get-relation-ids node eid)))
+        span-delete [(gxe/delete* eid)]]
+    (reduce into
+            [relation-deletes
+             span-delete])))
 
 (declare add-token**)
 (gxe/deftx add-token [node span-id token-id]
@@ -110,6 +121,8 @@
     (if (= 1 (-> (gxe/entity node span-id) :span/tokens count))
       (into base-txs (delete** node span-id))
       base-txs)))
+
+
 
 
 ;; Given the following:

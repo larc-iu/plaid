@@ -11,7 +11,7 @@
             #?(:clj [glam.xtdb.span :as s])))
 
 (def span-layer-keys [:span-layer/name
-                      :span-layer/span-layers])
+                      :span-layer/relation-layers])
 
 (defn valid-name [name] (and (string? name) (<= 1 (count name) 80)))
 (defn- field-valid [field v]
@@ -32,7 +32,7 @@
 #?(:clj
    (pc/defresolver get-span-layer [{:keys [node]} {:span-layer/keys [id]}]
      {::pc/input     #{:span-layer/id}
-      ::pc/output    [:span-layer/id :span-layer/name :config]
+      ::pc/output    [:span-layer/id :span-layer/name :span-layer/relation-layers :config]
       ::pc/transform (ma/readable-required :span-layer/id)}
      (sl/get node id)))
 

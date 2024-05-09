@@ -85,6 +85,20 @@
            (server-error 500 (str "Failed to save project information, please refresh and try again"))
            (gxe/entity node id))))))
 
+#?(:clj
+   (pc/defmutation delete-project [{:keys [node]} {[_ id] :ident :as params}]
+     {::pc/transform ma/admin-required}
+     (cond
+       (nil? (:project/id (gxe/entity node id)))
+       (server-error 404 (str "Project not found by ID " id))
+
+       :else
+       (let [name (:project/name (gxe/entity node id))
+             tx (prj/delete** node id)
+             success (gxe/submit! node tx)]
+         (if-not success
+           (server-error 500 (str "Failed to delete project " name ". Please refresh and try again"))
+           (server-message (str "Project " name " deleted")))))))
 
 #?(:clj
    (pc/defresolver get-users-for-project [{:keys [node]} {:project/keys [id]}]
@@ -127,12 +141,13 @@
          (mc/server-error 400 (str "User must release locks before their writer privileges can be revoked."))
 
          :else
-         (let [tx (into (prj/remove-reader** node project-id user-id)
-                        (prj/remove-writer** node project-id user-id)
-                        (case privileges
-                          "reader" (prj/add-reader** node project-id user-id)
-                          "writer" (prj/add-writer** node project-id user-id)
-                          nil))
+         (let [tx (reduce into
+                          [(prj/remove-reader** node project-id user-id)
+                           (prj/remove-writer** node project-id user-id)
+                           (case privileges
+                             "reader" (prj/add-reader** node project-id user-id)
+                             "writer" (prj/add-writer** node project-id user-id)
+                             nil)])
                success (gxe/submit! node tx)]
            (if success
              (mc/server-message "Updated privileges")
@@ -187,6 +202,6 @@
              (mc/server-error 500 "Failed to update editor config, please refresh and try again")))))))
 
 #?(:clj
-   (def project-resolvers [accessible-projects all-projects get-project create-project save-project
+   (def project-resolvers [accessible-projects all-projects get-project create-project save-project delete-project
                            get-users-for-project set-user-privileges set-editor-config-pair delete-editor-config-pair]))
 

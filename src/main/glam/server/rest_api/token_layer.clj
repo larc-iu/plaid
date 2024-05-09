@@ -6,10 +6,10 @@
             [malli.experimental.lite :as ml])
   (:import (java.util UUID)))
 
-(defn create-token-layer [{{{:keys [name token-layer]} :body} :parameters parser :pathom-parser :as req}]
+(defn create-token-layer [{{{:keys [name textLayer]} :body} :parameters parser :pathom-parser :as req}]
   (let [params {:delta {:token-layer/name {:after name}}
                 :ident [:token-layer/id (UUID/randomUUID)]
-                :parent-ident [:token-layer/id token-layer]}
+                :parent-ident [:text-layer/id textLayer]}
         result (parser req [(list `tokl/create-token-layer params)])
         data (get result `tokl/create-token-layer)]
     (if (:server/error? data)
@@ -62,10 +62,10 @@
 (def token-layer-routes
   ["/token"
    [""
-    {:post {:parameters  {:body {:name        string?
-                                 :token-layer id?}}
+    {:post {:parameters  {:body {:name      string?
+                                 :textLayer id?}}
             :description "Creates a new token layer. ID is given in the response under \"id\"."
-            :handler    create-token-layer}}]
+            :handler     create-token-layer}}]
    ["/:id"
     [""
      {:get    {:parameters {:path {:id id?}}

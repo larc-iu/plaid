@@ -25,6 +25,7 @@
 ;; TODO probably best to refactor this into two
 #?(:clj
    (pc/defmutation create-text
+     ;; TODO these keys are inconsistent with other creation mutations, bring them in line
      [{:keys [node] :as env} {:text/keys [id] :keys [body] document-id :document/id tl-id :text-layer/id}]
      {::pc/transform (ma/writeable-required :document/id)}
      (cond
