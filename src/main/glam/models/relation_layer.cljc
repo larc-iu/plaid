@@ -42,8 +42,12 @@
    (pc/defmutation create-relation-layer [{:keys [node]} {delta :delta [_ temp-id] :ident [_ parent-id] :parent-ident :as params}]
      {::pc/transform ma/admin-required
       ::pc/output    [:server/error? :server/message]}
-     (let [new-relation-layer (-> {} (mc/apply-delta delta) (select-keys relation-layer-keys))]
+     (let [valid? (mc/validate-delta record-valid? delta)
+           new-relation-layer (-> {} (mc/apply-delta delta) (select-keys relation-layer-keys))]
        (cond
+         (not valid?)
+         (server-error 400 (str "Relation layer delta invalid: " delta))
+
          (nil? (:span-layer/id (gxe/entity node parent-id)))
          (server-error 400 (str "Parent of relation layer must be a valid span layer."))
 
@@ -51,7 +55,7 @@
          (let [{:keys [id success]} (rl/create node new-relation-layer)]
            (sl/add-relation-layer node parent-id id)
            (if-not success
-             (server-error (str "Failed to create relation-layer, please refresh and try again"))
+             (server-error 500 (str "Failed to create relation-layer, please refresh and try again"))
              {:tempids {temp-id id}}))))))
 
 #?(:clj
@@ -62,11 +66,11 @@
        (cond
          ;; must be valid
          (not valid?)
-         (server-error (str "Relation layer delta invalid: " delta))
+         (server-error 400 (str "Relation layer delta invalid: " delta))
 
          :else
          (if-not (rl/merge node id (mc/apply-delta {} delta))
-           (server-error (str "Failed to save relation-layer information, please refresh and try again"))
+           (server-error 500 (str "Failed to save relation-layer information, please refresh and try again"))
            (gxe/entity node id))))))
 
 #?(:clj
@@ -75,7 +79,8 @@
      (cond
        ;; ensure the relation layer to be deleted exists
        (not (gxe/entity node id))
-       (server-error (str "Relation layer not found by ID " id))
+       (server-error 404 (str "Relation layer not found by ID " id))
+
        ;; otherwise, go ahead
        :else
        (let [name (:relation-layer/name (gxe/entity node id))
@@ -84,7 +89,7 @@
                       (sl/remove-relation-layer** node parent-id id))
              success (gxe/submit! node tx)]
          (if-not success
-           (server-error (str "Failed to delete relation layer " parent-id ". Please refresh and try again"))
+           (server-error 500 (str "Failed to delete relation layer " parent-id ". Please refresh and try again"))
            (server-message (str "Relation layer " name " deleted")))))))
 
 #?(:clj
