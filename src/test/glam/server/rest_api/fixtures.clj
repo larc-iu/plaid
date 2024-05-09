@@ -54,7 +54,8 @@
 
 (def project-ids {})
 (defn with-project-and-doc [f]
-  (let [get-id (fn [resp] (-> resp :body slurp read-string :id))
+  (let [before-db-count (count (gxe/find-entities xtdb-node [[:xt/id '_]]))
+        get-id (fn [resp] (-> resp :body slurp read-string :id))
         project-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/admin/layers/project")
                                              (mock/json-body {:name "fixture-project"}))))
         document-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document")
@@ -69,9 +70,14 @@
         span-layer-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/admin/layers/span")
                                                 (mock/json-body {:name       "fixture-span-layer"
                                                                  :tokenLayer token-layer-id}))))
+        other-span-layer-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/admin/layers/span")
+                                                      (mock/json-body {:name       "other-fixture-span-layer"
+                                                                       :tokenLayer token-layer-id}))))
         relation-layer-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/admin/layers/relation")
                                                     (mock/json-body {:name      "fixture-relation-layer"
                                                                      :spanLayer span-layer-id}))))
+
+        ;; Doc 1
         _ (rest-handler (-> (admin-req :patch (str "/rest-api/v1/document/" document-id "/lock"))
                             (mock/json-body {:action "acquire"})))
         text-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/text")
@@ -88,6 +94,8 @@
                                           (mock/json-body {:begin 10 :end 14 :layer token-layer-id :text text-id}))))
         s1-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/span")
                                         (mock/json-body {:layer span-layer-id :value "s1" :tokens [tok1-id tok2-id]}))))
+        other-s1-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/span")
+                                              (mock/json-body {:layer other-span-layer-id :value "other-s1" :tokens [tok4-id]}))))
         s2-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/span")
                                         (mock/json-body {:layer span-layer-id :value "s2" :tokens [tok3-id]}))))
         s3-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/span")
@@ -98,14 +106,47 @@
         r2-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/relation")
                                         (mock/json-body {:layer  relation-layer-id :value "r2"
                                                          :source s1-id :target s3-id}))))
-
         _ (rest-handler (-> (admin-req :patch (str "/rest-api/v1/document/" document-id "/lock"))
+                            (mock/json-body {:action "release"})))
+
+        ;; Doc 2
+        document-2-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document")
+                                                (mock/json-body {:name    "other-fixture-document"
+                                                                 :project project-id}))))
+        _ (rest-handler (-> (admin-req :patch (str "/rest-api/v1/document/" document-2-id "/lock"))
+                            (mock/json-body {:action "acquire"})))
+        d2-text-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/text")
+                                             (mock/json-body {:layer    text-layer-id
+                                                              :document document-id
+                                                              :body     "Huck's my name"}))))
+        d2-tok1-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/token")
+                                             (mock/json-body {:begin 0 :end 4 :layer token-layer-id :text text-id}))))
+        d2-tok2-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/token")
+                                             (mock/json-body {:begin 4 :end 6 :layer token-layer-id :text text-id}))))
+        d2-tok3-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/token")
+                                             (mock/json-body {:begin 7 :end 9 :layer token-layer-id :text text-id}))))
+        d2-tok4-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/token")
+                                             (mock/json-body {:begin 10 :end 14 :layer token-layer-id :text text-id}))))
+        d2-s1-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/span")
+                                           (mock/json-body {:layer span-layer-id :value "s1" :tokens [tok1-id tok2-id]}))))
+        d2-s2-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/span")
+                                           (mock/json-body {:layer span-layer-id :value "s2" :tokens [tok3-id]}))))
+        d2-s3-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/span")
+                                           (mock/json-body {:layer span-layer-id :value "s3" :tokens [tok4-id]}))))
+        d2-r1-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/relation")
+                                           (mock/json-body {:layer  relation-layer-id :value "r1"
+                                                            :source s2-id :target s3-id}))))
+        d2-r2-id (get-id (rest-handler (-> (admin-req :post "/rest-api/v1/document/body/relation")
+                                           (mock/json-body {:layer  relation-layer-id :value "r2"
+                                                            :source s1-id :target s3-id}))))
+        _ (rest-handler (-> (admin-req :patch (str "/rest-api/v1/document/" document-2-id "/lock"))
                             (mock/json-body {:action "release"})))]
     (with-redefs [project-ids {:project-id project-id
                                :document-id document-id
                                :text-layer-id text-layer-id
                                :token-layer-id token-layer-id
                                :span-layer-id span-layer-id
+                               :other-span-layer-id other-span-layer-id
                                :relation-layer-id relation-layer-id
                                :txt-id text-id
                                :tok1-id tok1-id
@@ -115,9 +156,20 @@
                                :s1-id s1-id
                                :s2-id s2-id
                                :s3-id s3-id
+                               :other-s1-id other-s1-id
                                :r1-id r1-id
-                               :r2-id r2-id}]
-      (println (gxe/find-entities xtdb-node [[:text/id '_]]))
-      (println project-ids)
+                               :r2-id r2-id
+                               :other-document-id document-2-id
+                               :d2-txt-id d2-text-id
+                               :d2-tok1-id d2-tok1-id
+                               :d2-tok2-id d2-tok2-id
+                               :d2-tok3-id d2-tok3-id
+                               :d2-tok4-id d2-tok4-id
+                               :d2-s1-id d2-s1-id
+                               :d2-s2-id d2-s2-id
+                               :d2-s3-id d2-s3-id
+                               :d2-r1-id d2-r1-id
+                               :d2-r2-id d2-r2-id
+                               :before-db-count before-db-count}]
       (f))))
 

@@ -87,4 +87,10 @@
                                                     (mock/query-string {:includeDocuments false})))]
         (is (= 404 status))))))
 
-;; TODO: add some deletion tests to make sure we get everything
+(deftest project-deletion
+  (testing "Deleting a project deletes *everything*!"
+    (let [url (str "/rest-api/v1/admin/layers/project/" (:project-id project-ids))
+          {:keys [status]} (rest-handler (admin-req :delete url))
+          db-entities (gxe/find-entities xtdb-node [[:xt/id '_]])]
+      (is (= 200 status))
+      (is (= (:before-db-count project-ids) (count db-entities))))))
