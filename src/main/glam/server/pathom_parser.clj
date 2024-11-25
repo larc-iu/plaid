@@ -132,10 +132,8 @@
                            ::p/plugins    plugins})
                         connect-viz? (pathom-viz/connect-parser {::pathom-viz/parser-id ::parser}))
         ;; Ensure that writes happen one at a time GLOBALLY. This avoids certain race conditions.
-        ;; In the future, this can be fixed with more heavily relying on crux.tx/matching more, but
-        ;; doing things this way is cheaper for the moment.
+        ;; In the future, this will be fixed with implementing per-project/per-document mutexes.
         ;; Thanks to Souenzzo for this implementation.
-        ;; TODO: consider whether still necessary after heavy adoption of tx functions
         serial-parser (let [in (async/chan)]
                         (async/thread
                           (loop []
@@ -146,9 +144,6 @@
         #_#_cache (atom {})]
 
     (fn wrapped-parser [env tx]
-      ;; make it easier to read transactions when debugging
-      (println)
-
       ;; Add trace - pathom-viz already adds it so only add if that's not included.
       (let [tx (if (and trace? (not connect-viz?))
                  (conj tx :com.wsscode.pathom/trace) tx)

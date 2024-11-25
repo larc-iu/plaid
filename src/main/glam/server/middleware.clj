@@ -91,7 +91,9 @@
       (:transit-params request)
       (fn [tx] (parser {:ring/request request} tx)))))
 
-(defn wrap-xtdb-inspector [ring-handler]
+(defn wrap-xtdb-inspector
+  "For development only. Enable a web ui for inspecting DB state if :glam.server.xtdb/config is true."
+  [ring-handler]
   (let [inspector? (and (-> config :glam.server.xtdb/config :use-inspector))
         handler (and inspector? (inspector-handler xtdb-node))]
     (fn [request]
