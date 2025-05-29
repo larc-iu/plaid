@@ -1,3 +1,6 @@
+> [!NOTE]
+> If you are looking for Glam, please see [the `glam` branch](https://github.com/larc-iu/plaid/tree/glam) of this repository.
+
 # Plaid
 
 # Setup
