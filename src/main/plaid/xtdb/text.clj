@@ -93,7 +93,7 @@
                             (not= end (:token/end (clojure.core/get indexed-tokens id)))))
         deletion-tx (reduce into (map #(tok/delete* xt-map %) deleted-token-ids))
         update-tx (mapcat (fn [{:token/keys [id] :as token}]
-                            [[::xt/match id token]
+                            [[::xt/match id (pxc/entity db id)]
                              [::xt/put token]])
                           (filter needs-update? new-tokens))
         text-tx [[::xt/match (:text/id text) text]
