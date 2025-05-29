@@ -78,7 +78,7 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
-  (pxc/submit! node (pxc/merge* node eid (select-keys m [:span/value]))))
+  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:span/value]))))
 
 (defn delete* [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)

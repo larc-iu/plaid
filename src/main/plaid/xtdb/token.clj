@@ -55,7 +55,7 @@
                                             :in    [[layer text]]}
                                           [layer text]))
         ;; sorted-tokens (sort-by :token/begin (conj other-tokens token))
-        {text-body :text/body text-layer-id :text/layer} (pxc/entity db text)
+        {text-body :text/body text-layer-id :text/layer :as text} (pxc/entity db text)
         {token-layers :text-layer/token-layers} (pxc/entity db text-layer-id)]
     (cond
       ;; ID is not already taken?
@@ -104,6 +104,8 @@
 
       :else
       [[::xt/match (:xt/id token) nil]
+       [::xt/match (:xt/id layer) (pxc/entity db layer)]
+       [::xt/match (:xt/id text) text]
        [::xt/put token]])))
 
 (defn create [{:keys [node] :as xt-map} attrs]

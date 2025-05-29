@@ -83,7 +83,7 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
-  (pxc/submit! node (pxc/merge* node eid (select-keys m [:relation/value]))))
+  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:relation/value]))))
 
 (defn set-end*
   "Modify either :relation/source or :relation/target, controlled by key"
