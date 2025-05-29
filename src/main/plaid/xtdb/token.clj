@@ -68,7 +68,7 @@
 
       ;; Text exists?
       (nil? (:text/id (pxc/entity db text)))
-      (throw (ex-info (pxc/err-msg-not-found "Text" text) {:id text :code 400}))
+      (throw (ex-info (pxc/err-msg-not-found "Text" text) {:id (:text/id text) :code 400}))
 
       ;; Text layer of the text is linked to the token layer
       (not ((set token-layers) layer))
@@ -104,7 +104,7 @@
 
       :else
       [[::xt/match (:xt/id token) nil]
-       [::xt/match (:xt/id layer) (pxc/entity db layer)]
+       [::xt/match layer (pxc/entity db layer)]
        [::xt/match (:xt/id text) text]
        [::xt/put token]])))
 
@@ -134,7 +134,7 @@
       (throw (ex-info "Token does not exist" {:id eid}))
 
       ;; Non-negative extent?
-      (neg? (- end begin))
+      (neg? (- new-end new-begin))
       (throw (ex-info "Token has non-positive extent" {:old-token token
                                                        :new-token new-token}))
 
