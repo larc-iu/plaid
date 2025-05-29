@@ -1,0 +1,16 @@
+{
+  "name": "app",
+  "author": "",
+  "license": "",
+  "version": "0.0.1",
+  "description": "",
+  "private": true,
+  "scripts": {
+    "dev": "clojure -A:dev -J-Dtrace -J-Dguardrails.enabled=true",
+    "release": "clojure -X:uberjar",
+    "test": "clojure -M:test -d src/test",
+    "clojure-outdated": "clojure -M:outdated"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

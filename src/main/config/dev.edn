@@ -1,0 +1,6 @@
+{:taoensso.timbre/logging-config
+ {:min-level :debug}
+
+ :plaid.server.xtdb/config
+ {:main-db-dir    "data"
+  :use-inspector  true}}

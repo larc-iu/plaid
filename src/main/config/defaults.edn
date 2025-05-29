@@ -1,0 +1,26 @@
+{:org.httpkit.server/config               {:port 8085}
+
+ ;; The ssl-redirect defaulted to off, but for security should probably be on in production.
+ :ring.middleware/defaults-config         {:params    {:keywordize true
+                                                       :multipart  true
+                                                       :nested     true
+                                                       :urlencoded true}
+                                           :cookies   false
+                                           :responses {:absolute-redirects     true
+                                                       :content-types          true
+                                                       :default-charset        "utf-8"
+                                                       :not-modified-responses true}
+                                           :static    {:resources "public"}
+                                           :session   false
+                                           :security  {:anti-forgery   false
+                                                       :hsts           true
+                                                       :ssl-redirect   false
+                                                       :frame-options  :sameorigin
+                                                       :xss-protection {:enable? true
+                                                                        :mode    :block}}}
+
+ :taoensso.timbre/logging-config          {:min-level    :info
+                                           :ns-whitelist []
+                                           :ns-blacklist []}
+
+ :plaid.server.xtdb/config                {:main-db-dir "data"}}
