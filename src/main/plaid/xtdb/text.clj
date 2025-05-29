@@ -65,11 +65,11 @@
 
       (not ((set text-layers) layer))
       (throw (ex-info (str "Attempted to create text linked to project " project-id " which is not linked to text layer " layer)
-                      {:text-layer layer :project project :document document}))
+                      {:text-layer layer :project project :document document :code 400}))
 
       (get-text-for-doc db layer document)
       (throw (ex-info (str "Text already exists for document " document)
-                      {:document document}))
+                      {:document document :code 409}))
 
       :else
       tx)))
