@@ -63,7 +63,7 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
-  (pxc/submit! node (pxc/merge* node eid (select-keys m [:token-layer/name]))))
+  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:token-layer/name]))))
 
 (def shift-token-layer* (pxc/make-shift-layer* :text-layer/id :token-layer/id :text-layer/token-layers))
 (defn shift-token-layer [{:keys [node db] :as xt-map} text-layer-id token-layer-id up?]

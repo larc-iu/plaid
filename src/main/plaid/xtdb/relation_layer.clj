@@ -44,7 +44,7 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
-  (pxc/submit! node (pxc/merge* node eid (select-keys m [:relation-layer/name]))))
+  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:relation-layer/name]))))
 
 (def shift-relation-layer* (pxc/make-shift-layer* :span-layer/id :relation-layer/id :span-layer/relation-layers))
 (defn shift-relation-layer [{:keys [node db] :as xt-map} span-layer-id relation-layer-id up?]

@@ -47,7 +47,7 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
-  (pxc/submit! node (pxc/merge* node eid (select-keys m [:text-layer/name]))))
+  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:text-layer/name]))))
 
 (def shift-text-layer* (pxc/make-shift-layer* :project/id :text-layer/id :project/text-layers))
 (defn shift-text-layer
