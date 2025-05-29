@@ -62,7 +62,7 @@
                       :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}}
            :test     {:extra-paths ["src/test"]
                       :jvm-opts    []
-                      :main-opts   ["-m" "cognitect.test-runner"]
+                      :main-opts   ["-m" "cognitect.test-runner" "-d" "src/test"]
                       :exec-fn     cognitect.test-runner.api/test
                       :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
                                                                :sha     "3f288f1f16d167723ad87cc35b1dfee3c1681e10"}
@@ -70,11 +70,12 @@
            :dev      {:extra-paths ["src/dev" "src/test"]
                       :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"
                                     "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
+                      :exec-fn     user/start
+                      :exec-args   {}
 
                       :extra-deps  {org.clojure/test.check      {:mvn/version "1.1.1"}
                                     ring/ring-mock              {:mvn/version "0.6.1"}
                                     org.clojure/tools.namespace {:mvn/version "1.5.0"}
-                                    ;; Formats spec explain.
                                     expound/expound             {:mvn/version "0.9.0"}
                                     fulcrologic/fulcro-spec     {:mvn/version "3.1.12"}
                                     binaryage/devtools          {:mvn/version "1.0.7"}

@@ -28,7 +28,7 @@
              (let [email (read-line)]
                (println "Enter password:")
                (let [password (read-line)
-                     {:keys [success]} (pxu/create node email true password)]
+                     {:keys [success]} (pxu/create {:node node} email true password)]
                  (if success
                    (log/info (str "Admin user created with email " email ". To reset the server "
                                   "AND LOSE ALL DATA, you can remove all files at "

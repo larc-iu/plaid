@@ -39,10 +39,10 @@
   (tools-ns/refresh)
   ```
   to recompile, and then use `start` once things are good."
-  []
-  (stop)
-  (tools-ns/refresh :after 'user/start-internal))
-
+  ([]
+   (stop)
+   (tools-ns/refresh :after 'user/start-internal))
+  ([_] (start)))
 
 
 (comment
