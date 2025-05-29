@@ -105,7 +105,7 @@
   (pxc/submit! node (delete* xt-map eid)))
 
 ;; access privileges --------------------------------------------------------------------------------
-(defn- modify-privileges [xt-map project-id user-id [add? key]]
+(defn- modify-privileges* [xt-map project-id user-id [add? key]]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
         user (pxc/entity db user-id)
         project (pxc/entity db project-id)
@@ -129,31 +129,44 @@
       (throw (ex-info (str "Not a valid project ID: " project-id) {:id project-id :code 400}))
 
       :else
-      (pxc/submit! node (reduce into
-                                [[[::xt/match user-id user]
-                                  [::xt/match project-id project]
-                                  [::xt/put new-project]]])))))
+      (reduce into
+              [[[::xt/match user-id user]
+                [::xt/match project-id project]
+                [::xt/put new-project]]]))))
 
-(defn add-reader
+
+(defn add-reader*
   [xt-map project-id user-id]
-  (modify-privileges xt-map project-id user-id [true :project/readers]))
+  (modify-privileges* xt-map project-id user-id [true :project/readers]))
+(defn add-reader [xt-map project-id user-id]
+  (pxc/submit! (:node xt-map) (add-reader* xt-map project-id user-id)))
 
-(defn remove-reader [{:keys [node] :as xt-map} project-id user-id]
-  (modify-privileges xt-map project-id user-id [false :project/readers]))
+(defn remove-reader* [{:keys [node] :as xt-map} project-id user-id]
+  (modify-privileges* xt-map project-id user-id [false :project/readers]))
+(defn remove-reader [xt-map project-id user-id]
+  (pxc/submit! (:node xt-map) (remove-reader* xt-map project-id user-id)))
 
-(defn add-writer
+(defn add-writer*
   [xt-map project-id user-id]
-  (modify-privileges xt-map project-id user-id [true :project/writers]))
+  (modify-privileges* xt-map project-id user-id [true :project/writers]))
+(defn add-writer [xt-map project-id user-id]
+  (pxc/submit! (:node xt-map) (add-writer* xt-map project-id user-id)))
 
-(defn remove-writer [{:keys [node] :as xt-map} project-id user-id]
-  (modify-privileges xt-map project-id user-id [false :project/writers]))
+(defn remove-writer* [{:keys [node] :as xt-map} project-id user-id]
+  (modify-privileges* xt-map project-id user-id [false :project/writers]))
+(defn remove-writer [xt-map project-id user-id]
+  (pxc/submit! (:node xt-map) (remove-writer* xt-map project-id user-id)))
 
-(defn add-maintainer
+(defn add-maintainer*
   [xt-map project-id user-id]
-  (modify-privileges xt-map project-id user-id [true :project/maintainers]))
+  (modify-privileges* xt-map project-id user-id [true :project/maintainers]))
+(defn add-maintainer [xt-map project-id user-id]
+  (pxc/submit! (:node xt-map) (add-maintainer* xt-map project-id user-id)))
 
-(defn remove-maintainer [{:keys [node] :as xt-map} project-id user-id]
-  (modify-privileges xt-map project-id user-id [false :project/maintainers]))
+(defn remove-maintainer* [{:keys [node] :as xt-map} project-id user-id]
+  (modify-privileges* xt-map project-id user-id [false :project/maintainers]))
+(defn remove-maintainer [xt-map project-id user-id]
+  (pxc/submit! (:node xt-map) (remove-maintainer* xt-map project-id user-id)))
 
 ;; This is not actually a project operation, but this is the most sensible place to put it
 (defn assoc-editor-config-pair [xt-map layer-id editor-name config-key config-value]
@@ -163,7 +176,7 @@
         tx [[::xt/match (:xt/id layer) layer]
             [::xt/put new-layer]]]
     (cond
-      (pxc/layer? layer)
+      (not (pxc/layer? layer))
       (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400}))
 
       :else
@@ -176,7 +189,7 @@
         tx [[::xt/match (:xt/id layer) layer]
             [::xt/put new-layer]]]
     (cond
-      (pxc/layer? layer)
+      (not (pxc/layer? layer))
       (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400}))
 
       :else
