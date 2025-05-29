@@ -1,0 +1,82 @@
+{:paths   ["src/main"]
+
+ :deps    {org.clojure/clojure                       {:mvn/version "1.12.0"}
+           org.clojure/spec.alpha                    {:mvn/version "0.5.238"}
+           org.clojure/core.async                    {:mvn/version "1.8.741"}
+           org.clojure/tools.reader                  {:mvn/version "1.5.2"}
+
+           ;; common ---------------------------------------------------------------------------------
+           ;; logging
+           com.taoensso/timbre                       {:mvn/version "6.7.1"}
+           org.slf4j/slf4j-api                       {:mvn/version "2.0.17"}
+           org.slf4j/slf4j-simple                    {:mvn/version "2.0.17"}
+
+           ;; profiler, haven't used so far
+           com.taoensso/tufte                        {:mvn/version "2.7.0"}
+
+           ;; fulcro and fulcro-related deps
+           com.fulcrologic/fulcro                    {:mvn/version "3.8.6"
+                                                      :exclusions  [com.cognitect/transit-cljs
+                                                                    com.cognitect/transit-js]}
+
+           ;; routing
+           metosin/reitit                            {:mvn/version "0.8.0"}
+
+           ;; state management
+           mount/mount                               {:mvn/version "0.1.23"}
+
+           ;; http
+           http-kit/http-kit                         {:mvn/version "2.8.0"}
+           ring/ring-core                            {:mvn/version "1.14.1"}
+           ring/ring-defaults                        {:mvn/version "0.6.0"}
+           metosin/ring-http-response                {:mvn/version "0.9.5"}
+
+           ;; xtdb
+           com.xtdb/xtdb-core                        {:mvn/version "1.24.5"}
+           com.xtdb/xtdb-lmdb                        {:mvn/version "1.24.5"}
+           com.github.tatut/xtdb-inspector           {:git/url "https://github.com/lgessler/xtdb-inspector.git"
+                                                      :sha     "682ab4a6e8e3d70b1fb963740895ed85607f2451"}
+
+           ;; security
+           buddy/buddy-core                          {:mvn/version "1.12.0-430"}
+           buddy/buddy-hashers                       {:mvn/version "2.0.167"}
+           buddy/buddy-sign                          {:mvn/version "3.6.1-359"}
+           buddy/buddy-auth                          {:mvn/version "3.0.323"}
+
+           ;; misc
+           camel-snake-kebab/camel-snake-kebab       {:mvn/version "0.4.3"}
+           juji/editscript                           {:mvn/version "0.6.6"}
+
+           ;; these are missing from xtdb-lmdb
+           ; org.lwjgl/lwjgl$natives-windows      {:mvn/version "3.3.6" :native-prefix ""}
+           ; org.lwjgl/lwjgl-lmdb$natives-windows {:mvn/version "3.3.6" :native-prefix ""}
+           }
+
+ :aliases {:outdated {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
+                      :main-opts  ["-m" "antq.core"]}
+           :uberjar  {:exec-fn    hf.depstar/uberjar
+                      :exec-args  {:aot        true
+                                   :main-class "plaid.server.main"
+                                   :jar        "target/plaid.jar"
+                                   :verbose    true}
+                      :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}}
+           :test     {:extra-paths ["src/test"]
+                      :jvm-opts    []
+                      :main-opts   ["-m" "cognitect.test-runner"]
+                      :exec-fn     cognitect.test-runner.api/test
+                      :extra-deps  {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
+                                                               :sha     "3f288f1f16d167723ad87cc35b1dfee3c1681e10"}
+                                    ring/ring-mock            {:mvn/version "0.6.1"}}}
+           :dev      {:extra-paths ["src/dev" "src/test"]
+                      :jvm-opts    ["-XX:-OmitStackTraceInFastThrow"
+                                    "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
+
+                      :extra-deps  {org.clojure/test.check      {:mvn/version "1.1.1"}
+                                    ring/ring-mock              {:mvn/version "0.6.1"}
+                                    org.clojure/tools.namespace {:mvn/version "1.5.0"}
+                                    ;; Formats spec explain.
+                                    expound/expound             {:mvn/version "0.9.0"}
+                                    fulcrologic/fulcro-spec     {:mvn/version "3.1.12"}
+                                    binaryage/devtools          {:mvn/version "1.0.7"}
+                                    com.github.awkay/workspaces {:mvn/version "1.0.3"}
+                                    com.xtdb/xtdb-http-server   {:mvn/version "1.24.5"}}}}}
