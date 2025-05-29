@@ -1,22 +1,22 @@
 # Summary
 
-This is a design document for Glam, a *platform* for application software that aims to serve language documentation and revitalization (LDR). The core belief motivating Glam's design is that there are many people in LDR who are able to do front-end development, but very few who can handle back-end development, let alone both. Glam therefore aims to provide the core elements that ought to be required for any LDR-y app, allowing app developers to focus on their domain logic.
+This is a design document for Plaid, a *platform* for application software that aims to serve language documentation and revitalization (LDR). The core belief motivating Plaid's design is that there are many people in LDR who are able to do front-end development, but very few who can handle back-end development, let alone both. Plaid therefore aims to provide the core elements that ought to be required for any LDR-y app, allowing app developers to focus on their domain logic.
 
-# Introducing Glam
+# Introducing Plaid
 
-While Glam will hopefully solve several interrelated problems surrounding apps in LDR, there is one overriding concern: providing beginner developers with an SDK that will allow them to create real apps with minimal effort. Second after this is the goal of interoperating with external AI tools.
+While Plaid will hopefully solve several interrelated problems surrounding apps in LDR, there is one overriding concern: providing beginner developers with an SDK that will allow them to create real apps with minimal effort. Second after this is the goal of interoperating with external AI tools.
 
-To accomplish these goals, Glam is designed as a *platform*, much in the same way that [Firebase](https://en.wikipedia.org/wiki/Firebase) and [Parse](https://en.wikipedia.org/wiki/Parse,_Inc.) are platforms. A platform itself is not an app, but offers a rich API for developing apps that is much more high-level and, in our case, tailored to the specific domain we aim to serve.
+To accomplish these goals, Plaid is designed as a *platform*, much in the same way that [Firebase](https://en.wikipedia.org/wiki/Firebase) and [Parse](https://en.wikipedia.org/wiki/Parse,_Inc.) are platforms. A platform itself is not an app, but offers a rich API for developing apps that is much more high-level and, in our case, tailored to the specific domain we aim to serve.
 
-A brief word on the terms **user** and **developer**. When we use these terms unaltered by context, by "developer", we will mean someone who is using Glam as a platform and making an app off of it. By "user", we will mean someone who is using an app made by a "developer", though sometimes we will more imprecisely mean "user" as either that kind of person or a "developer".
+A brief word on the terms **user** and **developer**. When we use these terms unaltered by context, by "developer", we will mean someone who is using Plaid as a platform and making an app off of it. By "user", we will mean someone who is using an app made by a "developer", though sometimes we will more imprecisely mean "user" as either that kind of person or a "developer".
 
 # Data Model
 
-The domain which Glam must aim to serve is "any kind of linguistic analysis on any kind of language". Suffice to say that this is a sprawling domain. The most sophisticated projects which have attempted something similar to this goal have attempted to do this not by taking a kitchen sink approach and enumerating every kind of analysis, but rather, providing a modular "meta–data model" which application developers (and through apps, end users) may assemble into bespoke configurations on a per-project basis.
+The domain which Plaid must aim to serve is "any kind of linguistic analysis on any kind of language". Suffice to say that this is a sprawling domain. The most sophisticated projects which have attempted something similar to this goal have attempted to do this not by taking a kitchen sink approach and enumerating every kind of analysis, but rather, providing a modular "meta–data model" which application developers (and through apps, end users) may assemble into bespoke configurations on a per-project basis.
 
-The basic unit by which Glam attempts to do this is the **layer**. By composing layers of different types, users may define a data model for their annotations: for example, a user might include just one layer for POS tags if their needs are relatively simple, or they might include two layers—one for POS tags, and another for glosses. Each individual layer will then be linked to every **document** in the project.
+The basic unit by which Plaid attempts to do this is the **layer**. By composing layers of different types, users may define a data model for their annotations: for example, a user might include just one layer for POS tags if their needs are relatively simple, or they might include two layers—one for POS tags, and another for glosses. Each individual layer will then be linked to every **document** in the project.
 
-A key decision in the Glam approach to data modeling is to—speaking in terms of our data model, and not in terms of the natural language being described—**focus on structure** and not on meaning: we are going to model tokens, for example, but not directly encode what any particular token *means*. So how do we know whether a token represents e.g. a whole word or a morpheme? The answer is that each layer can hold interface-specific data which will allow an interface to know e.g. "this token layer is for morphemes, that token layer is for words". 
+A key decision in the Plaid approach to data modeling is to—speaking in terms of our data model, and not in terms of the natural language being described—**focus on structure** and not on meaning: we are going to model tokens, for example, but not directly encode what any particular token *means*. So how do we know whether a token represents e.g. a whole word or a morpheme? The answer is that each layer can hold interface-specific data which will allow an interface to know e.g. "this token layer is for morphemes, that token layer is for words". 
 
 ## Layers
 
@@ -101,7 +101,7 @@ As would the translation:
 
 ### Interface-specific Behavior
 
-The above description is a *low-level* account of what happens in Glam's internal data model. Importantly, for this model to be useful, **each user action must on average change much more than one atomic piece of data** in the data model. For example, it's probably good in this situation to provide an interface which allows a user to **simultaneously** specify morpheme and word tokenization. A very simple implementation of this might require a user to specify morpheme boundaries with a hyphen and word boundaries with whitespace. The above sentence would then look like this in its input format:
+The above description is a *low-level* account of what happens in Plaid's internal data model. Importantly, for this model to be useful, **each user action must on average change much more than one atomic piece of data** in the data model. For example, it's probably good in this situation to provide an interface which allows a user to **simultaneously** specify morpheme and word tokenization. A very simple implementation of this might require a user to specify morpheme boundaries with a hyphen and word boundaries with whitespace. The above sentence would then look like this in its input format:
 
 	Kemal gel-miş
 
@@ -125,9 +125,9 @@ While it might be interesting in some situations to have a complete system-provi
 
 ## System Configuration
 
-A major goal is to have *any* NLP system be usable with Glam, not just a select few. NLP systems will therefore need to be registered with Glam. This configuration would need to specify the following, at least:
+A major goal is to have *any* NLP system be usable with Plaid, not just a select few. NLP systems will therefore need to be registered with Plaid. This configuration would need to specify the following, at least:
 
-* **Medium**: how will the system communicate with Glam? Some obvious options here include the shell (for a command-line system), HTTP (for a service hosted as a service accessible at a certain IP and port), and perhaps other protocols such as gRPC.  
+* **Medium**: how will the system communicate with Plaid? Some obvious options here include the shell (for a command-line system), HTTP (for a service hosted as a service accessible at a certain IP and port), and perhaps other protocols such as gRPC.  
 * **Execution model**: is the NLP system long-lived as a separate process, invoked as it is needed, run occasionally in batches, or only run when manually requested? Some models, such as tokenizers, are cheap enough they can be invoked on the command line with no concern for computational resources. Others, such as a deep neural model, might require most of the VRAM available on an expensive GPU even to be loaded and idle, and these will require more care.  
 * **Input and output layers**: which layers does the model need as input for each document, and which layers is it allowed to modify? Note that this is schematic: NLP systems are registered irrespective of project.  
 * **Execution conditions**: when should a document be considered "dirty" and get run again? By default, this would probably be any time an input layer is modified in a given sentence, but this logic should be overridable.
@@ -136,8 +136,8 @@ A major goal is to have *any* NLP system be usable with Glam, not just a select 
 
 There are three important events in the flow of information to and from the NLP service:
 
-1. A "triggering" write is made in Glam which renders a sentence "dirty", i.e. in need of processing by a system.  
-2. Glam contacts the NLP system with a request for system output.  
+1. A "triggering" write is made in Plaid which renders a sentence "dirty", i.e. in need of processing by a system.  
+2. Plaid contacts the NLP system with a request for system output.  
 3. The NLP system replies with new annotations which are reconciled with the current database state.
 
 Each of these steps has some intricacies since this is a distributed process and other changes might be made in the document in the mean-time. The full description of how this system ought to function is beyond scope of this document, but note the following:
@@ -156,7 +156,7 @@ Just a sketch of this section for now:
    3. Reader permission, which allows a user, on a per-project basis, to read that project only with no write permissions.  
 3. All historical database states should be recoverable, and something superficially similar to a Git commit history (log of changes with fully visible past states, what the diffs are, and who did what) should be visible for each document. (An immutable database such as XTDB would be well-suited for this, but if other considerations necessitate using another database, this functionality could be implemented on top of a mutable database.)  
 4. Concurrent editing of any kind of data should be well-supported with no risk of data model integrity issues.  
-5. Deploying an instance of Glam should be as easy as possible for someone with minimal technical knowledge, and also very cheap or free.
+5. Deploying an instance of Plaid should be as easy as possible for someone with minimal technical knowledge, and also very cheap or free.
 
 # Appendix A: Layers
 
