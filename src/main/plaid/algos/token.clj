@@ -189,7 +189,8 @@
         (throw (ex-info "Unexpected case!" {:chars        chars
                                             :output-chars output-chars
                                             :offsets      offsets
-                                            :i            i}))))))
+                                            :i            i
+                                            :code         500}))))))
 
 (defn filter-overlaps
   "Only works if no text edits have been made"

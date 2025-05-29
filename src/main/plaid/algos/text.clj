@@ -73,7 +73,7 @@
                i)
 
         :else
-        (throw (ex-info "Unknown op!" {:op head}))))))
+        (throw (ex-info "Unknown op!" {:op head :code 500}))))))
 
 (defn valid-delete? [{:keys [type index value] :as op}]
   (and (map? op)
