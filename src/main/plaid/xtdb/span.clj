@@ -71,8 +71,13 @@
                       {:document-ids (map (partial get-doc-id-of-token db) tokens) :code 400}))
 
       :else
-      [[::xt/match id nil]
-       [::xt/put span]])))
+      (let [token-matches (mapv (fn [id record]
+                                  [[::xt/match id record]])
+                                (map vector tokens token-records))
+            matches (into [[::xt/match id nil]
+                           [::xt/match layer (pxc/entity db layer)]]
+                          token-matches)]
+        (conj matches [::xt/put span])))))
 
 (defn create [{:keys [node] :as xt-map} attrs]
   (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
@@ -85,7 +90,7 @@
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
         relations (get-relation-ids db eid)
         relation-deletes (reduce into (mapv #(r/delete* xt-map %) relations))
-        span-delete [[::xt/match (pxc/entity db eid)]
+        span-delete [[::xt/match eid (pxc/entity db eid)]
                      [::xt/delete eid]]]
 
     (when-not (:span/id (pxc/entity db eid))
@@ -105,17 +110,18 @@
         new-layer (:token/layer new-token)
         existing-layer (:token/layer (:first (pxc/entity db (first tokens))))]
 
-    ;; All tokens exist?
-    (nil? (:token/id new-token))
-    (throw (ex-info "Token ID is not valid." {:id token-id :code 400}))
+    (cond
+      ;; All tokens exist?
+      (nil? (:token/id new-token))
+      (throw (ex-info "Token ID is not valid." {:id token-id :code 400}))
 
-    ;; All tokens belong to the same layer?
-    (not= new-layer existing-layer)
-    (throw (ex-info (str "Span already contains tokens for layer " existing-layer " but new token is on layer " new-layer)
-                    {:existing-layer existing-layer :new-layer new-layer :code 400}))
+      ;; All tokens belong to the same layer?
+      (not= new-layer existing-layer)
+      (throw (ex-info (str "Span already contains tokens for layer " existing-layer " but new token is on layer " new-layer)
+                      {:existing-layer existing-layer :new-layer new-layer :code 400}))
 
-    :else
-    (pxc/add-join* xt-map :span/id span-id :span/tokens :token/id token-id)))
+      :else
+      (pxc/add-join* xt-map :span/id span-id :span/tokens :token/id token-id))))
 
 (defn add-token [xt-map span-id token-id]
   (pxc/submit! (:node xt-map) (add-token* xt-map span-id token-id)))
@@ -130,5 +136,5 @@
       (into base-txs (delete* xt-map span-id))
       base-txs)))
 
-(defn add-token [xt-map span-id token-id]
-  (pxc/submit! (:node xt-map) (add-token* xt-map span-id token-id)))
+(defn remove-token [xt-map span-id token-id]
+  (pxc/submit! (:node xt-map) (remove-token* xt-map span-id token-id)))
