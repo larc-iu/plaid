@@ -71,7 +71,7 @@
 
 (defn delete* [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
-        span-layers (:token-layer/span-layers (pxc/entity db eid))
+        {span-layers :token-layer/span-layers :as token-layer} (pxc/entity db eid)
         span-layer-deletions (reduce into (map #(sl/delete* xt-map %) span-layers))
         token-ids (map first (xt/q db '{:find  [?tok]
                                         :where [[?tok :token/layer ?tokl]]
@@ -81,11 +81,16 @@
                                        [[::xt/match id (pxc/entity db id)]
                                         [::xt/delete id]])
                                      token-ids))]
-    (reduce into
-            [span-layer-deletions
-             token-deletions
-             [[::xt/match eid (pxc/entity db eid)]
-              [::xt/delete eid]]])))
+    (cond
+      (nil? (:token-layer/id token-layer))
+      (throw (ex-info (pxc/err-msg-not-found "Token layer" eid) {:code 404}))
+
+      :else
+      (reduce into
+              [span-layer-deletions
+               token-deletions
+               [[::xt/match eid (pxc/entity db eid)]
+                [::xt/delete eid]]]))))
 
 
 (defn delete [xt-map eid]

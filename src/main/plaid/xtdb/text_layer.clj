@@ -60,7 +60,7 @@
   use plaid.xtdb.text-layer/delete instead."
   [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
-        token-layers (:text-layer/token-layers (pxc/entity db eid))
+        {token-layers :text-layer/token-layers :as text-layer} (pxc/entity db eid)
         token-layer-deletions (reduce into (mapv #(tokl/delete* xt-map %) token-layers))
         text-ids (map first (xt/q db '{:find  [?txt]
                                        :where [[?txt :text/layer ?txtl]]
@@ -70,12 +70,17 @@
                                       [[::xt/match id (pxc/entity db id)]
                                        [::xt/delete id]])
                                     text-ids))]
-    (reduce
-      into
-      [token-layer-deletions
-       text-deletions
-       [[::xt/match eid (pxc/entity db eid)]
-        [::xt/delete eid]]])))
+    (cond
+      (nil? (:text-layer/id text-layer))
+      (throw (ex-info (pxc/err-msg-not-found "Text layer" eid) {:code 404}))
+
+      :else
+      (reduce
+        into
+        [token-layer-deletions
+         text-deletions
+         [[::xt/match eid text-layer]
+          [::xt/delete eid]]]))))
 
 (defn delete [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)

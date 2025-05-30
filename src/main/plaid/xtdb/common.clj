@@ -148,8 +148,13 @@
 (defn merge* [xt-map id attrs]
   (let [{:keys [db] :as xt-map} (ensure-db xt-map)
         e (entity db id)]
-    [[::xt/match id e]
-     [::xt/put (merge e attrs)]]))
+    (cond
+      (nil? e)
+      (throw (ex-info ("Record not found with ID " id) {:id id :code 404}))
+
+      :else
+      [[::xt/match id e]
+       [::xt/put (merge e attrs)]])))
 
 (defn err-msg-not-found [kind-of-thing id]
   (str kind-of-thing " not found with id `" id "`"))

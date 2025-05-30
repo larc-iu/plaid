@@ -52,6 +52,7 @@
 
 (defn delete* [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
+        relation-layer (pxc/entity db eid)
         relation-ids (map first (xt/q db '{:find  [?r]
                                            :where [[?r :relation/layer ?rl]]
                                            :in    [?rl]}
@@ -60,9 +61,14 @@
                                           [[::xt/match id (pxc/entity db id)]
                                            [::xt/delete id]])
                                         relation-ids))]
-    (reduce into [relation-deletions
-                  [[::xt/match eid (pxc/entity db eid)]
-                   [::xt/delete eid]]])))
+    (cond
+      (nil? (:relation-layer/id relation-layer))
+      (throw (ex-info (pxc/err-msg-not-found "Relation layer" eid) {:code 404}))
+
+      :else
+      (reduce into [relation-deletions
+                    [[::xt/match eid (pxc/entity db eid)]
+                     [::xt/delete eid]]]))))
 
 (defn delete [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
