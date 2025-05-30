@@ -150,7 +150,7 @@
         e (entity db id)]
     (cond
       (nil? e)
-      (throw (ex-info ("Record not found with ID " id) {:id id :code 404}))
+      (throw (ex-info (str "Record not found with ID " id) {:id id :code 404}))
 
       :else
       [[::xt/match id e]
