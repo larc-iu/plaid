@@ -55,7 +55,8 @@
       (throw (ex-info "Not all token IDs are valid." {:ids tokens :code 400}))
 
       ;; All tokens belong to the same layer?
-      (not (every? #(= token-layer-id %) (map :token/layer token-records)))
+      (not (and (some? token-layer-id)
+                (every? #(= token-layer-id %) (map :token/layer token-records))))
       (throw (ex-info "Not all token IDs belong to the same layer."
                       {:layer-ids (map :token/layer token-records) :code 400}))
 
