@@ -67,7 +67,7 @@
       (throw (ex-info (pxc/err-msg-not-found "Token layer" layer) {:id layer :code 400}))
 
       ;; Text exists?
-      (nil? (:text/id (pxc/entity db text)))
+      (nil? (:text/id text))
       (throw (ex-info (pxc/err-msg-not-found "Text" text) {:id (:text/id text) :code 400}))
 
       ;; Text layer of the text is linked to the token layer
