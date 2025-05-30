@@ -95,6 +95,10 @@
                      (pxc/entity db source)
                      (pxc/entity db target))]
     (cond
+      ;; Relation exists?
+      (nil? id)
+      (throw (ex-info (pxc/err-msg-not-found "Relation" eid) {:id eid :code 404}))
+
       ;; Span exists?
       (not (:span/id new-span))
       (throw (ex-info (str "Span " span-id " does not exist") {:id span-id :code 400}))
