@@ -82,8 +82,13 @@
   as necessary. Tokens will be updated if their corresponding substring is either removed entirely
   (resulting in deletion) or partially removed (resulting in shrinkage)."
   [xt-map eid new-body]
+
   (let [{:keys [db node]} (pxc/ensure-db xt-map)
         {:text/keys [body] :as text} (pxc/entity db eid)
+        _ (when-not text
+            (throw (ex-info (pxc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
+        _ (when-not (string? new-body)
+            (throw (ex-info "Text body must be a string." {:body body})))
         ops (ta/diff body new-body)
         tokens (map #(pxc/entity db %) (get-token-ids db eid))
         indexed-tokens (reduce #(assoc %1 (:token/id %2) %2) {} tokens)
