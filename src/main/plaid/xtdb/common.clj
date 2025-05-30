@@ -162,6 +162,15 @@
 (defn err-msg-already-exists [kind-of-thing id]
   (str kind-of-thing " creation failed: record already exists with id `" id "`"))
 
+(defn remove-match
+  "Remove all match ops on a particular ID from a transaction vector.
+  Useful when composing different transaction functions."
+  [id tx]
+  (filterv (fn [[op matched-id _ :as match-op]]
+             (not (and (= op ::xt/match)
+                       (= matched-id id))))
+           tx))
+
 ;; join helpers --------------------------------------------------------------------------------
 (defn conj-unique
   "Like conj, but only fires if x is not present"
