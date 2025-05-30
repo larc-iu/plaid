@@ -55,7 +55,7 @@
 
 (defn delete* [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
-        relation-layers (:span-layer/relation-layers (pxc/entity db eid))
+        {relation-layers :span-layer/relation-layers :as span-layer} (pxc/entity db eid)
         relation-layer-deletions (reduce into (map #(rl/delete* xt-map %) relation-layers))
         span-ids (map first (xt/q db '{:find  [?s]
                                        :where [[?s :span/layer ?sl]]
@@ -65,10 +65,15 @@
                                       [[::xt/match id (pxc/entity db id)]
                                        [::xt/delete id]])
                                     span-ids))]
-    (reduce into [relation-layer-deletions
-                  span-deletions
-                  [[::xt/match eid (pxc/entity db eid)]
-                   [::xt/delete eid]]])))
+    (cond
+      (nil? (:span-layer/id span-layer))
+      (throw (ex-info (pxc/err-msg-not-found "Span layer" eid) {:code 404}))
+
+      :else
+      (reduce into [relation-layer-deletions
+                    span-deletions
+                    [[::xt/match eid (pxc/entity db eid)]
+                     [::xt/delete eid]]]))))
 
 (defn delete [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)

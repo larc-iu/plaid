@@ -63,15 +63,14 @@
                                                 :project/writers     []
                                                 :project/maintainers []
                                                 :project/text-layers []}
-                                               (select-keys attrs attr-keys))
-        match [::xt/match id nil]
-        put [::xt/put record]]
+                                               (select-keys attrs attr-keys))]
     (cond
       (some? (pxc/entity db id))
       (throw (ex-info (str "Project already exists with ID " id) {:code 409}))
 
       :else
-      [match put])))
+      [[::xt/match id nil]
+       [::xt/put record]])))
 
 (defn create [{:keys [node] :as xt-map} attrs]
   (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
@@ -96,7 +95,7 @@
         all-txs (reduce into [txtl-txs doc-txs project-txs])]
     (cond
       (nil? (:project/id project))
-      (throw (ex-info (str "Project does not exist with ID " eid) {:code 404}))
+      (throw (ex-info (pxc/err-msg-not-found "Project" eid) {:code 404}))
 
       :else
       all-txs)))
