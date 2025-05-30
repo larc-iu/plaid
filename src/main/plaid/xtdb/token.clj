@@ -127,7 +127,7 @@
                                             :in    [[?t layer text]]}
                                           [eid layer text]))
         #_#_sorted-tokens (sort-by :token/begin (conj other-tokens new-token))
-        {text-body :text/body} (pxc/entity db text)]
+        {text-body :text/body :as text-record} (pxc/entity db text)]
     (cond
       ;; Token doesn't exist?
       (nil? token)
@@ -154,7 +154,8 @@
               (throw (ex-info "Change in extent would result in overlap with another token" {:new-token new-token}))
 
       :else
-      [[::xt/match eid token]
+      [[::xt/match text text-record]
+       [::xt/match eid token]
        [::xt/put new-token]])))
 
 (defn shift-begin [xt-map eid d] (set-extent xt-map eid {:delta-begin d}))
@@ -167,7 +168,7 @@
         token (pxc/entity db eid)]
     (cond
       (nil? token)
-      (throw (ex-info "Token does not exist" {:id eid}))
+      (throw (ex-info "Token does not exist" {:id eid :code 404}))
 
       (not (or (nil? precedence) (int? precedence)))
       (throw (ex-info (str "Precedence must either be not supplied or an integer.") {:code 400 :precedence precedence}))
