@@ -12,7 +12,8 @@
             [malli.util :as mu]
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.auth :as pra :refer [authentication-routes]]
-            [plaid.rest-api.v1.user :refer [user-routes-admin]]))
+            [plaid.rest-api.v1.user :refer [user-routes-admin]]
+            [plaid.rest-api.v1.project :refer [project-routes]]))
 
 (def coercion
   (reitit.coercion.malli/create
@@ -49,7 +50,9 @@
      :middleware [pra/wrap-login-required]}
     ["/hello" {:get {:handler (fn [req]
                                 {:status 200
-                                 :body   {:result "Hello, World!"}})}}]]
+                                 :body   {:result "Hello, World!"}})}}]
+
+    project-routes]
 
    ;; Admin required
    ["/admin"

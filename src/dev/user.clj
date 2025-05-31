@@ -20,6 +20,7 @@
 
 ;; ==================== SERVER ====================
 (tools-ns/set-refresh-dirs "src/main" "src/dev" "src/test")
+(log/set-min-level! :debug)
 
 ;; Change the default output of spec to be more readable
 ;; (alter-var-root #'s/*explain-out* (constantly expound/printer))

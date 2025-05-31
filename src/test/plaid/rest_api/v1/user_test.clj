@@ -6,17 +6,13 @@
                                     with-rest-handler
                                     rest-handler
                                     with-admin
-                                    admin-token]]))
+                                    admin-token
+                                    admin-request]]))
 
 (use-fixtures :once with-xtdb with-rest-handler with-admin)
 
 (defn parse-response-body [response]
   (read-string (slurp (:body response))))
-
-(defn admin-request [method path]
-  (-> (mock/request method path)
-      (mock/header "accept" "application/edn")
-      (mock/header "Authorization" (str "Bearer " admin-token))))
 
 (deftest user-endpoints
   (testing "User creation and retrieval"
