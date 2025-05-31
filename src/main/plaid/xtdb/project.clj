@@ -3,7 +3,7 @@
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.access :as pxa]
             [plaid.xtdb.text-layer :as txtl])
-  (:refer-clojure :exclude [get]))
+  (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:project/id
                 :project/name
@@ -22,7 +22,8 @@
 
 (defn get
   [db-like id]
-  (pxc/find-entity (pxc/->db db-like) {:project/id id}))
+  (dissoc (pxc/find-entity (pxc/->db db-like) {:project/id id})
+          :xt/id))
 
 (defn reader-ids
   [db-like id]
@@ -38,7 +39,8 @@
 
 (defn get-all
   [db-like]
-  (pxc/find-entities (pxc/->db db-like) {:project/id '_}))
+  (->> (pxc/find-entities (pxc/->db db-like) {:project/id '_})
+       (mapv #(dissoc % :xt/id))))
 
 (defn get-by-name
   [db-like name]
@@ -58,7 +60,7 @@
 ;; writes --------------------------------------------------------------------------------
 (defn create* [xt-map attrs]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
-        {:project/keys [id] :as record} (merge (pxc/new-record "project")
+        {:project/keys [id] :as record} (clojure.core/merge (pxc/new-record "project")
                                                {:project/readers     []
                                                 :project/writers     []
                                                 :project/maintainers []
@@ -74,6 +76,10 @@
 
 (defn create [{:keys [node] :as xt-map} attrs]
   (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
+
+(defn merge
+  [{:keys [node db] :as xt-map} eid m]
+  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:project/name]))))
 
 (defn delete*
   [xt-map eid]
