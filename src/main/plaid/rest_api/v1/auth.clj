@@ -2,7 +2,6 @@
   "Implements JWT-based authentication and provides authorization middleware."
   (:require [buddy.hashers :as hashers]
             [buddy.sign.jwt :as jwt]
-            [plaid.xtdb.access :as pxa]
             [plaid.xtdb.project :as prj]
             [plaid.xtdb.user :as user]
             [taoensso.timbre :as log]
@@ -80,39 +79,27 @@
          :body   {:error "Admin privileges required for this operation."}}
         (handler request)))))
 
-(defn- -wrap-rw-required
-  ([handler key readable? get-id]
-   (fn [{xtdb :xtdb :as request}]
-     (let [id (get-id request)
-           user-id (->user-id request)
-           admin? (user/admin? (user/get xtdb user-id))
-           f (if readable? pxa/ident-readable? pxa/ident-writeable?)]
-       (if-not (or admin? (f (xt/db xtdb) user-id [key id]))
-         {:status 403
-          :body   {:error (str "User " user-id " lacks sufficient privileges to "
-                               (if readable? "read " "edit ") key " " id ".")}}
-         (handler request))))))
+(def ^:private levels
+  {:project/readers     [:project/readers :project/writers :project/maintainers]
+   :project/writers     [:project/writers :project/maintainers]
+   :project/maintainers [:project/maintainers]})
 
-(defn wrap-readable-required
-  ([handler key]
-   (wrap-readable-required handler key #(-> % :parameters :path :id)))
-  ([handler key get-id]
-   (-wrap-rw-required handler key true get-id)))
+(def ^:private verb
+  {:project/readers     "read"
+   :project/writers     "write for"
+   :project/maintainers "maintain"})
 
-(defn wrap-writeable-required
-  ([handler key]
-   (wrap-writeable-required handler key #(-> % :parameters :path :id)))
-  ([handler key get-id]
-   (-wrap-rw-required handler key false get-id)))
-
-(defn wrap-maintainer-required
-  [handler get-project-id]
+(defn wrap-project-privileges-required
+  [handler key get-project-id]
+  (when-not (-> levels keys set key)
+    (throw (ex-info "Bad key" {:key key})))
   (fn [{xtdb :xtdb :as request}]
     (let [user-id (->user-id request)
           id (get-project-id request)
           admin? (user/admin? (user/get xtdb user-id))
-          {:project/keys [maintainers]} (prj/get xtdb id)]
-      (if-not (or admin? ((set maintainers) user-id))
+          project (prj/get xtdb id)]
+      (mapv #(seq ((-> project % set) user-id)) (key levels))
+      (if-not (or admin? (some #(seq ((-> project % set) user-id)) (key levels)))
         {:status 403
-         :body   {:error (str "User " user-id " lacks maintainer privileges for project " id)}}
+         :body   {:error (str "User " user-id " lacks sufficient privileges to " (key verb) " project " id)}}
         (handler request)))))

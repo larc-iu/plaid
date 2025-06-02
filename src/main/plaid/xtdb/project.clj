@@ -1,7 +1,6 @@
 (ns plaid.xtdb.project
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.access :as pxa]
             [plaid.xtdb.text-layer :as txtl])
   (:refer-clojure :exclude [get merge]))
 
@@ -37,13 +36,19 @@
   [db-like id]
   (:project/maintainers (pxc/entity (pxc/->db db-like) id)))
 
-(defn get-accessible-ids [db-like user-id]
-  (pxa/get-accessible-ids (pxc/->db db-like) user-id :project/id))
-
 (defn get-all
   [db-like]
   (->> (pxc/find-entities (pxc/->db db-like) {:project/id '_})
        (mapv #(dissoc % :xt/id))))
+
+(defn get-accessible-ids [db-like user-id]
+  (let [db (pxc/->db db-like)]
+    (map first (xt/q db '{:find  [?p]
+                          :where [(or [?p :project/readers ?u]
+                                      [?p :project/writers ?u]
+                                      [?p :project/maintainers ?u])]
+                          :in    [?u]}
+                     user-id))))
 
 (defn get-accessible
   [db-like user-id]

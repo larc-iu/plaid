@@ -198,7 +198,7 @@
     (testing "Access management fails with invalid project ID"
       (let [fake-id (str (java.util.UUID/randomUUID))
             response (add-reader admin-request fake-id "user1@example.com")]
-        (assert-forbidden response)))))
+        (assert-status 400 response)))))
 
 (deftest cross-user-access-tests
   (testing "User access permissions"
@@ -222,8 +222,8 @@
         (let [response (update-project user1-request project-id {:name "Attempted Update"})]
           (assert-forbidden response)))
 
-      (testing "Grant User1 writer access"
-        (let [response (add-writer admin-request project-id "user1@example.com")]
+      (testing "Grant User1 maintainer access"
+        (let [response (add-maintainer admin-request project-id "user1@example.com")]
           (assert-no-content response)))
 
       (testing "User1 can now update project"

@@ -18,7 +18,7 @@
 
 (def span-layer-routes
   ["/span-layers"
-   {:middleware [[pra/wrap-maintainer-required get-project-id]]}
+   {:middleware [[pra/wrap-project-privileges-required :project/maintainers get-project-id]]}
 
    [""
     {:post {:summary    "Create a new span layer."
