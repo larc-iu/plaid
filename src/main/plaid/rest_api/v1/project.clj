@@ -16,7 +16,7 @@
      :post {:summary    "Create a new project. Note: this also registers the user as a maintainer."
             :parameters {:body {:name string?}}
             :handler    (fn [{{{:keys [name]} :body} :parameters xtdb :xtdb :as req}]
-                          (let [user-id (-> req :jwt-data :user/id)
+                          (let [user-id (pra/->user-id req)
                                 result (prj/create {:node xtdb} {:project/name        name
                                                                  :project/maintainers [user-id]})]
                             (if (:success result)
