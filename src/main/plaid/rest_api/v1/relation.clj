@@ -6,7 +6,7 @@
 
 (def relation-routes
   ["/projects/:project-id/relations"
-   {:middleware [[pra/wrap-maintainer-required :project-id]]
+   {:middleware [[pra/wrap-project-privileges-required :project/maintainers :project-id]]
     :parameters {:path [:map [:project-id :uuid]]}}
 
    [""

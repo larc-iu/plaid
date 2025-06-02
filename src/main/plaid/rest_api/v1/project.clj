@@ -28,7 +28,7 @@
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}
      :get        {:summary    "Get a project by ID"
-                  :middleware [[pra/wrap-readable-required :project/id]]
+                  :middleware [[pra/wrap-project-privileges-required :project/readers #(-> % :parameters :path :id)]]
                   :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
                                 (let [project (prj/get xtdb id)]
                                   (if (some? project)
@@ -38,7 +38,7 @@
                                      :body   {:error "Project not found"}})))}
 
      :patch      {:summary    "Update a project's name."
-                  :middleware [[pra/wrap-writeable-required :project/id]]
+                  :middleware [[pra/wrap-project-privileges-required :project/maintainers #(-> % :parameters :path :id)]]
                   :parameters {:body [:map [:name string?]]}
                   :handler    (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
                                 (let [{:keys [success code error]} (prj/merge {:node xtdb} id {:project/name name})]
@@ -49,7 +49,7 @@
                                      :body   {:error error}})))}
 
      :delete     {:summary    "Delete a project"
-                  :middleware [[pra/wrap-writeable-required :project/id]]
+                  :middleware [[pra/wrap-project-privileges-required :project/maintainers #(-> % :parameters :path :id)]]
                   :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
                                 (let [{:keys [success code error]} (prj/delete {:node xtdb} id)]
                                   (if success
@@ -57,7 +57,7 @@
                                     {:status (or code 404) :body {:error error}})))}}]
 
    ["/:id/layers/:layer-id/config/:editor-name/:config-key"
-    {:middleware [[pra/wrap-writeable-required :project/id]]
+    {:middleware [[pra/wrap-project-privileges-required :project/writers #(-> % :parameters :path :id)]]
      :put        {:summary    "Set a configuration value for a layer in a specific editor namespace"
                   :parameters {:path [:map [:layer-id string?] [:editor-name string?] [:config-key string?]]
                                :body any?}
@@ -79,7 +79,7 @@
 
    ;; Access management endpoints
    ["/:id"
-    {:middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]}
+    {:middleware [[pra/wrap-project-privileges-required :project/maintainers #(-> % :parameters :path :id)]]}
     ["/readers/:user-id"
      {:post   {:summary    "Add a user as a reader to the project"
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}

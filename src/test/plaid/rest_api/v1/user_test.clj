@@ -17,14 +17,14 @@
 (deftest user-endpoints
   (testing "User creation and retrieval"
     (testing "Create user succeeds"
-      (let [req (-> (admin-request :post "/api/v1/admin/users")
+      (let [req (-> (admin-request :post "/api/v1/users")
                     (mock/json-body {:username "a@b.com" :password "fake-password" :is-admin true}))
             resp (rest-handler req)]
         (is (= (:status resp) 201))
         (is (= (parse-response-body resp) {:id "a@b.com"}))))
 
     (testing "Get user by ID succeeds"
-      (let [req (admin-request :get "/api/v1/admin/users/a@b.com")
+      (let [req (admin-request :get "/api/v1/users/a@b.com")
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 200))
@@ -34,14 +34,14 @@
                 :user/is-admin         true}))))
 
     (testing "Get non-existent user fails"
-      (let [req (admin-request :get "/api/v1/admin/users/nonexistent")
+      (let [req (admin-request :get "/api/v1/users/nonexistent")
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 404))
         (is (= body {:error "User not found"}))))
 
     (testing "List all users"
-      (let [req (admin-request :get "/api/v1/admin/users")
+      (let [req (admin-request :get "/api/v1/users")
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 200))
@@ -49,18 +49,18 @@
         (is (some #(= (:user/username %) "a@b.com") body))))
 
     (testing "Delete user succeeds"
-      (let [req (admin-request :delete "/api/v1/admin/users/a@b.com")
+      (let [req (admin-request :delete "/api/v1/users/a@b.com")
             resp (rest-handler req)]
         (is (= (:status resp) 204)))
 
       (testing "User is actually deleted"
-        (let [req (admin-request :get "/api/v1/admin/users/a@b.com")
+        (let [req (admin-request :get "/api/v1/users/a@b.com")
               resp (rest-handler req)]
           (is (= (:status resp) 404))))))
 
   (testing "Authentication"
     (testing "Create test user for login"
-      (let [req (-> (admin-request :post "/api/v1/admin/users")
+      (let [req (-> (admin-request :post "/api/v1/users")
                     (mock/json-body {:username "test@example.com" :password "test123" :is-admin false}))
             resp (rest-handler req)]
         (is (= (:status resp) 201))))
