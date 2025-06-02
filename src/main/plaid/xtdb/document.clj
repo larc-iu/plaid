@@ -122,11 +122,12 @@
 ;; Mutations ----------------------------------------------------------------------
 (defn create* [xt-map attrs]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
-        {:document/keys [id project] :as record} (clojure.core/merge (pxc/new-record "document")
-                                                                     (select-keys attrs attr-keys))
+        {:document/keys [id project name] :as record} (clojure.core/merge (pxc/new-record "document")
+                                                                          (select-keys attrs attr-keys))
         tx [[::xt/match project (pxc/entity db project)]
             [::xt/match id nil]
             [::xt/put record]]]
+    (pxc/valid-name? name)
     (cond
       (some? (pxc/entity db id))
       (throw (ex-info (pxc/err-msg-already-exists "Document" id) {:id id :code 409}))
@@ -142,6 +143,8 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
+  (when-let [name (:document/name m)]
+    (pxc/valid-name? name))
   (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:document/name]))))
 
 (defn delete* [xt-map eid]

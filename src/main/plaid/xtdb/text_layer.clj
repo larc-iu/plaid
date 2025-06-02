@@ -27,14 +27,15 @@
 ;; Mutations ----------------------------------------------------------------------
 (defn create* [xt-map {:text-layer/keys [id] :as attrs} project-id]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
-        {:text-layer/keys [id] :as record} (clojure.core/merge (pxc/new-record "text-layer" id)
-                                                               {:text-layer/token-layers []}
-                                                               (select-keys attrs attr-keys))
+        {:text-layer/keys [id name] :as record} (clojure.core/merge (pxc/new-record "text-layer" id)
+                                                                    {:text-layer/token-layers []}
+                                                                    (select-keys attrs attr-keys))
         project (pxc/entity db project-id)
         tx [[::xt/match id nil]
             [::xt/match project-id project]
             [::xt/put (update project :project/text-layers conj id)]
             [::xt/put record]]]
+    (pxc/valid-name? name)
     (cond
       (some? (pxc/entity db id))
       (throw (ex-info (pxc/err-msg-already-exists "Text layer" id) {:id id :code 409}))
@@ -47,6 +48,8 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
+  (when-let [name (:text-layer/name m)]
+    (pxc/valid-name? name))
   (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:text-layer/name]))))
 
 (def shift-text-layer* (pxc/make-shift-layer* :project/id :text-layer/id :project/text-layers))

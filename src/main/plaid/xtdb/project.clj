@@ -60,12 +60,13 @@
 ;; writes --------------------------------------------------------------------------------
 (defn create* [xt-map attrs]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
-        {:project/keys [id] :as record} (clojure.core/merge (pxc/new-record "project")
-                                               {:project/readers     []
-                                                :project/writers     []
-                                                :project/maintainers []
-                                                :project/text-layers []}
-                                               (select-keys attrs attr-keys))]
+        {:project/keys [id name] :as record} (clojure.core/merge (pxc/new-record "project")
+                                                                 {:project/readers     []
+                                                                  :project/writers     []
+                                                                  :project/maintainers []
+                                                                  :project/text-layers []}
+                                                                 (select-keys attrs attr-keys))]
+    (pxc/valid-name? name)
     (cond
       (some? (pxc/entity db id))
       (throw (ex-info (str "Project already exists with ID " id) {:code 409}))
@@ -79,6 +80,8 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
+  (when-let [name (:project/name m)]
+    (pxc/valid-name? name))
   (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:project/name]))))
 
 (defn delete*

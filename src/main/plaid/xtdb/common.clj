@@ -2,7 +2,8 @@
   (:require [xtdb.api :as xt]
             [xtdb.node]
             [xtdb.query]
-            [taoensso.timbre :as log])
+            [taoensso.timbre :as log]
+            [plaid.server.config :refer [config]])
   (:import (xtdb.node XtdbNode)
            (xtdb.query QueryDatasource)))
 
@@ -162,14 +163,23 @@
 (defn err-msg-already-exists [kind-of-thing id]
   (str kind-of-thing " creation failed: record already exists with id `" id "`"))
 
-(defn remove-match
-  "Remove all match ops on a particular ID from a transaction vector.
-  Useful when composing different transaction functions."
-  [id tx]
-  (filterv (fn [[op matched-id _ :as match-op]]
-             (not (and (= op ::xt/match)
-                       (= matched-id id))))
-           tx))
+(defn valid-name? [s]
+  (let [name-config (::config config)
+        l (and (string? s) (count s))
+        max-l (:max-name-length name-config)
+        min-l (:min-name-length name-config)]
+    (cond (not (string? s))
+          (throw (ex-info "Name must be a string" {:code 400 :name s}))
+
+          (> l max-l)
+          (throw (ex-info (str "Name is too long: maximum is " max-l ", got " l)
+                          {:code 400 :length l :max-length max-l}))
+
+          (< l min-l)
+          (throw (ex-info (str "Name is too short: minimum is " min-l ", got " l)
+                          {:code 400 :length l :min-length min-l}))
+          :else
+          true)))
 
 ;; join helpers --------------------------------------------------------------------------------
 (defn conj-unique

@@ -43,14 +43,15 @@
 ;; Mutations ----------------------------------------------------------------------
 (defn create* [xt-map {:token-layer/keys [id] :as attrs} text-layer-id]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
-        {:token-layer/keys [id] :as record} (clojure.core/merge (pxc/new-record "token-layer" id)
-                                                                {:token-layer/span-layers []}
-                                                                (select-keys attrs attr-keys))
+        {:token-layer/keys [id name] :as record} (clojure.core/merge (pxc/new-record "token-layer" id)
+                                                                     {:token-layer/span-layers []}
+                                                                     (select-keys attrs attr-keys))
         text-layer (pxc/entity db text-layer-id)
         tx [[::xt/match id nil]
             [::xt/match text-layer-id text-layer]
             [::xt/put (update text-layer :text-layer/token-layers conj id)]
             [::xt/put record]]]
+    (pxc/valid-name? name)
     (cond
       (some? (pxc/entity db id))
       (throw (ex-info (pxc/err-msg-already-exists "Token layer" id) {:id id :code 409}))
@@ -63,6 +64,8 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
+  (when-let [name (:token-layer/name m)]
+    (pxc/valid-name? name))
   (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:token-layer/name]))))
 
 (def shift-token-layer* (pxc/make-shift-layer* :text-layer/id :token-layer/id :text-layer/token-layers))
