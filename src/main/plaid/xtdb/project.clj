@@ -37,17 +37,22 @@
   [db-like id]
   (:project/maintainers (pxc/entity (pxc/->db db-like) id)))
 
+(defn get-accessible-ids [db-like user-id]
+  (pxa/get-accessible-ids (pxc/->db db-like) user-id :project/id))
+
 (defn get-all
   [db-like]
   (->> (pxc/find-entities (pxc/->db db-like) {:project/id '_})
        (mapv #(dissoc % :xt/id))))
 
+(defn get-accessible
+  [db-like user-id]
+  (->> (get-accessible-ids db-like user-id)
+       (mapv #(get db-like %))))
+
 (defn get-by-name
   [db-like name]
   (pxc/find-entity (pxc/->db db-like) {:project/name name}))
-
-(defn get-accessible-ids [db-like user-id]
-  (pxa/get-accessible-ids (pxc/->db db-like) user-id :project/id))
 
 (defn get-accessible-projects
   "Return a seq of full projects accessible for a user"
