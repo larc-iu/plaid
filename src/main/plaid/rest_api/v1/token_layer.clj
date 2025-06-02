@@ -35,7 +35,7 @@
                                :body   {:error (:error result)}})))}}]
 
    ["/:token-layer-id"
-    {:parameters {:path [:map [:token-layer-id :string]]}}
+    {:parameters {:path [:map [:token-layer-id :uuid]]}}
 
     [""
      {:get    {:summary "Get a token layer by ID."
@@ -66,8 +66,7 @@
 
     ["/shift"
      {:post {:summary    "Shift a token layer's order."
-             :parameters {:body [:map [:direction [:enum "up" "down"]]
-                                 [:text-layer-id :string]]}
+             :parameters {:body [:map [:direction [:enum "up" "down"]]]}
              :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb}]
                            (let [up? (= direction "up")
                                  {:keys [success code error]} (tokl/shift-token-layer {:node xtdb} token-layer-id up?)]

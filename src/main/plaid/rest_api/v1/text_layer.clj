@@ -34,11 +34,11 @@
                                  :body   {:error (:error result)}}))))}}]
 
    ["/:text-layer-id"
-    {:parameters {:path [:map [:text-layer-id :string]]}}
+    {:parameters {:path [:map [:text-layer-id :uuid]]}}
 
     [""
      {:get    {:summary "Get a text layer by ID."
-               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xtdb :xtdb}]
+               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xtdb :xtdb :as r}]
                           (let [text-layer (txtl/get xtdb text-layer-id)]
                             (if (some? text-layer)
                               {:status 200

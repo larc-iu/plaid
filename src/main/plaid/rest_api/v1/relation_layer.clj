@@ -24,7 +24,7 @@
    [""
     {:post {:summary    "Create a new relation layer."
             :parameters {:body [:map
-                                [:span-layer-id :string]
+                                [:span-layer-id :uuid]
                                 [:name :string]]}
             :handler    (fn [{{{:keys [name span-layer-id]} :body} :parameters xtdb :xtdb :as req}]
                           (let [attrs {:relation-layer/name name}
@@ -36,7 +36,7 @@
                                :body   {:error (:error result)}})))}}]
 
    ["/:relation-layer-id"
-    {:parameters {:path [:map [:relation-layer-id :string]]}}
+    {:parameters {:path [:map [:relation-layer-id :uuid]]}}
 
     [""
      {:get    {:summary "Get a relation layer by ID."
