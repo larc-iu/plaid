@@ -22,6 +22,9 @@
                            {:status 401
                             :body   {:error "User not found"}}))}}])
 
+(defn ->user-id [request]
+  (-> request :jwt-data :user/id))
+
 (defn wrap-read-jwt
   "Reitit middleware that looks for \"Authorization: Bearer ...\" in the header and attempts to
   decode the bearer token if present. On success, it is stored in the request map under :jwt-data."
@@ -63,15 +66,15 @@
 
 (defn wrap-login-required [handler]
   (fn [request]
-    (if-not (-> request :jwt-data)
+    (if-not (->user-id request)
       {:status 403
        :body   {:error "Valid token required for this operation."}}
       (handler request))))
 
 (defn wrap-admin-required [handler]
   (fn [{:keys [xtdb] :as request}]
-    (let [{:user/keys [is-admin]} (user/get xtdb (-> request :jwt-data :user/id))]
-      (if-not is-admin
+    (let [user (user/get xtdb (->user-id request))]
+      (if-not (user/admin? user)
         {:status 403
          :body   {:error "Admin privileges required for this operation."}}
         (handler request)))))
@@ -80,9 +83,10 @@
   ([handler key readable? get-id]
    (fn [{xtdb :xtdb :as request}]
      (let [id (get-id request)
-           user-id (-> request :jwt-data :user/id)
+           user-id (->user-id request)
+           admin? (user/admin? (user/get xtdb user-id))
            f (if readable? pxa/ident-readable? pxa/ident-writeable?)]
-       (if-not (f xtdb user-id [key id])
+       (if-not (or admin? (f xtdb user-id [key id]))
          {:status 403
           :body   {:error (str "User " user-id " lacks sufficient privileges to "
                                (if readable? "read " "edit ") key " " id ".")}}
@@ -103,10 +107,11 @@
 (defn wrap-maintainer-required
   [handler get-project-id]
   (fn [{xtdb :xtdb :as request}]
-    (let [user-id (-> request :jwt-data :user/id)
+    (let [user-id (->user-id request)
           id (get-project-id request)
+          admin? (user/admin? (user/get xtdb user-id))
           {:project/keys [maintainers]} (prj/get xtdb id)]
-      (if-not ((set maintainers) user-id)
+      (if-not (or admin? ((set maintainers) user-id))
         {:status 403
          :body   {:error (str "User " user-id " lacks maintainer privileges for project " id)}}
         (handler request)))))

@@ -1,5 +1,6 @@
 (ns plaid.xtdb.access
   (:require [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.user :as user]
             [xtdb.api :as xt]
             [taoensso.timbre :as log]))
 
@@ -119,7 +120,7 @@
   "Test whether a given ident is readable for a given user."
   [node user-id [target-key target-id]]
   (or
-    (-> node xt/db (xt/entity user-id) :user/is-admin)
+    (-> node xt/db (xt/entity user-id) user/admin?)
     (let [query (build-query {:find  ['?target]
                               :where [['?u :user/id user-id]
                                       ['?target target-key target-id]
@@ -133,7 +134,7 @@
   "Test whether a given ident is writeable for a given user."
   [node user-id [target-key target-id]]
   (or
-    (-> node xt/db (xt/entity user-id) :user/is-admin)
+    (-> node xt/db (xt/entity user-id) user/admin?)
     (let [query (build-query {:find  ['?target]
                               :where [['?u :user/id user-id]
                                       ['?target target-key target-id]
