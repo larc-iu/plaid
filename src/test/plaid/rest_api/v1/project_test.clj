@@ -231,7 +231,8 @@
           (assert-ok response)))
 
       (testing "User1 cannot manage access with only writer permission"
-        (let [response (add-reader user1-request project-id "user2@example.com")]
+        (let [_ (add-writer admin-request project-id "user1@example.com")
+              response (add-reader user1-request project-id "user2@example.com")]
           (assert-forbidden response)))
 
       (testing "Grant User1 maintainer access"
