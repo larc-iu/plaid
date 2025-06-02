@@ -108,7 +108,7 @@
 
 (comment
   (defn -print-all- []
-    (prn (pxc/find-entities (xt/db node) {:project/name "temporary"}))
+    (prn (pxc/find-entities (xt/db node) {:project/name '_}))
     (prn (pxc/find-entities (xt/db node) {:document/id '_}))
     (prn (pxc/find-entities (xt/db node) {:text-layer/id '_}))
     (prn (pxc/find-entities (xt/db node) {:text/id '_}))
@@ -118,6 +118,7 @@
     (prn (pxc/find-entities (xt/db node) {:span/id '_}))
     (prn (pxc/find-entities (xt/db node) {:relation-layer/id '_}))
     (prn (pxc/find-entities (xt/db node) {:relation/id '_})))
+  (-print-all-)
 
   (defn -delete-all- []
     (->> (reduce into [(pxc/find-entities (xt/db node) {:project/name "temporary"})
