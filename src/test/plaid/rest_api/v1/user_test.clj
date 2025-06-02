@@ -48,6 +48,13 @@
         (is (seq? body))
         (is (some #(= (:user/username %) "a@b.com") body))))
 
+    (testing "Patch on password works"
+      (let [req (-> (admin-request :patch "/api/v1/users/a@b.com")
+                    (mock/json-body {:password "new-password123"}))
+            resp (rest-handler req)
+            body (parse-response-body resp)]
+        (is (= 1 (:user/password-changes body)))))
+
     (testing "Delete user succeeds"
       (let [req (admin-request :delete "/api/v1/users/a@b.com")
             resp (rest-handler req)]
