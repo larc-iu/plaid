@@ -3,7 +3,7 @@
             [xtdb.api :as xt]
             [taoensso.timbre :as log]
             [plaid.xtdb.common :as pxc])
-  (:refer-clojure :exclude [get]))
+  (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:user/id
                 :user/username
@@ -41,6 +41,22 @@
 
 (defn create [{:keys [node] :as xt-map} id is-admin password]
   (pxc/submit-with-extras! node (create* xt-map id is-admin password) #(-> % last last :user/id)))
+
+(defn merge
+  [xt-map eid m]
+  (when-let [name (:user/username m)]
+    (pxc/valid-name? name))
+  (let [{:keys [db node]} (pxc/ensure-db xt-map)
+        attrs (select-keys (get db eid) [:user/password-hash :user/password-changes :user/username :user/is-admin])
+        attrs (if-let [new-password (:password m)]
+                (-> attrs
+                    (assoc :user/password-hash (hashers/derive new-password))
+                    (update :user/password-changes inc))
+                attrs)
+        attrs (-> attrs
+                  (assoc :user/username (:user/username m))
+                  (assoc :user/is-admin (:user/is-admin m)))]
+    (pxc/submit! node (pxc/merge* xt-map eid attrs))))
 
 (defn delete* [xt-map eid]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)

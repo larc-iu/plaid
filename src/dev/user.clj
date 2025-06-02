@@ -4,7 +4,7 @@
             [plaid.server.xtdb]
             [mount.core :as mount]
             [taoensso.timbre :as log]
-            [plaid.xtdb.user :as pxu]
+            [plaid.xtdb.user :as usr]
             [plaid.xtdb.project :as prj]
             [plaid.xtdb.document :as doc]
             [plaid.xtdb.text-layer :as txtl]

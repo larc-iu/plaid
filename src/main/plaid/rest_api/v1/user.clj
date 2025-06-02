@@ -2,7 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [reitit.coercion.malli]
             [buddy.hashers :as hashers]
-            [plaid.xtdb.user :as pxu]
+            [plaid.xtdb.user :as user]
             [plaid.rest-api.v1.middleware :as prm]
             [xtdb.api :as xt]))
 
@@ -22,12 +22,12 @@
     {:get  {:summary "List all users"
             :handler (fn [{xtdb :xtdb}]
                        {:status 200
-                        :body   (->> (pxu/get-all xtdb)
+                        :body   (->> (user/get-all xtdb)
                                      (map filter-keys))})}
      :post {:summary    "Create a new user"
             :parameters {:body {:username string? :password string? :is-admin boolean?}}
             :handler    (fn [{{{:keys [username password is-admin]} :body} :parameters xtdb :xtdb}]
-                          (let [result (pxu/create {:node xtdb} username is-admin password)]
+                          (let [result (user/create {:node xtdb} username is-admin password)]
                             (if (:success result)
                               {:status 201
                                :body   {:id (:extra result)}}
@@ -35,20 +35,36 @@
                                :body   {:error (:error result)}})))}}]
 
    ["/:id"
-    {:get    {:summary    "Get a user by ID"
-              :parameters {:path [:map [:id string?]]}
-              :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
-                            (let [user (pxu/get xtdb id)]
-                              (if (some? user)
-                                {:status 200
-                                 :body   (filter-keys user)}
-                                {:status 404
-                                 :body   {:error "User not found"}})))}
+    {:parameters {:path [:map [:id string?]]}}
+    [""
+     {:get    {:summary "Get a user by ID"
+               :handler (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
+                          (let [user (user/get xtdb id)]
+                            (if (some? user)
+                              {:status 200
+                               :body   (filter-keys user)}
+                              {:status 404
+                               :body   {:error "User not found"}})))}
+      :patch  {:summary    "Modify a user"
+               :parameters {:body [:map
+                                   [:password {:optional true} string?]
+                                   [:username {:optional true} string?]
+                                   [:is-admin {:optional true} boolean?]]}
+               :handler    (fn [{{{:keys [id]} :path {:keys [username password is-admin]} :body} :parameters xtdb :xtdb}]
+                             (let [{:keys [success code error]} (user/merge {:node xtdb}
+                                                                            id
+                                                                            {:password      password
+                                                                             :user/username username
+                                                                             :user/is-admin is-admin})]
+                               (if success
+                                 {:status 200
+                                  :body   (user/get xtdb id)}
+                                 {:status (or code 500)
+                                  :body   {:error error}})))}
 
-     :delete {:summary    "Delete a user"
-              :parameters {:path [:map [:id string?]]}
-              :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
-                            (let [{:keys [success code error]} (pxu/delete {:node xtdb} id)]
-                              (if success
-                                {:status 204}
-                                {:status (or code 404) :body {:error error}})))}}]])
+      :delete {:summary "Delete a user"
+               :handler (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
+                          (let [{:keys [success code error]} (user/delete {:node xtdb} id)]
+                            (if success
+                              {:status 204}
+                              {:status (or code 404) :body {:error error}})))}}]]])
