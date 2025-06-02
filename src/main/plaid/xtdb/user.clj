@@ -15,6 +15,9 @@
 (defn get [db-like id]
   (pxc/find-entity (pxc/->db db-like) {:user/id id}))
 
+(defn admin? [user-record]
+  (:user/is-admin user-record))
+
 (defn get-all [db-like]
   (pxc/find-entities (pxc/->db db-like) {:user/id '_}))
 

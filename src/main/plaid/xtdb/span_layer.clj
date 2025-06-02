@@ -27,14 +27,15 @@
 ;; Mutations ----------------------------------------------------------------------
 (defn create* [xt-map {:span-layer/keys [id] :as attrs} token-layer-id]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
-        {:span-layer/keys [id] :as record} (clojure.core/merge (pxc/new-record "span-layer" id)
-                                                               {:span-layer/relation-layers []}
-                                                               (select-keys attrs attr-keys))
+        {:span-layer/keys [id name] :as record} (clojure.core/merge (pxc/new-record "span-layer" id)
+                                                                    {:span-layer/relation-layers []}
+                                                                    (select-keys attrs attr-keys))
         token-layer (pxc/entity db token-layer-id)
         tx [[::xt/match id nil]
             [::xt/match token-layer-id token-layer]
             [::xt/put (update token-layer :token-layer/span-layers conj id)]
             [::xt/put record]]]
+    (pxc/valid-name? name)
     (cond
       (some? (pxc/entity db id))
       (throw (ex-info (pxc/err-msg-already-exists "Span layer" id) {:id id :code 409}))
@@ -47,6 +48,8 @@
 
 (defn merge
   [xt-map eid m]
+  (when-let [name (:span-layer/name m)]
+    (pxc/valid-name? name))
   (pxc/submit! (:node xt-map) (pxc/merge* xt-map eid (select-keys m [:span-layer/name]))))
 
 (def shift-span-layer* (pxc/make-shift-layer* :token-layer/id :span-layer/id :token-layer/span-layers))

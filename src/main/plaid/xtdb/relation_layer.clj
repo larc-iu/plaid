@@ -25,13 +25,14 @@
 ;; Mutations ----------------------------------------------------------------------
 (defn create* [xt-map {:relation-layer/keys [id] :as attrs} span-layer-id]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
-        {:relation-layer/keys [id] :as record} (clojure.core/merge (pxc/new-record "relation-layer" id)
-                                                                   (select-keys attrs attr-keys))
+        {:relation-layer/keys [id name] :as record} (clojure.core/merge (pxc/new-record "relation-layer" id)
+                                                                        (select-keys attrs attr-keys))
         span-layer (pxc/entity db span-layer-id)
         tx [[::xt/match id nil]
             [::xt/match span-layer-id span-layer]
             [::xt/put (update span-layer :span-layer/relation-layers conj id)]
             [::xt/put record]]]
+    (pxc/valid-name? name)
     (cond
       (some? (pxc/entity db id))
       (throw (ex-info (pxc/err-msg-already-exists "Relation layer" id) {:id id :code 409}))
@@ -44,6 +45,8 @@
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m]
+  (when-let [name (:relation-layer/name m)]
+    (pxc/valid-name? name))
   (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:relation-layer/name]))))
 
 (def shift-relation-layer* (pxc/make-shift-layer* :span-layer/id :relation-layer/id :span-layer/relation-layers))
