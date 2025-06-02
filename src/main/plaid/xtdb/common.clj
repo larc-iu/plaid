@@ -313,16 +313,17 @@
 
 (defn make-shift-layer* [parent-id-key child-id-key join-key]
   (fn shift-layer*
-    [xt-map parent-id child-id up?]
+    [xt-map child-id up?]
     (let [{:keys [db] :as xt-map} (ensure-db xt-map)
+          parent-id (ffirst (xt/q db {:find ['?parent] :where [['?parent join-key child-id]]}))
           parent (entity db parent-id)
           child (entity db child-id)
           children (join-key parent)]
       (cond
-        (nil? child)
+        (nil? (child-id-key child))
         (throw (ex-info (str child-id-key " " child-id " not found") {child-id-key child-id :code 400}))
 
-        (nil? parent)
+        (nil? (parent-id-key parent))
         (throw (ex-info (str parent-id-key " " parent-id " not found") {parent-id-key parent-id :code 400}))
 
         (not (some #{child-id} children))

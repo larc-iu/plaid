@@ -57,8 +57,8 @@
 
 (def shift-text-layer* (pxc/make-shift-layer* :project/id :text-layer/id :project/text-layers))
 (defn shift-text-layer
-  [{:keys [node] :as xt-map} project-id text-layer-id up?]
-  (pxc/submit! node (shift-text-layer* xt-map project-id text-layer-id up?)))
+  [{:keys [node] :as xt-map} text-layer-id up?]
+  (pxc/submit! node (shift-text-layer* xt-map text-layer-id up?)))
 
 (defn delete*
   "This does NOT remove refs from :project/text-layers and is primarily intended for use in

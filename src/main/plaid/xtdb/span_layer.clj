@@ -64,8 +64,8 @@
   (pxc/submit! (:node xt-map) (pxc/merge* xt-map eid (select-keys m [:span-layer/name]))))
 
 (def shift-span-layer* (pxc/make-shift-layer* :token-layer/id :span-layer/id :token-layer/span-layers))
-(defn shift-span-layer [{:keys [node db] :as xt-map} token-layer-id span-layer-id up?]
-  (pxc/submit! node (shift-span-layer* xt-map token-layer-id span-layer-id up?)))
+(defn shift-span-layer [{:keys [node db] :as xt-map} span-layer-id up?]
+  (pxc/submit! node (shift-span-layer* xt-map span-layer-id up?)))
 
 (defn delete* [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
