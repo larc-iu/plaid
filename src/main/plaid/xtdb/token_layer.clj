@@ -26,6 +26,16 @@
       first
       first))
 
+(defn project-id [db-like id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]
+                      [?txtl :text-layer/token-layers ?tokl]]
+              :in    [?tokl]}
+            id)
+      first
+      first))
+
 (defn get-existing-tokens
   "Find all tokens with their two indices for a given token layer and document."
   [db-like eid document-id]

@@ -17,6 +17,17 @@
   [db-like id]
   (pxc/find-entity (pxc/->db db-like) {:token/id id}))
 
+(defn project-id [db-like id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]
+                      [?txtl :text-layer/token-layers ?tokl]
+                      [?tok :token/layer ?tokl]]
+              :in    [?tok]}
+            id)
+      first
+      first))
+
 (defn get-tokens
   "Provides a list of tokens, enriched with :token/value, a computed attribute indicating
   the the value of its substring."

@@ -17,12 +17,15 @@
 
 (defn- parent-id [db id]
   (-> (xt/q db
-            '{:find  [?p]
-              :where [[?p :project/text-layers ?txtl]]
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]]
               :in    [?txtl]}
             id)
       first
       first))
+
+(defn project-id [db-like id]
+  (parent-id (pxc/->db db-like) id))
 
 ;; Mutations ----------------------------------------------------------------------
 (defn create* [xt-map {:text-layer/keys [id] :as attrs} project-id]
