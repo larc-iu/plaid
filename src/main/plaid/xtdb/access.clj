@@ -108,19 +108,19 @@
 (defn get-accessible-ids
   "Get all accessible IDs of a certain type given a user's privileges on projects.
   `target-key` is something like :project/id"
-  [node user-id target-key]
+  [db user-id target-key]
   (let [query (build-query {:find  [(target-key key-symbol-map)]
                             :where [['?u :user/id user-id]]
                             :rules []}
                            {:writeable false}
                            target-key)]
-    (map first (xt/q (xt/db node) query))))
+    (map first (xt/q db query))))
 
 (defn ident-readable?
   "Test whether a given ident is readable for a given user."
-  [node user-id [target-key target-id]]
+  [db user-id [target-key target-id]]
   (or
-    (-> node xt/db (xt/entity user-id) user/admin?)
+    (-> db (xt/entity user-id) user/admin?)
     (let [query (build-query {:find  ['?target]
                               :where [['?u :user/id user-id]
                                       ['?target target-key target-id]
@@ -128,13 +128,13 @@
                               :rules []}
                              {:writeable false}
                              target-key)]
-      (not (empty? (xt/q (xt/db node) query))))))
+      (not (empty? (xt/q db query))))))
 
 (defn ident-writeable?
   "Test whether a given ident is writeable for a given user."
-  [node user-id [target-key target-id]]
+  [db user-id [target-key target-id]]
   (or
-    (-> node xt/db (xt/entity user-id) user/admin?)
+    (-> db (xt/entity user-id) user/admin?)
     (let [query (build-query {:find  ['?target]
                               :where [['?u :user/id user-id]
                                       ['?target target-key target-id]
@@ -143,7 +143,7 @@
                              {:writeable true}
                              target-key)]
       (log/info query)
-      (not (empty? (xt/q (xt/db node) query))))))
+      (not (empty? (xt/q db query))))))
 
 (comment
   (build-query {:find '[?p] :where [['?u :user/id 1]] :rules []} {:writeable true} :text-layer/id))

@@ -5,7 +5,8 @@
             [plaid.xtdb.access :as pxa]
             [plaid.xtdb.project :as prj]
             [plaid.xtdb.user :as user]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            [xtdb.api :as xt]))
 
 (def authentication-routes
   ["/login"
@@ -86,7 +87,7 @@
            user-id (->user-id request)
            admin? (user/admin? (user/get xtdb user-id))
            f (if readable? pxa/ident-readable? pxa/ident-writeable?)]
-       (if-not (or admin? (f xtdb user-id [key id]))
+       (if-not (or admin? (f (xt/db xtdb) user-id [key id]))
          {:status 403
           :body   {:error (str "User " user-id " lacks sufficient privileges to "
                                (if readable? "read " "edit ") key " " id ".")}}

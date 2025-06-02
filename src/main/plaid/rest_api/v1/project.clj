@@ -10,9 +10,9 @@
 
    [""
     {:get  {:summary "List all projects accessible to user"
-            :handler (fn [{xtdb :xtdb}]
+            :handler (fn [{xtdb :xtdb :as req}]
                        {:status 200
-                        :body   (prj/get-all xtdb)})}
+                        :body   (prj/get-accessible xtdb (pra/->user-id req))})}
      :post {:summary    "Create a new project. Note: this also registers the user as a maintainer."
             :parameters {:body {:name string?}}
             :handler    (fn [{{{:keys [name]} :body} :parameters xtdb :xtdb :as req}]
