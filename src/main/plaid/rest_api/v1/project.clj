@@ -26,37 +26,35 @@
                                :body   {:error (:error result)}})))}}]
 
    ["/:id"
-    {:get    {:summary    "Get a project by ID"
-              :middleware [[pra/wrap-readable-required :project/id]]
-              :parameters {:path [:map [:id :uuid]]}
-              :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
-                            (let [project (prj/get xtdb id)]
-                              (if (some? project)
-                                {:status 200
-                                 :body   project}
-                                {:status 404
-                                 :body   {:error "Project not found"}})))}
+    {:parameters {:path [:map [:id :uuid]]}
+     :get        {:summary    "Get a project by ID"
+                  :middleware [[pra/wrap-readable-required :project/id]]
+                  :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
+                                (let [project (prj/get xtdb id)]
+                                  (if (some? project)
+                                    {:status 200
+                                     :body   project}
+                                    {:status 404
+                                     :body   {:error "Project not found"}})))}
 
-     :patch  {:summary    "Update a project's name."
-              :middleware [[pra/wrap-writeable-required :project/id]]
-              :parameters {:path [:map [:id :uuid]]
-                           :body [:map [:name string?]]}
-              :handler    (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
-                            (let [{:keys [success code error]} (prj/merge {:node xtdb} id {:project/name name})]
-                              (if success
-                                {:status 200
-                                 :body   (prj/get xtdb id)}
-                                {:status (or code 500)
-                                 :body   {:error error}})))}
+     :patch      {:summary    "Update a project's name."
+                  :middleware [[pra/wrap-writeable-required :project/id]]
+                  :parameters {:body [:map [:name string?]]}
+                  :handler    (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
+                                (let [{:keys [success code error]} (prj/merge {:node xtdb} id {:project/name name})]
+                                  (if success
+                                    {:status 200
+                                     :body   (prj/get xtdb id)}
+                                    {:status (or code 500)
+                                     :body   {:error error}})))}
 
-     :delete {:summary    "Delete a project"
-              :middleware [[pra/wrap-writeable-required :project/id]]
-              :parameters {:path [:map [:id :uuid]]}
-              :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
-                            (let [{:keys [success code error]} (prj/delete {:node xtdb} id)]
-                              (if success
-                                {:status 204}
-                                {:status (or code 404) :body {:error error}})))}}]
+     :delete     {:summary    "Delete a project"
+                  :middleware [[pra/wrap-writeable-required :project/id]]
+                  :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
+                                (let [{:keys [success code error]} (prj/delete {:node xtdb} id)]
+                                  (if success
+                                    {:status 204}
+                                    {:status (or code 404) :body {:error error}})))}}]
 
    ["/:id/layers/:layer-id/config/:editor-name/:config-key"
     {:middleware [[pra/wrap-writeable-required :project/id]]

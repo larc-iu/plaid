@@ -12,8 +12,12 @@
             [malli.util :as mu]
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.auth :as pra :refer [authentication-routes]]
-            [plaid.rest-api.v1.user :refer [user-routes-admin]]
-            [plaid.rest-api.v1.project :refer [project-routes]]))
+            [plaid.rest-api.v1.user :refer [user-routes]]
+            [plaid.rest-api.v1.project :refer [project-routes]]
+            [plaid.rest-api.v1.text-layer :refer [text-layer-routes]]
+            [plaid.rest-api.v1.token-layer :refer [token-layer-routes]]
+            [plaid.rest-api.v1.span-layer :refer [span-layer-routes]]
+            [plaid.rest-api.v1.relation-layer :refer [relation-layer-routes]]))
 
 (def coercion
   (reitit.coercion.malli/create
@@ -48,17 +52,13 @@
    [""
     {:openapi    {:security [{:auth []}]}
      :middleware [pra/wrap-login-required]}
-    ["/hello" {:get {:handler (fn [req]
-                                {:status 200
-                                 :body   {:result "Hello, World!"}})}}]
 
-    project-routes]
-
-   ;; Admin required
-   ["/admin"
-    {:openapi    {:security [{:auth []}]}
-     :middleware [pra/wrap-admin-required]}
-    user-routes-admin]
+    user-routes
+    project-routes
+    text-layer-routes
+    token-layer-routes
+    span-layer-routes
+    relation-layer-routes]
 
    ;; swagger documentation
    [""
