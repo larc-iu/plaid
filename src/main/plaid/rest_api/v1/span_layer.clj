@@ -23,7 +23,7 @@
    [""
     {:post {:summary    "Create a new span layer."
             :parameters {:body [:map
-                                [:token-layer-id :string]
+                                [:token-layer-id :uuid]
                                 [:name :string]]}
             :handler    (fn [{{{:keys [name token-layer-id]} :body} :parameters xtdb :xtdb :as req}]
                           (let [attrs {:span-layer/name name}
@@ -35,7 +35,7 @@
                                :body   {:error (:error result)}})))}}]
 
    ["/:span-layer-id"
-    {:parameters {:path [:map [:span-layer-id :string]]}}
+    {:parameters {:path [:map [:span-layer-id :uuid]]}}
 
     [""
      {:get    {:summary "Get a span layer by ID."
