@@ -17,6 +17,16 @@
   (let [db (pxc/->db db-like)]
     (pxc/find-entity db {:text/id id})))
 
+(defn project-id [db-like id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]
+                      [?txt :text/layer ?txtl]]
+              :in    [?txt]}
+            id)
+      first
+      first))
+
 (defn get-text-for-doc
   "There should be exactly one text per text layer per document at all times.
   This function finds the corresponding text for a given document-text layer pair."

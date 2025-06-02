@@ -14,6 +14,18 @@
   [db-like id]
   (pxc/find-entity (pxc/->db db-like) {:span/id id}))
 
+(defn project-id [db-like id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]
+                      [?txtl :text-layer/token-layers ?tokl]
+                      [?tokl :token-layer/span-layers ?sl]
+                      [?s :span/layer ?sl]]
+              :in    [?s]}
+            id)
+      first
+      first))
+
 (defn get-relation-ids [db-like eid]
   (map first (xt/q (pxc/->db db-like)
                    '{:find  [?relation]

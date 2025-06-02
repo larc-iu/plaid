@@ -22,6 +22,18 @@
       first
       first))
 
+(defn project-id [db-like id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]
+                      [?txtl :text-layer/token-layers ?tokl]
+                      [?tokl :token-layer/span-layers ?sl]
+                      [?sl :span-layer/relation-layers ?rl]]
+              :in    [?rl]}
+            id)
+      first
+      first))
+
 ;; Mutations ----------------------------------------------------------------------
 (defn create* [xt-map {:relation-layer/keys [id] :as attrs} span-layer-id]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
