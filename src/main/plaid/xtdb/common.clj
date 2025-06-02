@@ -166,8 +166,8 @@
 (defn valid-name? [s]
   (let [name-config (::config config)
         l (and (string? s) (count s))
-        max-l (:max-name-length name-config)
-        min-l (:min-name-length name-config)]
+        max-l (or (:max-name-length name-config) 500)
+        min-l (or (:min-name-length name-config) 1)]
     (cond (not (string? s))
           (throw (ex-info "Name must be a string" {:code 400 :name s}))
 
