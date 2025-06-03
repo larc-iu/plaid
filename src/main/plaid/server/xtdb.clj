@@ -24,15 +24,27 @@
   :start (let [node (start-main-lmdb-node)]
            (when (empty? (pxc/find-entities (xt/db node) [[:user/id '_]]))
              (log/warn "No users detected! Prompting you for credentials...")
-             (println "Enter email:")
-             (let [email (read-line)]
-               (println "Enter password:")
-               (let [password (read-line)
+             (if-let [console (System/console)]
+               (let [_ (do (print "Enter email: ") (flush))
+                     email (String. (.readLine console))
+                     _ (do (print "Enter password: ") (flush))
+                     password (String. (.readPassword console))
                      {:keys [success]} (pxu/create {:node node} email true password)]
                  (if success
                    (log/info (str "Admin user created with email " email ". To reset the server "
-                                  "AND LOSE ALL DATA, you can remove all files at "
-                                  (-> config ::config :main-db-dir) "."))
+                                  "AND LOSE ALL DATA, you can remove all files at `"
+                                  (-> config ::config :main-db-dir) "`."))
+                   (do (log/error (str "Error creating first user!"))
+                       (System/exit 1))))
+               (let [_ (do (print "Enter email: ") (flush))
+                     email (read-line)
+                     _ (do (print "Enter password: ") (flush))
+                     password (read-line)
+                     {:keys [success]} (pxu/create {:node node} email true password)]
+                 (if success
+                   (log/info (str "Admin user created with email " email ". To reset the server "
+                                  "AND LOSE ALL DATA, you can remove all files at `"
+                                  (-> config ::config :main-db-dir) "`."))
                    (do (log/error (str "Error creating first user!"))
                        (System/exit 1))))))
            node)
