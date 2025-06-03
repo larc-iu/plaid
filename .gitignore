@@ -4,6 +4,7 @@
 *.sw?
 *.swp
 *jar
+*.dylib
 .DS_Store
 .idea
 .lein*
