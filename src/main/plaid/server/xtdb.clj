@@ -1,11 +1,10 @@
 (ns plaid.server.xtdb
-  (:require [plaid.xtdb.common :as pxc]
-            [taoensso.timbre :as log]
+  (:require [taoensso.timbre :as log]
             [xtdb.api :as xt]
             [mount.core :refer [defstate]]
+            [plaid.xtdb.common :as pxc]
             [plaid.server.config :refer [config]]
-            [plaid.xtdb.user :as pxu]
-            [plaid.xtdb.common :as pxc])
+            [plaid.xtdb.user :as pxu])
   (:import [xtdb.api IXtdb]))
 
 (defn ^IXtdb start-lmdb-node [{:keys [db-dir use-inspector]}]
