@@ -122,14 +122,13 @@
 (defn create [{:keys [node] :as xt-map} attrs]
   (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
 
-(defn set-extent [xt-map eid {:keys [new-begin new-end delta-begin delta-end]}]
-  (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
-        {:token/keys [begin end text layer] :as token} (pxc/entity db eid)
-        new-begin (or new-begin (and delta-begin (+ begin delta-begin)))
-        new-end (or new-end (and delta-end (+ end delta-end)))
-        new-token (cond-> token
-                          (some? new-begin) (assoc :token/begin new-begin)
-                          (some? new-end) (assoc :token/end new-end))
+(defn- set-extent [{:keys [node db] :as xt-map} eid {new-begin :token/begin new-end :token/end}]
+  (let [{:token/keys [begin end text layer] :as token} (pxc/entity db eid)
+        new-begin (or new-begin begin)
+        new-end (or new-end end)
+        new-token (-> token
+                      (assoc :token/begin new-begin)
+                      (assoc :token/end new-end))
         #_#_other-tokens (map first (xt/q db
                                           '{:find  [(pull ?t2 [:token/begin :token/end])]
                                             :where [[?t2 :token/layer layer]
@@ -165,18 +164,10 @@
               (throw (ex-info "Change in extent would result in overlap with another token" {:new-token new-token}))
 
       :else
-      [[::xt/match text text-record]
-       [::xt/match eid token]
-       [::xt/put new-token]])))
+      (select-keys new-token [:token/begin :token/end]))))
 
-(defn shift-begin [xt-map eid d] (set-extent xt-map eid {:delta-begin d}))
-(defn shift-end [xt-map eid d] (set-extent xt-map eid {:delta-end d}))
-(defn set-begin [xt-map eid n] (set-extent xt-map eid {:new-begin n}))
-(defn set-end [xt-map eid n] (set-extent xt-map eid {:new-end n}))
-
-(defn set-precedence* [xt-map eid precedence]
-  (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
-        token (pxc/entity db eid)]
+(defn- set-precedence [{:keys [node db] :as xt-map} eid precedence]
+  (let [token (pxc/entity db eid)]
     (cond
       (nil? token)
       (throw (ex-info "Token does not exist" {:id eid :code 404}))
@@ -185,13 +176,24 @@
       (throw (ex-info (str "Precedence must either be not supplied or an integer.") {:code 400 :precedence precedence}))
 
       :else
-      [[::xt/match eid token]
-       [::xt/put (if (nil? precedence)
-                   (dissoc token :token/precedence)
-                   (assoc token :token/precedence precedence))]])))
+      (if (nil? precedence)
+        {}
+        {:token/precedence precedence}))))
 
-(defn set-precedence [xt-map eid precedence]
-  (pxc/submit! (:node xt-map) (set-precedence* xt-map eid precedence)))
+(defn merge* [xt-map eid attrs]
+  (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
+        {text-id :token/text} (pxc/entity db eid)
+        _ (println attrs (select-keys attrs [:token/begin :token/end]))
+        extent-attrs (set-extent xt-map eid (select-keys attrs [:token/begin :token/end]))
+        precedence-attrs (set-precedence xt-map eid (:token/precedence (select-keys attrs [:token/precedence])))
+        base (into [[::xt/match text-id (pxc/entity db text-id)]]
+                   (pxc/merge* xt-map eid (clojure.core/merge extent-attrs precedence-attrs)))]
+    (if (and (contains? attrs :token/precedence) (nil? (:token/precedence attrs)))
+      (update-in base [2 1] dissoc :token/precedence)
+      base)))
+
+(defn merge [xt-map eid attrs]
+  (pxc/submit! (:node xt-map) (merge* xt-map eid attrs)))
 
 (defn delete*
   [xt-map eid]
