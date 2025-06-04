@@ -83,8 +83,8 @@
                       {:document-ids (map (partial get-doc-id-of-token db) tokens) :code 400}))
 
       :else
-      (let [token-matches (mapv (fn [id record]
-                                  [[::xt/match id record]])
+      (let [token-matches (mapv (fn [[id record]]
+                                  [::xt/match id record])
                                 (map vector tokens token-records))
             matches (into [[::xt/match id nil]
                            [::xt/match layer (pxc/entity db layer)]]
