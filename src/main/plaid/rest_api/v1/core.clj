@@ -14,10 +14,15 @@
             [plaid.rest-api.v1.auth :as pra :refer [authentication-routes]]
             [plaid.rest-api.v1.user :refer [user-routes]]
             [plaid.rest-api.v1.project :refer [project-routes]]
+            [plaid.rest-api.v1.document :refer [document-routes]]
+            [plaid.rest-api.v1.text :refer [text-routes]]
             [plaid.rest-api.v1.text-layer :refer [text-layer-routes]]
             [plaid.rest-api.v1.token-layer :refer [token-layer-routes]]
+            [plaid.rest-api.v1.token :refer [token-routes]]
+            [plaid.rest-api.v1.span :refer [span-routes]]
             [plaid.rest-api.v1.span-layer :refer [span-layer-routes]]
-            [plaid.rest-api.v1.relation-layer :refer [relation-layer-routes]]))
+            [plaid.rest-api.v1.relation-layer :refer [relation-layer-routes]]
+            [plaid.rest-api.v1.relation :refer [relation-routes]]))
 
 (def coercion
   (reitit.coercion.malli/create
@@ -55,9 +60,14 @@
 
     user-routes
     project-routes
+    document-routes
+    text-routes
     text-layer-routes
     token-layer-routes
+    token-routes
+    span-routes
     span-layer-routes
+    relation-routes
     relation-layer-routes]
 
    ;; swagger documentation
