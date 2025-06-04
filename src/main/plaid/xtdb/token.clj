@@ -183,7 +183,6 @@
 (defn merge* [xt-map eid attrs]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
         {text-id :token/text} (pxc/entity db eid)
-        _ (println attrs (select-keys attrs [:token/begin :token/end]))
         extent-attrs (set-extent xt-map eid (select-keys attrs [:token/begin :token/end]))
         precedence-attrs (set-precedence xt-map eid (:token/precedence (select-keys attrs [:token/precedence])))
         base (into [[::xt/match text-id (pxc/entity db text-id)]]
