@@ -35,45 +35,50 @@
   this library in glam.)"
   [old new]
   (let [[[_ _ ops]] (e/get-edits (e/diff old new {:algo :a-star :str-diff :character}))]
-    (loop [head (first ops)
-           tail (rest ops)
-           ops []
-           i 0]
-      (cond
-        (nil? head)
-        ops
+    (if (string? ops)
+      ;; Total replacement of the original string
+      (vector [-1 old]
+              [1 new])
+      ;; Edit of the existing string
+      (loop [head (first ops)
+             tail (rest ops)
+             ops []
+             i 0]
+        (cond
+          (nil? head)
+          ops
 
-        (number? head)
-        (recur (first tail)
-               (rest tail)
-               (conj ops [0 (subs old i (+ i head))])
-               (+ i head))
+          (number? head)
+          (recur (first tail)
+                 (rest tail)
+                 (conj ops [0 (subs old i (+ i head))])
+                 (+ i head))
 
-        ;; Replacement
-        (= (first head) :r)
-        (recur (first tail)
-               (rest tail)
-               (-> ops
-                   (conj [-1 (subs old i (+ i (count (second head))))])
-                   (conj [1 (second head)]))
-               (+ i (count (second head))))
+          ;; Replacement
+          (= (first head) :r)
+          (recur (first tail)
+                 (rest tail)
+                 (-> ops
+                     (conj [-1 (subs old i (+ i (count (second head))))])
+                     (conj [1 (second head)]))
+                 (+ i (count (second head))))
 
-        ;; Deletion
-        (= (first head) :-)
-        (recur (first tail)
-               (rest tail)
-               (conj ops [-1 (subs old i (+ i (second head)))])
-               (+ i (second head)))
+          ;; Deletion
+          (= (first head) :-)
+          (recur (first tail)
+                 (rest tail)
+                 (conj ops [-1 (subs old i (+ i (second head)))])
+                 (+ i (second head)))
 
-        ;; Addition
-        (= (first head) :+)
-        (recur (first tail)
-               (rest tail)
-               (conj ops [1 (second head)])
-               i)
+          ;; Addition
+          (= (first head) :+)
+          (recur (first tail)
+                 (rest tail)
+                 (conj ops [1 (second head)])
+                 i)
 
-        :else
-        (throw (ex-info "Unknown op!" {:op head :code 500}))))))
+          :else
+          (throw (ex-info "Unknown op!" {:op head :code 500})))))))
 
 (defn valid-delete? [{:keys [type index value] :as op}]
   (and (map? op)
