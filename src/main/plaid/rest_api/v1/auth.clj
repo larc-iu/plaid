@@ -103,3 +103,10 @@
         {:status 403
          :body   {:error (str "User " user-id " lacks sufficient privileges to " (key verb) " project " id)}}
         (handler request)))))
+
+(defn wrap-reader-required [handler get-project-id]
+  (wrap-project-privileges-required handler :project/readers get-project-id))
+(defn wrap-writer-required [handler get-project-id]
+  (wrap-project-privileges-required handler :project/writers get-project-id))
+(defn wrap-maintainer-required [handler get-project-id]
+  (wrap-project-privileges-required handler :project/maintainers get-project-id))

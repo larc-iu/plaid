@@ -18,7 +18,7 @@
 
 (def token-layer-routes
   ["/token-layers"
-   {:middleware [[pra/wrap-project-privileges-required :project/maintainers get-project-id]]}
+   {:middleware [[pra/wrap-maintainer-required get-project-id]]}
 
    [""
     {:post {:summary    "Create a new token layer."

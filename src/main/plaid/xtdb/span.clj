@@ -132,3 +132,16 @@
 
 (defn set-tokens [xt-map eid token-ids]
   (pxc/submit! (:node xt-map) (set-tokens* xt-map eid token-ids)))
+
+(defn remove-token*
+  [xt-map span-id token-id]
+  (let [{:keys [db node] :as xt-map} (pxc/ensure-db xt-map)
+        span (pxc/entity db span-id)
+        base-txs (pxc/remove-join* xt-map :span/id span-id :span/tokens :token/id token-id)]
+    (if (and (= 1 (-> span :span/tokens count))
+             (= token-id (first (:span/tokens span))))
+      (into base-txs (delete* xt-map span-id))
+      base-txs)))
+
+(defn remove-token [xt-map span-id token-id]
+  (pxc/submit! (:node xt-map) (remove-token* xt-map span-id token-id)))

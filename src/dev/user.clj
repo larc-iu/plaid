@@ -118,7 +118,6 @@
     (prn (pxc/find-entities (xt/db node) {:span/id '_}))
     (prn (pxc/find-entities (xt/db node) {:relation-layer/id '_}))
     (prn (pxc/find-entities (xt/db node) {:relation/id '_})))
-  (-print-all-)
 
   (defn -delete-all- []
     (->> (reduce into [(pxc/find-entities (xt/db node) {:project/name "temporary"})
@@ -134,8 +133,6 @@
          (mapv :xt/id)
          (mapv (fn [x] [::xt/delete x]))
          (pxc/submit! node)))
-
-  (-delete-all-)
 
   (do
     (def xt-map {:node node})
@@ -182,11 +179,19 @@
 
   (doc/get-with-layer-data xt-map doc-id)
 
+  (s/set-tokens xt-map s1-id [tok3-id])
+  (s/get node s1-id)
+
   (prj/delete xt-map prj-id)
 
   (-delete-all-)
 
   (-print-all-)
+
+  (tok/merge xt-map tok1-id {:token/end 2 :token/begin 0 :token/precedence nil})
+
+  (tok/get node tok1-id)
+
 
   (let [token-ids (txt/get-token-ids (xt/db node) text-id)
         span-ids (mapcat #(tok/get-span-ids (xt/db node) %) token-ids)
