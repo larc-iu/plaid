@@ -96,11 +96,11 @@
 
       ;; Non-negative extent?
       (neg? (- end begin))
-      (throw (ex-info "Token has non-positive extent" {:token token}))
+      (throw (ex-info "Token has non-positive extent" {:token token :code 400}))
 
       ;; Bounds check: left
       (< begin 0)
-      (throw (ex-info "Token has a negative start index" {:token token}))
+      (throw (ex-info "Token has a negative start index" {:token token :code 400}))
 
       ;; Bounds check: right
       (> end (count text-body))
@@ -141,22 +141,24 @@
     (cond
       ;; Token doesn't exist?
       (nil? token)
-      (throw (ex-info "Token does not exist" {:id eid}))
+      (throw (ex-info "Token does not exist" {:id eid :code 404}))
 
       ;; Non-negative extent?
       (neg? (- new-end new-begin))
       (throw (ex-info "Token has non-positive extent" {:old-token token
-                                                       :new-token new-token}))
+                                                       :new-token new-token
+                                                       :code 400}))
 
       ;; Bounds check: left
       (and (some? new-begin) (< new-begin 0))
-      (throw (ex-info "Token has a negative start index" {:new-token new-token}))
+      (throw (ex-info "Token has a negative start index" {:new-token new-token :code 400}))
 
       ;; Bounds check: right
       (and (some? new-end) (> new-end (count text-body)))
       (throw (ex-info "Token ends beyond the end of its associated text" {:new-token   new-token
                                                                           :text-length (count text-body)
-                                                                          :text        text-body}))
+                                                                          :text        text-body
+                                                                          :code 400}))
       ;; Overlap with other tokens
       #_#_(some (fn [[{t1-end :token/end} {t2-begin :token/begin}]]
                   (< t2-begin t1-end))
