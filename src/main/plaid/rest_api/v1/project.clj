@@ -56,27 +56,6 @@
                                     {:status 204}
                                     {:status (or code 404) :body {:error error}})))}}]
 
-   ["/:id/layers/:layer-id/config/:editor-name/:config-key"
-    {:middleware [[pra/wrap-writer-required #(-> % :parameters :path :id)]]
-     :put        {:summary    "Set a configuration value for a layer in a specific editor namespace"
-                  :parameters {:path [:map [:layer-id string?] [:editor-name string?] [:config-key string?]]
-                               :body any?}
-                  :handler    (fn [{{{:keys [layer-id editor-name config-key]} :path config-value :body} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (prj/assoc-editor-config-pair {:node xtdb} layer-id editor-name config-key config-value)]
-                                  (if success
-                                    {:status 204}
-                                    {:status (or code 400)
-                                     :body   {:error error}})))}
-
-     :delete     {:summary    "Remove a configuration value for a layer in a specific editor namespace"
-                  :parameters {:path [:map [:layer-id string?] [:editor-name string?] [:config-key string?]]}
-                  :handler    (fn [{{{:keys [layer-id editor-name config-key]} :path} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (prj/dissoc-editor-config-pair {:node xtdb} layer-id editor-name config-key)]
-                                  (if success
-                                    {:status 204}
-                                    {:status (or code 400)
-                                     :body   {:error error}})))}}]
-
    ;; Access management endpoints
    ["/:id"
     {:middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]}

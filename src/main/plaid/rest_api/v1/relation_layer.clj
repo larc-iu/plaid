@@ -1,7 +1,7 @@
 (ns plaid.rest-api.v1.relation-layer
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [plaid.xtdb.span-layer :as sl]
-            [reitit.coercion.malli]
             [plaid.xtdb.relation-layer :as rl]
             [plaid.xtdb.common :as pxc]))
 
@@ -73,4 +73,6 @@
                                (if success
                                  {:status 204}
                                  {:status (or code 400)
-                                  :body   {:error (or error "Failed to shift relation layer")}}))))}}]]])
+                                  :body   {:error (or error "Failed to shift relation layer")}}))))}}]
+
+    (layer-config-routes :relation-layer-id)]])
