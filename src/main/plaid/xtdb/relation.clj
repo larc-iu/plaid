@@ -146,6 +146,7 @@
        [::xt/match source (pxc/entity db source)]
        [::xt/match target (pxc/entity db target)]
        [::xt/match layer (pxc/entity db layer)]
+       [::xt/match span-id new-span]
        [::xt/put (assoc r key span-id)]])))
 
 (defn set-end [xt-map eid key span-id]
