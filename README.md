@@ -9,6 +9,7 @@
 * `clojure -M:test`: run tests
 * `clojure -M:outdated`: find outdated dependencies
 * `clojure -X:uberjar`: compile to a single `.jar` for production
+* `clojure -M:client-gen custom-api.json CustomClient.js`: generate JS API client from OpenAPI spec.
 
 ## OpenAPI Support
 * See playground at <http://localhost:8085/api/v1/docs/index.html#/>
