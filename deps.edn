@@ -1,51 +1,51 @@
 {:paths   ["src/main"]
 
- :deps    {org.clojure/clojure                       {:mvn/version "1.12.0"}
-           org.clojure/spec.alpha                    {:mvn/version "0.5.238"}
-           org.clojure/core.async                    {:mvn/version "1.8.741"}
-           org.clojure/tools.reader                  {:mvn/version "1.5.2"}
+ :deps    {org.clojure/clojure                 {:mvn/version "1.12.0"}
+           org.clojure/spec.alpha              {:mvn/version "0.5.238"}
+           org.clojure/core.async              {:mvn/version "1.8.741"}
+           org.clojure/tools.reader            {:mvn/version "1.5.2"}
 
            ;; common ---------------------------------------------------------------------------------
            ;; logging
-           com.taoensso/timbre                       {:mvn/version "6.7.1"}
-           org.slf4j/slf4j-api                       {:mvn/version "2.0.17"}
-           org.slf4j/slf4j-simple                    {:mvn/version "2.0.17"}
+           com.taoensso/timbre                 {:mvn/version "6.7.1"}
+           org.slf4j/slf4j-api                 {:mvn/version "2.0.17"}
+           org.slf4j/slf4j-simple              {:mvn/version "2.0.17"}
 
            ;; profiler, haven't used so far
-           com.taoensso/tufte                        {:mvn/version "2.7.0"}
+           com.taoensso/tufte                  {:mvn/version "2.7.0"}
 
            ;; fulcro and fulcro-related deps
-           com.fulcrologic/fulcro                    {:mvn/version "3.8.6"
-                                                      :exclusions  [com.cognitect/transit-cljs
-                                                                    com.cognitect/transit-js]}
+           com.fulcrologic/fulcro              {:mvn/version "3.8.6"
+                                                :exclusions  [com.cognitect/transit-cljs
+                                                              com.cognitect/transit-js]}
 
            ;; routing
-           metosin/reitit                            {:mvn/version "0.8.0"}
+           metosin/reitit                      {:mvn/version "0.8.0"}
 
            ;; state management
-           mount/mount                               {:mvn/version "0.1.23"}
+           mount/mount                         {:mvn/version "0.1.23"}
 
            ;; http
-           http-kit/http-kit                         {:mvn/version "2.8.0"}
-           ring/ring-core                            {:mvn/version "1.14.1"}
-           ring/ring-defaults                        {:mvn/version "0.6.0"}
-           metosin/ring-http-response                {:mvn/version "0.9.5"}
+           http-kit/http-kit                   {:mvn/version "2.8.0"}
+           ring/ring-core                      {:mvn/version "1.14.1"}
+           ring/ring-defaults                  {:mvn/version "0.6.0"}
+           metosin/ring-http-response          {:mvn/version "0.9.5"}
 
            ;; xtdb
-           com.xtdb/xtdb-core                        {:mvn/version "1.24.5"}
-           com.xtdb/xtdb-lmdb                        {:mvn/version "1.24.5"}
-           com.github.tatut/xtdb-inspector           {:git/url "https://github.com/lgessler/xtdb-inspector.git"
-                                                      :sha     "682ab4a6e8e3d70b1fb963740895ed85607f2451"}
+           com.xtdb/xtdb-core                  {:mvn/version "1.24.5"}
+           com.xtdb/xtdb-lmdb                  {:mvn/version "1.24.5"}
+           com.github.tatut/xtdb-inspector     {:git/url "https://github.com/lgessler/xtdb-inspector.git"
+                                                :sha     "682ab4a6e8e3d70b1fb963740895ed85607f2451"}
 
            ;; security
-           buddy/buddy-core                          {:mvn/version "1.12.0-430"}
-           buddy/buddy-hashers                       {:mvn/version "2.0.167"}
-           buddy/buddy-sign                          {:mvn/version "3.6.1-359"}
-           buddy/buddy-auth                          {:mvn/version "3.0.323"}
+           buddy/buddy-core                    {:mvn/version "1.12.0-430"}
+           buddy/buddy-hashers                 {:mvn/version "2.0.167"}
+           buddy/buddy-sign                    {:mvn/version "3.6.1-359"}
+           buddy/buddy-auth                    {:mvn/version "3.0.323"}
 
            ;; misc
-           camel-snake-kebab/camel-snake-kebab       {:mvn/version "0.4.3"}
-           juji/editscript                           {:mvn/version "0.6.6"}
+           camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
+           juji/editscript                     {:mvn/version "0.6.6"}
 
            ;; these are missing from xtdb-lmdb
            ; org.lwjgl/lwjgl$natives-windows      {:mvn/version "3.3.6" :native-prefix ""}
@@ -80,4 +80,10 @@
                                     fulcrologic/fulcro-spec     {:mvn/version "3.1.12"}
                                     binaryage/devtools          {:mvn/version "1.0.7"}
                                     com.github.awkay/workspaces {:mvn/version "1.0.3"}
-                                    com.xtdb/xtdb-http-server   {:mvn/version "1.24.5"}}}}}
+                                    com.xtdb/xtdb-http-server   {:mvn/version "1.24.5"}}}
+           :gen      {:extra-paths ["src/gen"]
+                      :main-opts   ["-m" "plaid.client-gen"]
+                      :exec-fn     plaid.client-gen/-main
+                      :exec-args   {}
+                      :extra-deps  {org.clojure/data.json               {:mvn/version "2.5.0"}
+                                    camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}}}}}
