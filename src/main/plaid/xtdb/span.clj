@@ -126,9 +126,12 @@
         {:span/keys [layer] :as span} (pxc/entity db eid)]
     (check-tokens! db span token-records)
 
-    [[::xt/match layer (pxc/entity db layer)]
-     [::xt/match eid span]
-     [::xt/put (assoc span :span/tokens (vec token-ids))]]))
+    (into (mapv (fn [[id record]]
+                  [::xt/match id record])
+                (map vector token-ids token-records))
+          [[::xt/match layer (pxc/entity db layer)]
+           [::xt/match eid span]
+           [::xt/put (assoc span :span/tokens (vec token-ids))]])))
 
 (defn set-tokens [xt-map eid token-ids]
   (pxc/submit! (:node xt-map) (set-tokens* xt-map eid token-ids)))
