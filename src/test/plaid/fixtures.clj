@@ -25,7 +25,7 @@
                                    :multipart  true
                                    :nested     true
                                    :urlencoded true}
-                       :cookies   true
+                       :cookies   false
                        :responses {:absolute-redirects     true
                                    :content-types          true
                                    :default-charset        "utf-8"
