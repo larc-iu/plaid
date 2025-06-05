@@ -5,7 +5,7 @@
 
 # Development
 
-* `clojure -X:dev`: start development server. See <http://localhost:8085> 
+* `clojure -X:dev`: start development server by typing `(start)`. See <http://localhost:8085> 
 * `clojure -M:test`: run tests
 * `clojure -M:outdated`: find outdated dependencies
 * `clojure -X:uberjar`: compile to a single `.jar` for production
