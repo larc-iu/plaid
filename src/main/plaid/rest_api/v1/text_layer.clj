@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.text-layer
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
             [plaid.xtdb.text-layer :as txtl]))
 
@@ -71,4 +72,6 @@
                              (if success
                                {:status 204}
                                {:status (or code 400)
-                                :body   {:error (or error "Failed to shift text layer")}})))}}]]])
+                                :body   {:error (or error "Failed to shift text layer")}})))}}]
+
+    (layer-config-routes :text-layer-id)]])

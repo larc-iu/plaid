@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.token-layer
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
             [plaid.xtdb.text-layer :as txtl]
             [plaid.xtdb.token-layer :as tokl]))
@@ -73,4 +74,6 @@
                              (if success
                                {:status 204}
                                {:status (or code 400)
-                                :body   {:error (or error "Failed to shift token layer")}})))}}]]])
+                                :body   {:error (or error "Failed to shift token layer")}})))}}]
+
+    (layer-config-routes :token-layer-id)]])

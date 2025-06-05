@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.span-layer
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
             [plaid.xtdb.token-layer :as tokl]
             [plaid.xtdb.span-layer :as sl]))
@@ -72,4 +73,6 @@
                              (if success
                                {:status 204}
                                {:status (or code 400)
-                                :body   {:error (or error "Failed to shift span layer")}})))}}]]])
+                                :body   {:error (or error "Failed to shift span layer")}})))}}]
+
+    (layer-config-routes :span-layer-id)]])
