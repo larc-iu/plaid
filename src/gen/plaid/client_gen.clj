@@ -9,6 +9,61 @@
   [s]
   (csk/->camelCase s))
 
+(defn- transform-key-name
+  "Transform a key from kebab-case/namespaced to camelCase.
+   Examples: 
+   'layer-id' -> 'layerId'
+   'relation/layer' -> 'relationLayer'
+   'token-layer/span-layers' -> 'tokenLayerSpanLayers'"
+  [k]
+  (-> k
+      (str/replace "/" "-")
+      (kebab->camel)))
+
+(defn- generate-key-transformation-functions
+  "Generate JavaScript functions for transforming keys between formats"
+  []
+  "  // Key transformation utilities
+  _transformKeyToCamel(key) {
+    // Convert kebab-case and namespaced keys to camelCase
+    // 'layer-id' -> 'layerId'
+    // 'relation/layer' -> 'relationLayer'
+    return key.replace(/\\//g, '-').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  }
+
+  _transformKeyFromCamel(key) {
+    // Convert camelCase back to kebab-case
+    // 'layerId' -> 'layer-id'
+    return key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
+  }
+
+  _transformRequest(obj) {
+    if (obj === null || obj === undefined) return obj;
+    if (Array.isArray(obj)) return obj.map(item => this._transformRequest(item));
+    if (typeof obj !== 'object') return obj;
+    
+    const transformed = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const newKey = this._transformKeyFromCamel(key);
+      transformed[newKey] = this._transformRequest(value);
+    }
+    return transformed;
+  }
+
+  _transformResponse(obj) {
+    if (obj === null || obj === undefined) return obj;
+    if (Array.isArray(obj)) return obj.map(item => this._transformResponse(item));
+    if (typeof obj !== 'object') return obj;
+    
+    const transformed = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const newKey = this._transformKeyToCamel(key);
+      transformed[newKey] = this._transformResponse(value);
+    }
+    return transformed;
+  }
+")
+
 (defn- extract-path-params
   "Extract path parameters from an OpenAPI path like '/api/v1/users/{id}'"
   [path]
@@ -99,13 +154,33 @@
   [request-body]
   (get-in request-body ["content" "application/json" "schema"]))
 
+(defn- extract-body-params
+  "Extract individual parameters from request body schema"
+  [request-body-schema]
+  (when (and request-body-schema 
+             (= "object" (get request-body-schema "type"))
+             (get request-body-schema "properties"))
+    (let [properties (get request-body-schema "properties")
+          required-set (set (get request-body-schema "required" []))]
+      (map (fn [[k v]]
+             {:name (if (= k "body") "bodyText" (transform-key-name k))
+              :original-name k
+              :required? (contains? required-set k)
+              :type (get v "type")})
+           properties))))
+
 (defn- generate-method-params
   "Generate JavaScript method parameters"
   [path-params query-params request-body-schema]
   (let [path-param-names (map kebab->camel path-params)
-        body-param (when request-body-schema "body")
-        options-param (when (seq query-params) "options")]
-    (str/join ", " (filter some? (concat path-param-names [body-param options-param])))))
+        body-params (extract-body-params request-body-schema)
+        ;; Put required params first, then optional ones
+        required-body-params (filter :required? body-params)
+        optional-body-params (remove :required? body-params)
+        body-param-names (concat (map :name required-body-params)
+                                (map #(str (:name %) " = undefined") optional-body-params))
+        options-param (when (seq query-params) "options = {}")]
+    (str/join ", " (filter some? (concat path-param-names body-param-names [options-param])))))
 
 (defn- generate-url-construction
   "Generate JavaScript code to construct the URL with path parameters"
@@ -122,25 +197,42 @@
                            "\n    const queryParams = new URLSearchParams();\n    if (options) {\n      Object.entries(options).forEach(([key, value]) => {\n        if (value !== undefined && value !== null) {\n          queryParams.append(key, value);\n        }\n      });\n    }\n    const queryString = queryParams.toString();\n    const finalUrl = queryString ? `${url}?${queryString}` : url;")]
     (str base-url query-construction)))
 
+(defn- generate-body-construction
+  "Generate JavaScript code to construct request body from individual parameters"
+  [body-params]
+  (when (seq body-params)
+    (let [all-params (map (fn [{:keys [name]}]
+                           (str "      " name ": " name))
+                         body-params)]
+      (str "const bodyObj = {\n" 
+           (str/join ",\n" all-params) 
+           "\n    };\n"
+           "    // Filter out undefined optional parameters\n"
+           "    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);\n"
+           "    const body = this._transformRequest(bodyObj);"))))
+
 (defn- generate-fetch-options
   "Generate JavaScript fetch options"
-  [method has-body?]
-  (if has-body?
-    (str "const options = {\n"
-         "      method: '" (str/upper-case (name method)) "',\n"
-         "      headers: {\n"
-         "        'Authorization': `Bearer ${this.token}`,\n"
-         "        'Content-Type': 'application/json'\n"
-         "      },\n"
-         "      body: JSON.stringify(body)\n"
-         "    };")
-    (str "const options = {\n"
-         "      method: '" (str/upper-case (name method)) "',\n"
-         "      headers: {\n"
-         "        'Authorization': `Bearer ${this.token}`,\n"
-         "        'Content-Type': 'application/json'\n"
-         "      }\n"
-         "    };")))
+  [method has-body? is-login?]
+  (let [auth-header (if is-login? 
+                      ""
+                      "        'Authorization': `Bearer ${this.token}`,\n")]
+    (if has-body?
+      (str "const options = {\n"
+           "      method: '" (str/upper-case (name method)) "',\n"
+           "      headers: {\n"
+           auth-header
+           "        'Content-Type': 'application/json'\n"
+           "      },\n"
+           "      body: JSON.stringify(body)\n"
+           "    };")
+      (str "const options = {\n"
+           "      method: '" (str/upper-case (name method)) "',\n"
+           "      headers: {\n"
+           auth-header
+           "        'Content-Type': 'application/json'\n"
+           "      }\n"
+           "    };"))))
 
 (defn- generate-private-method
   "Generate a private JavaScript method for an API endpoint"
@@ -150,10 +242,24 @@
         query-params (filter #(= (get % "in") "query") parameters)
         request-body (get operation "requestBody")
         request-body-schema (extract-request-body-schema request-body)
+        body-params (extract-body-params request-body-schema)
+        is-config? (str/includes? path "/config/")
+        is-login? (str/includes? path "/login")
         has-body? (some? request-body-schema)
-        method-params (generate-method-params path-params query-params request-body-schema)
+        ;; For config endpoints, add configValue parameter if it's a PUT
+        config-params (when (and is-config? (= method :put)) ["configValue"])
+        all-path-params (concat path-params config-params)
+        method-params (if is-config?
+                        (generate-method-params all-path-params query-params nil)
+                        (generate-method-params path-params query-params request-body-schema))
         url-construction (generate-url-construction path path-params query-params)
-        fetch-options (generate-fetch-options method has-body?)
+        body-construction (cond
+                            (and is-config? (= method :put))
+                            "const body = configValue;"
+                            body-params
+                            (generate-body-construction body-params)
+                            :else nil)
+        fetch-options (generate-fetch-options method has-body? is-login?)
         summary (get operation "summary" "")
         private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
         url-var (if (seq query-params) "finalUrl" "url")]
@@ -163,16 +269,25 @@
          "   */\n"
          "  async " private-method-name "(" method-params ") {\n"
          "    " url-construction "\n"
+         (when body-construction (str "    " body-construction "\n"))
          "    " fetch-options "\n"
          "    \n"
          "    const response = await fetch(" url-var ", options);\n"
          "    if (!response.ok) {\n"
-         "      throw new Error(`HTTP error! status: ${response.status}`);\n"
+         "      const errorBody = await response.text().catch(() => 'Unable to read error response');\n"
+         "      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${" url-var "}`);\n"
+         "      error.status = response.status;\n"
+         "      error.statusText = response.statusText;\n"
+         "      error.url = " url-var ";\n"
+         "      error.method = '" (str/upper-case (name method)) "';\n"
+         "      error.responseBody = errorBody;\n"
+         "      throw error;\n"
          "    }\n"
          "    \n"
          "    const contentType = response.headers.get('content-type');\n"
          "    if (contentType && contentType.includes('application/json')) {\n"
-         "      return await response.json();\n"
+         "      const data = await response.json();\n"
+         "      return this._transformResponse(data);\n"
          "    }\n"
          "    return await response.text();\n"
          "  }\n")))
@@ -230,7 +345,8 @@
         description (get info "description" "Generated API client")
         paths (get openapi-spec "paths")
         bundle-initialization (generate-bundle-initialization paths)
-        private-methods (generate-bundle-methods paths)]
+        private-methods (generate-bundle-methods paths)
+        transformation-functions (generate-key-transformation-functions)]
     
     (str "/**\n"
          " * " title " - " description "\n"
@@ -251,6 +367,8 @@
          "    // Initialize API bundles\n"
          bundle-initialization "\n"
          "  }\n"
+         "\n"
+         transformation-functions
          "\n"
          private-methods
          "}\n"
