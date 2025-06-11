@@ -96,7 +96,7 @@
       {:data {:coercion   coercion
               :muuntaja   m/instance
               :swagger    {:id ::api}
-              :middleware [exception/exception-middleware
+              :middleware [#_exception/exception-middleware
                            parameters/parameters-middleware
                            muuntaja/format-negotiate-middleware
                            muuntaja/format-response-middleware
