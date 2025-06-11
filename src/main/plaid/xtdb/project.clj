@@ -20,11 +20,11 @@
                    id)))
 
 (defn get-documents [db-like id]
-  (xt/q (pxc/->db db-like)
-        '{:find  [(pull ?doc [:document/id :document/name])]
-          :where [[?doc :document/project ?prj]]
-          :in    [?prj]}
-        id))
+  (map first (xt/q (pxc/->db db-like)
+                   '{:find  [(pull ?doc [:document/id :document/name])]
+                     :where [[?doc :document/project ?prj]]
+                     :in    [?prj]}
+                   id)))
 
 (defn get
   ([db-like id]
