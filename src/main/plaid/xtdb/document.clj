@@ -37,9 +37,9 @@
         text (pxc/find-entity db [[:text/document parent-id]
                                   [:text/layer id]])
         token-layers (mapv #(get-doc-info db doc-id id [:token-layer/id %]) tokl-ids)]
-    (cond-> {:text-layer/id           id
-             :text-layer/token-layers token-layers}
-            (some? text) (assoc :text-layer/text (select-keys text [:text/body :text/id])))))
+    (-> (select-keys (pxc/entity db id) [:text-layer/id :text-layer/name :config])
+        (assoc :text-layer/token-layers token-layers)
+        (cond-> (some? text) (assoc :text-layer/text (select-keys text [:text/body :text/id]))))))
 
 (defmethod get-doc-info :token-layer/id [db doc-id parent-id [key id]]
   (let [sl-ids (map first (xt/q db
@@ -57,9 +57,9 @@
                           [parent-id doc-id id])
                     (mapv first)
                     tokl/sort-token-records)]
-    {:token-layer/id          id
-     :token-layer/tokens      tokens
-     :token-layer/span-layers (mapv #(get-doc-info db doc-id id [:span-layer/id %]) sl-ids)}))
+    (-> (select-keys (pxc/entity db id) [:token-layer/id :token-layer/name :config])
+        (assoc :token-layer/tokens tokens)
+        (assoc :token-layer/span-layers (mapv #(get-doc-info db doc-id id [:span-layer/id %]) sl-ids)))))
 
 (defmethod get-doc-info :span-layer/id [db doc-id parent-id [key id]]
   (let [rl-ids (map first (xt/q db
@@ -77,9 +77,9 @@
                            :in    [[?tokl ?doc ?sl]]}
                          [parent-id doc-id id])
                    (mapv (fn [[id]] {:span/id id})))]
-    {:span-layer/id              id
-     :span-layer/spans           spans
-     :span-layer/relation-layers (mapv #(get-doc-info db doc-id id [:relation-layer/id %]) rl-ids)}))
+    (-> (select-keys (pxc/entity db id) [:span-layer/id :span-layer/name :config])
+        (assoc :span-layer/spans spans)
+        (assoc :span-layer/relation-layers (mapv #(get-doc-info db doc-id id [:relation-layer/id %]) rl-ids)))))
 
 (defmethod get-doc-info :relation-layer/id [db doc-id parent-id [key id]]
   (let [relations (->> (xt/q db
@@ -93,13 +93,16 @@
                                :in    [[?sl ?doc ?rl]]}
                              [parent-id doc-id id])
                        (mapv (fn [[id]] {:relation/id id})))]
-    {:relation-layer/id        id
-     :relation-layer/relations relations}))
+    (-> (select-keys (pxc/entity db id) [:relation-layer/id :relation-layer/name :config])
+        (assoc :relation-layer/relations relations))))
 
 (defn get-with-layer-data
   [db-like id]
-  (let [db (pxc/->db db-like)]
-    (get-doc-info db id nil [:document/id id])))
+  (let [db (pxc/->db db-like)
+        doc (get db id)]
+    (if (nil? doc)
+      nil
+      (clojure.core/merge doc (get-doc-info db id nil [:document/id id])))))
 
 (defn get-text-layers
   [db-like id]
