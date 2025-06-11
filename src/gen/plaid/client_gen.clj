@@ -179,6 +179,7 @@
         optional-body-params (remove :required? body-params)
         body-param-names (concat (map :name required-body-params)
                                 (map #(str (:name %) " = undefined") optional-body-params))
+        ;; Only include options parameter if there are actual query parameters
         options-param (when (seq query-params) "options = {}")]
     (str/join ", " (filter some? (concat path-param-names body-param-names [options-param])))))
 
@@ -193,6 +194,7 @@
                                        path
                                        path-params)]
                      (str "const url = `${this.baseUrl}" js-path "`;")))
+        ;; Only include query parameter construction if there are actual query parameters
         query-construction (when (seq query-params)
                            "\n    const queryParams = new URLSearchParams();\n    if (options) {\n      Object.entries(options).forEach(([key, value]) => {\n        if (value !== undefined && value !== null) {\n          queryParams.append(key, value);\n        }\n      });\n    }\n    const queryString = queryParams.toString();\n    const finalUrl = queryString ? `${url}?${queryString}` : url;")]
     (str base-url query-construction)))
@@ -218,7 +220,7 @@
                       ""
                       "        'Authorization': `Bearer ${this.token}`,\n")]
     (if has-body?
-      (str "const options = {\n"
+      (str "const fetchOptions = {\n"
            "      method: '" (str/upper-case (name method)) "',\n"
            "      headers: {\n"
            auth-header
@@ -226,7 +228,7 @@
            "      },\n"
            "      body: JSON.stringify(body)\n"
            "    };")
-      (str "const options = {\n"
+      (str "const fetchOptions = {\n"
            "      method: '" (str/upper-case (name method)) "',\n"
            "      headers: {\n"
            auth-header
@@ -272,7 +274,7 @@
          (when body-construction (str "    " body-construction "\n"))
          "    " fetch-options "\n"
          "    \n"
-         "    const response = await fetch(" url-var ", options);\n"
+         "    const response = await fetch(" url-var ", fetchOptions);\n"
          "    if (!response.ok) {\n"
          "      const errorBody = await response.text().catch(() => 'Unable to read error response');\n"
          "      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${" url-var "}`);\n"
