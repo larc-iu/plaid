@@ -27,10 +27,13 @@
 
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}
-     :get        {:summary    "Get a project by ID"
+     :get        {:summary    "Get a project by ID. If includeDocuments is true, also include document IDs and names."
                   :middleware [[pra/wrap-reader-required #(-> % :parameters :path :id)]]
-                  :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
-                                (let [project (prj/get xtdb id)]
+                  :parameters {:query [:map [:include-documents {:optional true} boolean?]]}
+                  :handler    (fn [{{{:keys [id]}                :path
+                                     {:keys [include-documents]} :query} :parameters
+                                    xtdb :xtdb}]
+                                (let [project (prj/get xtdb id include-documents)]
                                   (if (some? project)
                                     {:status 200
                                      :body   project}

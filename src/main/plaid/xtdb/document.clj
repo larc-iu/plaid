@@ -97,8 +97,8 @@
      :relation-layer/relations relations}))
 
 (defn get-with-layer-data
-  [xt-map id]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)]
+  [db-like id]
+  (let [db (pxc/->db db-like)]
     (get-doc-info db id nil [:document/id id])))
 
 (defn get-text-layers
