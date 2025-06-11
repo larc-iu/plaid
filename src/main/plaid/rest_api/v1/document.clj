@@ -32,10 +32,15 @@
    ["/:document-id"
     {:parameters {:path [:map [:document-id :uuid]]}}
 
-    ["" {:get    {:summary    "Get a document by ID."
+    ["" {:get    {:summary    "Get a document by ID. If includeBody is true, also includes all layers with data."
                   :middleware [[pra/wrap-reader-required get-project-id]]
-                  :handler    (fn [{{{:keys [document-id]} :path} :parameters xtdb :xtdb}]
-                                (let [document (doc/get xtdb document-id)]
+                  :parameters {:query [:map [:include-body {:optional true} boolean?]]}
+                  :handler    (fn [{{{:keys [document-id]} :path
+                                     {:keys [include-body]} :query} :parameters
+                                    xtdb :xtdb}]
+                                (let [document (if include-body
+                                                 (doc/get-with-layer-data xtdb document-id)
+                                                 (doc/get xtdb document-id))]
                                   (if (some? document)
                                     {:status 200
                                      :body   (dissoc document :xt/id)}

@@ -19,10 +19,12 @@
 
 (def relation-layer-routes
   ["/relation-layers"
-   {:middleware [[pra/wrap-maintainer-required get-project-id]]}
+   {:middleware [[pra/wrap-maintainer-required get-project-id]]
+    :x-client-bundle "relationLayers"}
 
    [""
     {:post {:summary    "Create a new relation layer."
+            :x-client-method "create"
             :parameters {:body [:map
                                 [:span-layer-id :uuid]
                                 [:name :string]]}
@@ -40,6 +42,7 @@
 
     [""
      {:get    {:summary "Get a relation layer by ID."
+               :x-client-method "get"
                :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters xtdb :xtdb}]
                           (let [relation-layer (rl/get xtdb relation-layer-id)]
                             (if (some? relation-layer)
@@ -48,6 +51,7 @@
                               {:status 404
                                :body   {:error "Relation layer not found"}})))}
       :patch  {:summary    "Update a relation layer's name."
+               :x-client-method "update"
                :parameters {:body [:map [:name :string]]}
                :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
                              (let [{:keys [success code error]} (rl/merge {:node xtdb} relation-layer-id {:relation-layer/name name})]
@@ -57,6 +61,7 @@
                                  {:status (or code 404)
                                   :body   {:error (or error "Failed to update relation layer or relation layer not found")}})))}
       :delete {:summary "Delete a relation layer."
+               :x-client-method "delete"
                :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters xtdb :xtdb}]
                           (let [{:keys [success code error]} (rl/delete {:node xtdb} relation-layer-id)]
                             (if success
@@ -66,6 +71,7 @@
 
     ["/shift"
      {:post {:summary    "Shift a relation layer's order."
+             :x-client-method "shift"
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
              :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb}]
                            (let [up? (= direction "up")]

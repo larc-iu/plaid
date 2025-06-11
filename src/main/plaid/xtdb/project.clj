@@ -19,10 +19,20 @@
                      :in    [?prj]}
                    id)))
 
+(defn get-documents [db-like id]
+  (xt/q (pxc/->db db-like)
+        '{:find  [(pull ?doc [:document/id :document/name])]
+          :where [[?doc :document/project ?prj]]
+          :in    [?prj]}
+        id))
+
 (defn get
-  [db-like id]
-  (dissoc (pxc/find-entity (pxc/->db db-like) {:project/id id})
-          :xt/id))
+  ([db-like id]
+   (get db-like id false))
+  ([db-like id include-documents]
+   (-> (pxc/find-entity (pxc/->db db-like) {:project/id id})
+       (dissoc :xt/id)
+       (cond-> include-documents (assoc :project/documents (get-documents db-like id))))))
 
 (defn reader-ids
   [db-like id]
