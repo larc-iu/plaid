@@ -13,11 +13,11 @@
   "Transform a key from kebab-case/namespaced to camelCase.
    Examples: 
    'layer-id' -> 'layerId'
-   'relation/layer' -> 'relationLayer'
-   'token-layer/span-layers' -> 'tokenLayerSpanLayers'"
+   'relation/layer' -> 'layer' (namespace ignored)
+   'project/name' -> 'name' (namespace ignored)"
   [k]
   (-> k
-      (str/replace "/" "-")
+      (str/replace #"^[^/]+/" "") ; Remove namespace prefix
       (kebab->camel)))
 
 (defn- generate-key-transformation-functions
@@ -27,8 +27,9 @@
   _transformKeyToCamel(key) {
     // Convert kebab-case and namespaced keys to camelCase
     // 'layer-id' -> 'layerId'
-    // 'relation/layer' -> 'relationLayer'
-    return key.replace(/\\//g, '-').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    // 'relation/layer' -> 'layer' (namespace ignored)
+    // 'project/name' -> 'name' (namespace ignored)
+    return key.replace(/^[^/]+\\//, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
   }
 
   _transformKeyFromCamel(key) {
@@ -179,9 +180,15 @@
         optional-body-params (remove :required? body-params)
         body-param-names (concat (map :name required-body-params)
                                 (map #(str (:name %) " = undefined") optional-body-params))
-        ;; Only include options parameter if there are actual query parameters
-        options-param (when (seq query-params) "options = {}")]
-    (str/join ", " (filter some? (concat path-param-names body-param-names [options-param])))))
+        ;; Extract query parameter names and make them optional
+        query-param-names (map (fn [param]
+                                (let [param-name (transform-key-name (get param "name"))
+                                      required? (get param "required" false)]
+                                  (if required?
+                                    param-name
+                                    (str param-name " = undefined"))))
+                              query-params)]
+    (str/join ", " (filter some? (concat path-param-names body-param-names query-param-names)))))
 
 (defn- generate-url-construction
   "Generate JavaScript code to construct the URL with path parameters"
@@ -194,17 +201,27 @@
                                        path
                                        path-params)]
                      (str "const url = `${this.baseUrl}" js-path "`;")))
-        ;; Only include query parameter construction if there are actual query parameters
+        ;; Generate query parameter construction using individual parameters
         query-construction (when (seq query-params)
-                           "\n    const queryParams = new URLSearchParams();\n    if (options) {\n      Object.entries(options).forEach(([key, value]) => {\n        if (value !== undefined && value !== null) {\n          queryParams.append(key, value);\n        }\n      });\n    }\n    const queryString = queryParams.toString();\n    const finalUrl = queryString ? `${url}?${queryString}` : url;")]
+                           (let [query-checks (map (fn [param]
+                                                    (let [param-name (transform-key-name (get param "name"))
+                                                          original-name (get param "name")]
+                                                      (str "    if (" param-name " !== undefined && " param-name " !== null) {\n"
+                                                           "      queryParams.append('" original-name "', " param-name ");\n"
+                                                           "    }")))
+                                                  query-params)]
+                             (str "\n    const queryParams = new URLSearchParams();\n"
+                                  (str/join "\n" query-checks) "\n"
+                                  "    const queryString = queryParams.toString();\n"
+                                  "    const finalUrl = queryString ? `${url}?${queryString}` : url;")))]
     (str base-url query-construction)))
 
 (defn- generate-body-construction
   "Generate JavaScript code to construct request body from individual parameters"
   [body-params]
   (when (seq body-params)
-    (let [all-params (map (fn [{:keys [name]}]
-                           (str "      " name ": " name))
+    (let [all-params (map (fn [{:keys [name original-name]}]
+                           (str "      \"" original-name "\": " name))
                          body-params)]
       (str "const bodyObj = {\n" 
            (str/join ",\n" all-params) 
@@ -324,6 +341,53 @@
                         operations)))
          (str/join "\n"))))
 
+(defn- generate-jsdoc-params
+  "Generate JSDoc parameter documentation from OpenAPI operation"
+  [path operation]
+  (let [path-params (extract-path-params path)
+        parameters (get operation "parameters" [])
+        query-params (filter #(= (get % "in") "query") parameters)
+        request-body (get operation "requestBody")
+        request-body-schema (extract-request-body-schema request-body)
+        body-params (extract-body-params request-body-schema)
+        is-config? (str/includes? path "/config/")
+        config-params (when (and is-config? (get operation "requestBody")) [{"name" "configValue" "type" "any"}])]
+    
+    (concat
+      ;; Path parameters
+      (map (fn [param]
+             (str " * @param {string} " (kebab->camel param) " - " (str/capitalize param) " identifier"))
+           path-params)
+      
+      ;; Body parameters
+      (map (fn [{:keys [name type required?]}]
+             (let [js-type (case type
+                            "string" "string"
+                            "integer" "number"
+                            "boolean" "boolean"
+                            "array" "Array"
+                            "any")]
+               (str " * @param {" js-type "} " name " - " (if required? "Required. " "Optional. ") (str/capitalize name))))
+           body-params)
+      
+      ;; Query parameters  
+      (map (fn [param]
+             (let [param-name (transform-key-name (get param "name"))
+                   param-type (case (get-in param ["schema" "type"])
+                               "string" "string"
+                               "integer" "number" 
+                               "boolean" "boolean"
+                               "string")
+                   required? (get param "required" false)]
+               (str " * @param {" param-type "} [" param-name "] - " (get param "description" (str "Optional " param-name)))))
+           query-params)
+      
+      ;; Config value parameter
+      (when config-params
+        (map (fn [param]
+               (str " * @param {any} " (get param "name") " - Configuration value to set"))
+             config-params)))))
+
 (defn- generate-bundle-initialization
   "Generate bundle initialization code for the constructor"
   [paths]
@@ -331,9 +395,18 @@
     (->> bundles
          (map (fn [[bundle-name operations]]
                 (let [methods (->> operations
-                                   (map (fn [{:keys [method-name]}]
-                                          (let [private-method-name (str "_" bundle-name (csk/->PascalCase method-name))]
-                                            (str "      " method-name ": this." private-method-name ".bind(this)"))))
+                                   (map (fn [{:keys [method-name path operation]}]
+                                          (let [private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
+                                                summary (get operation "summary" "")
+                                                jsdoc-params (generate-jsdoc-params path operation)
+                                                jsdoc-comment (when (or summary (seq jsdoc-params))
+                                                               (str "      /**\n"
+                                                                    (when summary (str "       * " summary "\n"))
+                                                                    (str/join "\n" jsdoc-params)
+                                                                    (when (seq jsdoc-params) "\n")
+                                                                    "       */\n"))]
+                                            (str jsdoc-comment
+                                                 "      " method-name ": this." private-method-name ".bind(this)"))))
                                    (str/join ",\n"))]
                   (str "    this." bundle-name " = {\n" methods "\n    };"))))
          (str/join "\n"))))
