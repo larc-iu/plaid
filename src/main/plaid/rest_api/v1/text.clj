@@ -4,12 +4,12 @@
             [plaid.xtdb.text-layer :as txtl]
             [plaid.xtdb.text :as txt]))
 
-(defn get-project-id [{xtdb :xtdb params :params}]
+(defn get-project-id [{db :db params :params}]
   (let [txtl-id (-> params :body :text-layer-id)
         text-id (-> params :path :text-id)]
     (cond
-      txtl-id (txtl/project-id xtdb txtl-id)
-      text-id (txt/project-id xtdb text-id)
+      txtl-id (txtl/project-id db txtl-id)
+      text-id (txt/project-id db text-id)
       :else nil)))
 
 (def text-routes
@@ -37,8 +37,8 @@
 
     ["" {:get    {:summary    "Get a text by ID."
                   :middleware [[pra/wrap-reader-required get-project-id]]
-                  :handler    (fn [{{{:keys [text-id]} :path} :parameters xtdb :xtdb}]
-                                (let [text (txt/get xtdb text-id)]
+                  :handler    (fn [{{{:keys [text-id]} :path} :parameters db :db}]
+                                (let [text (txt/get db text-id)]
                                   (if (some? text)
                                     {:status 200
                                      :body   (dissoc text :xt/id)}

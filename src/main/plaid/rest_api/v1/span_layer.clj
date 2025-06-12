@@ -5,14 +5,14 @@
             [plaid.xtdb.token-layer :as tokl]
             [plaid.xtdb.span-layer :as sl]))
 
-(defn get-project-id [{xtdb :xtdb params :params}]
+(defn get-project-id [{db :db params :params}]
   (let [tokl-id (-> params :body :token-layer-id)
         sl-id (-> params :path :span-layer-id)]
     (cond tokl-id
-          (tokl/project-id xtdb tokl-id)
+          (tokl/project-id db tokl-id)
 
           sl-id
-          (sl/project-id xtdb sl-id)
+          (sl/project-id db sl-id)
 
           :else
           nil)))
@@ -40,8 +40,8 @@
 
     [""
      {:get    {:summary "Get a span layer by ID."
-               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters xtdb :xtdb}]
-                          (let [span-layer (sl/get xtdb span-layer-id)]
+               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters db :db}]
+                          (let [span-layer (sl/get db span-layer-id)]
                             (if (some? span-layer)
                               {:status 200
                                :body   (dissoc span-layer :xt/id)}

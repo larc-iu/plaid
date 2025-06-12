@@ -5,14 +5,14 @@
             [plaid.xtdb.text-layer :as txtl]
             [plaid.xtdb.token-layer :as tokl]))
 
-(defn get-project-id [{xtdb :xtdb params :params}]
+(defn get-project-id [{db :db params :params}]
   (let [txtl-id (-> params :body :text-layer-id)
         tokl-id (-> params :path :token-layer-id)]
     (cond txtl-id
-          (txtl/project-id xtdb txtl-id)
+          (txtl/project-id db txtl-id)
 
           tokl-id
-          (tokl/project-id xtdb tokl-id)
+          (tokl/project-id db tokl-id)
 
           :else
           nil)))
@@ -40,8 +40,8 @@
 
     [""
      {:get    {:summary "Get a token layer by ID."
-               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters xtdb :xtdb}]
-                          (let [token-layer (tokl/get xtdb token-layer-id)]
+               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters db :db}]
+                          (let [token-layer (tokl/get db token-layer-id)]
                             (if (some? token-layer)
                               {:status 200
                                :body   (dissoc token-layer :xt/id)}

@@ -6,12 +6,12 @@
 
 (defn get-project-id
   "Derive the project ID from a relation-layer or existing relation."
-  [{xtdb :xtdb params :params}]
+  [{db :db params :params}]
   (let [rll-id (-> params :body :layer-id)
         relation-id (-> params :path :relation-id)]
     (cond
-      rll-id (rll/project-id xtdb rll-id)
-      relation-id (rel/project-id xtdb relation-id)
+      rll-id (rll/project-id db rll-id)
+      relation-id (rel/project-id db relation-id)
       :else nil)))
 
 (def relation-routes
@@ -42,8 +42,8 @@
     {:parameters {:path [:map [:relation-id :uuid]]}}
     ["" {:get    {:summary    "Get a relation by ID."
                   :middleware [[pra/wrap-reader-required get-project-id]]
-                  :handler    (fn [{{{:keys [relation-id]} :path} :parameters xtdb :xtdb}]
-                                (let [relation (rel/get xtdb relation-id)]
+                  :handler    (fn [{{{:keys [relation-id]} :path} :parameters db :db}]
+                                (let [relation (rel/get db relation-id)]
                                   (if (some? relation)
                                     {:status 200 :body (dissoc relation :xt/id)}
                                     {:status 404 :body {:error "Relation not found"}})))}
