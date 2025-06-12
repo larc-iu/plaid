@@ -18,22 +18,15 @@
 (defmulti get-doc-info (fn [db doc-id parent-id [key id]] key))
 
 (defmethod get-doc-info :document/id [db doc-id parent-id [key id]]
-  (let [txtl-ids (map first (xt/q
-                              db
-                              '{:find  [?txtl]
-                                :where [[?prj :project/text-layers ?txtl]
-                                        [?doc :document/project ?prj]]
-                                :in    [?doc]}
-                              id))]
+  (let [txtl-ids (->> id
+                      (pxc/entity db)
+                      :document/project
+                      (pxc/entity db)
+                      :project/text-layers)]
     {:document/text-layers (mapv #(get-doc-info db doc-id id [:text-layer/id %]) txtl-ids)}))
 
 (defmethod get-doc-info :text-layer/id [db doc-id parent-id [key id]]
-  (let [tokl-ids (map first (xt/q
-                              db
-                              '{:find  [?tokl]
-                                :where [[?txtl :text-layer/token-layers ?tokl]]
-                                :in    [?txtl]}
-                              id))
+  (let [tokl-ids (:text-layer/token-layers (pxc/entity db id))
         text (pxc/find-entity db [[:text/document parent-id]
                                   [:text/layer id]])
         token-layers (mapv #(get-doc-info db doc-id id [:token-layer/id %]) tokl-ids)]
@@ -42,11 +35,7 @@
         (cond-> (some? text) (assoc :text-layer/text (select-keys text [:text/body :text/id]))))))
 
 (defmethod get-doc-info :token-layer/id [db doc-id parent-id [key id]]
-  (let [sl-ids (map first (xt/q db
-                                '{:find  [?sl]
-                                  :where [[?tokl :token-layer/span-layers ?sl]]
-                                  :in    [?tokl]}
-                                id))
+  (let [sl-ids (:token-layer/span-layers (pxc/entity db id))
         tokens (->> (xt/q db
                           '{:find  [(pull ?tok [:token/id :token/begin :token/end :token/text :token/precedence])]
                             :where [[?tok :token/text ?txt]
@@ -62,11 +51,7 @@
         (assoc :token-layer/span-layers (mapv #(get-doc-info db doc-id id [:span-layer/id %]) sl-ids)))))
 
 (defmethod get-doc-info :span-layer/id [db doc-id parent-id [key id]]
-  (let [rl-ids (map first (xt/q db
-                                '{:find  [?rl]
-                                  :where [[?sl :span-layer/relation-layers ?rl]]
-                                  :in    [?sl]}
-                                id))
+  (let [rl-ids (:span-layer/relation-layers (pxc/entity db id))
         spans (->> (xt/q db
                          '{:find  [(pull ?s [:span/id :span/value :span/tokens])]
                            :where [[?s :span/tokens ?tok]
