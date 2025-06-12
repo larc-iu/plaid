@@ -10,9 +10,9 @@
 
    [""
     {:get  {:summary "List all projects accessible to user"
-            :handler (fn [{xtdb :xtdb :as req}]
+            :handler (fn [{db :db :as req}]
                        {:status 200
-                        :body   (prj/get-accessible xtdb (pra/->user-id req))})}
+                        :body   (prj/get-accessible db (pra/->user-id req))})}
      :post {:summary    "Create a new project. Note: this also registers the user as a maintainer."
             :parameters {:body {:name string?}}
             :handler    (fn [{{{:keys [name]} :body} :parameters xtdb :xtdb :as req}]
@@ -32,8 +32,8 @@
                   :parameters {:query [:map [:include-documents {:optional true} boolean?]]}
                   :handler    (fn [{{{:keys [id]}                :path
                                      {:keys [include-documents]} :query} :parameters
-                                    xtdb :xtdb}]
-                                (let [project (prj/get xtdb id include-documents)]
+                                    db :db}]
+                                (let [project (prj/get db id include-documents)]
                                   (if (some? project)
                                     {:status 200
                                      :body   project}

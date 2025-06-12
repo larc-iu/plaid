@@ -4,12 +4,12 @@
             [plaid.xtdb.token :as tok]
             [plaid.xtdb.token-layer :as tokl]))
 
-(defn get-project-id [{xtdb :xtdb params :params}]
+(defn get-project-id [{db :db params :params}]
   (let [tokl-id (-> params :body :token-layer-id)
         token-id (-> params :path :token-id)]
     (cond
-      tokl-id (tokl/project-id xtdb tokl-id)
-      token-id (tok/project-id xtdb token-id)
+      tokl-id (tokl/project-id db tokl-id)
+      token-id (tok/project-id db token-id)
       :else nil)))
 
 (def token-routes
@@ -39,8 +39,8 @@
 
     ["" {:get    {:summary    "Get a token by ID."
                   :middleware [[pra/wrap-reader-required get-project-id]]
-                  :handler    (fn [{{{:keys [token-id]} :path} :parameters xtdb :xtdb}]
-                                (let [token (tok/get xtdb token-id)]
+                  :handler    (fn [{{{:keys [token-id]} :path} :parameters db :db}]
+                                (let [token (tok/get db token-id)]
                                   (if (some? token)
                                     {:status 200 :body (dissoc token :xt/id)}
                                     {:status 404 :body {:error "Token not found"}})))}

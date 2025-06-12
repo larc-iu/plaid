@@ -58,17 +58,19 @@
     {:openapi    {:security [{:auth []}]}
      :middleware [pra/wrap-login-required]}
 
-    user-routes
-    project-routes
-    document-routes
-    text-routes
-    text-layer-routes
-    token-layer-routes
-    token-routes
-    span-routes
-    span-layer-routes
-    relation-routes
-    relation-layer-routes]
+    [""
+     {:parameters {:query [:map [:as-of {:optional true} inst?]]}}
+     user-routes
+     project-routes
+     document-routes
+     text-routes
+     text-layer-routes
+     token-layer-routes
+     token-routes
+     span-routes
+     span-layer-routes
+     relation-routes
+     relation-layer-routes]]
 
    ;; swagger documentation
    [""
@@ -107,6 +109,7 @@
                            [prm/wrap-request-extras xtdb secret-key]
                            pra/wrap-read-jwt
                            prm/wrap-logging
+                           prm/wrap-as-of-db
                            openapi/openapi-feature]}})
     (ring/create-default-handler)))
 

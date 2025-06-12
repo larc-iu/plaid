@@ -4,14 +4,14 @@
             [reitit.coercion.malli]
             [plaid.xtdb.text-layer :as txtl]))
 
-(defn get-project-id [{xtdb :xtdb params :params}]
+(defn get-project-id [{db :db params :params}]
   (let [prj-id (-> params :body :project-id)
         txtl-id (-> params :path :text-layer-id)]
     (cond prj-id
           prj-id
 
           txtl-id
-          (txtl/project-id xtdb txtl-id)
+          (txtl/project-id db txtl-id)
 
           :else
           nil)))
@@ -39,8 +39,8 @@
 
     [""
      {:get    {:summary "Get a text layer by ID."
-               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xtdb :xtdb :as r}]
-                          (let [text-layer (txtl/get xtdb text-layer-id)]
+               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters db :db :as r}]
+                          (let [text-layer (txtl/get db text-layer-id)]
                             (if (some? text-layer)
                               {:status 200
                                :body   (dissoc text-layer :xt/id)}

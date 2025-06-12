@@ -1,10 +1,7 @@
 (ns plaid.rest-api.v1.user
   (:require [plaid.rest-api.v1.auth :as pra]
             [reitit.coercion.malli]
-            [buddy.hashers :as hashers]
-            [plaid.xtdb.user :as user]
-            [plaid.rest-api.v1.middleware :as prm]
-            [xtdb.api :as xt]))
+            [plaid.xtdb.user :as user]))
 
 (defn filter-keys
   [u]
@@ -20,9 +17,9 @@
 
    [""
     {:get  {:summary "List all users"
-            :handler (fn [{xtdb :xtdb}]
+            :handler (fn [{db :db}]
                        {:status 200
-                        :body   (->> (user/get-all xtdb)
+                        :body   (->> (user/get-all db)
                                      (map filter-keys))})}
      :post {:summary    "Create a new user"
             :parameters {:body {:username string? :password string? :is-admin boolean?}}
@@ -38,8 +35,8 @@
     {:parameters {:path [:map [:id string?]]}}
     [""
      {:get    {:summary "Get a user by ID"
-               :handler (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
-                          (let [user (user/get xtdb id)]
+               :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
+                          (let [user (user/get db id)]
                             (if (some? user)
                               {:status 200
                                :body   (filter-keys user)}

@@ -5,14 +5,14 @@
             [plaid.xtdb.relation-layer :as rl]
             [plaid.xtdb.common :as pxc]))
 
-(defn get-project-id [{xtdb :xtdb params :params}]
+(defn get-project-id [{db :db params :params}]
   (let [sl-id (-> params :body :span-layer-id)
         rl-id (-> params :path :relation-layer-id)]
     (cond sl-id
-          (sl/project-id xtdb sl-id)
+          (sl/project-id db sl-id)
 
           rl-id
-          (rl/project-id xtdb rl-id)
+          (rl/project-id db rl-id)
 
           :else
           nil)))
@@ -43,8 +43,8 @@
     [""
      {:get    {:summary "Get a relation layer by ID."
                :x-client-method "get"
-               :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters xtdb :xtdb}]
-                          (let [relation-layer (rl/get xtdb relation-layer-id)]
+               :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters db :db}]
+                          (let [relation-layer (rl/get db relation-layer-id)]
                             (if (some? relation-layer)
                               {:status 200
                                :body   (dissoc relation-layer :xt/id)}

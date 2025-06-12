@@ -3,12 +3,12 @@
             [reitit.coercion.malli]
             [plaid.xtdb.document :as doc]))
 
-(defn get-project-id [{xtdb :xtdb params :params}]
+(defn get-project-id [{db :db params :params}]
   (let [prj-id (-> params :body :project-id)
         doc-id (-> params :path :document-id)]
     (cond
       prj-id prj-id
-      doc-id (-> (doc/get xtdb doc-id) :document/project)
+      doc-id (-> (doc/get db doc-id) :document/project)
       :else nil)))
 
 (def document-routes
@@ -37,10 +37,10 @@
                   :parameters {:query [:map [:include-body {:optional true} boolean?]]}
                   :handler    (fn [{{{:keys [document-id]} :path
                                      {:keys [include-body]} :query} :parameters
-                                    xtdb :xtdb}]
+                                    db :db}]
                                 (let [document (if include-body
-                                                 (doc/get-with-layer-data xtdb document-id)
-                                                 (doc/get xtdb document-id))]
+                                                 (doc/get-with-layer-data db document-id)
+                                                 (doc/get db document-id))]
                                   (if (some? document)
                                     {:status 200
                                      :body   (dissoc document :xt/id)}
