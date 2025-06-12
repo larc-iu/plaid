@@ -2,6 +2,7 @@
   (:require [xtdb.api :as xt]
             [plaid.algos.text :as ta]
             [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.token :as tok]
             [plaid.xtdb.span :as s])
   (:refer-clojure :exclude [get merge]))
@@ -84,8 +85,23 @@
       :else
       tx)))
 
-(defn create [{:keys [node] :as xt-map} attrs]
-  (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
+(defn create-operation
+  "Build an operation for creating a text"
+  [xt-map attrs]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        {:text/keys [layer document]} attrs
+        project-id (project-id db layer)
+        doc-id document
+        tx-ops (create* xt-map attrs)]
+    (op/make-operation
+     {:type        :text/create
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Create text in layer " layer " for document " document)
+      :tx-ops      tx-ops})))
+
+(defn create [xt-map attrs user-id]
+  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
 
 (defn update-body*
   "Change the textual content (:text/body) of a text item in a way that will also update tokens
@@ -116,8 +132,24 @@
         tx (reduce into [text-tx deletion-tx update-tx])]
     tx))
 
-(defn update-body [xt-map eid new-body]
-  (pxc/submit! (:node xt-map) (update-body* xt-map eid new-body)))
+(defn update-body-operation
+  "Build an operation for updating text body"
+  [xt-map eid new-body]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        text (pxc/entity db eid)
+        project-id (project-id db eid)
+        doc-id (:text/document text)
+        token-ids (get-token-ids db eid)
+        tx-ops (update-body* xt-map eid new-body)]
+    (op/make-operation
+     {:type        :text/update-body
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Update body of text " eid " (affecting " (count token-ids) " tokens)")
+      :tx-ops      tx-ops})))
+
+(defn update-body [xt-map eid new-body user-id]
+  (submit-operations! xt-map [(update-body-operation xt-map eid new-body)] user-id))
 
 (defn delete* [xt-map eid]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
@@ -135,6 +167,23 @@
 
     (vec (reduce into [matches deletes]))))
 
-(defn delete [xt-map eid]
-  (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)]
-    (pxc/submit! node (delete* xt-map eid))))
+(defn delete-operation
+  "Build an operation for deleting a text"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        text (pxc/entity db eid)
+        project-id (project-id db eid)
+        doc-id (:text/document text)
+        token-ids (get-token-ids db eid)
+        span-ids (mapcat #(tok/get-span-ids db %) token-ids)
+        relation-ids (mapcat #(s/get-relation-ids db %) span-ids)
+        tx-ops (delete* xt-map eid)]
+    (op/make-operation
+     {:type        :text/delete
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Delete text " eid " with " (count token-ids) " tokens, " (count span-ids) " spans, " (count relation-ids) " relations")
+      :tx-ops      tx-ops})))
+
+(defn delete [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))

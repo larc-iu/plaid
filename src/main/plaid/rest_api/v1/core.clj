@@ -22,7 +22,8 @@
             [plaid.rest-api.v1.span :refer [span-routes]]
             [plaid.rest-api.v1.span-layer :refer [span-layer-routes]]
             [plaid.rest-api.v1.relation-layer :refer [relation-layer-routes]]
-            [plaid.rest-api.v1.relation :refer [relation-routes]]))
+            [plaid.rest-api.v1.relation :refer [relation-routes]]
+            [plaid.rest-api.v1.audit :refer [audit-routes]]))
 
 (def coercion
   (reitit.coercion.malli/create
@@ -70,7 +71,8 @@
      span-routes
      span-layer-routes
      relation-routes
-     relation-layer-routes]]
+     relation-layer-routes
+     audit-routes]]
 
    ;; swagger documentation
    [""

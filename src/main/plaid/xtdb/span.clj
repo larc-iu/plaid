@@ -1,6 +1,7 @@
 (ns plaid.xtdb.span
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.relation :as r])
   (:refer-clojure :exclude [get merge]))
 
@@ -96,12 +97,42 @@
                           token-matches)]
         (conj matches [::xt/put span])))))
 
-(defn create [{:keys [node] :as xt-map} attrs]
-  (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
+(defn create-operation
+  "Build an operation for creating a span"
+  [xt-map attrs]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        {:span/keys [layer tokens]} attrs
+        project-id (project-id db layer)
+        doc-id (get-doc-id-of-token db (first tokens))
+        tx-ops (create* xt-map attrs)]
+    (op/make-operation
+     {:type        :span/create
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Create span with " (count tokens) " tokens in layer " layer)
+      :tx-ops      tx-ops})))
+
+(defn create [xt-map attrs user-id]
+  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+
+(defn merge-operation
+  "Build an operation for updating a span's value"
+  [xt-map eid m]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        span (pxc/entity db eid)
+        project-id (project-id db eid)
+        doc-id (get-doc-id-of-token db (first (:span/tokens span)))
+        tx-ops (pxc/merge* xt-map eid (select-keys m [:span/value]))]
+    (op/make-operation
+     {:type        :span/update-value
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Update value of span " eid " to " (:span/value m))
+      :tx-ops      tx-ops})))
 
 (defn merge
-  [{:keys [node db] :as xt-map} eid m]
-  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:span/value]))))
+  [{:keys [node db] :as xt-map} eid m user-id]
+  (submit-operations! xt-map [(merge-operation xt-map eid m)] user-id))
 
 (defn delete* [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
@@ -117,8 +148,23 @@
             [relation-deletes
              span-delete])))
 
-(defn delete [xt-map eid]
-  (pxc/submit! (:node xt-map) (delete* xt-map eid)))
+(defn delete-operation
+  "Build an operation for deleting a span"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        span (pxc/entity db eid)
+        project-id (project-id db eid)
+        doc-id (when span (get-doc-id-of-token db (first (:span/tokens span))))
+        tx-ops (delete* xt-map eid)]
+    (op/make-operation
+     {:type        :span/delete
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Delete span " eid " and its " (count (get-relation-ids db eid)) " relations")
+      :tx-ops      tx-ops})))
+
+(defn delete [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
 
 (defn set-tokens* [xt-map eid token-ids]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
@@ -133,8 +179,23 @@
            [::xt/match eid span]
            [::xt/put (assoc span :span/tokens (vec token-ids))]])))
 
-(defn set-tokens [xt-map eid token-ids]
-  (pxc/submit! (:node xt-map) (set-tokens* xt-map eid token-ids)))
+(defn set-tokens-operation
+  "Build an operation for updating a span's tokens"
+  [xt-map eid token-ids]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        span (pxc/entity db eid)
+        project-id (project-id db eid)
+        doc-id (get-doc-id-of-token db (first token-ids))
+        tx-ops (set-tokens* xt-map eid token-ids)]
+    (op/make-operation
+     {:type        :span/update-tokens
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Update tokens of span " eid " to " (count token-ids) " tokens")
+      :tx-ops      tx-ops})))
+
+(defn set-tokens [xt-map eid token-ids user-id]
+  (submit-operations! xt-map [(set-tokens-operation xt-map eid token-ids)] user-id))
 
 (defn remove-token*
   [xt-map span-id token-id]
@@ -146,5 +207,24 @@
       (into base-txs (delete* xt-map span-id))
       base-txs)))
 
-(defn remove-token [xt-map span-id token-id]
-  (pxc/submit! (:node xt-map) (remove-token* xt-map span-id token-id)))
+(defn remove-token-operation
+  "Build an operation for removing a token from a span"
+  [xt-map span-id token-id]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        span (pxc/entity db span-id)
+        project-id (project-id db span-id)
+        doc-id (get-doc-id-of-token db token-id)
+        tx-ops (remove-token* xt-map span-id token-id)
+        will-delete (and (= 1 (-> span :span/tokens count))
+                         (= token-id (first (:span/tokens span))))]
+    (op/make-operation
+     {:type        :span/remove-token
+      :project/id  project-id
+      :document/id doc-id
+      :description (if will-delete
+                     (str "Remove token " token-id " from span " span-id " (deleting span)")
+                     (str "Remove token " token-id " from span " span-id))
+      :tx-ops      tx-ops})))
+
+(defn remove-token [xt-map span-id token-id user-id]
+  (submit-operations! xt-map [(remove-token-operation xt-map span-id token-id)] user-id))

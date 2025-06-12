@@ -62,7 +62,9 @@
                 :else
                 (do
                   (log/debug (str "Found JWT data: " token-data))
-                  (handler (assoc request :jwt-data token-data)))))))))
+                  (handler (assoc request 
+                                  :jwt-data token-data
+                                  :user/id (:user/id token-data))))))))))
 
 (defn wrap-login-required [handler]
   (fn [request]

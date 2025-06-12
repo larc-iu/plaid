@@ -26,9 +26,9 @@
             :parameters {:body [:map
                                 [:token-layer-id :uuid]
                                 [:name :string]]}
-            :handler    (fn [{{{:keys [name token-layer-id]} :body} :parameters xtdb :xtdb :as req}]
+            :handler    (fn [{{{:keys [name token-layer-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                           (let [attrs {:span-layer/name name}
-                                result (sl/create {:node xtdb} attrs token-layer-id)]
+                                result (sl/create {:node xtdb} attrs token-layer-id user-id)]
                             (if (:success result)
                               {:status 201
                                :body   {:id (:extra result)}}
@@ -49,16 +49,16 @@
                                :body   {:error "Span layer not found"}})))}
       :patch  {:summary    "Update a span layer's name."
                :parameters {:body [:map [:name :string]]}
-               :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (sl/merge {:node xtdb} span-layer-id {:span-layer/name name})]
+               :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                             (let [{:keys [success code error]} (sl/merge {:node xtdb} span-layer-id {:span-layer/name name} user-id)]
                                (if success
                                  {:status 200
                                   :body   (dissoc (sl/get xtdb span-layer-id) :xt/id)}
                                  {:status (or code 404)
                                   :body   {:error (or error "Failed to update span layer or span layer not found")}})))}
       :delete {:summary "Delete a span layer."
-               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters xtdb :xtdb}]
-                          (let [{:keys [success code error]} (sl/delete {:node xtdb} span-layer-id)]
+               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
+                          (let [{:keys [success code error]} (sl/delete {:node xtdb} span-layer-id user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 404)
@@ -67,9 +67,9 @@
     ["/shift"
      {:post {:summary    "Shift a span layer's order."
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
-             :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb}]
+             :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
                            (let [up? (= direction "up")
-                                 {:keys [success code error]} (sl/shift-span-layer {:node xtdb} span-layer-id up?)]
+                                 {:keys [success code error]} (sl/shift-span-layer {:node xtdb} span-layer-id up? user-id)]
                              (if success
                                {:status 204}
                                {:status (or code 400)

@@ -1,6 +1,7 @@
 (ns plaid.xtdb.project
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.text-layer :as txtl])
   (:refer-clojure :exclude [get merge]))
 
@@ -69,6 +70,10 @@
   [db-like name]
   (pxc/find-entity (pxc/->db db-like) {:project/name name}))
 
+(defn project-id [db-like id]
+  "For projects, the project-id is the entity's own ID"
+  id)
+
 (defn get-accessible-projects
   "Return a seq of full projects accessible for a user"
   [db-like user-id]
@@ -95,14 +100,39 @@
       [[::xt/match id nil]
        [::xt/put record]])))
 
-(defn create [{:keys [node] :as xt-map} attrs]
-  (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
+(defn create-operation
+  "Build an operation for creating a project"
+  [xt-map attrs]
+  (let [{:project/keys [name]} attrs
+        tx-ops (create* xt-map attrs)]
+    (op/make-operation
+     {:type        :project/create
+      :project/id  nil  ; Project doesn't have a parent project
+      :document/id nil
+      :description (str "Create project \"" name "\"")
+      :tx-ops      tx-ops})))
+
+(defn create [xt-map attrs user-id]
+  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+
+(defn merge-operation
+  "Build an operation for updating a project"
+  [xt-map eid m]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project (pxc/entity db eid)
+        tx-ops (do (when-let [name (:project/name m)]
+                     (pxc/valid-name? name))
+                   (pxc/merge* xt-map eid (select-keys m [:project/name])))]
+    (op/make-operation
+     {:type        :project/update
+      :project/id  eid
+      :document/id nil
+      :description (str "Update project " eid (when (:project/name m) (str " to name \"" (:project/name m) "\"")))
+      :tx-ops      tx-ops})))
 
 (defn merge
-  [{:keys [node db] :as xt-map} eid m]
-  (when-let [name (:project/name m)]
-    (pxc/valid-name? name))
-  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:project/name]))))
+  [{:keys [node db] :as xt-map} eid m user-id]
+  (submit-operations! xt-map [(merge-operation xt-map eid m)] user-id))
 
 (defn delete*
   [xt-map eid]
@@ -129,8 +159,23 @@
       :else
       all-txs)))
 
-(defn delete [{:keys [node] :as xt-map} eid]
-  (pxc/submit! node (delete* xt-map eid)))
+(defn delete-operation
+  "Build an operation for deleting a project"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project (pxc/entity db eid)
+        text-layers (:project/text-layers project)
+        documents (get-document-ids db eid)
+        tx-ops (delete* xt-map eid)]
+    (op/make-operation
+     {:type        :project/delete
+      :project/id  eid
+      :document/id nil
+      :description (str "Delete project " eid " with " (count text-layers) " text layers and " (count documents) " documents")
+      :tx-ops      tx-ops})))
+
+(defn delete [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
 
 ;; access privileges --------------------------------------------------------------------------------
 (defn- modify-privileges* [xt-map project-id user-id [add? key]]
@@ -166,35 +211,101 @@
 (defn add-reader*
   [xt-map project-id user-id]
   (modify-privileges* xt-map project-id user-id [true :project/readers]))
-(defn add-reader [xt-map project-id user-id]
-  (pxc/submit! (:node xt-map) (add-reader* xt-map project-id user-id)))
+(defn add-reader-operation
+  "Build an operation for adding a reader to a project"
+  [xt-map project-id user-id]
+  (let [tx-ops (add-reader* xt-map project-id user-id)]
+    (op/make-operation
+     {:type        :project/add-reader
+      :project/id  project-id
+      :document/id nil
+      :description (str "Add reader " user-id " to project " project-id)
+      :tx-ops      tx-ops})))
+
+(defn add-reader [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(add-reader-operation xt-map project-id user-id)] actor-user-id))
 
 (defn remove-reader* [{:keys [node] :as xt-map} project-id user-id]
   (modify-privileges* xt-map project-id user-id [false :project/readers]))
-(defn remove-reader [xt-map project-id user-id]
-  (pxc/submit! (:node xt-map) (remove-reader* xt-map project-id user-id)))
+(defn remove-reader-operation
+  "Build an operation for removing a reader from a project"
+  [xt-map project-id user-id]
+  (let [tx-ops (remove-reader* xt-map project-id user-id)]
+    (op/make-operation
+     {:type        :project/remove-reader
+      :project/id  project-id
+      :document/id nil
+      :description (str "Remove reader " user-id " from project " project-id)
+      :tx-ops      tx-ops})))
+
+(defn remove-reader [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(remove-reader-operation xt-map project-id user-id)] actor-user-id))
 
 (defn add-writer*
   [xt-map project-id user-id]
   (modify-privileges* xt-map project-id user-id [true :project/writers]))
-(defn add-writer [xt-map project-id user-id]
-  (pxc/submit! (:node xt-map) (add-writer* xt-map project-id user-id)))
+(defn add-writer-operation
+  "Build an operation for adding a writer to a project"
+  [xt-map project-id user-id]
+  (let [tx-ops (add-writer* xt-map project-id user-id)]
+    (op/make-operation
+     {:type        :project/add-writer
+      :project/id  project-id
+      :document/id nil
+      :description (str "Add writer " user-id " to project " project-id)
+      :tx-ops      tx-ops})))
+
+(defn add-writer [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(add-writer-operation xt-map project-id user-id)] actor-user-id))
 
 (defn remove-writer* [{:keys [node] :as xt-map} project-id user-id]
   (modify-privileges* xt-map project-id user-id [false :project/writers]))
-(defn remove-writer [xt-map project-id user-id]
-  (pxc/submit! (:node xt-map) (remove-writer* xt-map project-id user-id)))
+(defn remove-writer-operation
+  "Build an operation for removing a writer from a project"
+  [xt-map project-id user-id]
+  (let [tx-ops (remove-writer* xt-map project-id user-id)]
+    (op/make-operation
+     {:type        :project/remove-writer
+      :project/id  project-id
+      :document/id nil
+      :description (str "Remove writer " user-id " from project " project-id)
+      :tx-ops      tx-ops})))
+
+(defn remove-writer [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(remove-writer-operation xt-map project-id user-id)] actor-user-id))
 
 (defn add-maintainer*
   [xt-map project-id user-id]
   (modify-privileges* xt-map project-id user-id [true :project/maintainers]))
-(defn add-maintainer [xt-map project-id user-id]
-  (pxc/submit! (:node xt-map) (add-maintainer* xt-map project-id user-id)))
+(defn add-maintainer-operation
+  "Build an operation for adding a maintainer to a project"
+  [xt-map project-id user-id]
+  (let [tx-ops (add-maintainer* xt-map project-id user-id)]
+    (op/make-operation
+     {:type        :project/add-maintainer
+      :project/id  project-id
+      :document/id nil
+      :description (str "Add maintainer " user-id " to project " project-id)
+      :tx-ops      tx-ops})))
+
+(defn add-maintainer [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(add-maintainer-operation xt-map project-id user-id)] actor-user-id))
 
 (defn remove-maintainer* [{:keys [node] :as xt-map} project-id user-id]
   (modify-privileges* xt-map project-id user-id [false :project/maintainers]))
-(defn remove-maintainer [xt-map project-id user-id]
-  (pxc/submit! (:node xt-map) (remove-maintainer* xt-map project-id user-id)))
+(defn remove-maintainer-operation
+  "Build an operation for removing a maintainer from a project"
+  [xt-map project-id user-id]
+  (let [tx-ops (remove-maintainer* xt-map project-id user-id)]
+    (op/make-operation
+     {:type        :project/remove-maintainer
+      :project/id  project-id
+      :document/id nil
+      :description (str "Remove maintainer " user-id " from project " project-id)
+      :tx-ops      tx-ops})))
+
+(defn remove-maintainer [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(remove-maintainer-operation xt-map project-id user-id)] actor-user-id))
 
 ;; This is not actually a project operation, but this is the most sensible place to put it
 (defn assoc-editor-config-pair [xt-map layer-id editor-name config-key config-value]

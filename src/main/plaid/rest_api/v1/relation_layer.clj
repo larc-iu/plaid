@@ -28,9 +28,9 @@
             :parameters {:body [:map
                                 [:span-layer-id :uuid]
                                 [:name :string]]}
-            :handler    (fn [{{{:keys [name span-layer-id]} :body} :parameters xtdb :xtdb :as req}]
+            :handler    (fn [{{{:keys [name span-layer-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                           (let [attrs {:relation-layer/name name}
-                                result (rl/create {:node xtdb} attrs span-layer-id)]
+                                result (rl/create {:node xtdb} attrs span-layer-id user-id)]
                             (if (:success result)
                               {:status 201
                                :body   {:id (:extra result)}}
@@ -53,8 +53,8 @@
       :patch  {:summary    "Update a relation layer's name."
                :x-client-method "update"
                :parameters {:body [:map [:name :string]]}
-               :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (rl/merge {:node xtdb} relation-layer-id {:relation-layer/name name})]
+               :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                             (let [{:keys [success code error]} (rl/merge {:node xtdb} relation-layer-id {:relation-layer/name name} user-id)]
                                (if success
                                  {:status 200
                                   :body   (dissoc (rl/get xtdb relation-layer-id) :xt/id)}
@@ -62,8 +62,8 @@
                                   :body   {:error (or error "Failed to update relation layer or relation layer not found")}})))}
       :delete {:summary "Delete a relation layer."
                :x-client-method "delete"
-               :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters xtdb :xtdb}]
-                          (let [{:keys [success code error]} (rl/delete {:node xtdb} relation-layer-id)]
+               :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
+                          (let [{:keys [success code error]} (rl/delete {:node xtdb} relation-layer-id user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 404)
@@ -73,12 +73,12 @@
      {:post {:summary    "Shift a relation layer's order."
              :x-client-method "shift"
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
-             :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb}]
-                           (let [up? (= direction "up")]
-                             (let [{:keys [success code error]} (rl/shift-relation-layer {:node xtdb} relation-layer-id up?)]
-                               (if success
-                                 {:status 204}
-                                 {:status (or code 400)
-                                  :body   {:error (or error "Failed to shift relation layer")}}))))}}]
+             :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                           (let [up? (= direction "up")
+                                 {:keys [success code error]} (rl/shift-relation-layer {:node xtdb} relation-layer-id up? user-id)]
+                             (if success
+                               {:status 204}
+                               {:status (or code 400)
+                                :body   {:error (or error "Failed to shift relation layer")}})))}}]
 
     (layer-config-routes :relation-layer-id)]])

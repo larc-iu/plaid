@@ -26,13 +26,13 @@
                                    [:target-id :uuid]
                                    [:value any?]
                                    [:id {:optional true} string?]]}
-               :handler    (fn [{{{:keys [layer-id source-id target-id value id]} :body} :parameters xtdb :xtdb}]
+               :handler    (fn [{{{:keys [layer-id source-id target-id value id]} :body} :parameters xtdb :xtdb user-id :user/id :as request}]
                              (let [attrs (cond-> {:relation/layer  layer-id
                                                   :relation/source source-id
                                                   :relation/target target-id
                                                   :relation/value  value}
                                                  id (assoc :relation/id id))
-                                   result (rel/create {:node xtdb} attrs)]
+                                   result (rel/create {:node xtdb} attrs user-id)]
                                (if (:success result)
                                  {:status 201 :body {:id (:extra result)}}
                                  {:status (or (:code result) 400) :body {:error (:error result)}})))}}]
@@ -50,31 +50,31 @@
          :patch  {:summary    "Update a relation's value."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :parameters {:body [:map [:value any?]]}
-                  :handler    (fn [{{{:keys [relation-id]} :path {:keys [value]} :body} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (rel/merge {:node xtdb} relation-id {:relation/value value})]
+                  :handler    (fn [{{{:keys [relation-id]} :path {:keys [value]} :body} :parameters xtdb :xtdb user-id :user/id :as request}]
+                                (let [{:keys [success code error]} (rel/merge {:node xtdb} relation-id {:relation/value value} user-id)]
                                   (if success
                                     {:status 200 :body (dissoc (rel/get xtdb relation-id) :xt/id)}
                                     {:status (or code 404) :body {:error (or error "Failed to update relation or relation not found")}})))}
          :delete {:summary    "Delete a relation."
                   :middleware [[pra/wrap-writer-required get-project-id]]
-                  :handler    (fn [{{{:keys [relation-id]} :path} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (rel/delete {:node xtdb} relation-id)]
+                  :handler    (fn [{{{:keys [relation-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
+                                (let [{:keys [success code error]} (rel/delete {:node xtdb} relation-id user-id)]
                                   (if success
                                     {:status 204}
                                     {:status (or code 404) :body {:error (or error "Relation not found")}})))}}]
     ["/source" {:put {:summary    "Update the source span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]]
                       :parameters {:body [:map [:span-id :uuid]]}
-                      :handler    (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb}]
-                                    (let [{:keys [success code error]} (rel/set-end {:node xtdb} relation-id :relation/source span-id)]
+                      :handler    (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                                    (let [{:keys [success code error]} (rel/set-end {:node xtdb} relation-id :relation/source span-id user-id)]
                                       (if success
                                         {:status 200 :body (dissoc (rel/get xtdb relation-id) :xt/id)}
                                         {:status (or code 400) :body {:error (or error "Failed to update relation source")}})))}}]
     ["/target" {:put {:summary    "Update the target span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]]
                       :parameters {:body [:map [:span-id :uuid]]}
-                      :handler    (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb}]
-                                    (let [{:keys [success code error]} (rel/set-end {:node xtdb} relation-id :relation/target span-id)]
+                      :handler    (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                                    (let [{:keys [success code error]} (rel/set-end {:node xtdb} relation-id :relation/target span-id user-id)]
                                       (if success
                                         {:status 200 :body (dissoc (rel/get xtdb relation-id) :xt/id)}
                                         {:status (or code 400) :body {:error (or error "Failed to update relation target")}})))}}]]])
