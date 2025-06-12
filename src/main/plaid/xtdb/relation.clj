@@ -1,6 +1,8 @@
 (ns plaid.xtdb.relation
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.relation-layer :as rll]
             [taoensso.timbre :as log])
   (:refer-clojure :exclude [get merge]))
 
@@ -91,12 +93,42 @@
        [::xt/match layer (pxc/entity db layer)]
        [::xt/put r]])))
 
-(defn create [{:keys [node] :as xt-map} attrs]
-  (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
+(defn create-operation
+  "Build an operation for creating a relation"
+  [xt-map attrs]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        {:relation/keys [layer source target]} attrs
+        project-id (rll/project-id db layer)
+        doc-id (get-doc-id-of-span db source)
+        tx-ops (create* xt-map attrs)]
+    (op/make-operation
+     {:type        :relation/create
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Create relation from span " source " to span " target " in layer " layer)
+      :tx-ops      tx-ops})))
+
+(defn create [xt-map attrs user-id]
+  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+
+(defn merge-operation
+  "Build an operation for updating a relation's value"
+  [xt-map eid m]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        relation (pxc/entity db eid)
+        project-id (project-id db eid)
+        doc-id (get-doc-id-of-span db (:relation/source relation))
+        tx-ops (pxc/merge* xt-map eid (select-keys m [:relation/value]))]
+    (op/make-operation
+     {:type        :relation/update-value
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Update value of relation " eid " to " (:relation/value m))
+      :tx-ops      tx-ops})))
 
 (defn merge
-  [{:keys [node db] :as xt-map} eid m]
-  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:relation/value]))))
+  [{:keys [node db] :as xt-map} eid m user-id]
+  (submit-operations! xt-map [(merge-operation xt-map eid m)] user-id))
 
 (defn set-end*
   "Modify either :relation/source or :relation/target, controlled by key"
@@ -149,8 +181,24 @@
        [::xt/match span-id new-span]
        [::xt/put (assoc r key span-id)]])))
 
-(defn set-end [xt-map eid key span-id]
-  (pxc/submit! (:node xt-map) (set-end* xt-map eid key span-id)))
+(defn set-end-operation
+  "Build an operation for updating a relation's source or target"
+  [xt-map eid key span-id]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        relation (pxc/entity db eid)
+        project-id (project-id db eid)
+        doc-id (get-doc-id-of-span db (:relation/source relation))
+        end-type (if (= key :relation/source) "source" "target")
+        tx-ops (set-end* xt-map eid key span-id)]
+    (op/make-operation
+     {:type        :relation/update-endpoint
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Update " end-type " of relation " eid " to span " span-id)
+      :tx-ops      tx-ops})))
+
+(defn set-end [xt-map eid key span-id user-id]
+  (submit-operations! xt-map [(set-end-operation xt-map eid key span-id)] user-id))
 
 (defn delete* [xt-map eid]
   (let [{:keys [db node] :as xt-map} (pxc/ensure-db xt-map)
@@ -162,5 +210,20 @@
     [[::xt/match eid r]
      [::xt/delete eid]]))
 
-(defn delete [xt-map eid]
-  (pxc/submit! (:node xt-map) (delete* xt-map eid)))
+(defn delete-operation
+  "Build an operation for deleting a relation"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        relation (pxc/entity db eid)
+        project-id (project-id db eid)
+        doc-id (when relation (get-doc-id-of-span db (:relation/source relation)))
+        tx-ops (delete* xt-map eid)]
+    (op/make-operation
+     {:type        :relation/delete
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Delete relation " eid)
+      :tx-ops      tx-ops})))
+
+(defn delete [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))

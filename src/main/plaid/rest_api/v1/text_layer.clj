@@ -25,9 +25,9 @@
             :parameters {:body [:map
                                 [:project-id :uuid]
                                 [:name :string]]}
-            :handler    (fn [{{{:keys [project-id name]} :body} :parameters xtdb :xtdb :as req}]
+            :handler    (fn [{{{:keys [project-id name]} :body} :parameters xtdb :xtdb user-id :user/id}]
                           (let [attrs {:text-layer/name name}]
-                            (let [result (txtl/create {:node xtdb} attrs project-id)]
+                            (let [result (txtl/create {:node xtdb} attrs project-id user-id)]
                               (if (:success result)
                                 {:status 201
                                  :body   {:id (:extra result)}}
@@ -48,16 +48,16 @@
                                :body   {:error "Text layer not found"}})))}
       :patch  {:summary    "Update a text layer's name."
                :parameters {:body [:map [:name :string]]}
-               :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (txtl/merge {:node xtdb} text-layer-id {:text-layer/name name})]
+               :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                             (let [{:keys [success code error]} (txtl/merge {:node xtdb} text-layer-id {:text-layer/name name} user-id)]
                                (if success
                                  {:status 200
                                   :body   (dissoc (txtl/get xtdb text-layer-id) :xt/id)}
                                  {:status (or code 404)
                                   :body   {:error (or error "Failed to update text layer or text layer not found")}})))}
       :delete {:summary "Delete a text layer."
-               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xtdb :xtdb}]
-                          (let [{:keys [success code error]} (txtl/delete {:node xtdb} text-layer-id)]
+               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
+                          (let [{:keys [success code error]} (txtl/delete {:node xtdb} text-layer-id user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 404)
@@ -66,9 +66,9 @@
     ["/shift"
      {:post {:summary    "Shift a text layer's order within the project."
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
-             :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb}]
+             :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
                            (let [up? (= direction "up")
-                                 {:keys [success code error]} (txtl/shift-text-layer {:node xtdb} text-layer-id up?)]
+                                 {:keys [success code error]} (txtl/shift-text-layer {:node xtdb} text-layer-id up? user-id)]
                              (if success
                                {:status 204}
                                {:status (or code 400)

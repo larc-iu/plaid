@@ -1,6 +1,7 @@
 (ns plaid.xtdb.text-layer
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.token-layer :as tokl])
   (:refer-clojure :exclude [get merge]))
 
@@ -46,19 +47,57 @@
       :else
       tx)))
 
-(defn create [{:keys [node] :as xt-map} attrs project-id]
-  (pxc/submit-with-extras! node (create* xt-map attrs project-id) #(-> % last last :xt/id)))
+(defn create-operation
+  "Build an operation for creating a text layer"
+  [xt-map attrs project-id]
+  (let [{:text-layer/keys [name]} attrs
+        tx-ops (create* xt-map attrs project-id)]
+    (op/make-operation
+     {:type        :text-layer/create
+      :project/id  project-id
+      :document/id nil
+      :description (str "Create text layer \"" name "\" in project " project-id)
+      :tx-ops      tx-ops})))
+
+(defn create [xt-map attrs project-id user-id]
+  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs project-id)] user-id #(-> % last last :xt/id)))
+
+(defn merge-operation
+  "Build an operation for updating a text layer"
+  [xt-map eid m]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project-id (project-id db eid)
+        tx-ops (do (when-let [name (:text-layer/name m)]
+                     (pxc/valid-name? name))
+                   (pxc/merge* xt-map eid (select-keys m [:text-layer/name])))]
+    (op/make-operation
+     {:type        :text-layer/update
+      :project/id  project-id
+      :document/id nil
+      :description (str "Update text layer " eid (when (:text-layer/name m) (str " to name \"" (:text-layer/name m) "\"")))
+      :tx-ops      tx-ops})))
 
 (defn merge
-  [{:keys [node db] :as xt-map} eid m]
-  (when-let [name (:text-layer/name m)]
-    (pxc/valid-name? name))
-  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:text-layer/name]))))
+  [{:keys [node db] :as xt-map} eid m user-id]
+  (submit-operations! xt-map [(merge-operation xt-map eid m)] user-id))
 
 (def shift-text-layer* (pxc/make-shift-layer* :project/id :text-layer/id :project/text-layers))
+(defn shift-text-layer-operation
+  "Build an operation for shifting a text layer"
+  [xt-map text-layer-id up?]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project-id (project-id db text-layer-id)
+        tx-ops (shift-text-layer* xt-map text-layer-id up?)]
+    (op/make-operation
+     {:type        :text-layer/shift
+      :project/id  project-id
+      :document/id nil
+      :description (str "Shift text layer " text-layer-id " " (if up? "up" "down"))
+      :tx-ops      tx-ops})))
+
 (defn shift-text-layer
-  [{:keys [node] :as xt-map} text-layer-id up?]
-  (pxc/submit! node (shift-text-layer* xt-map text-layer-id up?)))
+  [xt-map text-layer-id up? user-id]
+  (submit-operations! xt-map [(shift-text-layer-operation xt-map text-layer-id up?)] user-id))
 
 (defn delete*
   "This does NOT remove refs from :project/text-layers and is primarily intended for use in
@@ -88,11 +127,24 @@
          [[::xt/match eid text-layer]
           [::xt/delete eid]]]))))
 
-(defn delete [xt-map eid]
-  (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
-        base-tx (delete* xt-map eid)
+(defn delete-operation
+  "Build an operation for deleting a text layer"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        text-layer (pxc/entity db eid)
         project-id (parent-id db eid)
+        token-layers (:text-layer/token-layers text-layer)
+        base-tx (delete* xt-map eid)
         project (pxc/entity db project-id)
         delete-layer-tx [[::xt/match project-id project]
-                         [::xt/put (pxc/remove-id project :project/text-layers eid)]]]
-    (pxc/submit! node (into base-tx delete-layer-tx))))
+                         [::xt/put (pxc/remove-id project :project/text-layers eid)]]
+        all-tx-ops (into base-tx delete-layer-tx)]
+    (op/make-operation
+     {:type        :text-layer/delete
+      :project/id  project-id
+      :document/id nil
+      :description (str "Delete text layer " eid " with " (count token-layers) " token layers")
+      :tx-ops      all-tx-ops})))
+
+(defn delete [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))

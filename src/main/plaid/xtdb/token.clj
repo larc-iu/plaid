@@ -1,6 +1,7 @@
 (ns plaid.xtdb.token
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.span :as s]
             [taoensso.timbre :as log])
   (:refer-clojure :exclude [get merge]))
@@ -119,8 +120,27 @@
        [::xt/match (:xt/id text) text]
        [::xt/put token]])))
 
-(defn create [{:keys [node] :as xt-map} attrs]
-  (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
+(defn get-doc-id-of-text
+  [db text-id]
+  (:text/document (pxc/entity db text-id)))
+
+(defn create-operation
+  "Build an operation for creating a token"
+  [xt-map attrs]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        {:token/keys [layer text begin end]} attrs
+        project-id (project-id db layer)
+        doc-id (get-doc-id-of-text db text)
+        tx-ops (create* xt-map attrs)]
+    (op/make-operation
+     {:type        :token/create
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Create token " begin "-" end " in layer " layer)
+      :tx-ops      tx-ops})))
+
+(defn create [xt-map attrs user-id]
+  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
 
 (defn- set-extent [{:keys [node db] :as xt-map} eid {new-begin :token/begin new-end :token/end}]
   (let [{:token/keys [begin end text layer] :as token} (pxc/entity db eid)
@@ -193,8 +213,27 @@
       (update-in base [2 1] dissoc :token/precedence)
       base)))
 
-(defn merge [xt-map eid attrs]
-  (pxc/submit! (:node xt-map) (merge* xt-map eid attrs)))
+(defn merge-operation
+  "Build an operation for updating a token"
+  [xt-map eid attrs]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        token (pxc/entity db eid)
+        project-id (project-id db eid)
+        doc-id (get-doc-id-of-text db (:token/text token))
+        tx-ops (merge* xt-map eid attrs)
+        changes (cond-> []
+                       (contains? attrs :token/begin) (conj "start")
+                       (contains? attrs :token/end) (conj "end")
+                       (contains? attrs :token/precedence) (conj "precedence"))]
+    (op/make-operation
+     {:type        :token/update
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Update " (clojure.string/join ", " changes) " of token " eid)
+      :tx-ops      tx-ops})))
+
+(defn merge [xt-map eid attrs user-id]
+  (submit-operations! xt-map [(merge-operation xt-map eid attrs)] user-id))
 
 (defn delete*
   [xt-map eid]
@@ -209,6 +248,21 @@
       [[::xt/match eid (pxc/entity db eid)]
        [::xt/delete eid]])))
 
-(defn delete [xt-map eid]
-  (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)]
-    (pxc/submit! node (delete* xt-map eid))))
+(defn delete-operation
+  "Build an operation for deleting a token"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        token (pxc/entity db eid)
+        spans (get-span-ids db eid)
+        project-id (project-id db eid)
+        doc-id (when token (get-doc-id-of-text db (:token/text token)))
+        tx-ops (delete* xt-map eid)]
+    (op/make-operation
+     {:type        :token/delete
+      :project/id  project-id
+      :document/id doc-id
+      :description (str "Delete token " eid " from " (count spans) " spans")
+      :tx-ops      tx-ops})))
+
+(defn delete [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))

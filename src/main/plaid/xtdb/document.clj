@@ -1,6 +1,7 @@
 (ns plaid.xtdb.document
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.text :as text]
             [plaid.xtdb.token-layer :as tokl])
   (:refer-clojure :exclude [get merge]))
@@ -14,6 +15,9 @@
   [db-like id]
   (let [db (pxc/->db db-like)]
     (pxc/find-entity db {:document/id id})))
+
+(defn project-id [db-like id]
+  (:document/project (pxc/entity (pxc/->db db-like) id)))
 
 (defmulti get-doc-info (fn [db doc-id parent-id [key id]] key))
 
@@ -126,14 +130,41 @@
       :else
       tx)))
 
-(defn create [{:keys [node] :as xt-map} attrs]
-  (pxc/submit-with-extras! node (create* xt-map attrs) #(-> % last last :xt/id)))
+(defn create-operation
+  "Build an operation for creating a document"
+  [xt-map attrs]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        {:document/keys [project name]} attrs
+        tx-ops (create* xt-map attrs)]
+    (op/make-operation
+     {:type        :document/create
+      :project/id  project
+      :document/id nil
+      :description (str "Create document \"" name "\" in project " project)
+      :tx-ops      tx-ops})))
+
+(defn create [xt-map attrs user-id]
+  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+
+(defn merge-operation
+  "Build an operation for updating a document"
+  [xt-map eid m]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        document (pxc/entity db eid)
+        project-id (project-id db eid)
+        tx-ops (do (when-let [name (:document/name m)]
+                     (pxc/valid-name? name))
+                   (pxc/merge* xt-map eid (select-keys m [:document/name])))]
+    (op/make-operation
+     {:type        :document/update
+      :project/id  project-id
+      :document/id eid
+      :description (str "Update document " eid (when (:document/name m) (str " to name \"" (:document/name m) "\"")))
+      :tx-ops      tx-ops})))
 
 (defn merge
-  [{:keys [node db] :as xt-map} eid m]
-  (when-let [name (:document/name m)]
-    (pxc/valid-name? name))
-  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:document/name]))))
+  [{:keys [node db] :as xt-map} eid m user-id]
+  (submit-operations! xt-map [(merge-operation xt-map eid m)] user-id))
 
 (defn delete* [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
@@ -147,7 +178,21 @@
                   [[::xt/match eid (pxc/entity db eid)]
                    [::xt/delete eid]]])))
 
-(defn delete [xt-map eid]
-  (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)]
-    (pxc/submit! node (delete* xt-map eid))))
+(defn delete-operation
+  "Build an operation for deleting a document"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        document (pxc/entity db eid)
+        project-id (project-id db eid)
+        text-ids (get-text-ids db eid)
+        tx-ops (delete* xt-map eid)]
+    (op/make-operation
+     {:type        :document/delete
+      :project/id  project-id
+      :document/id eid
+      :description (str "Delete document " eid " with " (count text-ids) " texts")
+      :tx-ops      tx-ops})))
+
+(defn delete [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
 

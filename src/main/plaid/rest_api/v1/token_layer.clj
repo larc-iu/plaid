@@ -26,9 +26,9 @@
             :parameters {:body [:map
                                 [:text-layer-id :uuid]
                                 [:name :string]]}
-            :handler    (fn [{{{:keys [name text-layer-id]} :body} :parameters xtdb :xtdb :as req}]
+            :handler    (fn [{{{:keys [name text-layer-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                           (let [attrs {:token-layer/name name}
-                                result (tokl/create {:node xtdb} attrs text-layer-id)]
+                                result (tokl/create {:node xtdb} attrs text-layer-id user-id)]
                             (if (:success result)
                               {:status 201
                                :body   {:id (:extra result)}}
@@ -50,16 +50,16 @@
 
       :patch  {:summary    "Update a token layer's name."
                :parameters {:body [:map [:name :string]]}
-               :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (tokl/merge {:node xtdb} token-layer-id {:token-layer/name name})]
+               :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                             (let [{:keys [success code error]} (tokl/merge {:node xtdb} token-layer-id {:token-layer/name name} user-id)]
                                (if success
                                  {:status 200
                                   :body   (dissoc (tokl/get xtdb token-layer-id) :xt/id)}
                                  {:status (or code 404)
                                   :body   {:error (or error "Failed to update token layer or token layer not found")}})))}
       :delete {:summary "Delete a token layer."
-               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters xtdb :xtdb}]
-                          (let [{:keys [success code error]} (tokl/delete {:node xtdb} token-layer-id)]
+               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
+                          (let [{:keys [success code error]} (tokl/delete {:node xtdb} token-layer-id user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 404)
@@ -68,9 +68,9 @@
     ["/shift"
      {:post {:summary    "Shift a token layer's order."
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
-             :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb}]
+             :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
                            (let [up? (= direction "up")
-                                 {:keys [success code error]} (tokl/shift-token-layer {:node xtdb} token-layer-id up?)]
+                                 {:keys [success code error]} (tokl/shift-token-layer {:node xtdb} token-layer-id up? user-id)]
                              (if success
                                {:status 204}
                                {:status (or code 400)

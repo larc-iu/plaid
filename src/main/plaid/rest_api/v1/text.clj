@@ -21,11 +21,11 @@
                                    [:text-layer-id :uuid]
                                    [:document-id :uuid]
                                    [:body string?]]}
-               :handler    (fn [{{{:keys [text-layer-id document-id body]} :body} :parameters xtdb :xtdb}]
+               :handler    (fn [{{{:keys [text-layer-id document-id body]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [attrs {:text/layer    text-layer-id
                                           :text/document document-id
                                           :text/body     body}
-                                   result (txt/create {:node xtdb} attrs)]
+                                   result (txt/create {:node xtdb} attrs user-id)]
                                (if (:success result)
                                  {:status 201
                                   :body   {:id (:extra result)}}
@@ -47,8 +47,8 @@
          :patch  {:summary    "Update a text's body."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :parameters {:body [:map [:body string?]]}
-                  :handler    (fn [{{{:keys [text-id]} :path {:keys [body]} :body} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (txt/update-body {:node xtdb} text-id body)]
+                  :handler    (fn [{{{:keys [text-id]} :path {:keys [body]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                                (let [{:keys [success code error]} (txt/update-body {:node xtdb} text-id body user-id)]
                                   (if success
                                     {:status 200
                                      :body   (dissoc (txt/get xtdb text-id) :xt/id)}
@@ -56,8 +56,8 @@
                                      :body   {:error (or error "Failed to update text or text not found")}})))}
          :delete {:summary    "Delete a text."
                   :middleware [[pra/wrap-writer-required get-project-id]]
-                  :handler    (fn [{{{:keys [text-id]} :path} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (txt/delete {:node xtdb} text-id)]
+                  :handler    (fn [{{{:keys [text-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
+                                (let [{:keys [success code error]} (txt/delete {:node xtdb} text-id user-id)]
                                   (if success
                                     {:status 204}
                                     {:status (or code 404)

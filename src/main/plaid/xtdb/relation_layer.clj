@@ -1,6 +1,7 @@
 (ns plaid.xtdb.relation-layer
   (:require [xtdb.api :as xt]
-            [plaid.xtdb.common :as pxc])
+            [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:relation-layer/id
@@ -52,18 +53,58 @@
       :else
       tx)))
 
-(defn create [{:keys [node] :as xt-map} attrs span-layer-id]
-  (pxc/submit-with-extras! node (create* xt-map attrs span-layer-id) #(-> % last last :xt/id)))
+(defn create-operation
+  "Build an operation for creating a relation layer"
+  [xt-map attrs span-layer-id]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        {:relation-layer/keys [name]} attrs
+        project-id (project-id db span-layer-id)
+        tx-ops (create* xt-map attrs span-layer-id)]
+    (op/make-operation
+     {:type        :relation-layer/create
+      :project/id  project-id
+      :document/id nil
+      :description (str "Create relation layer \"" name "\" in span layer " span-layer-id)
+      :tx-ops      tx-ops})))
+
+(defn create [xt-map attrs span-layer-id user-id]
+  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs span-layer-id)] user-id #(-> % last last :xt/id)))
+
+(defn merge-operation
+  "Build an operation for updating a relation layer"
+  [xt-map eid m]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project-id (project-id db eid)
+        tx-ops (do (when-let [name (:relation-layer/name m)]
+                     (pxc/valid-name? name))
+                   (pxc/merge* xt-map eid (select-keys m [:relation-layer/name])))]
+    (op/make-operation
+     {:type        :relation-layer/update
+      :project/id  project-id
+      :document/id nil
+      :description (str "Update relation layer " eid (when (:relation-layer/name m) (str " to name \"" (:relation-layer/name m) "\"")))
+      :tx-ops      tx-ops})))
 
 (defn merge
-  [{:keys [node db] :as xt-map} eid m]
-  (when-let [name (:relation-layer/name m)]
-    (pxc/valid-name? name))
-  (pxc/submit! node (pxc/merge* xt-map eid (select-keys m [:relation-layer/name]))))
+  [{:keys [node db] :as xt-map} eid m user-id]
+  (submit-operations! xt-map [(merge-operation xt-map eid m)] user-id))
 
 (def shift-relation-layer* (pxc/make-shift-layer* :span-layer/id :relation-layer/id :span-layer/relation-layers))
-(defn shift-relation-layer [{:keys [node db] :as xt-map} relation-layer-id up?]
-  (pxc/submit! node (shift-relation-layer* xt-map relation-layer-id up?)))
+(defn shift-relation-layer-operation
+  "Build an operation for shifting a relation layer"
+  [xt-map relation-layer-id up?]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project-id (project-id db relation-layer-id)
+        tx-ops (shift-relation-layer* xt-map relation-layer-id up?)]
+    (op/make-operation
+     {:type        :relation-layer/shift
+      :project/id  project-id
+      :document/id nil
+      :description (str "Shift relation layer " relation-layer-id " " (if up? "up" "down"))
+      :tx-ops      tx-ops})))
+
+(defn shift-relation-layer [xt-map relation-layer-id up? user-id]
+  (submit-operations! xt-map [(shift-relation-layer-operation xt-map relation-layer-id up?)] user-id))
 
 (defn delete* [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
@@ -85,11 +126,28 @@
                     [[::xt/match eid (pxc/entity db eid)]
                      [::xt/delete eid]]]))))
 
-(defn delete [xt-map eid]
-  (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
+(defn delete-operation
+  "Build an operation for deleting a relation layer"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        relation-layer (pxc/entity db eid)
+        project-id (project-id db eid)
+        relation-ids (map first (xt/q db '{:find  [?r]
+                                           :where [[?r :relation/layer ?rl]]
+                                           :in    [?rl]}
+                                      eid))
         base-tx (delete* xt-map eid)
         span-layer-id (parent-id db eid)
         span-layer (pxc/entity db span-layer-id)
         delete-layer-tx [[::xt/match span-layer-id span-layer]
-                         [::xt/put (pxc/remove-id span-layer :span-layer/relation-layers eid)]]]
-    (pxc/submit! node (into base-tx delete-layer-tx))))
+                         [::xt/put (pxc/remove-id span-layer :span-layer/relation-layers eid)]]
+        all-tx-ops (into base-tx delete-layer-tx)]
+    (op/make-operation
+     {:type        :relation-layer/delete
+      :project/id  project-id
+      :document/id nil
+      :description (str "Delete relation layer " eid " with " (count relation-ids) " relations")
+      :tx-ops      all-tx-ops})))
+
+(defn delete [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))

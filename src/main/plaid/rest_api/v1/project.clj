@@ -10,15 +10,14 @@
 
    [""
     {:get  {:summary "List all projects accessible to user"
-            :handler (fn [{db :db :as req}]
+            :handler (fn [{db :db user-id :user/id :as req}]
                        {:status 200
-                        :body   (prj/get-accessible db (pra/->user-id req))})}
+                        :body   (prj/get-accessible db user-id)})}
      :post {:summary    "Create a new project. Note: this also registers the user as a maintainer."
             :parameters {:body {:name string?}}
-            :handler    (fn [{{{:keys [name]} :body} :parameters xtdb :xtdb :as req}]
-                          (let [user-id (pra/->user-id req)
-                                result (prj/create {:node xtdb} {:project/name        name
-                                                                 :project/maintainers [user-id]})]
+            :handler    (fn [{{{:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id :as req}]
+                          (let [result (prj/create {:node xtdb} {:project/name        name
+                                                                 :project/maintainers [user-id]} user-id)]
                             (if (:success result)
                               {:status 201
                                :body   {:id (:extra result)}}
@@ -43,8 +42,8 @@
      :patch      {:summary    "Update a project's name."
                   :middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]
                   :parameters {:body [:map [:name string?]]}
-                  :handler    (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (prj/merge {:node xtdb} id {:project/name name})]
+                  :handler    (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id :as req}]
+                                (let [{:keys [success code error]} (prj/merge {:node xtdb} id {:project/name name} user-id)]
                                   (if success
                                     {:status 200
                                      :body   (prj/get xtdb id)}
@@ -53,8 +52,8 @@
 
      :delete     {:summary    "Delete a project"
                   :middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]
-                  :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (prj/delete {:node xtdb} id)]
+                  :handler    (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb user-id :user/id :as req}]
+                                (let [{:keys [success code error]} (prj/delete {:node xtdb} id user-id)]
                                   (if success
                                     {:status 204}
                                     {:status (or code 404) :body {:error error}})))}}]
@@ -65,48 +64,48 @@
     ["/readers/:user-id"
      {:post   {:summary    "Add a user as a reader to the project"
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (prj/add-reader {:node xtdb} id user-id)]
+               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
+                             (let [{:keys [success code error]} (prj/add-reader {:node xtdb} id user-id actor-user-id)]
                                (if success
                                  {:status 204}
                                  {:status (or code 400) :body {:error error}})))}
 
       :delete {:summary    "Remove a user's reader access from the project"
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (prj/remove-reader {:node xtdb} id user-id)]
+               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
+                             (let [{:keys [success code error]} (prj/remove-reader {:node xtdb} id user-id actor-user-id)]
                                (if success
                                  {:status 204}
                                  {:status (or code 400) :body {:error error}})))}}]
     ["/writers/:user-id"
      {:post   {:summary    "Add a user as a writer to the project"
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (prj/add-writer {:node xtdb} id user-id)]
+               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
+                             (let [{:keys [success code error]} (prj/add-writer {:node xtdb} id user-id actor-user-id)]
                                (if success
                                  {:status 204}
                                  {:status (or code 400) :body {:error error}})))}
 
       :delete {:summary    "Remove a user's writer access from the project"
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (prj/remove-writer {:node xtdb} id user-id)]
+               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
+                             (let [{:keys [success code error]} (prj/remove-writer {:node xtdb} id user-id actor-user-id)]
                                (if success
                                  {:status 204}
                                  {:status (or code 400) :body {:error error}})))}}]
     ["/maintainers/:user-id"
      {:post   {:summary    "Add a user as a maintainer to the project"
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (prj/add-maintainer {:node xtdb} id user-id)]
+               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
+                             (let [{:keys [success code error]} (prj/add-maintainer {:node xtdb} id user-id actor-user-id)]
                                (if success
                                  {:status 204}
                                  {:status (or code 400) :body {:error error}})))}
 
       :delete {:summary    "Remove a user's maintainer access from the project"
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb}]
-                             (let [{:keys [success code error]} (prj/remove-maintainer {:node xtdb} id user-id)]
+               :handler    (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
+                             (let [{:keys [success code error]} (prj/remove-maintainer {:node xtdb} id user-id actor-user-id)]
                                (if success
                                  {:status 204}
                                  {:status (or code 400) :body {:error error}})))}}]]])

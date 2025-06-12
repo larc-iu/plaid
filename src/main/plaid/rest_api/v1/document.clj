@@ -19,10 +19,10 @@
                :parameters {:body [:map
                                    [:project-id :uuid]
                                    [:name :string]]}
-               :handler    (fn [{{{:keys [project-id name]} :body} :parameters xtdb :xtdb}]
+               :handler    (fn [{{{:keys [project-id name]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [attrs {:document/project project-id
                                           :document/name    name}
-                                   result (doc/create {:node xtdb} attrs)]
+                                   result (doc/create {:node xtdb} attrs user-id)]
                                (if (:success result)
                                  {:status 201
                                   :body   {:id (:extra result)}}
@@ -49,8 +49,8 @@
          :patch  {:summary    "Update a document's name."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :parameters {:body [:map [:name :string]]}
-                  :handler    (fn [{{{:keys [document-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (doc/merge {:node xtdb} document-id {:document/name name})]
+                  :handler    (fn [{{{:keys [document-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                                (let [{:keys [success code error]} (doc/merge {:node xtdb} document-id {:document/name name} user-id)]
                                   (if success
                                     {:status 200
                                      :body   (dissoc (doc/get xtdb document-id) :xt/id)}
@@ -58,8 +58,8 @@
                                      :body   {:error (or error "Failed to update document or document not found")}})))}
          :delete {:summary    "Delete a document."
                   :middleware [[pra/wrap-writer-required get-project-id]]
-                  :handler    (fn [{{{:keys [document-id]} :path} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (doc/delete {:node xtdb} document-id)]
+                  :handler    (fn [{{{:keys [document-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
+                                (let [{:keys [success code error]} (doc/delete {:node xtdb} document-id user-id)]
                                   (if success
                                     {:status 204}
                                     {:status (or code 404)

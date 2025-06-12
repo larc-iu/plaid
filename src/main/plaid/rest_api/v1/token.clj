@@ -23,13 +23,13 @@
                                    [:begin int?]
                                    [:end int?]
                                    [:precedence {:optional true} int?]]}
-               :handler    (fn [{{{:keys [token-layer-id text-id begin end precedence]} :body} :parameters xtdb :xtdb}]
+               :handler    (fn [{{{:keys [token-layer-id text-id begin end precedence]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [attrs (cond-> {:token/layer token-layer-id
                                                   :token/text  text-id
                                                   :token/begin begin
                                                   :token/end   end}
                                                  (some? precedence) (assoc :token/precedence precedence))
-                                   result (tok/create {:node xtdb} attrs)]
+                                   result (tok/create {:node xtdb} attrs user-id)]
                                (if (:success result)
                                  {:status 201 :body {:id (:extra result)}}
                                  {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
@@ -50,19 +50,19 @@
                                       [:begin {:optional true} int?]
                                       [:end {:optional true} int?]
                                       [:precedence {:optional true} int?]]}
-                  :handler    (fn [{{{:keys [token-id]} :path {:keys [begin end precedence]} :body} :parameters xtdb :xtdb}]
+                  :handler    (fn [{{{:keys [token-id]} :path {:keys [begin end precedence]} :body} :parameters xtdb :xtdb user-id :user/id}]
                                 (let [raw-attrs (cond-> {}
                                                         (some? begin) (assoc :token/begin begin)
                                                         (some? end) (assoc :token/end end)
                                                         (some? precedence) (assoc :token/precedence precedence))
-                                      {success :success code :code error :error} (tok/merge {:node xtdb} token-id raw-attrs)]
+                                      {success :success code :code error :error} (tok/merge {:node xtdb} token-id raw-attrs user-id)]
                                   (if success
                                     {:status 200 :body (dissoc (tok/get xtdb token-id) :xt/id)}
                                     {:status (or code 404) :body {:error (or error "Failed to update token or token not found")}})))}
          :delete {:summary    "Delete a token."
                   :middleware [[pra/wrap-writer-required get-project-id]]
-                  :handler    (fn [{{{:keys [token-id]} :path} :parameters xtdb :xtdb}]
-                                (let [{:keys [success code error]} (tok/delete {:node xtdb} token-id)]
+                  :handler    (fn [{{{:keys [token-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
+                                (let [{:keys [success code error]} (tok/delete {:node xtdb} token-id user-id)]
                                   (if success
                                     {:status 204}
                                     {:status (or code 404) :body {:error (or error "Token not found")}})))}}]]]) 
