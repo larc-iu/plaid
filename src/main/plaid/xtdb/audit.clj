@@ -7,7 +7,16 @@
   ([db project-id]
    (get-project-audit-log db project-id nil nil))
   ([db project-id start-time end-time]
-   (let [query '{:find  [(pull ?audit [* {:audit/ops [*]}])]
+   (let [query '{:find  [(pull ?audit [:audit/id
+                                       :xt/id
+                                       {:audit/user [:user/id :user/username]}
+                                       {:audit/projects [:project/name :project/id]}
+                                       {:audit/documents [:document/name :document/id]}
+                                       {:audit/ops [:op/id
+                                                    :op/type
+                                                    {:op/project [:project/id :project/name]}
+                                                    {:op/document [:document/id :document/name]}
+                                                    :op/description]}])]
                  :where [[?audit :audit/projects ?project]]
                  :in    [?project]}
          results (xt/q db query project-id)]

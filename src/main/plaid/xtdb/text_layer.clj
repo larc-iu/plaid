@@ -54,8 +54,8 @@
         tx-ops (create* xt-map attrs project-id)]
     (op/make-operation
      {:type        :text-layer/create
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Create text layer \"" name "\" in project " project-id)
       :tx-ops      tx-ops})))
 
@@ -72,8 +72,8 @@
                    (pxc/merge* xt-map eid (select-keys m [:text-layer/name])))]
     (op/make-operation
      {:type        :text-layer/update
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Update text layer " eid (when (:text-layer/name m) (str " to name \"" (:text-layer/name m) "\"")))
       :tx-ops      tx-ops})))
 
@@ -90,8 +90,8 @@
         tx-ops (shift-text-layer* xt-map text-layer-id up?)]
     (op/make-operation
      {:type        :text-layer/shift
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Shift text layer " text-layer-id " " (if up? "up" "down"))
       :tx-ops      tx-ops})))
 
@@ -141,8 +141,8 @@
         all-tx-ops (into base-tx delete-layer-tx)]
     (op/make-operation
      {:type        :text-layer/delete
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Delete text layer " eid " with " (count token-layers) " token layers")
       :tx-ops      all-tx-ops})))
 

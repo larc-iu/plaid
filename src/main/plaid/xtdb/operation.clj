@@ -4,13 +4,13 @@
 
 (defn make-operation
   "Create an operation data structure"
-  [{:keys [type description tx-ops project-id document-id]}]
+  [{:keys [type description tx-ops project document]}]
   (let [op-id (random-uuid)]
     {:xt/id          op-id
      :op/id          op-id
      :op/type        type
-     :op/project-id  project-id
-     :op/document-id document-id
+     :op/project     project
+     :op/document    document
      :op/description description
      :op/tx-ops      tx-ops}))
 

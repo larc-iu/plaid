@@ -104,8 +104,8 @@
         tx-ops (create* xt-map attrs)]
     (op/make-operation
      {:type        :text/create
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Create text in layer " layer " for document " document)
       :tx-ops      tx-ops})))
 
@@ -152,8 +152,8 @@
         tx-ops (update-body* xt-map eid new-body)]
     (op/make-operation
      {:type        :text/update-body
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Update body of text " eid " (affecting " (count token-ids) " tokens)")
       :tx-ops      tx-ops})))
 
@@ -189,8 +189,8 @@
         tx-ops (delete* xt-map eid)]
     (op/make-operation
      {:type        :text/delete
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Delete text " eid " with " (count token-ids) " tokens, " (count span-ids) " spans, " (count relation-ids) " relations")
       :tx-ops      tx-ops})))
 

@@ -99,8 +99,8 @@
         tx-ops (create* xt-map attrs)]
     (op/make-operation
      {:type        :project/create
-      :project-id  nil  ; Project doesn't have a parent project
-      :document-id nil
+      :project     nil  ; Project doesn't have a parent project
+      :document    nil
       :description (str "Create project \"" name "\"")
       :tx-ops      tx-ops})))
 
@@ -117,8 +117,8 @@
                    (pxc/merge* xt-map eid (select-keys m [:project/name])))]
     (op/make-operation
      {:type        :project/update
-      :project-id  eid
-      :document-id nil
+      :project     eid
+      :document    nil
       :description (str "Update project " eid (when (:project/name m) (str " to name \"" (:project/name m) "\"")))
       :tx-ops      tx-ops})))
 
@@ -161,8 +161,8 @@
         tx-ops (delete* xt-map eid)]
     (op/make-operation
      {:type        :project/delete
-      :project-id  eid
-      :document-id nil
+      :project     eid
+      :document    nil
       :description (str "Delete project " eid " with " (count text-layers) " text layers and " (count documents) " documents")
       :tx-ops      tx-ops})))
 
@@ -209,8 +209,8 @@
   (let [tx-ops (add-reader* xt-map project-id user-id)]
     (op/make-operation
      {:type        :project/add-reader
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Add reader " user-id " to project " project-id)
       :tx-ops      tx-ops})))
 
@@ -225,8 +225,8 @@
   (let [tx-ops (remove-reader* xt-map project-id user-id)]
     (op/make-operation
      {:type        :project/remove-reader
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Remove reader " user-id " from project " project-id)
       :tx-ops      tx-ops})))
 
@@ -242,8 +242,8 @@
   (let [tx-ops (add-writer* xt-map project-id user-id)]
     (op/make-operation
      {:type        :project/add-writer
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Add writer " user-id " to project " project-id)
       :tx-ops      tx-ops})))
 
@@ -258,8 +258,8 @@
   (let [tx-ops (remove-writer* xt-map project-id user-id)]
     (op/make-operation
      {:type        :project/remove-writer
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Remove writer " user-id " from project " project-id)
       :tx-ops      tx-ops})))
 
@@ -275,8 +275,8 @@
   (let [tx-ops (add-maintainer* xt-map project-id user-id)]
     (op/make-operation
      {:type        :project/add-maintainer
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Add maintainer " user-id " to project " project-id)
       :tx-ops      tx-ops})))
 
@@ -291,8 +291,8 @@
   (let [tx-ops (remove-maintainer* xt-map project-id user-id)]
     (op/make-operation
      {:type        :project/remove-maintainer
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Remove maintainer " user-id " from project " project-id)
       :tx-ops      tx-ops})))
 

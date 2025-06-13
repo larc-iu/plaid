@@ -64,8 +64,8 @@
         tx-ops (create* xt-map attrs token-layer-id)]
     (op/make-operation
      {:type        :span-layer/create
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Create span layer \"" name "\" in token layer " token-layer-id)
       :tx-ops      tx-ops})))
 
@@ -82,8 +82,8 @@
                    (pxc/merge* xt-map eid (select-keys m [:span-layer/name])))]
     (op/make-operation
      {:type        :span-layer/update
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Update span layer " eid (when (:span-layer/name m) (str " to name \"" (:span-layer/name m) "\"")))
       :tx-ops      tx-ops})))
 
@@ -100,8 +100,8 @@
         tx-ops (shift-span-layer* xt-map span-layer-id up?)]
     (op/make-operation
      {:type        :span-layer/shift
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Shift span layer " span-layer-id " " (if up? "up" "down"))
       :tx-ops      tx-ops})))
 
@@ -145,8 +145,8 @@
         all-tx-ops (into base-tx delete-layer-tx)]
     (op/make-operation
      {:type        :span-layer/delete
-      :project-id  project-id
-      :document-id nil
+      :project     project-id
+      :document    nil
       :description (str "Delete span layer " eid " with " (count relation-layers) " relation layers")
       :tx-ops      all-tx-ops})))
 
