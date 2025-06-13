@@ -30,7 +30,19 @@
       first
       first))
 
-(defn get-doc-id-of-span
+(defn project-id-from-layer [db-like layer-id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]
+                      [?txtl :text-layer/token-layers ?tokl]
+                      [?tokl :token-layer/span-layers ?sl]
+                      [?sl :span-layer/relation-layers ?rl]]
+              :in    [?rl]}
+            layer-id)
+      first
+      first))
+
+(defn- get-doc-id-of-span
   "Get document id of a span"
   [db-like span-id]
   (ffirst
@@ -215,7 +227,7 @@
   [xt-map eid]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         relation (pxc/entity db eid)
-        project-id (project-id db eid)
+        project-id (project-id-from-layer db eid)
         doc-id (when relation (get-doc-id-of-span db (:relation/source relation)))
         tx-ops (delete* xt-map eid)]
     (op/make-operation

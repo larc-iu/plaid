@@ -29,6 +29,16 @@
       first
       first))
 
+(defn project-id-from-layer [db-like layer-id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]
+                      [?txtl :text-layer/token-layers ?tokl]]
+              :in    [?tokl]}
+            id)
+      first
+      first))
+
 (defn get-tokens
   "Provides a list of tokens, enriched with :token/value, a computed attribute indicating
   the the value of its substring."
@@ -53,6 +63,10 @@
                      :where [[?span :span/tokens ?tok]]
                      :in    [?tok]}
                    eid)))
+
+(defn- get-doc-id-of-text
+  [db text-id]
+  (:text/document (pxc/entity db text-id)))
 
 ;; Mutations --------------------------------------------------------------------------------
 (defn create*
@@ -120,16 +134,12 @@
        [::xt/match (:xt/id text) text]
        [::xt/put token]])))
 
-(defn get-doc-id-of-text
-  [db text-id]
-  (:text/document (pxc/entity db text-id)))
-
 (defn create-operation
   "Build an operation for creating a token"
   [xt-map attrs]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:token/keys [layer text begin end]} attrs
-        project-id (project-id db layer)
+        project-id (project-id-from-layer db layer)
         doc-id (get-doc-id-of-text db text)
         tx-ops (create* xt-map attrs)]
     (op/make-operation
