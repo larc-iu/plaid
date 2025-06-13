@@ -3,8 +3,8 @@
             [editscript.core :as e]))
 
 (comment
-  (def x1 "The ice-cream melted")
-  (def x2 "The ice cream meted!")
+  (def x1 "hello world " #_"The ice-cream melted")
+  (def x2 "hi world " #_"The ice cream meted!")
 
   ;; editscript format
   [7 [:r " "] 8 [:- 1] 3 [:+ "!"]]
@@ -18,7 +18,7 @@
   [0 "ted"]
   [1 "!"]
 
-  (e/diff x1 x2 {:str-diff :character})
+  (e/diff x1 x2 {:str-diff :character :str-change-limit 0.9999999})
 
   (editscript-diff x1 x2)
 
@@ -34,7 +34,9 @@
   by the fast-diff javascript library, which `diff` below is expecting. (We originally used
   this library in glam.)"
   [old new]
-  (let [[[_ _ ops]] (e/get-edits (e/diff old new {:algo :a-star :str-diff :character}))]
+  (let [[[_ _ ops]] (e/get-edits (e/diff old new {:algo :a-star
+                                                  :str-diff :character
+                                                  :str-change-limit 0.9999999}))]
     (if (string? ops)
       ;; Total replacement of the original string
       (vector [-1 old]
