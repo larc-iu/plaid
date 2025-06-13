@@ -107,8 +107,8 @@
         tx-ops (create* xt-map attrs)]
     (op/make-operation
      {:type        :span/create
-      :project/id  project-id
-      :document/id doc-id
+      :project-id  project-id
+      :document-id doc-id
       :description (str "Create span with " (count tokens) " tokens in layer " layer)
       :tx-ops      tx-ops})))
 
@@ -125,8 +125,8 @@
         tx-ops (pxc/merge* xt-map eid (select-keys m [:span/value]))]
     (op/make-operation
      {:type        :span/update-value
-      :project/id  project-id
-      :document/id doc-id
+      :project-id  project-id
+      :document-id doc-id
       :description (str "Update value of span " eid " to " (:span/value m))
       :tx-ops      tx-ops})))
 
@@ -158,8 +158,8 @@
         tx-ops (delete* xt-map eid)]
     (op/make-operation
      {:type        :span/delete
-      :project/id  project-id
-      :document/id doc-id
+      :project-id  project-id
+      :document-id doc-id
       :description (str "Delete span " eid " and its " (count (get-relation-ids db eid)) " relations")
       :tx-ops      tx-ops})))
 
@@ -189,8 +189,8 @@
         tx-ops (set-tokens* xt-map eid token-ids)]
     (op/make-operation
      {:type        :span/update-tokens
-      :project/id  project-id
-      :document/id doc-id
+      :project-id  project-id
+      :document-id doc-id
       :description (str "Update tokens of span " eid " to " (count token-ids) " tokens")
       :tx-ops      tx-ops})))
 
@@ -219,8 +219,8 @@
                          (= token-id (first (:span/tokens span))))]
     (op/make-operation
      {:type        :span/remove-token
-      :project/id  project-id
-      :document/id doc-id
+      :project-id  project-id
+      :document-id doc-id
       :description (if will-delete
                      (str "Remove token " token-id " from span " span-id " (deleting span)")
                      (str "Remove token " token-id " from span " span-id))

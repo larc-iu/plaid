@@ -62,8 +62,8 @@
         tx-ops (create* xt-map attrs span-layer-id)]
     (op/make-operation
      {:type        :relation-layer/create
-      :project/id  project-id
-      :document/id nil
+      :project-id  project-id
+      :document-id nil
       :description (str "Create relation layer \"" name "\" in span layer " span-layer-id)
       :tx-ops      tx-ops})))
 
@@ -80,8 +80,8 @@
                    (pxc/merge* xt-map eid (select-keys m [:relation-layer/name])))]
     (op/make-operation
      {:type        :relation-layer/update
-      :project/id  project-id
-      :document/id nil
+      :project-id  project-id
+      :document-id nil
       :description (str "Update relation layer " eid (when (:relation-layer/name m) (str " to name \"" (:relation-layer/name m) "\"")))
       :tx-ops      tx-ops})))
 
@@ -98,8 +98,8 @@
         tx-ops (shift-relation-layer* xt-map relation-layer-id up?)]
     (op/make-operation
      {:type        :relation-layer/shift
-      :project/id  project-id
-      :document/id nil
+      :project-id  project-id
+      :document-id nil
       :description (str "Shift relation layer " relation-layer-id " " (if up? "up" "down"))
       :tx-ops      tx-ops})))
 
@@ -144,8 +144,8 @@
         all-tx-ops (into base-tx delete-layer-tx)]
     (op/make-operation
      {:type        :relation-layer/delete
-      :project/id  project-id
-      :document/id nil
+      :project-id  project-id
+      :document-id nil
       :description (str "Delete relation layer " eid " with " (count relation-ids) " relations")
       :tx-ops      all-tx-ops})))
 

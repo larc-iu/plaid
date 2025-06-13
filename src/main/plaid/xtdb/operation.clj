@@ -4,13 +4,13 @@
 
 (defn make-operation
   "Create an operation data structure"
-  [{:keys [type description tx-ops] project-id :project/id document-id :document/id}]
+  [{:keys [type description tx-ops project-id document-id]}]
   (let [op-id (random-uuid)]
     {:xt/id          op-id
      :op/id          op-id
      :op/type        type
-     :project/id     project-id
-     :document/id    document-id
+     :op/project-id  project-id
+     :op/document-id document-id
      :op/description description
      :op/tx-ops      tx-ops}))
 
@@ -23,14 +23,20 @@
         op-put-txs (mapv #(vector ::xt/put %) storable-ops)
         op-ids (mapv :op/id operations)
         ;; Determine project/document from operations (use first non-nil values)
-        project-id (some :project/id operations)
-        document-id (some :document/id operations)
-        audit-entry (cond-> {:xt/id      audit-id
-                             :audit/id   audit-id
-                             :audit/ops  op-ids
-                             :audit/user user-id}
-                            project-id (assoc :audit/project project-id)
-                            document-id (assoc :audit/document document-id))
+        affected-projects (->> operations
+                               (map :op/project-id)
+                               (filter some?)
+                               set)
+        affected-documents (->> operations
+                                (map :op/document-id)
+                                (filter some?)
+                                set)
+        audit-entry {:xt/id           audit-id
+                     :audit/id        audit-id
+                     :audit/ops       op-ids
+                     :audit/user      user-id
+                     :audit/projects  affected-projects
+                     :audit/documents affected-documents}
         audit-tx [::xt/put audit-entry]]
     (into op-put-txs [audit-tx])))
 
