@@ -54,8 +54,8 @@
                     (update :user/password-changes inc))
                 attrs)
         attrs (-> attrs
-                  (assoc :user/username (:user/username m))
-                  (assoc :user/is-admin (:user/is-admin m)))]
+                  (cond-> (some? (:user/username m)) (assoc :user/username (:user/username m)))
+                  (cond-> (some? (:user/is-admin m)) (assoc :user/is-admin (:user/is-admin m))))]
     (pxc/submit! node (pxc/merge* xt-map eid attrs))))
 
 (defn delete* [xt-map eid]
