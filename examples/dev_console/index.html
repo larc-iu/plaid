@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plaid API Development Console</title>
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/editor/editor.main.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-top: 0;
+            color: #333;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        label {
+            font-weight: 500;
+            color: #555;
+        }
+        input[type="text"], input[type="password"] {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #editor-container {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:active {
+            transform: translateY(1px);
+        }
+        .output {
+            margin-top: 20px;
+            padding: 12px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .info {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #e7f3ff;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        code {
+            background: #f1f3f5;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Plaid API Development Console</h1>
+        
+        <div class="info">
+            The <code>client</code> variable is available globally. Use it to interact with the Plaid API.
+            <br>Example: <code>await client.projects.getAll()</code>
+        </div>
+        
+        <div class="controls">
+            <label for="token">Token:</label>
+            <input type="password" id="token" placeholder="Enter JWT token">
+            
+            <button onclick="updateClient()">Update Client</button>
+            <button onclick="executeCode()">Execute (Ctrl+Enter)</button>
+            <button onclick="clearOutput()">Clear Output</button>
+        </div>
+        
+        <div id="editor-container"></div>
+        
+        <div id="output" class="output" style="display:none;"></div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script src="client.js"></script>
+    <script>
+        // Global client variable
+        let client;
+        let editor;
+        let updateClientTypings;
+        
+        // Load Monaco Editor
+        require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+        require(['vs/editor/editor.main'], function () {
+            // Create the editor
+            editor = monaco.editor.create(document.getElementById('editor-container'), {
+                value: localStorage.getItem('plaidDevCode') || `// Enter JavaScript code here...
+// The 'client' variable is available globally
+
+// Example:
+// const projects = await client.projects.getAll();
+// console.log(projects);`,
+                language: 'javascript',
+                theme: 'vs',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineNumbers: 'on',
+                wordWrap: 'bounded',
+                scrollBeyondLastLine: false,
+                contextmenu: true,
+                quickSuggestions: {
+                    other: true,
+                    comments: true,
+                    strings: true
+                },
+                suggestOnTriggerCharacters: true,
+                acceptSuggestionOnEnter: 'on',
+                tabCompletion: 'on'
+            });
+            
+            // Add TypeScript definitions for better intellisense
+            monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+                target: monaco.languages.typescript.ScriptTarget.ES2020,
+                allowNonTsExtensions: true,
+                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                module: monaco.languages.typescript.ModuleKind.CommonJS,
+                noEmit: true,
+                esModuleInterop: true,
+                jsx: monaco.languages.typescript.JsxEmit.React,
+                reactNamespace: 'React',
+                allowJs: true,
+                typeRoots: ['node_modules/@types']
+            });
+            
+            // Load TypeScript definitions from client.d.ts
+            updateClientTypings = async function() {
+                try {
+                    const response = await fetch('./client.d.ts');
+                    const tsDefinitions = await response.text();
+                    
+                    // Add the TypeScript definitions to Monaco
+                    monaco.languages.typescript.javascriptDefaults.addExtraLib(
+                        tsDefinitions,
+                        'file:///client.d.ts'
+                    );
+                    
+                    console.log('✅ TypeScript definitions loaded for better intellisense');
+                } catch (error) {
+                    console.warn('⚠️ Could not load TypeScript definitions:', error.message);
+                    // Fallback to the old dynamic approach
+                    if (client) {
+                        const clientMethods = Object.getOwnPropertyNames(client).concat(
+                            Object.getOwnPropertyNames(Object.getPrototypeOf(client))
+                        ).filter(name => typeof client[name] === 'function' || typeof client[name] === 'object');
+                        
+                        let typeDef = 'declare const client: {\n';
+                        clientMethods.forEach(method => {
+                            if (method !== 'constructor' && typeof client[method] === 'object' && client[method]) {
+                                typeDef += `  ${method}: {\n`;
+                                Object.getOwnPropertyNames(client[method]).forEach(subMethod => {
+                                    if (typeof client[method][subMethod] === 'function') {
+                                        typeDef += `    ${subMethod}: (...args: any[]) => Promise<any>;\n`;
+                                    }
+                                });
+                                typeDef += '  };\n';
+                            } else if (typeof client[method] === 'function') {
+                                typeDef += `  ${method}: (...args: any[]) => Promise<any>;\n`;
+                            }
+                        });
+                        typeDef += '};';
+                        
+                        monaco.languages.typescript.javascriptDefaults.addExtraLib(
+                            typeDef,
+                            'file:///client-fallback.d.ts'
+                        );
+                    }
+                }
+            };
+            
+            // Save content on change
+            editor.onDidChangeModelContent(() => {
+                localStorage.setItem('plaidDevCode', editor.getValue());
+            });
+            
+            // Add keyboard shortcut for execution
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+                executeCode();
+            });
+            
+            // Load TypeScript definitions immediately
+            updateClientTypings();
+            
+            // Initialize UI elements
+            initializeUI();
+        });
+        
+        function initializeUI() {
+            const tokenInput = document.getElementById('token');
+            
+            // Restore saved values
+            tokenInput.value = localStorage.getItem('plaidDevToken') || '';
+            
+            // Save values on change
+            tokenInput.addEventListener('input', () => {
+                localStorage.setItem('plaidDevToken', tokenInput.value);
+            });
+            
+            // Initialize client on load if token exists
+            if (tokenInput.value) {
+                updateClient();
+            }
+        }
+        
+        // Initialize client
+        function updateClient() {
+            const tokenInput = document.getElementById('token');
+            const token = tokenInput.value;
+            const baseUrl = ''; // Empty since client will add /api/v1
+            
+            if (!token) {
+                showOutput('Please enter a token', 'error');
+                return;
+            }
+            
+            try {
+                client = new PlaidClient(baseUrl, token);
+                if (updateClientTypings) {
+                    updateClientTypings();
+                }
+                showOutput('Client initialized successfully', 'success');
+            } catch (error) {
+                showOutput(`Failed to initialize client: ${error.message}`, 'error');
+            }
+        }
+        
+        // Execute code
+        async function executeCode() {
+            if (!client) {
+                showOutput('Please initialize the client first by clicking "Update Client"', 'error');
+                return;
+            }
+            
+            const code = editor.getValue();
+            if (!code.trim()) {
+                showOutput('Please enter some code to execute', 'error');
+                return;
+            }
+            
+            try {
+                // Clear previous output
+                clearOutput();
+                
+                // Capture console.log output
+                const logs = [];
+                const originalLog = console.log;
+                console.log = (...args) => {
+                    logs.push(args.map(arg => 
+                        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                    ).join(' '));
+                    originalLog.apply(console, args);
+                };
+                
+                // Execute the code
+                const result = await eval(`(async () => { ${code} })()`);
+                
+                // Restore console.log
+                console.log = originalLog;
+                
+                // Show output
+                let outputText = '';
+                if (logs.length > 0) {
+                    outputText = logs.join('\n');
+                }
+                if (result !== undefined) {
+                    if (outputText) outputText += '\n\n';
+                    outputText += 'Return value:\n' + JSON.stringify(result, null, 2);
+                }
+                
+                if (outputText) {
+                    showOutput(outputText, 'success');
+                } else {
+                    showOutput('Code executed successfully (no output)', 'success');
+                }
+            } catch (error) {
+                showOutput(`Error: ${error.message}\n\nStack trace:\n${error.stack}`, 'error');
+            }
+        }
+        
+        // Show output
+        function showOutput(message, type = '') {
+            const output = document.getElementById('output');
+            output.style.display = 'block';
+            output.textContent = message;
+            output.className = 'output ' + type;
+        }
+        
+        // Clear output
+        function clearOutput() {
+            const output = document.getElementById('output');
+            output.style.display = 'none';
+            output.textContent = '';
+            output.className = 'output';
+        }
+    </script>
+</body>
+</html>
