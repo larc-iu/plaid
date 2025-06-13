@@ -8,7 +8,7 @@
    (get-project-audit-log db project-id nil nil))
   ([db project-id start-time end-time]
    (let [query '{:find  [(pull ?audit [* {:audit/ops [*]}])]
-                 :where [[?audit :audit/project ?project]]
+                 :where [[?audit :audit/projects ?project]]
                  :in    [?project]}
          results (xt/q db query project-id)]
      (->> results
@@ -27,7 +27,7 @@
    (get-document-audit-log db document-id nil nil))
   ([db document-id start-time end-time]
    (let [query '{:find  [(pull ?audit [* {:audit/ops [*]}])]
-                 :where [[?audit :audit/document ?document]]
+                 :where [[?audit :audit/documents ?document]]
                  :in    [?document]}
          results (xt/q db query document-id)]
      (->> results

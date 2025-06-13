@@ -138,8 +138,8 @@
         tx-ops (create* xt-map attrs)]
     (op/make-operation
      {:type        :document/create
-      :project/id  project
-      :document/id nil
+      :project-id  project
+      :document-id nil
       :description (str "Create document \"" name "\" in project " project)
       :tx-ops      tx-ops})))
 
@@ -157,8 +157,8 @@
                    (pxc/merge* xt-map eid (select-keys m [:document/name])))]
     (op/make-operation
      {:type        :document/update
-      :project/id  project-id
-      :document/id eid
+      :project-id  project-id
+      :document-id eid
       :description (str "Update document " eid (when (:document/name m) (str " to name \"" (:document/name m) "\"")))
       :tx-ops      tx-ops})))
 
@@ -188,8 +188,8 @@
         tx-ops (delete* xt-map eid)]
     (op/make-operation
      {:type        :document/delete
-      :project/id  project-id
-      :document/id eid
+      :project-id  project-id
+      :document-id eid
       :description (str "Delete document " eid " with " (count text-ids) " texts")
       :tx-ops      tx-ops})))
 
