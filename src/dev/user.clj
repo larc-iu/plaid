@@ -57,6 +57,7 @@
           (xt/entity (xt/db node))
           #_:op/description)
     (pxc/find-entities (xt/db node) {:audit/id '_}))
+  (xt/entity-tx (xt/db node) #uuid"6cfc44bc-a71a-42da-b27a-d6fe3bce12c5")
 
   (mapv
     #(-> % :audit/ops first :op/description)
