@@ -99,7 +99,7 @@
         tx-ops (create* xt-map attrs)]
     (op/make-operation
      {:type        :project/create
-      :project     nil  ; Project doesn't have a parent project
+      :project     (-> tx-ops last last :xt/id)
       :document    nil
       :description (str "Create project \"" name "\"")
       :tx-ops      tx-ops})))

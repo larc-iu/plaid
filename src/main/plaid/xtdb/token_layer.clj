@@ -51,6 +51,15 @@
                           :in    [[?tokl ?doc]]}
                      [eid document-id]))))
 
+(defn- project-id-from-txtl [db-like id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]]
+              :in    [?txtl]}
+            id)
+      first
+      first))
+
 ;; Mutations ----------------------------------------------------------------------
 (defn create* [xt-map {:token-layer/keys [id] :as attrs} text-layer-id]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
@@ -75,7 +84,7 @@
   [xt-map attrs text-layer-id]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:token-layer/keys [name]} attrs
-        project-id (project-id db text-layer-id)
+        project-id (project-id-from-txtl db text-layer-id)
         tx-ops (create* xt-map attrs text-layer-id)]
     (op/make-operation
      {:type        :token-layer/create

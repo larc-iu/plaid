@@ -139,7 +139,7 @@
     (op/make-operation
      {:type        :document/create
       :project     project
-      :document    nil
+      :document    (-> tx-ops last last :xt/id)
       :description (str "Create document \"" name "\" in project " project)
       :tx-ops      tx-ops})))
 

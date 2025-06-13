@@ -24,11 +24,11 @@
         op-ids (mapv :op/id operations)
         ;; Determine project/document from operations (use first non-nil values)
         affected-projects (->> operations
-                               (map :op/project-id)
+                               (map :op/project)
                                (filter some?)
                                set)
         affected-documents (->> operations
-                                (map :op/document-id)
+                                (map :op/document)
                                 (filter some?)
                                 set)
         audit-entry {:xt/id           audit-id
