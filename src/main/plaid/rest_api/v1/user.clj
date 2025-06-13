@@ -55,7 +55,8 @@
                                                                              :user/is-admin is-admin})]
                                (if success
                                  {:status 200
-                                  :body   (user/get xtdb id)}
+                                  :body   (select-keys (user/get xtdb id)
+                                                       [:user/id :user/username :user/is-admin])}
                                  {:status (or code 500)
                                   :body   {:error error}})))}
 
