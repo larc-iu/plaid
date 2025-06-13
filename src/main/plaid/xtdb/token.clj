@@ -29,7 +29,7 @@
       first
       first))
 
-(defn project-id-from-layer [db-like layer-id]
+(defn- project-id-from-layer [db-like layer-id]
   (-> (xt/q (pxc/->db db-like)
             '{:find  [?prj]
               :where [[?prj :project/text-layers ?txtl]

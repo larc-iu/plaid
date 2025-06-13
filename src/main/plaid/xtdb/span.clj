@@ -27,7 +27,14 @@
       first
       first))
 
-(defn project-id-from-layer [db-like layer-id]
+(defn get-relation-ids [db-like eid]
+  (map first (xt/q (pxc/->db db-like)
+                   '{:find  [?relation]
+                     :where [(or [?relation :relation/source ?id] [?relation :relation/target ?id])]
+                     :in    [?id]}
+                   eid)))
+
+(defn- project-id-from-layer [db-like layer-id]
   (-> (xt/q (pxc/->db db-like)
             '{:find  [?prj]
               :where [[?prj :project/text-layers ?txtl]
@@ -37,13 +44,6 @@
             layer-id)
       first
       first))
-
-(defn get-relation-ids [db-like eid]
-  (map first (xt/q (pxc/->db db-like)
-                   '{:find  [?relation]
-                     :where [(or [?relation :relation/source ?id] [?relation :relation/target ?id])]
-                     :in    [?id]}
-                   eid)))
 
 (defn- get-doc-id-of-token
   [db-like token-id]

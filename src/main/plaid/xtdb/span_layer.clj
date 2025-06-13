@@ -36,6 +36,16 @@
       first
       first))
 
+(defn- project-id-from-token-layer [db-like tokl-id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]
+                      [?txtl :text-layer/token-layers ?tokl]]
+              :in    [?tokl]}
+            tokl-id)
+      first
+      first))
+
 ;; Mutations ----------------------------------------------------------------------
 (defn create* [xt-map {:span-layer/keys [id] :as attrs} token-layer-id]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
@@ -60,7 +70,7 @@
   [xt-map attrs token-layer-id]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:span-layer/keys [name]} attrs
-        project-id (project-id db token-layer-id)
+        project-id (project-id-from-token-layer db token-layer-id)
         tx-ops (create* xt-map attrs token-layer-id)]
     (op/make-operation
      {:type        :span-layer/create
