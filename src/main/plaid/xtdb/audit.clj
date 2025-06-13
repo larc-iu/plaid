@@ -18,7 +18,7 @@
   (->> results
        (map first)
        (map (fn [entry]
-              (assoc entry :audit/time (:xtdb.api/tx-time (xt/entity-tx db (:xt/id entry))))))
+              (assoc entry :audit/time (:xtdb.api/valid-time (xt/entity-tx db (:xt/id entry))))))
        (filter (fn [{ts :audit/time}]
                  (and (or (nil? start-time) (>= (.getTime ts) (.getTime start-time)))
                       (or (nil? end-time) (<= (.getTime ts) (.getTime end-time))))))
