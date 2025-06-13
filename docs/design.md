@@ -219,13 +219,6 @@ A `Token` has:
 * `:layer`  
 * `:text`, a ref to the token's text  
 * `:begin` and `:end`, both ints which define the \[inclusive, exclusive) substring bounds of `:text` which constitute this token. Note that `:begin` \<= `:end` (zero-width is OK).  
-* `:end-sentence?`, a boolean attribute which when `true` indicates that the *following* token should begin a new sentence.
-
-We might also want to provide this denormalized attributes on the basis of `:end-sentence?`:
-
-* `:sentence-id`, an int beginning at 0 and increasing monotonically which indicates the token's sentence membership
-
-Note that care must be taken to maintain `:sentence-id` under updates: for example, deletion of one sentence early in a document would require the decrementing of all subsequent `:sentence-id`s.
 
 ## SpanLayer
 
