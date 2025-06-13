@@ -115,8 +115,8 @@
         tx-ops (create* xt-map attrs)]
     (op/make-operation
      {:type        :relation/create
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Create relation from span " source " to span " target " in layer " layer)
       :tx-ops      tx-ops})))
 
@@ -133,8 +133,8 @@
         tx-ops (pxc/merge* xt-map eid (select-keys m [:relation/value]))]
     (op/make-operation
      {:type        :relation/update-value
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Update value of relation " eid " to " (:relation/value m))
       :tx-ops      tx-ops})))
 
@@ -204,8 +204,8 @@
         tx-ops (set-end* xt-map eid key span-id)]
     (op/make-operation
      {:type        :relation/update-endpoint
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Update " end-type " of relation " eid " to span " span-id)
       :tx-ops      tx-ops})))
 
@@ -232,8 +232,8 @@
         tx-ops (delete* xt-map eid)]
     (op/make-operation
      {:type        :relation/delete
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Delete relation " eid)
       :tx-ops      tx-ops})))
 

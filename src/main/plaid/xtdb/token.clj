@@ -35,7 +35,7 @@
               :where [[?prj :project/text-layers ?txtl]
                       [?txtl :text-layer/token-layers ?tokl]]
               :in    [?tokl]}
-            id)
+            layer-id)
       first
       first))
 
@@ -144,8 +144,8 @@
         tx-ops (create* xt-map attrs)]
     (op/make-operation
      {:type        :token/create
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Create token " begin "-" end " in layer " layer)
       :tx-ops      tx-ops})))
 
@@ -237,8 +237,8 @@
                        (contains? attrs :token/precedence) (conj "precedence"))]
     (op/make-operation
      {:type        :token/update
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Update " (clojure.string/join ", " changes) " of token " eid)
       :tx-ops      tx-ops})))
 
@@ -269,8 +269,8 @@
         tx-ops (delete* xt-map eid)]
     (op/make-operation
      {:type        :token/delete
-      :project-id  project-id
-      :document-id doc-id
+      :project     project-id
+      :document    doc-id
       :description (str "Delete token " eid " from " (count spans) " spans")
       :tx-ops      tx-ops})))
 
