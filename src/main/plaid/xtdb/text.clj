@@ -28,6 +28,15 @@
       first
       first))
 
+(defn project-id-from-layer [db-like layer-id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]]
+              :in    [?txtl]}
+            layer-id)
+      first
+      first))
+
 (defn get-text-for-doc
   "There should be exactly one text per text layer per document at all times.
   This function finds the corresponding text for a given document-text layer pair."
@@ -90,7 +99,7 @@
   [xt-map attrs]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:text/keys [layer document]} attrs
-        project-id (project-id db layer)
+        project-id (project-id-from-layer db layer)
         doc-id document
         tx-ops (create* xt-map attrs)]
     (op/make-operation

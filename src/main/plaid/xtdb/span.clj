@@ -27,6 +27,17 @@
       first
       first))
 
+(defn project-id-from-layer [db-like layer-id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find  [?prj]
+              :where [[?prj :project/text-layers ?txtl]
+                      [?txtl :text-layer/token-layers ?tokl]
+                      [?tokl :token-layer/span-layers ?sl]]
+              :in    [?sl]}
+            layer-id)
+      first
+      first))
+
 (defn get-relation-ids [db-like eid]
   (map first (xt/q (pxc/->db db-like)
                    '{:find  [?relation]
@@ -34,7 +45,7 @@
                      :in    [?id]}
                    eid)))
 
-(defn get-doc-id-of-token
+(defn- get-doc-id-of-token
   [db-like token-id]
   (ffirst
     (xt/q (pxc/->db db-like)
@@ -102,7 +113,7 @@
   [xt-map attrs]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:span/keys [layer tokens]} attrs
-        project-id (project-id db layer)
+        project-id (project-id-from-layer db layer)
         doc-id (get-doc-id-of-token db (first tokens))
         tx-ops (create* xt-map attrs)]
     (op/make-operation
