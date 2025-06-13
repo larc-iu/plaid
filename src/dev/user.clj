@@ -16,6 +16,7 @@
             [plaid.xtdb.relation-layer :as rl]
             [plaid.xtdb.relation :as r]
             [plaid.xtdb.common :as pxc]
+            [plaid.xtdb.audit :as pxa]
             [xtdb.api :as xt]))
 
 ;; ==================== SERVER ====================
@@ -44,6 +45,23 @@
    (stop)
    (tools-ns/refresh :after 'user/start-internal))
   ([_] (start)))
+
+(comment
+  (def prj-id (:project/id (pxc/find-entity (xt/db node) {:project/name "Project 1"})))
+
+  (mapv
+    #(->> %
+          :audit/ops
+          first
+          (xt/entity (xt/db node))
+          #_:op/description)
+    (pxc/find-entities (xt/db node) {:audit/id '_}))
+
+  (mapv
+    #(-> % :audit/ops first :op/description)
+    (pxa/get-project-audit-log (xt/db node) prj-id))
+
+  )
 
 
 (comment
@@ -107,6 +125,8 @@
 
 
 (comment
+  (def user-id (pxc/find-entity (xt/db node) {:user/id "a@b.com"}))
+
   (defn -print-all- []
     (prn (pxc/find-entities (xt/db node) {:project/name '_}))
     (prn (pxc/find-entities (xt/db node) {:document/id '_}))
@@ -137,45 +157,45 @@
   (do
     (def xt-map {:node node})
     (def prj-id (:extra (prj/create xt-map {:project/name "temporary"})))
-    (def txtl-id-1 (:extra (txtl/create xt-map {:text-layer/name "layer1"} prj-id)))
-    (def txtl-id-2 (:extra (txtl/create xt-map {:text-layer/name "layer2"} prj-id)))
+    (def txtl-id-1 (:extra (txtl/create xt-map {:text-layer/name "layer1"} prj-id) user-id))
+    (def txtl-id-2 (:extra (txtl/create xt-map {:text-layer/name "layer2"} prj-id) user-id))
 
-    (def tokl-id-1 (:extra (tokl/create xt-map {:token-layer/name "tokl1"} txtl-id-1)))
-    (def tokl-id-2 (:extra (tokl/create xt-map {:token-layer/name "tokl2"} txtl-id-1)))
+    (def tokl-id-1 (:extra (tokl/create xt-map {:token-layer/name "tokl1"} txtl-id-1) user-id))
+    (def tokl-id-2 (:extra (tokl/create xt-map {:token-layer/name "tokl2"} txtl-id-1) user-id))
 
-    (def sl-id-1 (:extra (sl/create xt-map {:span-layer/name "sl1"} tokl-id-1)))
-    (def rl-id-1 (:extra (rl/create xt-map {:relation-layer/name "rl1"} sl-id-1)))
+    (def sl-id-1 (:extra (sl/create xt-map {:span-layer/name "sl1"} tokl-id-1) user-id))
+    (def rl-id-1 (:extra (rl/create xt-map {:relation-layer/name "rl1"} sl-id-1) user-id))
 
-    (def doc-id (:extra (doc/create xt-map {:document/name "doc1" :document/project prj-id})))
+    (def doc-id (:extra (doc/create xt-map {:document/name "doc1" :document/project prj-id}) user-id))
 
     (def text-id (:extra (txt/create xt-map {:text/body     "foo bar baz"
                                              :text/document doc-id
-                                             :text/layer    txtl-id-1})))
+                                             :text/layer    txtl-id-1}) user-id))
 
     (def tok1-id (:extra (tok/create xt-map {:token/begin 0
                                              :token/end   3
                                              :token/text  text-id
-                                             :token/layer tokl-id-1})))
+                                             :token/layer tokl-id-1}) user-id))
     (def tok2-id (:extra (tok/create xt-map {:token/begin 0
                                              :token/end   7
                                              :token/text  text-id
-                                             :token/layer tokl-id-1})))
+                                             :token/layer tokl-id-1}) user-id))
     (def tok3-id (:extra (tok/create xt-map {:token/begin 4
                                              :token/end   7
                                              :token/text  text-id
-                                             :token/layer tokl-id-1})))
+                                             :token/layer tokl-id-1}) user-id))
 
     (def s1-id (:extra (s/create xt-map {:span/tokens [tok1-id tok2-id]
                                          :span/value  "span 1"
-                                         :span/layer  sl-id-1})))
+                                         :span/layer  sl-id-1}) user-id))
     (def s2-id (:extra (s/create xt-map {:span/tokens [tok3-id]
                                          :span/value  "span 2"
-                                         :span/layer  sl-id-1})))
+                                         :span/layer  sl-id-1}) user-id))
 
     (def r1-id (:extra (r/create xt-map {:relation/value  "relation1"
                                          :relation/source s1-id
                                          :relation/target s2-id
-                                         :relation/layer  rl-id-1}))))
+                                         :relation/layer  rl-id-1})) user-id))
 
   (doc/get-with-layer-data xt-map doc-id)
 
