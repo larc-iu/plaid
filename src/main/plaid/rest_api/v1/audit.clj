@@ -40,12 +40,12 @@
                           {:status 200 :body entries}))}}]
 
    ["/users/:user-id/audit"
-    {:parameters {:path [:map [:user-id :uuid]]}
-     :get {:summary    "Get audit log for a user's actions"
-           :middleware [[pra/wrap-admin-required]]  ; Only admins can view other users' audit logs
-           :parameters {:query [:map
-                               [:start-time {:optional true} inst?]
-                               [:end-time {:optional true} inst?]]}
-           :handler    (fn [{{{:keys [user-id]} :path {:keys [start-time end-time]} :query} :parameters db :db}]
-                        (let [entries (audit/get-user-audit-log db user-id start-time end-time)]
-                          {:status 200 :body entries}))}}]])
+    {:parameters {:path [:map [:user-id [:or :uuid string?]]]}
+     :get        {:summary    "Get audit log for a user's actions"
+                  :middleware [[pra/wrap-admin-required]]  ; Only admins can view other users' audit logs
+                  :parameters {:query [:map
+                                       [:start-time {:optional true} inst?]
+                                       [:end-time {:optional true} inst?]]}
+                  :handler    (fn [{{{:keys [user-id]} :path {:keys [start-time end-time]} :query} :parameters db :db}]
+                                (let [entries (audit/get-user-audit-log db user-id start-time end-time)]
+                                  {:status 200 :body entries}))}}]])

@@ -47,7 +47,8 @@
   ([_] (start)))
 
 (comment
-  (def prj-id (:project/id (pxc/find-entity (xt/db node) {:project/name "Project 1"})))
+  (def prj-id (:project/id (pxc/find-entity (xt/db node) {:project/name '_})))
+  prj-id
 
   (mapv
     #(->> %
