@@ -4,7 +4,7 @@ interface RelationsBundle {
   delete(relationId: string): Promise<any>;
   update(relationId: string, value: any): Promise<any>;
   source(relationId: string, spanId: string): Promise<any>;
-  create(layerId: string, sourceId: string, targetId: string, value: any, id?: string): Promise<any>;
+  create(layerId: string, sourceId: string, targetId: string, value: any): Promise<any>;
 }
 
 interface SpanLayersBundle {

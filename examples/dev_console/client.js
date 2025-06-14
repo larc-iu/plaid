@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Fri Jun 13 11:25:22 EDT 2025
+ * Generated on: Sat Jun 14 11:12:38 EDT 2025
  */
 
 class PlaidClient {
@@ -50,19 +50,23 @@ class PlaidClient {
        */
       source: this._relationsSource.bind(this),
       /**
-       * Create a new relation.
+       * Create a new relation. A relation is a directed edge between two spans with a value, useful for expressing phenomena such as syntactic or semantic relations. A relation must at all times have both a valid source and target span. These spans must also belong to a single span layer which is linked to the relation's relation layer.
+
+layerId: the relation layer
+sourceId: the source span this relation originates from
+targetId: the target span this relation goes to
+<body>value</value>: the label for the relation
  * @param {string} layerId - Required. Layerid
  * @param {string} sourceId - Required. Sourceid
  * @param {string} targetId - Required. Targetid
  * @param {any} value - Required. Value
- * @param {string} id - Optional. Id
  * @param {string} [asOf] - Optional asOf
        */
       create: this._relationsCreate.bind(this)
     };
     this.spanLayers = {
       /**
-       * Set a configuration value for a layer in a editor namespace. Good for storing data useful for 
+       * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
  * @param {string} spanLayerId - Span-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
@@ -71,7 +75,7 @@ class PlaidClient {
        */
       setConfig: this._spanLayersSetConfig.bind(this),
       /**
-       * Remove a configuration value for a layer in a editor namespace
+       * Remove a configuration value for a layer.
  * @param {string} spanLayerId - Span-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
@@ -121,7 +125,11 @@ class PlaidClient {
        */
       tokens: this._spansTokens.bind(this),
       /**
-       * Create a new span in a span layer.
+       * Create a new span. A span holds a a value and must at all times be associated with one or more tokens.
+
+spanLayerId: the span's associated layer
+tokens: a list of tokens associated with this span. Must contain at least one token. All tokens must belong to a single layer which is linked to the span layer indicated by spanLayerId.
+value: the value of the span, used for annotation.
  * @param {string} spanLayerId - Required. Spanlayerid
  * @param {Array} tokens - Required. Tokens
  * @param {any} value - Required. Value
@@ -150,7 +158,11 @@ class PlaidClient {
     };
     this.texts = {
       /**
-       * Create a new text for a document.
+       * Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
+
+textLayerId: the text's associated layer.
+documentId: the text's associated document.
+body: the string which is the content of this text.
  * @param {string} textLayerId - Required. Textlayerid
  * @param {string} documentId - Required. Documentid
  * @param {string} bodyText - Required. Bodytext
@@ -158,19 +170,19 @@ class PlaidClient {
        */
       create: this._textsCreate.bind(this),
       /**
-       * Get a text by ID.
+       * Get a text.
  * @param {string} textId - Text-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       get: this._textsGet.bind(this),
       /**
-       * Delete a text.
+       * Delete a text and all dependent data.
  * @param {string} textId - Text-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       delete: this._textsDelete.bind(this),
       /**
-       * Update a text's body.
+       * Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
  * @param {string} textId - Text-id identifier
  * @param {string} bodyText - Required. Bodytext
  * @param {string} [asOf] - Optional asOf
@@ -237,7 +249,7 @@ class PlaidClient {
        */
       create: this._tokenLayersCreate.bind(this),
       /**
-       * Set a configuration value for a layer in a editor namespace. Good for storing data useful for 
+       * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
  * @param {string} tokenLayerId - Token-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
@@ -246,7 +258,7 @@ class PlaidClient {
        */
       setConfig: this._tokenLayersSetConfig.bind(this),
       /**
-       * Remove a configuration value for a layer in a editor namespace
+       * Remove a configuration value for a layer.
  * @param {string} tokenLayerId - Token-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
@@ -283,27 +295,29 @@ class PlaidClient {
        */
       audit: this._documentsAudit.bind(this),
       /**
-       * Get a document by ID. If includeBody is true, also includes all layers with data.
+       * Get a document. Set includeBody to true in order to include all data contained in the document.
  * @param {string} documentId - Document-id identifier
  * @param {string} [asOf] - Optional asOf
  * @param {boolean} [includeBody] - Optional includeBody
        */
       get: this._documentsGet.bind(this),
       /**
-       * Delete a document.
+       * Delete a document and all data contained.
  * @param {string} documentId - Document-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       delete: this._documentsDelete.bind(this),
       /**
-       * Update a document's name.
+       * Update a document. Supported keys:
+
+name: update a document's name.
  * @param {string} documentId - Document-id identifier
  * @param {string} name - Required. Name
  * @param {string} [asOf] - Optional asOf
        */
       update: this._documentsUpdate.bind(this),
       /**
-       * Create a new document for a project.
+       * Create a new document in a project. Requires projectId and name.
  * @param {string} projectId - Required. Projectid
  * @param {string} name - Required. Name
  * @param {string} [asOf] - Optional asOf
@@ -312,42 +326,42 @@ class PlaidClient {
     };
     this.projects = {
       /**
-       * Add a user as a writer to the project
+       * Set a user's access level to read and write for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       addWriter: this._projectsAddWriter.bind(this),
       /**
-       * Remove a user's writer access from the project
+       * Remove a user's writer privileges for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       removeWriter: this._projectsRemoveWriter.bind(this),
       /**
-       * Add a user as a reader to the project
+       * Set a user's access level to read-only for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       addReader: this._projectsAddReader.bind(this),
       /**
-       * Remove a user's reader access from the project
+       * Remove a user's reader privileges for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       removeReader: this._projectsRemoveReader.bind(this),
       /**
-       * Add a user as a maintainer to the project
+       * Assign a user as a maintainer for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       addMaintainer: this._projectsAddMaintainer.bind(this),
       /**
-       * Remove a user's maintainer access from the project
+       * Remove a user's maintainer privileges for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
  * @param {string} [asOf] - Optional asOf
@@ -369,7 +383,7 @@ class PlaidClient {
        */
       get: this._projectsGet.bind(this),
       /**
-       * Delete a project
+       * Delete a project.
  * @param {string} id - Id identifier
  * @param {string} [asOf] - Optional asOf
        */
@@ -395,7 +409,7 @@ class PlaidClient {
     };
     this.textLayers = {
       /**
-       * Set a configuration value for a layer in a editor namespace. Good for storing data useful for 
+       * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
  * @param {string} textLayerId - Text-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
@@ -404,7 +418,7 @@ class PlaidClient {
        */
       setConfig: this._textLayersSetConfig.bind(this),
       /**
-       * Remove a configuration value for a layer in a editor namespace
+       * Remove a configuration value for a layer.
  * @param {string} textLayerId - Text-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
@@ -447,7 +461,7 @@ class PlaidClient {
     };
     this.login = {
       /**
-       * Authenticate a user and get a JWT token
+       * Authenticate with a username and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
  * @param {string} username - Required. Username
  * @param {string} password - Required. Password
        */
@@ -469,7 +483,7 @@ class PlaidClient {
        */
       create: this._relationLayersCreate.bind(this),
       /**
-       * Set a configuration value for a layer in a editor namespace. Good for storing data useful for 
+       * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
  * @param {string} relationLayerId - Relation-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
@@ -478,7 +492,7 @@ class PlaidClient {
        */
       setConfig: this._relationLayersSetConfig.bind(this),
       /**
-       * Remove a configuration value for a layer in a editor namespace
+       * Remove a configuration value for a layer.
  * @param {string} relationLayerId - Relation-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
@@ -507,7 +521,13 @@ class PlaidClient {
     };
     this.tokens = {
       /**
-       * Create a new token in a token layer.
+       * Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
+
+tokenLayerId: the layer in which to insert this token.
+textId: the text in which this token is found.
+begin: the inclusive character-based offset at which this token begins in the body of the text specified by textId
+end: the exclusive character-based offset at which this token ends in the body of the text specified by textId
+precedence: used for tokens with the same begin value in order to indicate their preferred linear order.
  * @param {string} tokenLayerId - Required. Tokenlayerid
  * @param {string} textId - Required. Textid
  * @param {number} begin - Required. Begin
@@ -517,19 +537,23 @@ class PlaidClient {
        */
       create: this._tokensCreate.bind(this),
       /**
-       * Get a token by ID.
+       * Get a token.
  * @param {string} tokenId - Token-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       get: this._tokensGet.bind(this),
       /**
-       * Delete a token.
+       * Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
  * @param {string} tokenId - Token-id identifier
  * @param {string} [asOf] - Optional asOf
        */
       delete: this._tokensDelete.bind(this),
       /**
-       * Update a token's extent and/or precedence.
+       * Update a token. Supported keys:
+
+begin: start index of the token
+end: end index of the token
+precedence: ordering value for the token relative to other tokens with the same begin--lower means earlier
  * @param {string} tokenId - Token-id identifier
  * @param {number} begin - Optional. Begin
  * @param {number} end - Optional. End
@@ -774,16 +798,20 @@ class PlaidClient {
   }
 
   /**
-   * Create a new relation.
+   * Create a new relation. A relation is a directed edge between two spans with a value, useful for expressing phenomena such as syntactic or semantic relations. A relation must at all times have both a valid source and target span. These spans must also belong to a single span layer which is linked to the relation's relation layer.
+
+layerId: the relation layer
+sourceId: the source span this relation originates from
+targetId: the target span this relation goes to
+<body>value</value>: the label for the relation
    */
-  async _relationsCreate(layerId, sourceId, targetId, value, id = undefined) {
+  async _relationsCreate(layerId, sourceId, targetId, value) {
     const url = `${this.baseUrl}/api/v1/relations`;
     const bodyObj = {
       "layer-id": layerId,
       "source-id": sourceId,
       "target-id": targetId,
-      "value": value,
-      "id": id
+      "value": value
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
@@ -818,7 +846,7 @@ class PlaidClient {
   }
 
   /**
-   * Set a configuration value for a layer in a editor namespace. Good for storing data useful for 
+   * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _spanLayersSetConfig(spanLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`;
@@ -853,7 +881,7 @@ class PlaidClient {
   }
 
   /**
-   * Remove a configuration value for a layer in a editor namespace
+   * Remove a configuration value for a layer.
    */
   async _spanLayersDeleteConfig(spanLayerId, namespace, configKey) {
     const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`;
@@ -1119,7 +1147,11 @@ class PlaidClient {
   }
 
   /**
-   * Create a new span in a span layer.
+   * Create a new span. A span holds a a value and must at all times be associated with one or more tokens.
+
+spanLayerId: the span's associated layer
+tokens: a list of tokens associated with this span. Must contain at least one token. All tokens must belong to a single layer which is linked to the span layer indicated by spanLayerId.
+value: the value of the span, used for annotation.
    */
   async _spansCreate(spanLayerId, tokens, value) {
     const url = `${this.baseUrl}/api/v1/spans`;
@@ -1273,7 +1305,11 @@ class PlaidClient {
   }
 
   /**
-   * Create a new text for a document.
+   * Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
+
+textLayerId: the text's associated layer.
+documentId: the text's associated document.
+body: the string which is the content of this text.
    */
   async _textsCreate(textLayerId, documentId, bodyText) {
     const url = `${this.baseUrl}/api/v1/texts`;
@@ -1315,7 +1351,7 @@ class PlaidClient {
   }
 
   /**
-   * Get a text by ID.
+   * Get a text.
    */
   async _textsGet(textId, asOf = undefined) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}`;
@@ -1354,7 +1390,7 @@ class PlaidClient {
   }
 
   /**
-   * Delete a text.
+   * Delete a text and all dependent data.
    */
   async _textsDelete(textId) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}`;
@@ -1387,7 +1423,7 @@ class PlaidClient {
   }
 
   /**
-   * Update a text's body.
+   * Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
    */
   async _textsUpdate(textId, bodyText) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}`;
@@ -1748,7 +1784,7 @@ class PlaidClient {
   }
 
   /**
-   * Set a configuration value for a layer in a editor namespace. Good for storing data useful for 
+   * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _tokenLayersSetConfig(tokenLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`;
@@ -1783,7 +1819,7 @@ class PlaidClient {
   }
 
   /**
-   * Remove a configuration value for a layer in a editor namespace
+   * Remove a configuration value for a layer.
    */
   async _tokenLayersDeleteConfig(tokenLayerId, namespace, configKey) {
     const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`;
@@ -1973,7 +2009,7 @@ class PlaidClient {
   }
 
   /**
-   * Get a document by ID. If includeBody is true, also includes all layers with data.
+   * Get a document. Set includeBody to true in order to include all data contained in the document.
    */
   async _documentsGet(documentId, includeBody = undefined, asOf = undefined) {
     const url = `${this.baseUrl}/api/v1/documents/${documentId}`;
@@ -2015,7 +2051,7 @@ class PlaidClient {
   }
 
   /**
-   * Delete a document.
+   * Delete a document and all data contained.
    */
   async _documentsDelete(documentId) {
     const url = `${this.baseUrl}/api/v1/documents/${documentId}`;
@@ -2048,7 +2084,9 @@ class PlaidClient {
   }
 
   /**
-   * Update a document's name.
+   * Update a document. Supported keys:
+
+name: update a document's name.
    */
   async _documentsUpdate(documentId, name) {
     const url = `${this.baseUrl}/api/v1/documents/${documentId}`;
@@ -2088,7 +2126,7 @@ class PlaidClient {
   }
 
   /**
-   * Create a new document for a project.
+   * Create a new document in a project. Requires projectId and name.
    */
   async _documentsCreate(projectId, name) {
     const url = `${this.baseUrl}/api/v1/documents`;
@@ -2129,7 +2167,7 @@ class PlaidClient {
   }
 
   /**
-   * Add a user as a writer to the project
+   * Set a user's access level to read and write for this project.
    */
   async _projectsAddWriter(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/writers/${userId}`;
@@ -2162,7 +2200,7 @@ class PlaidClient {
   }
 
   /**
-   * Remove a user's writer access from the project
+   * Remove a user's writer privileges for this project.
    */
   async _projectsRemoveWriter(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/writers/${userId}`;
@@ -2195,7 +2233,7 @@ class PlaidClient {
   }
 
   /**
-   * Add a user as a reader to the project
+   * Set a user's access level to read-only for this project.
    */
   async _projectsAddReader(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/readers/${userId}`;
@@ -2228,7 +2266,7 @@ class PlaidClient {
   }
 
   /**
-   * Remove a user's reader access from the project
+   * Remove a user's reader privileges for this project.
    */
   async _projectsRemoveReader(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/readers/${userId}`;
@@ -2261,7 +2299,7 @@ class PlaidClient {
   }
 
   /**
-   * Add a user as a maintainer to the project
+   * Assign a user as a maintainer for this project.
    */
   async _projectsAddMaintainer(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/maintainers/${userId}`;
@@ -2294,7 +2332,7 @@ class PlaidClient {
   }
 
   /**
-   * Remove a user's maintainer access from the project
+   * Remove a user's maintainer privileges for this project.
    */
   async _projectsRemoveMaintainer(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/maintainers/${userId}`;
@@ -2414,7 +2452,7 @@ class PlaidClient {
   }
 
   /**
-   * Delete a project
+   * Delete a project.
    */
   async _projectsDelete(id) {
     const url = `${this.baseUrl}/api/v1/projects/${id}`;
@@ -2566,7 +2604,7 @@ class PlaidClient {
   }
 
   /**
-   * Set a configuration value for a layer in a editor namespace. Good for storing data useful for 
+   * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _textLayersSetConfig(textLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`;
@@ -2601,7 +2639,7 @@ class PlaidClient {
   }
 
   /**
-   * Remove a configuration value for a layer in a editor namespace
+   * Remove a configuration value for a layer.
    */
   async _textLayersDeleteConfig(textLayerId, namespace, configKey) {
     const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`;
@@ -2827,7 +2865,7 @@ class PlaidClient {
   }
 
   /**
-   * Authenticate a user and get a JWT token
+   * Authenticate with a username and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
    */
   async _loginCreate(username, password) {
     const url = `${this.baseUrl}/api/v1/login`;
@@ -2948,7 +2986,7 @@ class PlaidClient {
   }
 
   /**
-   * Set a configuration value for a layer in a editor namespace. Good for storing data useful for 
+   * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _relationLayersSetConfig(relationLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`;
@@ -2983,7 +3021,7 @@ class PlaidClient {
   }
 
   /**
-   * Remove a configuration value for a layer in a editor namespace
+   * Remove a configuration value for a layer.
    */
   async _relationLayersDeleteConfig(relationLayerId, namespace, configKey) {
     const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`;
@@ -3128,7 +3166,13 @@ class PlaidClient {
   }
 
   /**
-   * Create a new token in a token layer.
+   * Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
+
+tokenLayerId: the layer in which to insert this token.
+textId: the text in which this token is found.
+begin: the inclusive character-based offset at which this token begins in the body of the text specified by textId
+end: the exclusive character-based offset at which this token ends in the body of the text specified by textId
+precedence: used for tokens with the same begin value in order to indicate their preferred linear order.
    */
   async _tokensCreate(tokenLayerId, textId, begin, end, precedence = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens`;
@@ -3172,7 +3216,7 @@ class PlaidClient {
   }
 
   /**
-   * Get a token by ID.
+   * Get a token.
    */
   async _tokensGet(tokenId, asOf = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
@@ -3211,7 +3255,7 @@ class PlaidClient {
   }
 
   /**
-   * Delete a token.
+   * Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
    */
   async _tokensDelete(tokenId) {
     const url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
@@ -3244,7 +3288,11 @@ class PlaidClient {
   }
 
   /**
-   * Update a token's extent and/or precedence.
+   * Update a token. Supported keys:
+
+begin: start index of the token
+end: end index of the token
+precedence: ordering value for the token relative to other tokens with the same begin--lower means earlier
    */
   async _tokensUpdate(tokenId, begin = undefined, end = undefined, precedence = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
