@@ -20,6 +20,19 @@
       (str/replace #"^[^/]+/" "") ; Remove namespace prefix
       (kebab->camel)))
 
+(defn- transform-parameter-references
+  "Transform parameter references in XML tags within summary strings.
+   Converts <body>param-name</body>, <query>param-name</query>, <path>param-name</path>
+   to camelCase parameter names and removes the XML tags."
+  [summary-text]
+  (-> summary-text
+      (str/replace #"<body>([^<]+)</body>" 
+                   (fn [[_ param-name]] (transform-key-name param-name)))
+      (str/replace #"<query>([^<]+)</query>" 
+                   (fn [[_ param-name]] (transform-key-name param-name)))
+      (str/replace #"<path>([^<]+)</path>" 
+                   (fn [[_ param-name]] (transform-key-name param-name)))))
+
 (defn- generate-key-transformation-functions
   "Generate JavaScript functions for transforming keys between formats"
   []
@@ -291,7 +304,7 @@
                             (generate-body-construction body-params)
                             :else nil)
         fetch-options (generate-fetch-options method has-body? is-login?)
-        summary (get operation "summary" "")
+        summary (transform-parameter-references (get operation "summary" ""))
         private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
         url-var (if (seq query-params) "finalUrl" "url")]
     
@@ -515,7 +528,7 @@
                 (let [methods (->> operations
                                    (map (fn [{:keys [method-name path operation]}]
                                           (let [private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
-                                                summary (get operation "summary" "")
+                                                summary (transform-parameter-references (get operation "summary" ""))
                                                 jsdoc-params (generate-jsdoc-params path operation)
                                                 jsdoc-comment (when (or summary (seq jsdoc-params))
                                                                (str "      /**\n"
