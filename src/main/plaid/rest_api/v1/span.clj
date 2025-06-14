@@ -18,7 +18,14 @@
   ["/spans"
 
    ;; Create a new span
-   ["" {:post {:summary    "Create a new span in a span layer."
+   ["" {:post {:summary    (str "Create a new span. A span holds a a value and must at all times be associated with "
+                                "one or more tokens."
+                                "\n"
+                                "\n<body>span-layer-id</body>: the span's associated layer"
+                                "\n<body>tokens</body>: a list of tokens associated with this span. Must contain at least one token. "
+                                "All tokens must belong to a single layer which is linked to the span layer indicated by "
+                                "<body>span-layer-id</body>."
+                                "\n<body>value</body>: the value of the span, used for annotation.")
                :middleware [[pra/wrap-writer-required get-project-id]]
                :parameters {:body [:map
                                    [:span-layer-id :uuid]
@@ -41,7 +48,7 @@
                                 (if-let [s (s/get db span-id)]
                                   {:status 200 :body (dissoc s :xt/id)}
                                   {:status 404 :body {:error "Span not found"}}))}
-         :patch  {:summary    "Update a span's value."
+         :patch  {:summary    "Update a span's <body>value</body>."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :parameters {:body [:map [:value any?]]}
                   :handler    (fn [{{{:keys [span-id]} :path {:keys [value]} :body} :parameters xtdb :xtdb user-id :user/id}]
