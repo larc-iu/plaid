@@ -683,3 +683,279 @@
           (assert-ok get-res)
           (is (= whitespace-text (-> get-res :body :text/body)))
           (delete-text admin-request text-id))))))
+
+(deftest text-update-with-tokens
+  (let [proj (create-test-project admin-request "TextUpdateProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl-res (create-text-layer admin-request proj "TL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)
+        tkl-res (create-token-layer admin-request tl "TKL")
+        tkl (-> tkl-res :body :id)
+        _ (assert-created tkl-res)]
+
+    (testing "Update text - deletion of first word"
+      (let [text-res (create-text admin-request tl doc "Hello world the quick brown fox jumped over the lazy brown dog")
+            text-id (-> text-res :body :id)
+            _ (assert-created text-res)
+            tok1-res (create-token admin-request tkl text-id 0 5)  ; "Hello"
+            tok1-id (-> tok1-res :body :id)
+            _ (assert-created tok1-res)
+            tok2-res (create-token admin-request tkl text-id 6 11) ; "world"
+            tok2-id (-> tok2-res :body :id)
+            _ (assert-created tok2-res)]
+        
+        ;; Delete "Hello " - should delete tok1 and shift tok2
+        (assert-ok (update-text admin-request text-id "world the quick brown fox jumped over the lazy brown dog"))
+        
+        ;; First token deleted, second token shifted
+        (assert-not-found (get-token admin-request tok1-id))
+        (let [tok2-get (get-token admin-request tok2-id)]
+          (assert-ok tok2-get)
+          (is (= 0 (-> tok2-get :body :token/begin)))
+          (is (= 5 (-> tok2-get :body :token/end))))
+        
+        (delete-text admin-request text-id)))
+
+    (testing "Update text with zero-width tokens"
+      (let [text-res (create-text admin-request tl doc "The quick brown fox jumped over the lazy dog and then some more")
+            text-id (-> text-res :body :id)
+            _ (assert-created text-res)
+            tok1-res (create-token admin-request tkl text-id 0 0)   ; zero-width at start
+            tok1-id (-> tok1-res :body :id)
+            _ (assert-created tok1-res)
+            tok2-res (create-token admin-request tkl text-id 10 10)   ; zero-width at position 10 (after "quick ")
+            tok2-id (-> tok2-res :body :id)
+            _ (assert-created tok2-res)
+            tok3-res (create-token admin-request tkl text-id 63 63)   ; zero-width at end
+            tok3-id (-> tok3-res :body :id)
+            _ (assert-created tok3-res)]
+        
+        ;; Delete "brown " (positions 10-16) - should delete tok2
+        (assert-ok (update-text admin-request text-id "The quick fox jumped over the lazy dog and then some more"))
+        
+        ;; Check tokens
+        (assert-ok (get-token admin-request tok1-id))        ; still exists at position 0
+        (assert-not-found (get-token admin-request tok2-id)) ; deleted
+        (let [tok3-get (get-token admin-request tok3-id)]
+          (assert-ok tok3-get)
+          (is (= 57 (-> tok3-get :body :token/begin)))  ; shifted left by 6
+          (is (= 57 (-> tok3-get :body :token/end))))   ; still zero-width
+        
+        (delete-text admin-request text-id)))
+
+    (testing "Update text - token deletion due to complete overlap"
+      (let [text-res (create-text admin-request tl doc "The quick brown fox jumped over the lazy dog and then some more")
+            text-id (-> text-res :body :id)
+            _ (assert-created text-res)
+            tok1-res (create-token admin-request tkl text-id 0 3)   ; "The"
+            tok1-id (-> tok1-res :body :id)
+            _ (assert-created tok1-res)
+            tok2-res (create-token admin-request tkl text-id 4 9)   ; "quick"
+            tok2-id (-> tok2-res :body :id)
+            _ (assert-created tok2-res)
+            tok3-res (create-token admin-request tkl text-id 10 15) ; "brown"
+            tok3-id (-> tok3-res :body :id)
+            _ (assert-created tok3-res)]
+        
+        ;; Delete "quick brown " - should delete tok2 and tok3
+        (assert-ok (update-text admin-request text-id "The fox jumped over the lazy dog and then some more"))
+        
+        ;; Check tokens
+        (assert-ok (get-token admin-request tok1-id))         ; still exists
+        (assert-not-found (get-token admin-request tok2-id))  ; deleted
+        (assert-not-found (get-token admin-request tok3-id))  ; deleted
+        
+        (delete-text admin-request text-id)))
+
+    (testing "Update text - partial token overlap"
+      (let [text-res (create-text admin-request tl doc "The overlapping words in this sentence are interesting to analyze")
+            text-id (-> text-res :body :id)
+            _ (assert-created text-res)
+            tok1-res (create-token admin-request tkl text-id 4 11)   ; "overlap" (positions 4-11)
+            tok1-id (-> tok1-res :body :id)
+            _ (assert-created tok1-res)
+            tok2-res (create-token admin-request tkl text-id 8 15)  ; "lapping" (positions 8-15)
+            tok2-id (-> tok2-res :body :id)
+            _ (assert-created tok2-res)]
+        
+        ;; Delete "lap" (positions 8-11) - affects both tokens
+        (assert-ok (update-text admin-request text-id "The overping words in this sentence are interesting to analyze"))
+        
+        ;; Check token adjustments
+        (let [tok1-get (get-token admin-request tok1-id)
+              tok2-get (get-token admin-request tok2-id)]
+          (assert-ok tok1-get)
+          (assert-ok tok2-get)
+          (is (= 4 (-> tok1-get :body :token/begin)))
+          (is (= 9 (-> tok1-get :body :token/end)))    ; shrunk to "overp"
+          (is (= 8 (-> tok2-get :body :token/begin)))  ; starts where deletion happened
+          (is (= 12 (-> tok2-get :body :token/end))))  ; adjusted for deletion: "ping"
+        
+        (delete-text admin-request text-id)))
+
+    (testing "Update text - insertion within token"
+      (let [text-res (create-text admin-request tl doc "The hello world example is simple but effective for testing")
+            text-id (-> text-res :body :id)
+            _ (assert-created text-res)
+            tok-res (create-token admin-request tkl text-id 4 9)  ; "hello"
+            tok-id (-> tok-res :body :id)
+            _ (assert-created tok-res)]
+        
+        ;; Insert "XXX" in the middle of "hello"
+        (assert-ok (update-text admin-request text-id "The heXXXllo world example is simple but effective for testing"))
+        
+        ;; Check token expansion
+        (let [tok-get (get-token admin-request tok-id)]
+          (assert-ok tok-get)
+          (is (= 4 (-> tok-get :body :token/begin)))
+          (is (= 12 (-> tok-get :body :token/end))))  ; expanded to include insertion
+        
+        (delete-text admin-request text-id)))
+
+    (testing "Update text - complex multi-token scenario"
+      (let [text-res (create-text admin-request tl doc "AABBCCDDEE followed by more text to ensure proper diff behavior")
+            text-id (-> text-res :body :id)
+            _ (assert-created text-res)
+            ;; Create tokens for each pair
+            tok1-res (create-token admin-request tkl text-id 0 2)   ; "AA"
+            tok1-id (-> tok1-res :body :id)
+            _ (assert-created tok1-res)
+            tok2-res (create-token admin-request tkl text-id 2 4)   ; "BB"
+            tok2-id (-> tok2-res :body :id)
+            _ (assert-created tok2-res)
+            tok3-res (create-token admin-request tkl text-id 4 6)   ; "CC"
+            tok3-id (-> tok3-res :body :id)
+            _ (assert-created tok3-res)
+            tok4-res (create-token admin-request tkl text-id 6 8)   ; "DD"
+            tok4-id (-> tok4-res :body :id)
+            _ (assert-created tok4-res)
+            tok5-res (create-token admin-request tkl text-id 8 10)  ; "EE"
+            tok5-id (-> tok5-res :body :id)
+            _ (assert-created tok5-res)
+            ;; Add a zero-width token in the middle
+            tok6-res (create-token admin-request tkl text-id 5 5)   ; zero-width between CC
+            tok6-id (-> tok6-res :body :id)
+            _ (assert-created tok6-res)]
+        
+        ;; Replace "BBCCDD" with "X" - should affect multiple tokens
+        (assert-ok (update-text admin-request text-id "AAXEE followed by more text to ensure proper diff behavior"))
+        
+        ;; Check results
+        (assert-ok (get-token admin-request tok1-id))         ; "AA" unaffected
+        (assert-not-found (get-token admin-request tok2-id))  ; deleted
+        (assert-not-found (get-token admin-request tok3-id))  ; deleted
+        (assert-not-found (get-token admin-request tok4-id))  ; deleted
+        (assert-not-found (get-token admin-request tok6-id))  ; zero-width deleted
+        
+        (let [tok5-get (get-token admin-request tok5-id)]
+          (assert-ok tok5-get)
+          (is (= 3 (-> tok5-get :body :token/begin)))  ; shifted left significantly
+          (is (= 5 (-> tok5-get :body :token/end))))   ; still "EE"
+        
+        (delete-text admin-request text-id)))
+
+    (testing "Update text - token at deletion boundary"
+      (let [text-res (create-text admin-request tl doc "The boundary test example shows how tokens behave at deletion boundaries")
+            text-id (-> text-res :body :id)
+            _ (assert-created text-res)
+            tok1-res (create-token admin-request tkl text-id 4 12)   ; "boundary"
+            tok1-id (-> tok1-res :body :id)
+            _ (assert-created tok1-res)
+            tok2-res (create-token admin-request tkl text-id 13 17)  ; "test"
+            tok2-id (-> tok2-res :body :id)
+            _ (assert-created tok2-res)]
+        
+        ;; Delete the space between words
+        (assert-ok (update-text admin-request text-id "The boundarytest example shows how tokens behave at deletion boundaries"))
+        
+        ;; Check tokens remain intact but shifted
+        (let [tok1-get (get-token admin-request tok1-id)
+              tok2-get (get-token admin-request tok2-id)]
+          (assert-ok tok1-get)
+          (assert-ok tok2-get)
+          (is (= 4 (-> tok1-get :body :token/begin)))
+          (is (= 12 (-> tok1-get :body :token/end)))    ; unchanged
+          (is (= 12 (-> tok2-get :body :token/begin)))  ; shifted to touch tok1
+          (is (= 16 (-> tok2-get :body :token/end))))   ; shifted left by 1
+        
+        (delete-text admin-request text-id)))
+
+    (testing "Update text - empty text edge case"
+      (let [text-res (create-text admin-request tl doc "This entire sentence will be deleted to create an empty text body")
+            text-id (-> text-res :body :id)
+            _ (assert-created text-res)
+            tok-res (create-token admin-request tkl text-id 0 64)
+            tok-id (-> tok-res :body :id)
+            _ (assert-created tok-res)]
+        
+        ;; Update to empty string - should delete all tokens
+        (assert-ok (update-text admin-request text-id ""))
+        
+        (assert-not-found (get-token admin-request tok-id))
+        
+        (delete-text admin-request text-id)))))
+
+(deftest text-update-cascade-effects
+  (let [proj (create-test-project admin-request "CascadeUpdateProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl-res (create-text-layer admin-request proj "TL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)
+        tkl-res (create-token-layer admin-request tl "TKL")
+        tkl (-> tkl-res :body :id)
+        _ (assert-created tkl-res)
+        sl-res (create-span-layer admin-request tkl "SL")
+        sl (-> sl-res :body :id)
+        _ (assert-created sl-res)
+        rl-res (create-relation-layer admin-request sl "RL")
+        rl (-> rl-res :body :id)
+        _ (assert-created rl-res)]
+
+    (testing "Text update cascades to spans and relations"
+      (let [text-res (create-text admin-request tl doc "The first word second word and third word in this long sentence with many additional words to ensure the diff algorithm works properly")
+            text-id (-> text-res :body :id)
+            _ (assert-created text-res)
+            ;; Create tokens
+            tok1-res (create-token admin-request tkl text-id 4 9)   ; "first"
+            tok1-id (-> tok1-res :body :id)
+            _ (assert-created tok1-res)
+            tok2-res (create-token admin-request tkl text-id 15 21)  ; "second"
+            tok2-id (-> tok2-res :body :id)
+            _ (assert-created tok2-res)
+            tok3-res (create-token admin-request tkl text-id 31 36) ; "third"
+            tok3-id (-> tok3-res :body :id)
+            _ (assert-created tok3-res)
+            ;; Create spans
+            span1-res (create-span admin-request sl [tok1-id] "S1")
+            span1-id (-> span1-res :body :id)
+            _ (assert-created span1-res)
+            span2-res (create-span admin-request sl [tok2-id] "S2")
+            span2-id (-> span2-res :body :id)
+            _ (assert-created span2-res)
+            span3-res (create-span admin-request sl [tok3-id] "S3")
+            span3-id (-> span3-res :body :id)
+            _ (assert-created span3-res)
+            ;; Create relations
+            rel-res (create-relation admin-request rl span1-id span2-id "R1")
+            rel-id (-> rel-res :body :id)
+            _ (assert-created rel-res)]
+        
+        ;; Delete "second word and " - should cascade delete tok2, span2, and relation
+        (assert-ok (update-text admin-request text-id "The first word third word in this long sentence with many additional words to ensure the diff algorithm works properly"))
+        
+        ;; Check cascading deletions
+        (assert-ok (get-token admin-request tok1-id))         ; still exists
+        (assert-not-found (get-token admin-request tok2-id))  ; deleted
+        (let [tok3-get (get-token admin-request tok3-id)]
+          (assert-ok tok3-get)                               ; still exists but shifted
+          (is (= 15 (-> tok3-get :body :token/begin)))       ; shifted left
+          (is (= 20 (-> tok3-get :body :token/end))))        ; shifted left
+        
+        (assert-ok (get-span admin-request span1-id))         ; still exists
+        (assert-not-found (get-span admin-request span2-id))  ; deleted with token
+        (assert-ok (get-span admin-request span3-id))         ; still exists
+        
+        (assert-not-found (get-relation admin-request rel-id)) ; deleted with span
+        
+        (delete-text admin-request text-id)))))
