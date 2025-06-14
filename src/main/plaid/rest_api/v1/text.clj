@@ -15,7 +15,12 @@
 (def text-routes
   ["/texts"
 
-   ["" {:post {:summary    "Create a new text for a document."
+   ["" {:post {:summary    (str "Create a new text in a document's text layer. A text is simply a container for one "
+                                "long string in <body>body</body> for a given layer."
+                                "\n"
+                                "\n<body>text-layer-id</body>: the text's associated layer."
+                                "\n<body>document-id</body>: the text's associated document."
+                                "\n<body>body</body>: the string which is the content of this text.")
                :middleware [[pra/wrap-writer-required get-project-id]]
                :parameters {:body [:map
                                    [:text-layer-id :uuid]
@@ -35,7 +40,7 @@
    ["/:text-id"
     {:parameters {:path [:map [:text-id :uuid]]}}
 
-    ["" {:get    {:summary    "Get a text by ID."
+    ["" {:get    {:summary    "Get a text."
                   :middleware [[pra/wrap-reader-required get-project-id]]
                   :handler    (fn [{{{:keys [text-id]} :path} :parameters db :db}]
                                 (let [text (txt/get db text-id)]
@@ -44,7 +49,11 @@
                                      :body   (dissoc text :xt/id)}
                                     {:status 404
                                      :body   {:error "Text not found"}})))}
-         :patch  {:summary    "Update a text's body."
+         :patch  {:summary    (str "Update a text's <body>body</body>. A diff is computed between the new and old "
+                                   "bodies, and a best effort is made to minimize Levenshtein distance between the two. "
+                                   "Token indices are updated so that tokens remain intact. Tokens which fall within "
+                                   "a range of deleted text are either shrunk appropriately if there is partial overlap "
+                                   "or else deleted if there is whole overlap.")
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :parameters {:body [:map [:body string?]]}
                   :handler    (fn [{{{:keys [text-id]} :path {:keys [body]} :body} :parameters xtdb :xtdb user-id :user/id}]
@@ -54,7 +63,7 @@
                                      :body   (dissoc (txt/get xtdb text-id) :xt/id)}
                                     {:status (or code 404)
                                      :body   {:error (or error "Failed to update text or text not found")}})))}
-         :delete {:summary    "Delete a text."
+         :delete {:summary    "Delete a text and all dependent data."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :handler    (fn [{{{:keys [text-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                                 (let [{:keys [success code error]} (txt/delete {:node xtdb} text-id user-id)]

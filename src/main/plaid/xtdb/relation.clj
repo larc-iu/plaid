@@ -2,8 +2,7 @@
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
-            [plaid.xtdb.relation-layer :as rll]
-            [taoensso.timbre :as log])
+            [plaid.xtdb.relation-layer :as rl])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:relation/id
@@ -110,7 +109,7 @@
   [xt-map attrs]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:relation/keys [layer source target]} attrs
-        project-id (rll/project-id db layer)
+        project-id (rl/project-id db layer)
         doc-id (get-doc-id-of-span db source)
         tx-ops (create* xt-map attrs)]
     (op/make-operation

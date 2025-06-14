@@ -40,7 +40,7 @@
                           {:status 200 :body entries}))}}]
 
    ["/users/:user-id/audit"
-    {:parameters {:path [:map [:user-id [:or :uuid string?]]]}
+    {:parameters {:path [:map [:user-id string?]]}
      :get        {:summary    "Get audit log for a user's actions"
                   :middleware [[pra/wrap-admin-required]]  ; Only admins can view other users' audit logs
                   :parameters {:query [:map

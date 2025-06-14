@@ -14,7 +14,7 @@
 (def document-routes
   ["/documents"
 
-   ["" {:post {:summary    "Create a new document for a project."
+   ["" {:post {:summary    "Create a new document in a project. Requires <body>project-id</body> and <body>name</body>."
                :middleware [[pra/wrap-writer-required get-project-id]]
                :parameters {:body [:map
                                    [:project-id :uuid]
@@ -32,7 +32,7 @@
    ["/:document-id"
     {:parameters {:path [:map [:document-id :uuid]]}}
 
-    ["" {:get    {:summary    "Get a document by ID. If includeBody is true, also includes all layers with data."
+    ["" {:get    {:summary    "Get a document. Set <query>include-body</query> to true in order to include all data contained in the document."
                   :middleware [[pra/wrap-reader-required get-project-id]]
                   :parameters {:query [:map [:include-body {:optional true} boolean?]]}
                   :handler    (fn [{{{:keys [document-id]} :path
@@ -46,7 +46,7 @@
                                      :body   (dissoc document :xt/id)}
                                     {:status 404
                                      :body   {:error "Document not found"}})))}
-         :patch  {:summary    "Update a document's name."
+         :patch  {:summary    "Update a document. Supported keys:\n\n<body>name</body>: update a document's name."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :parameters {:body [:map [:name :string]]}
                   :handler    (fn [{{{:keys [document-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
@@ -56,7 +56,7 @@
                                      :body   (dissoc (doc/get xtdb document-id) :xt/id)}
                                     {:status (or code 404)
                                      :body   {:error (or error "Failed to update document or document not found")}})))}
-         :delete {:summary    "Delete a document."
+         :delete {:summary    "Delete a document and all data contained."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :handler    (fn [{{{:keys [document-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                                 (let [{:keys [success code error]} (doc/delete {:node xtdb} document-id user-id)]
