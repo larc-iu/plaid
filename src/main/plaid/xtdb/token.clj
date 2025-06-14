@@ -245,6 +245,67 @@
 (defn merge [xt-map eid attrs user-id]
   (submit-operations! xt-map [(merge-operation xt-map eid attrs)] user-id))
 
+(defn multi-delete*
+  "We need a more advanced function for processing multiple deletes of a token because using delete* multiple
+  times in a transaction could lead to conflicting matches and puts."
+  [xt-map eids]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        eids-set (set eids)
+        ;; Find all spans that contain any of the tokens being deleted
+        spans (->> (xt/q db
+                         '{:find [?s]
+                           :where [[?s :span/tokens ?t]
+                                   [?t :token/id ?tid]]
+                           :in [[?tid ...]]}
+                         eids)
+                   (map first)
+                   (distinct)
+                   (map #(pxc/entity db %)))
+        ;; Process each span to determine if it should be updated or deleted
+        span-updates (for [span spans
+                           :let [remaining-tokens (remove eids-set (:span/tokens span))]]
+                       {:span span
+                        :remaining-tokens remaining-tokens
+                        :should-delete? (empty? remaining-tokens)})
+        ;; Separate spans to be deleted from those to be updated
+        spans-to-delete (filter :should-delete? span-updates)
+        spans-to-update (remove :should-delete? span-updates)
+        ;; Find all relations that need to be deleted (those referencing deleted spans)
+        span-ids-to-delete (set (map #(get-in % [:span :xt/id]) spans-to-delete))
+        relations-to-delete (when (seq span-ids-to-delete)
+                              (->> (xt/q db {:find ['?r]
+                                             :where '[(or [?r :relation/source ?s]
+                                                          [?r :relation/target ?s])]
+                                             :in ['[?s ...]]}
+                                         (vec span-ids-to-delete))
+                                   (map first)
+                                   (distinct)
+                                   (map #(pxc/entity db %))))]
+    (vec
+      (concat
+        ;; Match and delete all tokens
+        (for [eid eids
+              :let [token (pxc/entity db eid)]
+              :when token
+              op [[::xt/match eid token]
+                  [::xt/delete eid]]]
+          op)
+        ;; Update spans that still have tokens
+        (for [{:keys [span remaining-tokens]} spans-to-update
+              op [[::xt/match (:xt/id span) span]
+                  [::xt/put (assoc span :span/tokens remaining-tokens)]]]
+          op)
+        ;; Delete spans with no remaining tokens
+        (for [{:keys [span]} spans-to-delete
+              op [[::xt/match (:xt/id span) span]
+                  [::xt/delete (:xt/id span)]]]
+          op)
+        ;; Delete relations that reference deleted spans
+        (for [relation relations-to-delete
+              op [[::xt/match (:xt/id relation) relation]
+                  [::xt/delete (:xt/id relation)]]]
+          op)))))
+
 (defn delete*
   [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
