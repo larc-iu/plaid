@@ -7,6 +7,11 @@
   [s]
   (csk/->snake_case s))
 
+(defn- kebab->pascal
+  "Convert kebab-case to PascalCase"
+  [s]
+  (csk/->PascalCase s))
+
 (defn- transform-key-name-python
   "Transform a key from kebab-case/namespaced to snake_case.
    Examples: 
@@ -17,6 +22,19 @@
   (-> k
       (str/replace #"^[^/]+/" "") ; Remove namespace prefix
       (kebab->snake)))
+
+(defn- transform-parameter-references
+  "Transform parameter references in XML tags within summary strings.
+   Converts <body>param-name</body>, <query>param-name</query>, <path>param-name</path>
+   to snake_case parameter names and removes the XML tags."
+  [summary-text]
+  (-> summary-text
+      (str/replace #"<body>([^<]+)</body>" 
+                   (fn [[_ param-name]] (transform-key-name-python param-name)))
+      (str/replace #"<query>([^<]+)</query>" 
+                   (fn [[_ param-name]] (transform-key-name-python param-name)))
+      (str/replace #"<path>([^<]+)</path>" 
+                   (fn [[_ param-name]] (transform-key-name-python param-name)))))
 
 (defn- openapi-type-to-python
   "Convert OpenAPI type to Python type annotation"
@@ -43,24 +61,27 @@
         query-params (get-in operation [:parameters :query])
         body-params (get-in operation [:parameters :body :body-params])
         http-method (:http-method operation)
+        is-config? (str/includes? (:path operation) "/config/")
         
         ;; Path parameters are always required
         path-param-strs (map (fn [param]
                               (str (kebab->snake param) ": str"))
                             path-params)
         
-        ;; Body parameters
-        body-param-strs (map (fn [{:keys [name original-name required? type]}]
-                              (let [param-name (if (= original-name "body") "body_text" (transform-key-name-python original-name))
-                                    py-type (case type
-                                             "string" "str"
-                                             "integer" "int"
-                                             "boolean" "bool"
-                                             "array" "List[Any]"
-                                             "Any")
-                                    optional-marker (if required? "" " = None")]
-                                (str param-name ": " py-type optional-marker)))
-                            body-params)
+        ;; Body parameters (or config_value for config routes)
+        body-param-strs (if (and is-config? (= http-method :put))
+                          ["config_value: Any"]
+                          (map (fn [{:keys [name original-name required? type]}]
+                                (let [param-name (if (= original-name "body") "body_text" (transform-key-name-python original-name))
+                                      py-type (case type
+                                               "string" "str"
+                                               "integer" "int"
+                                               "boolean" "bool"
+                                               "array" "List[Any]"
+                                               "Any")
+                                      optional-marker (if required? "" " = None")]
+                                  (str param-name ": " py-type optional-marker)))
+                              body-params))
         
         ;; Query parameters (filter asOf for non-GET)
         filtered-query-params (if (= http-method :get)
@@ -86,13 +107,13 @@
         
         ;; Build URL with path parameters
         url-construction (if (empty? path-params)
-                          (str "url = f\"{self.base_url}" path "\"")
+                          (str "url = f\"{self.client.base_url}" path "\"")
                           (let [py-path (reduce (fn [p param]
                                                 (str/replace p (str "{" param "}") 
                                                            (str "{" (kebab->snake param) "}")))
                                               path
                                               path-params)]
-                            (str "url = f\"{self.base_url}" py-path "\"")))
+                            (str "url = f\"{self.client.base_url}" py-path "\"")))
         
         ;; Filter query params for non-GET requests
         filtered-query-params (if (= http-method :get)
@@ -110,7 +131,10 @@
                               (str "\n        params = {}\n"
                                    (str/join "\n" query-checks) "\n"
                                    "        if params:\n"
-                                   "            url += '?' + '&'.join(f'{k}={v}' for k, v in params.items())")))]
+                                   "            from urllib.parse import urlencode\n"
+                                   "            # Convert boolean values to lowercase strings\n"
+                                   "            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}\n"
+                                   "            url += '?' + urlencode(params)")))]
     
     (str url-construction query-construction)))
 
@@ -134,7 +158,7 @@
              "        }\n"
              "        # Filter out None values\n"
              "        body_dict = {k: v for k, v in body_dict.items() if v is not None}\n"
-             "        body_data = self._transform_request(body_dict)"))
+             "        body_data = self.client._transform_request(body_dict)"))
       
       :else nil)))
 
@@ -166,7 +190,7 @@
         ;; Headers
         auth-header (if is-login?
                      ""
-                     "        headers['Authorization'] = f'Bearer {self.token}'\n")
+                     "        headers['Authorization'] = f'Bearer {self.client.token}'\n")
         
         ;; HTTP method setup
         method-call (if sync? "requests" "aiohttp.ClientSession")
@@ -177,9 +201,37 @@
         response-text (if sync? "response.text()" "await response.text()")]
     
     (str "    " async-def " " py-method-name "(" full-params ") -> Any:\n"
-         "        \"\"\"" (or summary "") "\"\"\"\n"
+         "        \"\"\"\n"
+         "        " (transform-parameter-references (or summary "")) "\n"
+         (when (not (empty? method-params))
+           (str "\n"
+                "        Args:\n"
+                (str/join "\n" 
+                  (concat
+                    ;; Path parameters
+                    (map (fn [param]
+                           (str "            " (kebab->snake param) ": Path parameter"))
+                         (:path-params operation))
+                    ;; Body parameters (or config_value for config routes)
+                    (if (and is-config? (= http-method :put))
+                      ["            config_value: Configuration value to set"]
+                      (map (fn [{:keys [name original-name required?]}]
+                             (let [param-name (if (= original-name "body") "body_text" (transform-key-name-python original-name))]
+                               (str "            " param-name ": " (if required? "Required" "Optional") " body parameter")))
+                           (get-in operation [:parameters :body :body-params])))
+                    ;; Query parameters
+                    (let [query-params (get-in operation [:parameters :query])
+                          filtered-query-params (if (= http-method :get)
+                                                 query-params
+                                                 (filter #(not= (:name %) "as-of") query-params))]
+                      (map (fn [param]
+                             (str "            " (transform-key-name-python (:name param)) ": " 
+                                  (if (:required? param) "Required" "Optional") " query parameter"))
+                           filtered-query-params))))
+                "\n"))
+         "        \"\"\"\n"
          "        " url-construction "\n"
-         (when body-construction (str "        " body-construction "\n"))
+         (when body-construction (str body-construction "\n"))
          "        \n"
          "        headers = {'Content-Type': 'application/json'}\n"
          auth-header
@@ -192,7 +244,7 @@
                 "        \n"
                 "        if 'application/json' in response.headers.get('content-type', '').lower():\n"
                 "            data = " response-json "\n"
-                "            return self._transform_response(data)\n"
+                "            return self.client._transform_response(data)\n"
                 "        return " response-text "\n")
            ;; Async version using aiohttp
            (str "        async with aiohttp.ClientSession() as session:\n"
@@ -203,15 +255,26 @@
                 "                content_type = response.headers.get('content-type', '').lower()\n"
                 "                if 'application/json' in content_type:\n"
                 "                    data = " response-json "\n"
-                "                    return self._transform_response(data)\n"
+                "                    return self.client._transform_response(data)\n"
                 "                return " response-text "\n")))))
 
-(defn- generate-python-bundle-methods
-  "Generate Python methods for a bundle"
+(defn- generate-python-resource-class
+  "Generate a Python resource class for a bundle"
   [bundle-name operations]
-  (let [sync-methods (map #(generate-python-method % true) operations)
-        async-methods (map #(generate-python-method % false) operations)]
-    (str/join "\n" (concat sync-methods async-methods))))
+  (let [class-name (str (kebab->pascal bundle-name) "Resource")
+        methods (mapcat (fn [op]
+                         [(generate-python-method op true)
+                          (generate-python-method op false)])
+                       operations)]
+    (str "class " class-name ":\n"
+         "    \"\"\"\n"
+         "    Resource class for " bundle-name " operations\n"
+         "    \"\"\"\n"
+         "    \n"
+         "    def __init__(self, client: 'PlaidClient'):\n"
+         "        self.client = client\n"
+         "\n"
+         (str/join "\n" methods))))
 
 (defn- generate-python-key-transformations
   "Generate Python key transformation methods"
@@ -250,6 +313,56 @@
                    for k, v in obj.items()}
         return obj")
 
+(defn- generate-login-method
+  "Generate login method that returns a new authenticated client"
+  []
+  "    @classmethod
+    def login(cls, base_url: str, username: str, password: str) -> 'PlaidClient':
+        \"\"\"
+        Authenticate and return a new client instance with token
+        
+        Args:
+            base_url: The base URL for the API
+            username: Username for authentication
+            password: Password for authentication
+            
+        Returns:
+            PlaidClient: Authenticated client instance
+        \"\"\"
+        temp_client = cls(base_url, '')
+        response = requests.post(
+            f\"{base_url}/api/v1/login\",
+            json={'username': username, 'password': password},
+            headers={'Content-Type': 'application/json'}
+        )
+        response.raise_for_status()
+        token = response.json().get('token', '')
+        return cls(base_url, token)
+    
+    @classmethod
+    async def login_async(cls, base_url: str, username: str, password: str) -> 'PlaidClient':
+        \"\"\"
+        Authenticate asynchronously and return a new client instance with token
+        
+        Args:
+            base_url: The base URL for the API
+            username: Username for authentication
+            password: Password for authentication
+            
+        Returns:
+            PlaidClient: Authenticated client instance
+        \"\"\"
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f\"{base_url}/api/v1/login\",
+                json={'username': username, 'password': password},
+                headers={'Content-Type': 'application/json'}
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                token = data.get('token', '')
+                return cls(base_url, token)")
+
 (defn generate-python-client
   "Generate the complete Python client class"
   [ast]
@@ -259,27 +372,22 @@
         description (:description info)
         bundles (:bundles ast)
         
-        ;; Generate bundle methods
-        bundle-methods (->> bundles
-                            (map (fn [[bundle-name operations]]
-                                   (generate-python-bundle-methods bundle-name operations)))
-                            (str/join "\n\n"))
+        ;; Generate resource classes
+        resource-classes (->> bundles
+                             (map (fn [[bundle-name operations]]
+                                    (generate-python-resource-class bundle-name operations)))
+                             (str/join "\n\n"))
         
-        ;; Generate bundle initialization
-        bundle-init (->> bundles
-                         (map (fn [[bundle-name operations]]
-                                (let [method-names (->> operations
-                                                        (mapcat (fn [op]
-                                                                  (let [base-name (kebab->snake (:method-name op))]
-                                                                    [(str "'" base-name "': self." base-name)
-                                                                     (str "'" base-name "_async': self." base-name "_async")])))
-                                                        (str/join ",\n            "))]
-                                  (str "        self." (kebab->snake bundle-name) " = {\n"
-                                       "            " method-names "\n"
-                                       "        }"))))
-                         (str/join "\n"))
+        ;; Generate resource initialization
+        resource-init (->> bundles
+                          (map (fn [[bundle-name _]]
+                                 (let [snake-name (kebab->snake bundle-name)
+                                       class-name (str (kebab->pascal bundle-name) "Resource")]
+                                   (str "        self." snake-name " = " class-name "(self)"))))
+                          (str/join "\n"))
         
-        key-transformations (generate-python-key-transformations)]
+        key-transformations (generate-python-key-transformations)
+        login-methods (generate-login-method)]
     
     (str "\"\"\"\n"
          title " - " description "\n"
@@ -292,13 +400,24 @@
          "from typing import Any, Dict, List, Optional, Union\n"
          "\n"
          "\n"
+         resource-classes "\n\n"
          "class PlaidClient:\n"
          "    \"\"\"\n"
          "    " title " client\n"
          "    \n"
          "    Provides both synchronous and asynchronous methods for API access.\n"
-         "    Sync methods: client.projects.create_project(...)\n"
-         "    Async methods: await client.projects.create_project_async(...)\n"
+         "    Sync methods: client.projects.create(...)\n"
+         "    Async methods: await client.projects.create_async(...)\n"
+         "    \n"
+         "    Example:\n"
+         "        # Authenticate\n"
+         "        client = PlaidClient.login('http://localhost:8085', 'username', 'password')\n"
+         "        \n"
+         "        # Create a project\n"
+         "        project = client.projects.create(name='My Project')\n"
+         "        \n"
+         "        # Get all documents\n"
+         "        docs = client.documents.list()\n"
          "    \"\"\"\n"
          "    \n"
          "    def __init__(self, base_url: str, token: str):\n"
@@ -312,12 +431,12 @@
          "        self.base_url = base_url.rstrip('/')\n"
          "        self.token = token\n"
          "        \n"
-         "        # Initialize API bundles\n"
-         bundle-init "\n"
+         "        # Initialize resource objects\n"
+         resource-init "\n"
          "    \n"
          key-transformations "\n"
-         "\n"
-         bundle-methods "\n")))
+         "    \n"
+         login-methods "\n")))
 
 (defn generate-python-client-file
   "Generate a Python client from an OpenAPI AST"
@@ -326,7 +445,5 @@
     (spit output-file py-client)
     (println (str "✅ Python client generated successfully: " output-file))
     (println (str "📊 Generated " 
-                  (count (re-seq #"def \w+\(" py-client)) 
-                  " sync methods and "
-                  (count (re-seq #"async def \w+\(" py-client))
-                  " async methods"))))
+                  (count (:bundles ast)) 
+                  " resource classes with sync and async methods"))))
