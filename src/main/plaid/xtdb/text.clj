@@ -131,7 +131,7 @@
         needs-update? (fn [{:token/keys [begin end id]}]
                         (or (not= begin (:token/begin (clojure.core/get indexed-tokens id)))
                             (not= end (:token/end (clojure.core/get indexed-tokens id)))))
-        deletion-tx (reduce into (map #(tok/delete* xt-map %) deleted-token-ids))
+        deletion-tx (tok/multi-delete* xt-map deleted-token-ids)
         update-tx (mapcat (fn [{:token/keys [id] :as token}]
                             [[::xt/match id (pxc/entity db id)]
                              [::xt/put token]])
