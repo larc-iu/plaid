@@ -133,25 +133,10 @@ Accessible via audit endpoints for projects, documents, and users (see Key Endpo
 
 ## Layer Configuration
 
-Each layer has a `:config` field for storing arbitrary EDN data. This enables UI customization without code changes:
+Each layer has a `:config` field for storing arbitrary data. This enables UI customization without code changes:
 - Token layers can specify if they represent words, morphemes, etc.
 - Span layers can specify cardinality constraints
 - Relation layers can specify allowed relation types
-
-## Common Operations Flow
-
-1. **Creating a document with annotations**:
-   - Create Document in Project
-   - Create Text linked to Document and TextLayer
-   - Create Tokens referencing Text substrings
-   - Create Spans referencing Tokens
-   - Create Relations between Spans
-
-2. **Modifying with integrity**:
-   - Read current state into single DB snapshot
-   - Validate all constraints
-   - Prepare transaction with `::xt/match` ops for all affected entities
-   - Submit transaction (fails atomically if any match fails)
 
 ## Testing
 
@@ -161,64 +146,15 @@ Tests use a separate XTDB node configuration to avoid affecting development data
 
 ## Client Code Generation
 
-Plaid includes a JavaScript client generator that creates a fully-typed API client from the OpenAPI specification.
+Plaid includes client generators that create fully-typed API clients from the OpenAPI specification. Both JavaScript and Python clients are supported.
 
 ### Usage
 ```bash
+# JavaScript client
 clojure -M:gen openapi.json client.js
+
+# Python client  
+clojure -M:gen openapi.json client.py python
 ```
 
-### Generated Client Features
-
-1. **Automatic Key Transformation**: 
-   - Converts between kebab-case (API) and camelCase (JavaScript)
-   - Handles namespaced keys (e.g., `project/name` → `name`)
-
-2. **Organized API Methods**:
-   - Groups endpoints into logical bundles (e.g., `client.projects.create()`)
-   - Infers method names from HTTP verbs and paths
-   - Supports custom method names via OpenAPI extensions
-
-3. **Built-in Authentication**:
-   - Automatically includes JWT token in headers
-   - Excludes auth header for login endpoint
-
-4. **Error Handling**:
-   - Provides detailed error objects with status, URL, and response body
-   - Preserves HTTP error context for debugging
-
-5. **Parameter Handling**:
-   - Supports path, query, and body parameters
-   - Optional parameters with default values
-   - Automatic request/response transformation
-
-### Example Generated Code
-```javascript
-const client = new PlaidClient('http://localhost:8085/api/v1', token);
-
-// Create a project
-const project = await client.projects.create('my-project', 'My Project');
-
-// Add a document
-const doc = await client.documents.create(project.id, 'doc1', 'Document 1');
-
-// All keys are automatically converted between formats
-console.log(doc.projectId); // API returns 'project-id'
-```
-
-## Important Constraints
-
-1. **No Orphaned Data**: Deleting entities must cascade properly
-2. **Token Boundaries**: Must be valid indices into parent Text
-3. **Span Tokens**: Must reference at least one Token
-4. **Relation Endpoints**: Both source and target must exist
-5. **Layer Hierarchy**: Child layers cannot exist without parents
-
-## Error Codes
-
-Standard HTTP status codes are used:
-- 404: Entity not found
-- 409: Conflict (e.g., duplicate ID)
-- 422: Validation error
-- 403: Permission denied
-- 401: Authentication required
+Both clients feature improved parameter casing handling that automatically converts between API conventions (kebab-case) and language-specific conventions (camelCase for JavaScript, snake_case for Python).
