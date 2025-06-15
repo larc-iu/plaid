@@ -23,7 +23,8 @@
             [plaid.rest-api.v1.span-layer :refer [span-layer-routes]]
             [plaid.rest-api.v1.relation-layer :refer [relation-layer-routes]]
             [plaid.rest-api.v1.relation :refer [relation-routes]]
-            [plaid.rest-api.v1.audit :refer [audit-routes]]))
+            [plaid.rest-api.v1.audit :refer [audit-routes]]
+            [plaid.rest-api.v1.bulk :refer [bulk-routes]]))
 
 (def coercion
   (reitit.coercion.malli/create
@@ -72,7 +73,8 @@
      span-layer-routes
      relation-routes
      relation-layer-routes
-     audit-routes]]
+     audit-routes
+     bulk-routes]]
 
    ;; swagger documentation
    [""
@@ -94,24 +96,27 @@
                               :persistAuthorization true}})}]]])
 
 (defn rest-handler [xtdb secret-key]
-  (ring/ring-handler
-    (ring/router
-      [(routes)]
-      {:data {:coercion   coercion
-              :muuntaja   m/instance
-              :swagger    {:id ::api}
-              :middleware [#_exception/exception-middleware
-                           parameters/parameters-middleware
-                           muuntaja/format-negotiate-middleware
-                           muuntaja/format-response-middleware
-                           muuntaja/format-request-middleware
-                           coercion/coerce-response-middleware
-                           coercion/coerce-request-middleware
-                           multipart/multipart-middleware
-                           [prm/wrap-request-extras xtdb secret-key]
-                           pra/wrap-read-jwt
-                           prm/wrap-logging
-                           prm/wrap-as-of-db
-                           openapi/openapi-feature]}})
-    (ring/create-default-handler)))
+  (let [handler (ring/ring-handler
+                  (ring/router
+                    [(routes)]
+                    {:data {:coercion   coercion
+                            :muuntaja   m/instance
+                            :swagger    {:id ::api}
+                            :middleware [#_exception/exception-middleware ;; CLAUDE: DO NOT UNCOMMENT THIS
+                                         parameters/parameters-middleware
+                                         muuntaja/format-negotiate-middleware
+                                         muuntaja/format-response-middleware
+                                         muuntaja/format-request-middleware
+                                         coercion/coerce-response-middleware
+                                         coercion/coerce-request-middleware
+                                         multipart/multipart-middleware
+                                         [prm/wrap-request-extras xtdb secret-key]
+                                         pra/wrap-read-jwt
+                                         prm/wrap-logging
+                                         prm/wrap-as-of-db
+                                         openapi/openapi-feature]}})
+                  (ring/create-default-handler))]
+    ;; Wrap handler to inject itself into requests for bulk operations
+    (fn [request]
+      (handler (assoc request :rest-handler handler)))))
 
