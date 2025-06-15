@@ -154,3 +154,21 @@ clojure -M:gen openapi.json client.py python
 ```
 
 Both clients feature improved parameter casing handling that automatically converts between API conventions (kebab-case) and language-specific conventions (camelCase for JavaScript, snake_case for Python).
+
+## API Route Reference
+
+To quickly see available API routes from the OpenAPI specification:
+
+```bash
+# List all routes with their HTTP methods
+jq -r '.paths | keys[]' examples/dev_console/openapi.json
+
+# Show routes with their HTTP methods and summaries
+jq -r '.paths | to_entries[] | "\(.key):" + (.value | to_entries[] | " \(.key | ascii_upcase) - \(.value.summary // "No summary")")' examples/dev_console/openapi.json
+
+# List only specific entity routes (e.g., projects)
+jq -r '.paths | keys[] | select(contains("projects"))' examples/dev_console/openapi.json
+
+# Show authentication requirements
+jq -r '.paths | to_entries[] | select(.value | to_entries[] | .value.security) | .key' examples/dev_console/openapi.json
+```
