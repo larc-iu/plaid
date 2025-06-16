@@ -18,6 +18,153 @@
   [summary-text]
   (common/transform-parameter-references summary-text :camelCase))
 
+(defn- generate-batch-builder-class
+  "Generate JavaScript BatchBuilder class"
+  []
+  "  /**
+   * BatchBuilder class for building and executing batch operations
+   */
+  class BatchBuilder {
+    constructor(client) {
+      this.client = client;
+      this.operations = [];
+    }
+
+    /**
+     * Add an operation to the batch
+     * @param {Function} method - The client method to call
+     * @param {...any} args - Arguments for the method
+     * @returns {BatchBuilder} - Returns this for chaining
+     */
+    add(method, ...args) {
+      // Extract the method metadata to build the operation
+      const methodInfo = this._extractMethodInfo(method, args);
+      this.operations.push(methodInfo);
+      return this;
+    }
+
+    /**
+     * Execute all operations in the batch
+     * @returns {Promise<Array>} - Array of results corresponding to each operation
+     */
+    async execute() {
+      if (this.operations.length === 0) {
+        return [];
+      }
+
+      const url = `${this.client.baseUrl}/api/v1/bulk`;
+      const body = this.operations.map(op => ({
+        path: op.path,
+        method: op.method.toUpperCase(),
+        ...(op.body && { body: op.body })
+      }));
+
+      const fetchOptions = {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.client.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      };
+
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'Unable to read error response');
+        const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseBody = errorBody;
+        throw error;
+      }
+
+      const results = await response.json();
+      return results.map(result => this.client._transformResponse(result));
+    }
+
+    /**
+     * Extract method information from a bound method and its arguments
+     * @private
+     */
+    _extractMethodInfo(method, args) {
+      // Find the method in the client bundles
+      for (const [bundleName, bundle] of Object.entries(this.client)) {
+        if (typeof bundle === 'object' && bundle !== null) {
+          for (const [methodName, boundMethod] of Object.entries(bundle)) {
+            if (boundMethod === method) {
+              return this._buildOperationFromMethod(bundleName, methodName, args);
+            }
+          }
+        }
+      }
+      throw new Error('Method not found in client bundles');
+    }
+
+    /**
+     * Build operation descriptor from method name and arguments
+     * @private
+     */
+    _buildOperationFromMethod(bundleName, methodName, args) {
+      // This is a simplified approach - in a real implementation, we'd need
+      // to reconstruct the full operation based on the method signature
+      // For now, we'll store the method info and delegate to the actual method
+      // when we have more sophisticated introspection
+      
+      // Get the private method name
+      const privateMethodName = `_${bundleName}${methodName.charAt(0).toUpperCase() + methodName.slice(1)}`;
+      const privateMethod = this.client[privateMethodName];
+      
+      if (!privateMethod) {
+        throw new Error(`Private method ${privateMethodName} not found`);
+      }
+
+      // Extract operation info from the method's path construction
+      // This is a simplified version - real implementation would be more robust
+      return this._simulateMethodCall(privateMethod, args);
+    }
+
+    /**
+     * Simulate a method call to extract the operation details
+     * @private
+     */
+    _simulateMethodCall(method, args) {
+      // Create a mock fetch function to capture the request details
+      const originalFetch = global.fetch;
+      let capturedOperation = null;
+
+      global.fetch = (url, options) => {
+        const parsedUrl = new URL(url);
+        const path = parsedUrl.pathname;
+        const method = options.method || 'GET';
+        const body = options.body ? JSON.parse(options.body) : undefined;
+        
+        capturedOperation = {
+          path: path,
+          method: method.toLowerCase(),
+          body: body
+        };
+        
+        // Return a resolved promise to avoid actually making the request
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve('')
+        });
+      };
+
+      try {
+        // Call the method to capture the operation
+        method.apply(this.client, args);
+        return capturedOperation;
+      } finally {
+        // Restore original fetch
+        global.fetch = originalFetch;
+      }
+    }
+  }")
+
 (defn- generate-key-transformation-functions
   "Generate JavaScript functions for transforming keys between formats"
   []
@@ -60,6 +207,14 @@
       transformed[newKey] = this._transformResponse(value);
     }
     return transformed;
+  }
+
+  /**
+   * Create a new batch builder for executing multiple operations
+   * @returns {BatchBuilder} - New batch builder instance
+   */
+  batch() {
+    return new BatchBuilder(this);
   }
 ")
 
@@ -144,7 +299,7 @@
            (= (:type (first body-params)) "array")
            (= (:original-name (first body-params)) "body"))
       (let [param-name (transform-key-name (:name (first body-params)))]
-        (str "const body = " param-name ";"))
+        (str "const requestBody = " param-name ";"))
       
       ;; Regular case: object parameters
       :else
@@ -159,7 +314,7 @@
              "\n    };\n"
              "    // Filter out undefined optional parameters\n"
              "    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);\n"
-             "    const body = this._transformRequest(bodyObj);")))))
+             "    const requestBody = this._transformRequest(bodyObj);")))))
 
 (defn- generate-fetch-options
   "Generate JavaScript fetch options"
@@ -174,7 +329,7 @@
            auth-header
            "        'Content-Type': 'application/json'\n"
            "      },\n"
-           "      body: JSON.stringify(body)\n"
+           "      body: JSON.stringify(requestBody)\n"
            "    };")
       (str "const fetchOptions = {\n"
            "      method: '" (str/upper-case (name method)) "',\n"
@@ -210,7 +365,7 @@
         body-params (concat required-body-params optional-body-params)
         body-construction (cond
                            (and is-config? (= http-method :put))
-                           "const body = configValue;"
+                           "const requestBody = configValue;"
                            
                            (seq body-params)
                            (generate-body-construction body-params)
@@ -458,6 +613,7 @@
         {:keys [title version description]} info
         bundle-initialization (generate-bundle-initialization bundles)
         private-methods (generate-bundle-methods bundles)
+        batch-builder-class (generate-batch-builder-class)
         transformation-functions (generate-key-transformation-functions)]
     
     (str "/**\n"
@@ -465,6 +621,8 @@
          " * Version: " version "\n"
          " * Generated on: " (java.util.Date.) "\n"
          " */\n"
+         "\n"
+         batch-builder-class
          "\n"
          "class PlaidClient {\n"
          "  /**\n"

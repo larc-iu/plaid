@@ -1,9 +1,152 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Mon Jun 16 15:14:15 EDT 2025
+ * Generated on: Mon Jun 16 15:42:38 EDT 2025
  */
 
+  /**
+   * BatchBuilder class for building and executing batch operations
+   */
+  class BatchBuilder {
+    constructor(client) {
+      this.client = client;
+      this.operations = [];
+    }
+
+    /**
+     * Add an operation to the batch
+     * @param {Function} method - The client method to call
+     * @param {...any} args - Arguments for the method
+     * @returns {BatchBuilder} - Returns this for chaining
+     */
+    add(method, ...args) {
+      // Extract the method metadata to build the operation
+      const methodInfo = this._extractMethodInfo(method, args);
+      this.operations.push(methodInfo);
+      return this;
+    }
+
+    /**
+     * Execute all operations in the batch
+     * @returns {Promise<Array>} - Array of results corresponding to each operation
+     */
+    async execute() {
+      if (this.operations.length === 0) {
+        return [];
+      }
+
+      const url = `${this.client.baseUrl}/api/v1/bulk`;
+      const body = this.operations.map(op => ({
+        path: op.path,
+        method: op.method.toUpperCase(),
+        ...(op.body && { body: op.body })
+      }));
+
+      const fetchOptions = {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.client.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      };
+
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'Unable to read error response');
+        const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseBody = errorBody;
+        throw error;
+      }
+
+      const results = await response.json();
+      return results.map(result => this.client._transformResponse(result));
+    }
+
+    /**
+     * Extract method information from a bound method and its arguments
+     * @private
+     */
+    _extractMethodInfo(method, args) {
+      // Find the method in the client bundles
+      for (const [bundleName, bundle] of Object.entries(this.client)) {
+        if (typeof bundle === 'object' && bundle !== null) {
+          for (const [methodName, boundMethod] of Object.entries(bundle)) {
+            if (boundMethod === method) {
+              return this._buildOperationFromMethod(bundleName, methodName, args);
+            }
+          }
+        }
+      }
+      throw new Error('Method not found in client bundles');
+    }
+
+    /**
+     * Build operation descriptor from method name and arguments
+     * @private
+     */
+    _buildOperationFromMethod(bundleName, methodName, args) {
+      // This is a simplified approach - in a real implementation, we'd need
+      // to reconstruct the full operation based on the method signature
+      // For now, we'll store the method info and delegate to the actual method
+      // when we have more sophisticated introspection
+      
+      // Get the private method name
+      const privateMethodName = `_${bundleName}${methodName.charAt(0).toUpperCase() + methodName.slice(1)}`;
+      const privateMethod = this.client[privateMethodName];
+      
+      if (!privateMethod) {
+        throw new Error(`Private method ${privateMethodName} not found`);
+      }
+
+      // Extract operation info from the method's path construction
+      // This is a simplified version - real implementation would be more robust
+      return this._simulateMethodCall(privateMethod, args);
+    }
+
+    /**
+     * Simulate a method call to extract the operation details
+     * @private
+     */
+    _simulateMethodCall(method, args) {
+      // Create a mock fetch function to capture the request details
+      const originalFetch = global.fetch;
+      let capturedOperation = null;
+
+      global.fetch = (url, options) => {
+        const parsedUrl = new URL(url);
+        const path = parsedUrl.pathname;
+        const method = options.method || 'GET';
+        const body = options.body ? JSON.parse(options.body) : undefined;
+        
+        capturedOperation = {
+          path: path,
+          method: method.toLowerCase(),
+          body: body
+        };
+        
+        // Return a resolved promise to avoid actually making the request
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve('')
+        });
+      };
+
+      try {
+        // Call the method to capture the operation
+        method.apply(this.client, args);
+        return capturedOperation;
+      } finally {
+        // Restore original fetch
+        global.fetch = originalFetch;
+      }
+    }
+  }
 class PlaidClient {
   /**
    * Create a new PlaidClient instance
@@ -559,6 +702,14 @@ precedence: ordering value for the token relative to other tokens with the same 
   }
 
   /**
+   * Create a new batch builder for executing multiple operations
+   * @returns {BatchBuilder} - New batch builder instance
+   */
+  batch() {
+    return new BatchBuilder(this);
+  }
+
+  /**
    * Update the target span of a relation.
    */
   async _relationsTarget(relationId, spanId) {
@@ -568,14 +719,14 @@ precedence: ordering value for the token relative to other tokens with the same 
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -680,14 +831,14 @@ precedence: ordering value for the token relative to other tokens with the same 
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -720,14 +871,14 @@ precedence: ordering value for the token relative to other tokens with the same 
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -768,14 +919,14 @@ targetId: the target span this relation goes to
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -803,14 +954,14 @@ targetId: the target span this relation goes to
    */
   async _spanLayersSetConfig(spanLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`;
-    const body = configValue;
+    const requestBody = configValue;
     const fetchOptions = {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -948,14 +1099,14 @@ targetId: the target span this relation goes to
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -989,14 +1140,14 @@ targetId: the target span this relation goes to
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1029,14 +1180,14 @@ targetId: the target span this relation goes to
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1069,14 +1220,14 @@ targetId: the target span this relation goes to
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1115,14 +1266,14 @@ value: the value of the span, used for annotation.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1227,14 +1378,14 @@ value: the value of the span, used for annotation.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1273,14 +1424,14 @@ body: the string which is the content of this text.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1385,14 +1536,14 @@ body: the string which is the content of this text.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1466,14 +1617,14 @@ body: the string which is the content of this text.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1625,14 +1776,14 @@ body: the string which is the content of this text.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1665,14 +1816,14 @@ body: the string which is the content of this text.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1706,14 +1857,14 @@ body: the string which is the content of this text.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1741,14 +1892,14 @@ body: the string which is the content of this text.
    */
   async _tokenLayersSetConfig(tokenLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`;
-    const body = configValue;
+    const requestBody = configValue;
     const fetchOptions = {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -1886,14 +2037,14 @@ body: the string which is the content of this text.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2048,14 +2199,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2089,14 +2240,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2447,14 +2598,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2526,14 +2677,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2561,14 +2712,14 @@ name: update a document's name.
    */
   async _textLayersSetConfig(textLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`;
-    const body = configValue;
+    const requestBody = configValue;
     const fetchOptions = {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2706,14 +2857,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2746,14 +2897,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2787,14 +2938,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2828,13 +2979,13 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2862,14 +3013,14 @@ name: update a document's name.
    */
   async _bulkSubmit(operations) {
     const url = `${this.baseUrl}/api/v1/bulk`;
-    const body = operations;
+    const requestBody = operations;
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2902,14 +3053,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2943,14 +3094,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -2978,14 +3129,14 @@ name: update a document's name.
    */
   async _relationLayersSetConfig(relationLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`;
-    const body = configValue;
+    const requestBody = configValue;
     const fetchOptions = {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -3123,14 +3274,14 @@ name: update a document's name.
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -3173,14 +3324,14 @@ precedence: used for tokens with the same begin value in order to indicate their
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
@@ -3291,14 +3442,14 @@ precedence: ordering value for the token relative to other tokens with the same 
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const body = this._transformRequest(bodyObj);
+    const requestBody = this._transformRequest(bodyObj);
     const fetchOptions = {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(requestBody)
     };
     
     const response = await fetch(url, fetchOptions);
