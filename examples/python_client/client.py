@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Sat Jun 14 13:56:23 EDT 2025
+Generated on: Mon Jun 16 13:48:44 EDT 2025
 """
 
 import requests
@@ -3385,6 +3385,51 @@ class LoginResource:
                 return await response.text()
 
 
+class BulkResource:
+    """
+    Resource class for bulk operations
+    """
+    
+    def __init__(self, client: 'PlaidClient'):
+        self.client = client
+
+    def create(self) -> Any:
+        """
+        Execute multiple API operations in a single request
+        """
+        url = f"{self.client.base_url}/api/v1/bulk"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.post(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def create_async(self) -> Any:
+        """
+        Execute multiple API operations in a single request
+        """
+        url = f"{self.client.base_url}/api/v1/bulk"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+
 class RelationLayersResource:
     """
     Resource class for relationLayers operations
@@ -4068,6 +4113,7 @@ class PlaidClient:
         self.projects = ProjectsResource(self)
         self.text_layers = TextLayersResource(self)
         self.login = LoginResource(self)
+        self.bulk = BulkResource(self)
         self.relation_layers = RelationLayersResource(self)
         self.tokens = TokensResource(self)
     

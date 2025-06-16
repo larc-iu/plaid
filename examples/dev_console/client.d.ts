@@ -88,6 +88,10 @@ interface LoginBundle {
   create(username: string, password: string): Promise<any>;
 }
 
+interface BulkBundle {
+  create(): Promise<any>;
+}
+
 interface RelationLayersBundle {
   shift(relationLayerId: string, direction: string): Promise<any>;
   create(spanLayerId: string, name: string): Promise<any>;
@@ -117,6 +121,7 @@ declare class PlaidClient {
   projects: ProjectsBundle;
   textLayers: TextLayersBundle;
   login: LoginBundle;
+  bulk: BulkBundle;
   relationLayers: RelationLayersBundle;
   tokens: TokensBundle;
 }

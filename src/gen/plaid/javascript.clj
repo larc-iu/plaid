@@ -304,7 +304,11 @@
         fetch-options (generate-fetch-options method has-body? is-login?)
         summary (transform-parameter-references (get operation "summary" ""))
         private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
-        url-var (if (seq query-params) "finalUrl" "url")]
+        ;; Only use finalUrl if there will actually be query params after filtering
+        filtered-query-params (if (= method :get)
+                                query-params
+                                (filter #(not= (get % "name") "as-of") query-params))
+        url-var (if (seq filtered-query-params) "finalUrl" "url")]
     
     (str "  /**\n"
          "   * " summary "\n"
