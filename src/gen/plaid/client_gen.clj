@@ -3,94 +3,16 @@
             [clojure.string :as str]
             [clojure.java.io :as io]
             [camel-snake-kebab.core :as csk]
+            [plaid.common :as common]
             [plaid.javascript :as js]
             [plaid.python :as py]))
+
 
 ;; ============================================================================
 ;; Shared AST Parsing Functions  
 ;; ============================================================================
 
-(defn- kebab->camel
-  "Convert kebab-case to camelCase"
-  [s]
-  (csk/->camelCase s))
 
-(defn- extract-path-params
-  "Extract path parameters from an OpenAPI path like '/api/v1/users/{id}'"
-  [path]
-  (->> (re-seq #"\{([^}]+)\}" path)
-       (map second)))
-
-(defn- infer-bundle-name
-  "Infer bundle name from API path.
-   E.g., '/api/v1/relation-layers' -> 'relationLayers'"
-  [path]
-  (let [cleaned-path (-> path
-                         (str/replace #"^/api/v[0-9]+/" "")
-                         (str/replace #"/\{[^}]+\}.*" "")
-                         (str/replace #"/.*" ""))]
-    (kebab->camel cleaned-path)))
-
-(defn- infer-method-name
-  "Infer method name from HTTP method and path pattern"
-  [http-method path]
-  (let [path-parts (-> path
-                       (str/replace #"^/api/v[0-9]+/" "")
-                       (str/split #"/"))
-        has-id? (some #(re-matches #"\{[^}]+\}" %) path-parts)
-        last-part (last path-parts)
-        is-param? #(re-matches #"\{[^}]+\}" %)
-        special-action? (and has-id? (not (is-param? last-part)))
-        ;; For config routes, look for the word "config" in the path
-        is-config-route? (some #(= "config" %) path-parts)
-        ;; For user management routes like /projects/{id}/readers/{user-id}
-        user-role-route? (some #(contains? #{"readers" "writers" "maintainers"} %) path-parts)
-        role-type (first (filter #(contains? #{"readers" "writers" "maintainers"} %) path-parts))]
-    (cond
-      ;; Config routes: /layer/{id}/config/{namespace}/{key}
-      (and is-config-route? (= http-method :put))
-      "setConfig"
-      
-      (and is-config-route? (= http-method :delete))
-      "deleteConfig"
-      
-      ;; User role management routes: /projects/{id}/readers/{user-id}
-      (and user-role-route? (= http-method :post))
-      (str "add" (csk/->PascalCase (str/replace role-type #"s$" "")))
-      
-      (and user-role-route? (= http-method :delete))
-      (str "remove" (csk/->PascalCase (str/replace role-type #"s$" "")))
-      
-      ;; Special actions like /shift, /source, /target
-      special-action?
-      (kebab->camel last-part)
-      
-      ;; Standard REST patterns
-      (= http-method :get) (if has-id? "get" "list")
-      (= http-method :post) (if has-id? (kebab->camel last-part) "create")
-      (= http-method :patch) "update"
-      (= http-method :put) "replace"
-      (= http-method :delete) "delete"
-      :else (str (name http-method) (when has-id? "ById")))))
-
-(defn- get-bundle-name
-  "Get bundle name from operation metadata or infer from path"
-  [path operation]
-  (or (get operation "x-client-bundle")
-      (get-in operation ["x-openapi" "x-client-bundle"])
-      (infer-bundle-name path)))
-
-(defn- get-method-name
-  "Get method name from operation metadata or infer from HTTP method and path"
-  [http-method path operation]
-  (or (get operation "x-client-method")
-      (get-in operation ["x-openapi" "x-client-method"])
-      (infer-method-name http-method path)))
-
-(defn- extract-request-body-schema
-  "Extract the JSON schema from a request body definition"
-  [request-body]
-  (get-in request-body ["content" "application/json" "schema"]))
 
 (defn- parse-parameter
   "Parse an OpenAPI parameter into a normalized structure"
@@ -105,43 +27,37 @@
   "Parse an OpenAPI request body into a normalized structure"
   [request-body]
   (when request-body
-    (let [schema (extract-request-body-schema request-body)]
+    (let [schema (common/extract-request-body-schema request-body)]
       {:schema schema
        :required? (get request-body "required" false)
-       :body-params (when (and schema 
-                              (= "object" (get schema "type"))
-                              (get schema "properties"))
-                     (let [properties (get schema "properties")
-                           required-set (set (get schema "required" []))]
-                       (map (fn [[k v]]
-                              {:name k
-                               :original-name k
-                               :required? (contains? required-set k)
-                               :type (get v "type")})
-                            properties)))})))
+       :body-params (common/extract-body-params schema)})))
+
 
 (defn- parse-operation
   "Parse an OpenAPI operation into a normalized AST node"
   [path http-method operation]
-  (let [path-params (extract-path-params path)
+  (let [path-params (common/extract-path-params path)
         parameters (get operation "parameters" [])
         query-params (filter #(= (get % "in") "query") parameters)
-        request-body (parse-request-body (get operation "requestBody"))]
-    {:path path
-     :http-method http-method
-     :operation-id (get operation "operationId")
-     :summary (get operation "summary")
-     :description (get operation "description")
-     :parameters {:path (map parse-parameter (filter #(= (get % "in") "path") parameters))
-                  :query (map parse-parameter query-params)
-                  :body request-body}
-     :path-params path-params
-     :bundle-name (get-bundle-name path operation)
-     :method-name (get-method-name http-method path operation)
-     :tags (get operation "tags" [])
-     :raw-operation operation}))
+        request-body (parse-request-body (get operation "requestBody"))
+        special-endpoints (common/detect-special-endpoints path)
+        base-operation {:path path
+                       :http-method http-method
+                       :operation-id (get operation "operationId")
+                       :summary (get operation "summary")
+                       :description (get operation "description")
+                       :parameters {:path (map parse-parameter (filter #(= (get % "in") "path") parameters))
+                                   :query (map parse-parameter query-params)
+                                   :body request-body}
+                       :path-params path-params
+                       :bundle-name (common/get-bundle-name path operation)
+                       :method-name (common/get-method-name http-method path operation)
+                       :tags (get operation "tags" [])
+                       :raw-operation operation
+                       :special-endpoints special-endpoints}]
+    (assoc base-operation :ordered-params (common/order-parameters base-operation))))
 
-(defn- parse-openapi-spec
+(defn parse-openapi-spec
   "Parse an OpenAPI specification into a normalized AST"
   [openapi-spec]
   (let [info (get openapi-spec "info")

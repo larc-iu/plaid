@@ -8,7 +8,7 @@
   "Parse a path like '/api/v1/projects?foo=bar' into uri and query-string"
   [path]
   (let [[uri query] (str/split path #"\?" 2)]
-    {:uri uri
+    {:uri          uri
      :query-string query}))
 
 (defn decode-response-body
@@ -29,27 +29,27 @@
   [original-request operation]
   (let [{:keys [uri query-string]} (parse-path-and-query (:path operation))
         method (keyword (:method operation))
-        headers (merge (select-keys (:headers original-request) 
-                                   ["authorization" "accept"])
-                      (when (:body operation)
-                        {"content-type" "application/json"}))]
+        headers (merge (select-keys (:headers original-request)
+                                    ["authorization" "accept"])
+                       (when (:body operation)
+                         {"content-type" "application/json"}))]
     (merge
       {:request-method method
-       :uri uri
-       :scheme (:scheme original-request)
-       :server-name (:server-name original-request)
-       :server-port (:server-port original-request)
-       :headers headers
+       :uri            uri
+       :scheme         (:scheme original-request)
+       :server-name    (:server-name original-request)
+       :server-port    (:server-port original-request)
+       :headers        headers
        ;; Preserve important context from original request
-       :rest-handler (:rest-handler original-request)
-       :xtdb (:xtdb original-request)
-       :db (:db original-request)
-       :jwt-data (:jwt-data original-request)
-       :secret-key (:secret-key original-request)}
+       :rest-handler   (:rest-handler original-request)
+       :xtdb           (:xtdb original-request)
+       :db             (:db original-request)
+       :jwt-data       (:jwt-data original-request)
+       :secret-key     (:secret-key original-request)}
       (when query-string
         {:query-string query-string})
       (when-let [body (:body operation)]
-        {:body (ring-io/string-input-stream (m/encode "application/json" body))
+        {:body        (ring-io/string-input-stream (m/encode "application/json" body))
          :body-params body}))))
 
 (defn process-bulk-operation
@@ -61,24 +61,26 @@
           content-type (get-in response [:headers "Content-Type"] "")]
       (update response :body #(decode-response-body % content-type)))
     (catch Exception e
-      {:status 500
+      {:status  500
        :headers {}
-       :body {:error (.getMessage e)}})))
+       :body    {:error (.getMessage e)}})))
 
 (defn bulk-handler
   [{:keys [rest-handler parameters body-params] :as request}]
   (let [operations (:body parameters)
         responses (mapv #(process-bulk-operation rest-handler request %) operations)]
     {:status 200
-     :body responses}))
+     :body   responses}))
 
 (def bulk-routes
   ["/bulk"
-   {:post {:summary "Execute multiple API operations in a single request"
-           :parameters {:body [:sequential 
-                              [:map
-                               [:path string?]
-                               [:method [:enum "get" "post" "put" "patch" "delete"]]
-                               [:body {:optional true} any?]]]}
-           :responses {200 {:description "Array of responses for each operation"}}
-           :handler bulk-handler}}])
+   {:post {:summary    (str "Execute multiple API operations in a single request.")
+           :openapi    {:x-client-bundle "bulk"
+                        :x-client-method "submit"}
+           :parameters {:body [:sequential
+                               [:map
+                                [:path string?]
+                                [:method [:enum "get" "post" "put" "patch" "delete"]]
+                                [:body {:optional true} any?]]]}
+           :responses  {200 {:description "Array of responses for each operation"}}
+           :handler    bulk-handler}}])

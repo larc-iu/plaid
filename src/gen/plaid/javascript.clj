@@ -1,6 +1,7 @@
 (ns plaid.javascript
   (:require [clojure.string :as str]
-            [camel-snake-kebab.core :as csk]))
+            [camel-snake-kebab.core :as csk]
+            [plaid.common :as common]))
 
 (defn- kebab->camel
   "Convert kebab-case to camelCase"
@@ -8,28 +9,14 @@
   (csk/->camelCase s))
 
 (defn- transform-key-name
-  "Transform a key from kebab-case/namespaced to camelCase.
-   Examples: 
-   'layer-id' -> 'layerId'
-   'relation/layer' -> 'layer' (namespace ignored)
-   'project/name' -> 'name' (namespace ignored)"
+  "Transform a key to camelCase using shared function"
   [k]
-  (-> k
-      (str/replace #"^[^/]+/" "") ; Remove namespace prefix
-      (kebab->camel)))
+  (common/transform-key-name k :camelCase))
 
 (defn- transform-parameter-references
-  "Transform parameter references in XML tags within summary strings.
-   Converts <body>param-name</body>, <query>param-name</query>, <path>param-name</path>
-   to camelCase parameter names and removes the XML tags."
+  "Transform parameter references using shared function"
   [summary-text]
-  (-> summary-text
-      (str/replace #"<body>([^<]+)</body>" 
-                   (fn [[_ param-name]] (transform-key-name param-name)))
-      (str/replace #"<query>([^<]+)</query>" 
-                   (fn [[_ param-name]] (transform-key-name param-name)))
-      (str/replace #"<path>([^<]+)</path>" 
-                   (fn [[_ param-name]] (transform-key-name param-name)))))
+  (common/transform-parameter-references summary-text :camelCase))
 
 (defn- generate-key-transformation-functions
   "Generate JavaScript functions for transforming keys between formats"
@@ -76,138 +63,50 @@
   }
 ")
 
-(defn- extract-path-params
-  "Extract path parameters from an OpenAPI path like '/api/v1/users/{id}'"
-  [path]
-  (->> (re-seq #"\{([^}]+)\}" path)
-       (map second)))
 
-(defn- infer-bundle-name
-  "Infer bundle name from API path.
-   E.g., '/api/v1/relation-layers' -> 'relationLayers'"
-  [path]
-  (let [cleaned-path (-> path
-                         (str/replace #"^/api/v[0-9]+/" "")
-                         (str/replace #"/\{[^}]+\}.*" "")
-                         (str/replace #"/.*" ""))]
-    (kebab->camel cleaned-path)))
 
-(defn- infer-method-name
-  "Infer method name from HTTP method and path pattern"
-  [http-method path]
-  (let [path-parts (-> path
-                       (str/replace #"^/api/v[0-9]+/" "")
-                       (str/split #"/"))
-        has-id? (some #(re-matches #"\{[^}]+\}" %) path-parts)
-        last-part (last path-parts)
-        is-param? #(re-matches #"\{[^}]+\}" %)
-        special-action? (and has-id? (not (is-param? last-part)))
-        ;; For config routes, look for the word "config" in the path
-        is-config-route? (some #(= "config" %) path-parts)
-        ;; For user management routes like /projects/{id}/readers/{user-id}
-        user-role-route? (some #(contains? #{"readers" "writers" "maintainers"} %) path-parts)
-        role-type (first (filter #(contains? #{"readers" "writers" "maintainers"} %) path-parts))]
-    (cond
-      ;; Config routes: /layer/{id}/config/{namespace}/{key}
-      (and is-config-route? (= http-method :put))
-      "setConfig"
-      
-      (and is-config-route? (= http-method :delete))
-      "deleteConfig"
-      
-      ;; User role management routes: /projects/{id}/readers/{user-id}
-      (and user-role-route? (= http-method :post))
-      (str "add" (csk/->PascalCase (str/replace role-type #"s$" "")))
-      
-      (and user-role-route? (= http-method :delete))
-      (str "remove" (csk/->PascalCase (str/replace role-type #"s$" "")))
-      
-      ;; Special actions like /shift, /source, /target
-      special-action?
-      (kebab->camel last-part)
-      
-      ;; Standard REST patterns
-      (= http-method :get) (if has-id? "get" "list")
-      (= http-method :post) (if has-id? (kebab->camel last-part) "create")
-      (= http-method :patch) "update"
-      (= http-method :put) "replace"
-      (= http-method :delete) "delete"
-      :else (str (name http-method) (when has-id? "ById")))))
 
-(defn- get-bundle-name
-  "Get bundle name from operation metadata or infer from path"
-  [path operation]
-  (or (get operation "x-client-bundle")
-      (get-in operation ["x-openapi" "x-client-bundle"])
-      (infer-bundle-name path)))
 
-(defn- get-method-name
-  "Get method name from operation metadata or infer from HTTP method and path"
-  [http-method path operation]
-  (or (get operation "x-client-method")
-      (get-in operation ["x-openapi" "x-client-method"])
-      (infer-method-name http-method path)))
-
-(defn- js-method-name
-  "Convert an OpenAPI operation to a JavaScript method name"
-  [method path operation-id]
-  (if operation-id
-    (kebab->camel operation-id)
-    (let [path-parts (-> path
-                         (str/replace #"^/api/v[0-9]+/" "")
-                         (str/replace #"\{[^}]+\}" "")
-                         (str/split #"/")
-                         (->> (remove empty?)))
-          method-name (str (name method) (str/join "-" path-parts))]
-      (kebab->camel method-name))))
-
-(defn- extract-request-body-schema
-  "Extract the JSON schema from a request body definition"
-  [request-body]
-  (get-in request-body ["content" "application/json" "schema"]))
-
-(defn- extract-body-params
-  "Extract individual parameters from request body schema"
-  [request-body-schema]
-  (when (and request-body-schema 
-             (= "object" (get request-body-schema "type"))
-             (get request-body-schema "properties"))
-    (let [properties (get request-body-schema "properties")
-          required-set (set (get request-body-schema "required" []))]
-      (map (fn [[k v]]
-             {:name (if (= k "body") "bodyText" (transform-key-name k))
-              :original-name k
-              :required? (contains? required-set k)
-              :type (get v "type")})
-           properties))))
-
-(defn- generate-method-params
-  "Generate JavaScript method parameters"
-  [path-params query-params request-body-schema http-method]
-  (let [path-param-names (map kebab->camel path-params)
-        body-params (extract-body-params request-body-schema)
-        ;; Put required params first, then optional ones
-        required-body-params (filter :required? body-params)
-        optional-body-params (remove :required? body-params)
-        body-param-names (concat (map :name required-body-params)
-                                (map #(str (:name %) " = undefined") optional-body-params))
-        ;; Filter out asOf for non-GET requests and separate it for ordering
-        filtered-query-params (if (= http-method :get)
-                                query-params
-                                (filter #(not= (get % "name") "as-of") query-params))
-        as-of-param (first (filter #(= (get % "name") "as-of") query-params))
-        ;; Extract non-asOf query parameter names and make them optional
-        regular-query-param-names (map (fn [param]
-                                        (let [param-name (transform-key-name (get param "name"))
-                                              required? (get param "required" false)]
-                                          (if required?
-                                            param-name
-                                            (str param-name " = undefined"))))
-                                      (filter #(not= (get % "name") "as-of") filtered-query-params))
-        ;; Add asOf parameter at the end if it exists in filtered params
+(defn- generate-method-params-from-operation
+  "Generate JavaScript method parameters using ordered params from AST"
+  [operation]
+  (let [{:keys [path-params required-body-params optional-body-params 
+                regular-query-params as-of-param]} (:ordered-params operation)
+        {:keys [is-config?]} (:special-endpoints operation)
+        http-method (:http-method operation)
+        
+        ;; Path parameters
+        path-param-names (map kebab->camel path-params)
+        
+        ;; Config value parameter for config PUT endpoints
+        config-params (when (and is-config? (= http-method :put)) 
+                       ["configValue"])
+        
+        ;; Body parameters (skip if config endpoint)
+        body-param-names (when-not (and is-config? (= http-method :put))
+                          (concat
+                           (map #(transform-key-name (:name %))
+                                required-body-params)
+                           (map #(str (transform-key-name (:name %)) " = undefined")
+                                optional-body-params)))
+        
+        ;; Query parameters
+        query-param-names (map (fn [param]
+                                (let [param-name (transform-key-name (:name param))]
+                                  (if (:required? param)
+                                    param-name
+                                    (str param-name " = undefined"))))
+                              regular-query-params)
+        
+        ;; asOf parameter (only for GET requests)
         as-of-param-name (when (and as-of-param (= http-method :get))
-                          [(str (transform-key-name (get as-of-param "name")) " = undefined")])]
-    (str/join ", " (filter some? (concat path-param-names body-param-names regular-query-param-names as-of-param-name)))))
+                          [(str (transform-key-name (:name as-of-param)) " = undefined")])
+        
+        ;; Combine all parameters
+        all-params (concat path-param-names config-params body-param-names 
+                          query-param-names as-of-param-name)]
+    
+    (str/join ", " (filter some? all-params))))
 
 (defn- generate-url-construction
   "Generate JavaScript code to construct the URL with path parameters"
@@ -220,19 +119,15 @@
                                          path
                                          path-params)]
                      (str "const url = `${this.baseUrl}" js-path "`;")))
-        ;; Filter query params based on HTTP method (remove asOf for non-GET)
-        filtered-query-params (if (= http-method :get)
-                                query-params
-                                (filter #(not= (get % "name") "as-of") query-params))
         ;; Generate query parameter construction using individual parameters
-        query-construction (when (seq filtered-query-params)
+        query-construction (when (seq query-params)
                              (let [query-checks (map (fn [param]
-                                                       (let [param-name (transform-key-name (get param "name"))
-                                                             original-name (get param "name")]
+                                                       (let [param-name (transform-key-name (:name param))
+                                                             original-name (:name param)]
                                                          (str "    if (" param-name " !== undefined && " param-name " !== null) {\n"
                                                               "      queryParams.append('" original-name "', " param-name ");\n"
                                                               "    }")))
-                                                     filtered-query-params)]
+                                                     query-params)]
                                (str "\n    const queryParams = new URLSearchParams();\n"
                                     (str/join "\n" query-checks) "\n"
                                     "    const queryString = queryParams.toString();\n"
@@ -243,15 +138,28 @@
   "Generate JavaScript code to construct request body from individual parameters"
   [body-params]
   (when (seq body-params)
-    (let [all-params (map (fn [{:keys [name original-name]}]
-                           (str "      \"" original-name "\": " name))
-                         body-params)]
-      (str "const bodyObj = {\n" 
-           (str/join ",\n" all-params) 
-           "\n    };\n"
-           "    // Filter out undefined optional parameters\n"
-           "    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);\n"
-           "    const body = this._transformRequest(bodyObj);"))))
+    (cond
+      ;; Special case: single array parameter that represents the entire body
+      (and (= (count body-params) 1)
+           (= (:type (first body-params)) "array")
+           (= (:original-name (first body-params)) "body"))
+      (let [param-name (transform-key-name (:name (first body-params)))]
+        (str "const body = " param-name ";"))
+      
+      ;; Regular case: object parameters
+      :else
+      (let [all-params (map (fn [{:keys [name original-name]}]
+                             (let [js-name (if (= original-name "body") 
+                                            (transform-key-name "body") 
+                                            (transform-key-name name))]
+                               (str "      \"" original-name "\": " js-name)))
+                           body-params)]
+        (str "const bodyObj = {\n" 
+             (str/join ",\n" all-params) 
+             "\n    };\n"
+             "    // Filter out undefined optional parameters\n"
+             "    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);\n"
+             "    const body = this._transformRequest(bodyObj);")))))
 
 (defn- generate-fetch-options
   "Generate JavaScript fetch options"
@@ -276,42 +184,53 @@
            "      }\n"
            "    };"))))
 
-(defn- generate-private-method
-  "Generate a private JavaScript method for an API endpoint"
-  [bundle-name method-name path method operation]
-  (let [path-params (extract-path-params path)
-        parameters (get operation "parameters" [])
-        query-params (filter #(= (get % "in") "query") parameters)
-        request-body (get operation "requestBody")
-        request-body-schema (extract-request-body-schema request-body)
-        body-params (extract-body-params request-body-schema)
-        is-config? (str/includes? path "/config/")
-        is-login? (str/includes? path "/login")
-        has-body? (some? request-body-schema)
-        ;; For config endpoints, add configValue parameter if it's a PUT
-        config-params (when (and is-config? (= method :put)) ["configValue"])
-        all-path-params (concat path-params config-params)
-        method-params (if is-config?
-                        (generate-method-params all-path-params query-params nil method)
-                        (generate-method-params path-params query-params request-body-schema method))
-        url-construction (generate-url-construction path path-params query-params method)
+(defn- generate-private-method-from-ast
+  "Generate a private JavaScript method from AST operation"
+  [operation]
+  (let [{:keys [bundle-name method-name path http-method summary ordered-params special-endpoints]} operation
+        {:keys [path-params required-body-params optional-body-params 
+                regular-query-params as-of-param]} ordered-params
+        {:keys [is-config? is-login?]} special-endpoints
+        
+        ;; Check if there's a request body
+        has-body? (or (seq required-body-params) 
+                     (seq optional-body-params)
+                     (and is-config? (= http-method :put)))
+        
+        ;; Generate method parameters
+        method-params (generate-method-params-from-operation operation)
+        
+        ;; Generate URL construction
+        url-construction (generate-url-construction path path-params 
+                                                   (concat regular-query-params 
+                                                          (when as-of-param [as-of-param]))
+                                                   http-method)
+        
+        ;; Generate body construction
+        body-params (concat required-body-params optional-body-params)
         body-construction (cond
-                            (and is-config? (= method :put))
-                            "const body = configValue;"
-                            body-params
-                            (generate-body-construction body-params)
-                            :else nil)
-        fetch-options (generate-fetch-options method has-body? is-login?)
-        summary (transform-parameter-references (get operation "summary" ""))
+                           (and is-config? (= http-method :put))
+                           "const body = configValue;"
+                           
+                           (seq body-params)
+                           (generate-body-construction body-params)
+                           
+                           :else nil)
+        
+        ;; Generate fetch options
+        fetch-options (generate-fetch-options http-method has-body? is-login?)
+        
+        ;; Format summary
+        formatted-summary (transform-parameter-references (or summary ""))
+        
+        ;; Private method name
         private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
-        ;; Only use finalUrl if there will actually be query params after filtering
-        filtered-query-params (if (= method :get)
-                                query-params
-                                (filter #(not= (get % "name") "as-of") query-params))
-        url-var (if (seq filtered-query-params) "finalUrl" "url")]
+        
+        ;; Determine URL variable name
+        url-var (if (or (seq regular-query-params) as-of-param) "finalUrl" "url")]
     
     (str "  /**\n"
-         "   * " summary "\n"
+         "   * " formatted-summary "\n"
          "   */\n"
          "  async " private-method-name "(" method-params ") {\n"
          "    " url-construction "\n"
@@ -325,7 +244,7 @@
          "      error.status = response.status;\n"
          "      error.statusText = response.statusText;\n"
          "      error.url = " url-var ";\n"
-         "      error.method = '" (str/upper-case (name method)) "';\n"
+         "      error.method = '" (str/upper-case (name http-method)) "';\n"
          "      error.responseBody = errorBody;\n"
          "      throw error;\n"
          "    }\n"
@@ -338,35 +257,13 @@
          "    return await response.text();\n"
          "  }\n")))
 
-(defn- group-operations-by-bundle
-  "Group operations by their bundle names"
-  [paths]
-  (reduce
-    (fn [acc [path methods]]
-      (reduce
-        (fn [acc2 [http-method operation]]
-          (let [bundle-name (get-bundle-name path operation)
-                method-name (get-method-name (keyword http-method) path operation)
-                operation-info {:path path
-                               :http-method (keyword http-method)
-                               :operation operation
-                               :method-name method-name}]
-            (update acc2 bundle-name (fnil conj []) operation-info)))
-        acc
-        methods))
-    {}
-    paths))
-
 (defn- generate-bundle-methods
   "Generate all private methods for the PlaidClient class"
-  [paths]
-  (let [bundles (group-operations-by-bundle paths)]
-    (->> bundles
-         (mapcat (fn [[bundle-name operations]]
-                   (map (fn [{:keys [path http-method operation method-name]}]
-                          (generate-private-method bundle-name method-name path http-method operation))
-                        operations)))
-         (str/join "\n"))))
+  [bundles]
+  (->> bundles
+       (mapcat (fn [[bundle-name operations]]
+                 (map generate-private-method-from-ast operations)))
+       (str/join "\n")))
 
 (defn- openapi-type-to-ts
   "Convert OpenAPI type to TypeScript type"
@@ -388,57 +285,59 @@
 
 (defn- generate-ts-method-signature
   "Generate TypeScript method signature for an operation"
-  [method-name path operation http-method]
-  (let [path-params (extract-path-params path)
-        parameters (get operation "parameters" [])
-        query-params (filter #(= (get % "in") "query") parameters)
-        request-body (get operation "requestBody")
-        request-body-schema (extract-request-body-schema request-body)
-        body-params (extract-body-params request-body-schema)
-        is-config? (str/includes? path "/config/")
-        
-        ;; Filter out asOf for non-GET requests and separate it for ordering
-        filtered-query-params (if (= http-method :get)
-                                query-params
-                                (filter #(not= (get % "name") "as-of") query-params))
-        as-of-param (first (filter #(= (get % "name") "as-of") query-params))
+  [operation]
+  (let [{:keys [method-name ordered-params path-params special-endpoints http-method]} operation
+        {:keys [required-body-params optional-body-params 
+                regular-query-params as-of-param]} ordered-params
+        {:keys [is-config?]} special-endpoints
         
         ;; Generate parameter list with types
         ts-params (concat
-                    ;; Path parameters
-                    (map (fn [param]
-                           (str (kebab->camel param) ": string"))
-                         path-params)
-                    
-                    ;; Body parameters
-                    (map (fn [{:keys [name type required?]}]
-                           (let [ts-type (case type
-                                          "string" "string"
-                                          "integer" "number"
-                                          "boolean" "boolean"
-                                          "array" "any[]"
-                                          "any")
-                                 optional-marker (if required? "" "?")]
-                             (str name optional-marker ": " ts-type)))
-                         body-params)
-                    
-                    ;; Non-asOf query parameters
-                    (map (fn [param]
-                           (let [param-name (transform-key-name (get param "name"))
-                                 param-type (openapi-type-to-ts (get param "schema"))
-                                 required? (get param "required" false)
-                                 optional-marker (if required? "" "?")]
-                             (str param-name optional-marker ": " param-type)))
-                         (filter #(not= (get % "name") "as-of") filtered-query-params))
-                    
-                    ;; Config value parameter
-                    (when (and is-config? (get operation "requestBody"))
-                      ["configValue: any"])
-                    
-                    ;; asOf parameter at the end (only for GET requests)
-                    (when (and as-of-param (= http-method :get))
-                      [(str (transform-key-name (get as-of-param "name")) "?: " 
-                            (openapi-type-to-ts (get as-of-param "schema")))]))
+                   ;; Path parameters
+                   (map (fn [param]
+                          (str (kebab->camel param) ": string"))
+                        path-params)
+                   
+                   ;; Config value parameter
+                   (when (and is-config? (= http-method :put))
+                     ["configValue: any"])
+                   
+                   ;; Body parameters (unless config endpoint)
+                   (when-not (and is-config? (= http-method :put))
+                     (concat
+                      (map (fn [{:keys [name original-name type]}]
+                             (let [ts-name (transform-key-name name)
+                                   ts-type (case type
+                                            "string" "string"
+                                            "integer" "number"
+                                            "boolean" "boolean"
+                                            "array" "any[]"
+                                            "any")]
+                               (str ts-name ": " ts-type)))
+                           required-body-params)
+                      (map (fn [{:keys [name original-name type]}]
+                             (let [ts-name (transform-key-name name)
+                                   ts-type (case type
+                                            "string" "string"
+                                            "integer" "number"
+                                            "boolean" "boolean"
+                                            "array" "any[]"
+                                            "any")]
+                               (str ts-name "?: " ts-type)))
+                           optional-body-params)))
+                   
+                   ;; Query parameters
+                   (map (fn [param]
+                          (let [param-name (transform-key-name (:name param))
+                                param-type (openapi-type-to-ts (:schema param))
+                                optional-marker (if (:required? param) "" "?")]
+                            (str param-name optional-marker ": " param-type)))
+                        regular-query-params)
+                   
+                   ;; asOf parameter at the end (only for GET requests)
+                   (when (and as-of-param (= http-method :get))
+                     [(str (transform-key-name (:name as-of-param)) "?: " 
+                           (openapi-type-to-ts (:schema as-of-param)))]))
         
         params-str (str/join ", " ts-params)
         return-type "Promise<any>"] ; Could be more specific based on response schema
@@ -446,16 +345,13 @@
     (str method-name "(" params-str "): " return-type ";")))
 
 (defn- generate-jsdoc-params
-  "Generate JSDoc parameter documentation from OpenAPI operation"
-  [path operation]
-  (let [path-params (extract-path-params path)
-        parameters (get operation "parameters" [])
-        query-params (filter #(= (get % "in") "query") parameters)
-        request-body (get operation "requestBody")
-        request-body-schema (extract-request-body-schema request-body)
-        body-params (extract-body-params request-body-schema)
-        is-config? (str/includes? path "/config/")
-        config-params (when (and is-config? (get operation "requestBody")) [{"name" "configValue" "type" "any"}])]
+  "Generate JSDoc parameter documentation from AST operation"
+  [operation]
+  (let [{:keys [path-params ordered-params special-endpoints]} operation
+        {:keys [required-body-params optional-body-params 
+                regular-query-params as-of-param]} ordered-params
+        {:keys [is-config?]} special-endpoints
+        all-query-params (concat regular-query-params (when as-of-param [as-of-param]))]
     
     (concat
       ;; Path parameters
@@ -463,57 +359,68 @@
              (str " * @param {string} " (kebab->camel param) " - " (str/capitalize param) " identifier"))
            path-params)
       
-      ;; Body parameters
-      (map (fn [{:keys [name type required?]}]
-             (let [js-type (case type
-                            "string" "string"
-                            "integer" "number"
-                            "boolean" "boolean"
-                            "array" "Array"
-                            "any")]
-               (str " * @param {" js-type "} " name " - " (if required? "Required. " "Optional. ") (str/capitalize name))))
-           body-params)
+      ;; Config value parameter
+      (when (and is-config? (= (:http-method operation) :put))
+        [" * @param {any} configValue - Configuration value to set"])
+      
+      ;; Body parameters (unless config endpoint)
+      (when-not (and is-config? (= (:http-method operation) :put))
+        (concat
+         (map (fn [{:keys [name original-name type required?]}]
+                (let [js-name (transform-key-name name)
+                      js-type (case type
+                               "string" "string"
+                               "integer" "number"
+                               "boolean" "boolean"
+                               "array" "Array"
+                               "any")]
+                  (str " * @param {" js-type "} " js-name " - Required. " (str/capitalize js-name))))
+              required-body-params)
+         (map (fn [{:keys [name original-name type]}]
+                (let [js-name (transform-key-name name)
+                      js-type (case type
+                               "string" "string"
+                               "integer" "number"
+                               "boolean" "boolean"
+                               "array" "Array"
+                               "any")]
+                  (str " * @param {" js-type "} [" js-name "] - Optional. " (str/capitalize js-name))))
+              optional-body-params)))
       
       ;; Query parameters  
       (map (fn [param]
-             (let [param-name (transform-key-name (get param "name"))
-                   param-type (case (get-in param ["schema" "type"])
+             (let [param-name (transform-key-name (:name param))
+                   param-type (case (get-in param [:schema "type"])
                                "string" "string"
                                "integer" "number" 
                                "boolean" "boolean"
                                "string")
-                   required? (get param "required" false)]
-               (str " * @param {" param-type "} [" param-name "] - " (get param "description" (str "Optional " param-name)))))
-           query-params)
-      
-      ;; Config value parameter
-      (when config-params
-        (map (fn [param]
-               (str " * @param {any} " (get param "name") " - Configuration value to set"))
-             config-params)))))
+                   required? (:required? param)]
+               (str " * @param {" param-type "} " 
+                    (if required? param-name (str "[" param-name "]"))
+                    " - " (or (:description param) (str (if required? "Required" "Optional") " " param-name)))))
+           all-query-params))))
 
 (defn- generate-ts-bundle-interface
   "Generate TypeScript interface for a bundle"
   [bundle-name operations]
   (let [methods (->> operations
-                     (map (fn [{:keys [method-name path operation http-method]}]
-                            (let [summary (get operation "summary" "")]
-                              (str "  " (generate-ts-method-signature method-name path operation http-method)))))
+                     (map (fn [operation]
+                            (str "  " (generate-ts-method-signature operation))))
                      (str/join "\n"))]
     (str "interface " (csk/->PascalCase bundle-name) "Bundle {\n" methods "\n}")))
 
 (defn- generate-ts-definitions
   "Generate complete TypeScript definitions for the client"
-  [paths]
-  (let [bundles (group-operations-by-bundle paths)
-        bundle-interfaces (->> bundles
-                               (map (fn [[bundle-name operations]]
-                                      (generate-ts-bundle-interface bundle-name operations)))
-                               (str/join "\n\n"))
+  [bundles]
+  (let [bundle-interfaces (->> bundles
+                              (map (fn [[bundle-name operations]]
+                                     (generate-ts-bundle-interface bundle-name operations)))
+                              (str/join "\n\n"))
         main-interface (->> bundles
-                            (map (fn [[bundle-name _]]
-                                   (str "  " bundle-name ": " (csk/->PascalCase bundle-name) "Bundle;")))
-                            (str/join "\n"))]
+                           (map (fn [[bundle-name _]]
+                                  (str "  " bundle-name ": " (csk/->PascalCase bundle-name) "Bundle;")))
+                           (str/join "\n"))]
     (str bundle-interfaces "\n\n"
          "declare class PlaidClient {\n"
          "  constructor(baseUrl: string, token: string);\n"
@@ -523,37 +430,34 @@
 
 (defn- generate-bundle-initialization
   "Generate bundle initialization code for the constructor"
-  [paths]
-  (let [bundles (group-operations-by-bundle paths)]
-    (->> bundles
-         (map (fn [[bundle-name operations]]
-                (let [methods (->> operations
-                                   (map (fn [{:keys [method-name path operation]}]
-                                          (let [private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
-                                                summary (transform-parameter-references (get operation "summary" ""))
-                                                jsdoc-params (generate-jsdoc-params path operation)
-                                                jsdoc-comment (when (or summary (seq jsdoc-params))
-                                                               (str "      /**\n"
-                                                                    (when summary (str "       * " summary "\n"))
-                                                                    (str/join "\n" jsdoc-params)
-                                                                    (when (seq jsdoc-params) "\n")
-                                                                    "       */\n"))]
-                                            (str jsdoc-comment
-                                                 "      " method-name ": this." private-method-name ".bind(this)"))))
-                                   (str/join ",\n"))]
-                  (str "    this." bundle-name " = {\n" methods "\n    };"))))
-         (str/join "\n"))))
+  [bundles]
+  (->> bundles
+       (map (fn [[bundle-name operations]]
+              (let [methods (->> operations
+                                (map (fn [operation]
+                                       (let [{:keys [method-name bundle-name summary path]} operation
+                                             private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
+                                             formatted-summary (transform-parameter-references (or summary ""))
+                                             jsdoc-params (generate-jsdoc-params operation)
+                                             jsdoc-comment (when (or formatted-summary (seq jsdoc-params))
+                                                            (str "      /**\n"
+                                                                 (when formatted-summary (str "       * " formatted-summary "\n"))
+                                                                 (str/join "\n" jsdoc-params)
+                                                                 (when (seq jsdoc-params) "\n")
+                                                                 "       */\n"))]
+                                         (str jsdoc-comment
+                                              "      " method-name ": this." private-method-name ".bind(this)"))))
+                                (str/join ",\n"))]
+                (str "    this." bundle-name " = {\n" methods "\n    };"))))
+       (str/join "\n")))
 
 (defn generate-js-client
   "Generate the complete JavaScript client class"
-  [openapi-spec]
-  (let [info (get openapi-spec "info")
-        title (get info "title" "API Client")
-        version (get info "version" "1.0.0")
-        description (get info "description" "Generated API client")
-        paths (get openapi-spec "paths")
-        bundle-initialization (generate-bundle-initialization paths)
-        private-methods (generate-bundle-methods paths)
+  [ast]
+  (let [{:keys [info bundles]} ast
+        {:keys [title version description]} info
+        bundle-initialization (generate-bundle-initialization bundles)
+        private-methods (generate-bundle-methods bundles)
         transformation-functions (generate-key-transformation-functions)]
     
     (str "/**\n"
@@ -594,9 +498,8 @@
 (defn generate-javascript-client
   "Generate a JavaScript client from an OpenAPI AST"
   [ast output-file]
-  (let [js-client (generate-js-client (:raw-spec ast))
-        paths (get (:raw-spec ast) "paths")
-        ts-definitions (generate-ts-definitions paths)
+  (let [js-client (generate-js-client ast)
+        ts-definitions (generate-ts-definitions (:bundles ast))
         ts-output-file (str/replace output-file #"\.js$" ".d.ts")]
     (spit output-file js-client)
     (spit ts-output-file ts-definitions)

@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Mon Jun 16 13:48:44 EDT 2025
+Generated on: Mon Jun 16 15:14:12 EDT 2025
 """
 
 import requests
@@ -1042,7 +1042,7 @@ class TextsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def create(self, text_layer_id: str, document_id: str, body_text: str) -> Any:
+    def create(self, text_layer_id: str, document_id: str, body: str) -> Any:
         """
         Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
@@ -1053,13 +1053,13 @@ body: the string which is the content of this text.
         Args:
             text_layer_id: Required body parameter
             document_id: Required body parameter
-            body_text: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
         body_dict = {
             'text-layer-id': text_layer_id,
             'document-id': document_id,
-            'body': body_text
+            'body': body
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -1076,7 +1076,7 @@ body: the string which is the content of this text.
             return self.client._transform_response(data)
         return response.text()
 
-    async def create_async(self, text_layer_id: str, document_id: str, body_text: str) -> Any:
+    async def create_async(self, text_layer_id: str, document_id: str, body: str) -> Any:
         """
         Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
@@ -1087,13 +1087,13 @@ body: the string which is the content of this text.
         Args:
             text_layer_id: Required body parameter
             document_id: Required body parameter
-            body_text: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
         body_dict = {
             'text-layer-id': text_layer_id,
             'document-id': document_id,
-            'body': body_text
+            'body': body
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -1214,17 +1214,17 @@ body: the string which is the content of this text.
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def update(self, text_id: str, body_text: str) -> Any:
+    def update(self, text_id: str, body: str) -> Any:
         """
         Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
 
         Args:
             text_id: Path parameter
-            body_text: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
         body_dict = {
-            'body': body_text
+            'body': body
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -1241,17 +1241,17 @@ body: the string which is the content of this text.
             return self.client._transform_response(data)
         return response.text()
 
-    async def update_async(self, text_id: str, body_text: str) -> Any:
+    async def update_async(self, text_id: str, body: str) -> Any:
         """
         Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
 
         Args:
             text_id: Path parameter
-            body_text: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
         body_dict = {
-            'body': body_text
+            'body': body
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -1399,24 +1399,24 @@ class UsersResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def audit(self, user_id: str, as_of: str = None, start_time: str = None, end_time: str = None) -> Any:
+    def audit(self, user_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
         Get audit log for a user's actions
 
         Args:
             user_id: Path parameter
-            as_of: Optional query parameter
             start_time: Optional query parameter
             end_time: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/users/{user_id}/audit"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if start_time is not None:
             params['start-time'] = start_time
         if end_time is not None:
             params['end-time'] = end_time
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -1434,24 +1434,24 @@ class UsersResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def audit_async(self, user_id: str, as_of: str = None, start_time: str = None, end_time: str = None) -> Any:
+    async def audit_async(self, user_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
         Get audit log for a user's actions
 
         Args:
             user_id: Path parameter
-            as_of: Optional query parameter
             start_time: Optional query parameter
             end_time: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/users/{user_id}/audit"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if start_time is not None:
             params['start-time'] = start_time
         if end_time is not None:
             params['end-time'] = end_time
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -2023,24 +2023,24 @@ class DocumentsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def audit(self, document_id: str, as_of: str = None, start_time: str = None, end_time: str = None) -> Any:
+    def audit(self, document_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
         Get audit log for a document
 
         Args:
             document_id: Path parameter
-            as_of: Optional query parameter
             start_time: Optional query parameter
             end_time: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/audit"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if start_time is not None:
             params['start-time'] = start_time
         if end_time is not None:
             params['end-time'] = end_time
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -2058,24 +2058,24 @@ class DocumentsResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def audit_async(self, document_id: str, as_of: str = None, start_time: str = None, end_time: str = None) -> Any:
+    async def audit_async(self, document_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
         Get audit log for a document
 
         Args:
             document_id: Path parameter
-            as_of: Optional query parameter
             start_time: Optional query parameter
             end_time: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/audit"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if start_time is not None:
             params['start-time'] = start_time
         if end_time is not None:
             params['end-time'] = end_time
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -2095,21 +2095,21 @@ class DocumentsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def get(self, document_id: str, as_of: str = None, include_body: bool = None) -> Any:
+    def get(self, document_id: str, include_body: bool = None, as_of: str = None) -> Any:
         """
         Get a document. Set include_body to true in order to include all data contained in the document.
 
         Args:
             document_id: Path parameter
-            as_of: Optional query parameter
             include_body: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if include_body is not None:
             params['include-body'] = include_body
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -2127,21 +2127,21 @@ class DocumentsResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def get_async(self, document_id: str, as_of: str = None, include_body: bool = None) -> Any:
+    async def get_async(self, document_id: str, include_body: bool = None, as_of: str = None) -> Any:
         """
         Get a document. Set include_body to true in order to include all data contained in the document.
 
         Args:
             document_id: Path parameter
-            as_of: Optional query parameter
             include_body: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if include_body is not None:
             params['include-body'] = include_body
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -2594,24 +2594,24 @@ class ProjectsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def audit(self, project_id: str, as_of: str = None, start_time: str = None, end_time: str = None) -> Any:
+    def audit(self, project_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
         Get audit log for a project
 
         Args:
             project_id: Path parameter
-            as_of: Optional query parameter
             start_time: Optional query parameter
             end_time: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/projects/{project_id}/audit"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if start_time is not None:
             params['start-time'] = start_time
         if end_time is not None:
             params['end-time'] = end_time
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -2629,24 +2629,24 @@ class ProjectsResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def audit_async(self, project_id: str, as_of: str = None, start_time: str = None, end_time: str = None) -> Any:
+    async def audit_async(self, project_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
         Get audit log for a project
 
         Args:
             project_id: Path parameter
-            as_of: Optional query parameter
             start_time: Optional query parameter
             end_time: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/projects/{project_id}/audit"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if start_time is not None:
             params['start-time'] = start_time
         if end_time is not None:
             params['end-time'] = end_time
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -2666,21 +2666,21 @@ class ProjectsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def get(self, id: str, as_of: str = None, include_documents: bool = None) -> Any:
+    def get(self, id: str, include_documents: bool = None, as_of: str = None) -> Any:
         """
         Get a project by ID. If include_documents is true, also include document IDs and names.
 
         Args:
             id: Path parameter
-            as_of: Optional query parameter
             include_documents: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/projects/{id}"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if include_documents is not None:
             params['include-documents'] = include_documents
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -2698,21 +2698,21 @@ class ProjectsResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def get_async(self, id: str, as_of: str = None, include_documents: bool = None) -> Any:
+    async def get_async(self, id: str, include_documents: bool = None, as_of: str = None) -> Any:
         """
         Get a project by ID. If include_documents is true, also include document IDs and names.
 
         Args:
             id: Path parameter
-            as_of: Optional query parameter
             include_documents: Optional query parameter
+            as_of: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/projects/{id}"
         params = {}
-        if as_of is not None:
-            params['as-of'] = as_of
         if include_documents is not None:
             params['include-documents'] = include_documents
+        if as_of is not None:
+            params['as-of'] = as_of
         if params:
             from urllib.parse import urlencode
             # Convert boolean values to lowercase strings
@@ -3393,11 +3393,15 @@ class BulkResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def create(self) -> Any:
+    def submit(self, operations: List[Any]) -> Any:
         """
-        Execute multiple API operations in a single request
+        Execute multiple API operations in a single request.
+
+        Args:
+            operations: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/bulk"
+        body_data = operations
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -3410,11 +3414,15 @@ class BulkResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def create_async(self) -> Any:
+    async def submit_async(self, operations: List[Any]) -> Any:
         """
-        Execute multiple API operations in a single request
+        Execute multiple API operations in a single request.
+
+        Args:
+            operations: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/bulk"
+        body_data = operations
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
