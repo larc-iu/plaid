@@ -1,6 +1,7 @@
 (ns plaid.python
   (:require [clojure.string :as str]
-            [camel-snake-kebab.core :as csk]))
+            [camel-snake-kebab.core :as csk]
+            [plaid.common :as common]))
 
 (defn- kebab->snake
   "Convert kebab-case to snake_case"
@@ -13,28 +14,14 @@
   (csk/->PascalCase s))
 
 (defn- transform-key-name-python
-  "Transform a key from kebab-case/namespaced to snake_case.
-   Examples: 
-   'layer-id' -> 'layer_id'
-   'relation/layer' -> 'layer' (namespace ignored)
-   'project/name' -> 'name' (namespace ignored)"
+  "Transform a key to snake_case using shared function"
   [k]
-  (-> k
-      (str/replace #"^[^/]+/" "") ; Remove namespace prefix
-      (kebab->snake)))
+  (common/transform-key-name k :snake_case))
 
 (defn- transform-parameter-references
-  "Transform parameter references in XML tags within summary strings.
-   Converts <body>param-name</body>, <query>param-name</query>, <path>param-name</path>
-   to snake_case parameter names and removes the XML tags."
+  "Transform parameter references using shared function"
   [summary-text]
-  (-> summary-text
-      (str/replace #"<body>([^<]+)</body>" 
-                   (fn [[_ param-name]] (transform-key-name-python param-name)))
-      (str/replace #"<query>([^<]+)</query>" 
-                   (fn [[_ param-name]] (transform-key-name-python param-name)))
-      (str/replace #"<path>([^<]+)</path>" 
-                   (fn [[_ param-name]] (transform-key-name-python param-name)))))
+  (common/transform-parameter-references summary-text :snake_case))
 
 (defn- openapi-type-to-python
   "Convert OpenAPI type to Python type annotation"
@@ -55,55 +42,71 @@
         "Any"))))
 
 (defn- generate-python-method-params
-  "Generate Python method parameters with type hints"
+  "Generate Python method parameters using ordered params from AST"
   [operation]
-  (let [path-params (:path-params operation)
-        query-params (get-in operation [:parameters :query])
-        body-params (get-in operation [:parameters :body :body-params])
+  (let [{:keys [path-params required-body-params optional-body-params 
+                regular-query-params as-of-param]} (:ordered-params operation)
+        {:keys [is-config?]} (:special-endpoints operation)
         http-method (:http-method operation)
-        is-config? (str/includes? (:path operation) "/config/")
         
         ;; Path parameters are always required
         path-param-strs (map (fn [param]
                               (str (kebab->snake param) ": str"))
                             path-params)
         
-        ;; Body parameters (or config_value for config routes)
-        body-param-strs (if (and is-config? (= http-method :put))
-                          ["config_value: Any"]
-                          (map (fn [{:keys [name original-name required? type]}]
-                                (let [param-name (if (= original-name "body") "body_text" (transform-key-name-python original-name))
-                                      py-type (case type
-                                               "string" "str"
-                                               "integer" "int"
-                                               "boolean" "bool"
-                                               "array" "List[Any]"
-                                               "Any")
-                                      optional-marker (if required? "" " = None")]
-                                  (str param-name ": " py-type optional-marker)))
-                              body-params))
+        ;; Config value parameter for config PUT endpoints
+        config-param-strs (when (and is-config? (= http-method :put))
+                           ["config_value: Any"])
         
-        ;; Query parameters (filter asOf for non-GET)
-        filtered-query-params (if (= http-method :get)
-                               query-params
-                               (filter #(not= (:name %) "as-of") query-params))
+        ;; Body parameters (skip if config endpoint)
+        body-param-strs (when-not (and is-config? (= http-method :put))
+                         (concat
+                          (map (fn [{:keys [name original-name type]}]
+                                 (let [param-name (transform-key-name-python name)
+                                       py-type (case type
+                                                "string" "str"
+                                                "integer" "int"
+                                                "boolean" "bool"
+                                                "array" "List[Any]"
+                                                "Any")]
+                                   (str param-name ": " py-type)))
+                               required-body-params)
+                          (map (fn [{:keys [name original-name type]}]
+                                 (let [param-name (transform-key-name-python name)
+                                       py-type (case type
+                                                "string" "str"
+                                                "integer" "int"
+                                                "boolean" "bool"
+                                                "array" "List[Any]"
+                                                "Any")]
+                                   (str param-name ": " py-type " = None")))
+                               optional-body-params)))
         
+        ;; Query parameters
         query-param-strs (map (fn [param]
                                (let [param-name (transform-key-name-python (:name param))
                                      py-type (openapi-type-to-python (:schema param))
                                      optional-marker (if (:required? param) "" " = None")]
                                  (str param-name ": " py-type optional-marker)))
-                             filtered-query-params)]
+                             regular-query-params)
+        
+        ;; asOf parameter (only for GET requests)
+        as-of-param-strs (when (and as-of-param (= http-method :get))
+                          [(str (transform-key-name-python (:name as-of-param)) ": " 
+                                (openapi-type-to-python (:schema as-of-param)) " = None")])
+        
+        ;; Combine all parameters
+        all-params (concat path-param-strs config-param-strs body-param-strs 
+                          query-param-strs as-of-param-strs)]
     
-    (str/join ", " (filter some? (concat path-param-strs body-param-strs query-param-strs)))))
+    (str/join ", " (filter some? all-params))))
 
 (defn- generate-python-url-construction
   "Generate Python code to construct URL with path parameters"
   [operation]
-  (let [path (:path operation)
-        path-params (:path-params operation)
-        query-params (get-in operation [:parameters :query])
-        http-method (:http-method operation)
+  (let [{:keys [path path-params ordered-params]} operation
+        {:keys [regular-query-params as-of-param]} ordered-params
+        all-query-params (concat regular-query-params (when as-of-param [as-of-param]))
         
         ;; Build URL with path parameters
         url-construction (if (empty? path-params)
@@ -115,19 +118,14 @@
                                               path-params)]
                             (str "url = f\"{self.client.base_url}" py-path "\"")))
         
-        ;; Filter query params for non-GET requests
-        filtered-query-params (if (= http-method :get)
-                               query-params
-                               (filter #(not= (:name %) "as-of") query-params))
-        
         ;; Generate query parameter construction
-        query-construction (when (seq filtered-query-params)
+        query-construction (when (seq all-query-params)
                             (let [query-checks (map (fn [param]
                                                      (let [param-name (transform-key-name-python (:name param))
                                                            original-name (:name param)]
                                                        (str "        if " param-name " is not None:\n"
                                                             "            params['" original-name "'] = " param-name)))
-                                                   filtered-query-params)]
+                                                   all-query-params)]
                               (str "\n        params = {}\n"
                                    (str/join "\n" query-checks) "\n"
                                    "        if params:\n"
@@ -141,16 +139,24 @@
 (defn- generate-python-body-construction
   "Generate Python code to construct request body"
   [operation]
-  (let [body-params (get-in operation [:parameters :body :body-params])
-        is-config? (str/includes? (:path operation) "/config/")
-        http-method (:http-method operation)]
+  (let [{:keys [ordered-params special-endpoints http-method]} operation
+        {:keys [required-body-params optional-body-params]} ordered-params
+        {:keys [is-config?]} special-endpoints
+        body-params (concat required-body-params optional-body-params)]
     (cond
       (and is-config? (= http-method :put))
       "        body_data = config_value"
       
+      ;; Special case: single array parameter that represents the entire body
+      (and (= (count body-params) 1)
+           (= (:type (first body-params)) "array")
+           (= (:original-name (first body-params)) "body"))
+      (let [param-name (transform-key-name-python (:name (first body-params)))]
+        (str "        body_data = " param-name))
+      
       (seq body-params)
       (let [body-dict-items (map (fn [{:keys [name original-name]}]
-                                  (let [param-name (if (= original-name "body") "body_text" (transform-key-name-python original-name))]
+                                  (let [param-name (transform-key-name-python name)]
                                     (str "            '" original-name "': " param-name)))
                                 body-params)]
         (str "        body_dict = {\n"
@@ -165,14 +171,12 @@
 (defn- generate-python-method
   "Generate a Python method for an API endpoint"
   [operation sync?]
-  (let [bundle-name (:bundle-name operation)
-        method-name (:method-name operation)
-        path (:path operation)
-        http-method (:http-method operation)
-        summary (:summary operation)
-        is-login? (str/includes? path "/login")
-        has-body? (some? (get-in operation [:parameters :body]))
-        is-config? (str/includes? path "/config/")
+  (let [{:keys [bundle-name method-name path http-method summary ordered-params special-endpoints]} operation
+        {:keys [required-body-params optional-body-params]} ordered-params
+        {:keys [is-login? is-config?]} special-endpoints
+        has-body? (or (seq required-body-params) 
+                     (seq optional-body-params)
+                     (and is-config? (= http-method :put)))
         
         ;; Method naming
         py-method-name (str (kebab->snake method-name) (when-not sync? "_async"))
@@ -212,22 +216,27 @@
                     (map (fn [param]
                            (str "            " (kebab->snake param) ": Path parameter"))
                          (:path-params operation))
-                    ;; Body parameters (or config_value for config routes)
-                    (if (and is-config? (= http-method :put))
-                      ["            config_value: Configuration value to set"]
-                      (map (fn [{:keys [name original-name required?]}]
-                             (let [param-name (if (= original-name "body") "body_text" (transform-key-name-python original-name))]
-                               (str "            " param-name ": " (if required? "Required" "Optional") " body parameter")))
-                           (get-in operation [:parameters :body :body-params])))
+                    ;; Config value parameter
+                    (when (and is-config? (= http-method :put))
+                      ["            config_value: Configuration value to set"])
+                    ;; Body parameters (unless config endpoint)
+                    (when-not (and is-config? (= http-method :put))
+                      (concat
+                       (map (fn [{:keys [name original-name]}]
+                              (let [param-name (transform-key-name-python name)]
+                                (str "            " param-name ": Required body parameter")))
+                            required-body-params)
+                       (map (fn [{:keys [name original-name]}]
+                              (let [param-name (transform-key-name-python name)]
+                                (str "            " param-name ": Optional body parameter")))
+                            optional-body-params)))
                     ;; Query parameters
-                    (let [query-params (get-in operation [:parameters :query])
-                          filtered-query-params (if (= http-method :get)
-                                                 query-params
-                                                 (filter #(not= (:name %) "as-of") query-params))]
+                    (let [{:keys [regular-query-params as-of-param]} ordered-params
+                          all-query-params (concat regular-query-params (when as-of-param [as-of-param]))]
                       (map (fn [param]
                              (str "            " (transform-key-name-python (:name param)) ": " 
                                   (if (:required? param) "Required" "Optional") " query parameter"))
-                           filtered-query-params))))
+                           all-query-params))))
                 "\n"))
          "        \"\"\"\n"
          "        " url-construction "\n"

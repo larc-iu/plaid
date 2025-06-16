@@ -26,10 +26,10 @@ interface SpansBundle {
 }
 
 interface TextsBundle {
-  create(textLayerId: string, documentId: string, bodyText: string): Promise<any>;
+  create(textLayerId: string, documentId: string, body: string): Promise<any>;
   get(textId: string, asOf?: string): Promise<any>;
   delete(textId: string): Promise<any>;
-  update(textId: string, bodyText: string): Promise<any>;
+  update(textId: string, body: string): Promise<any>;
 }
 
 interface UsersBundle {
@@ -89,7 +89,7 @@ interface LoginBundle {
 }
 
 interface BulkBundle {
-  create(): Promise<any>;
+  submit(operations: any[]): Promise<any>;
 }
 
 interface RelationLayersBundle {

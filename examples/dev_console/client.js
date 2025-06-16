@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Mon Jun 16 13:52:02 EDT 2025
+ * Generated on: Mon Jun 16 15:14:15 EDT 2025
  */
 
 class PlaidClient {
@@ -20,7 +20,6 @@ class PlaidClient {
        * Update the target span of a relation.
  * @param {string} relationId - Relation-id identifier
  * @param {string} spanId - Required. Spanid
- * @param {string} [asOf] - Optional asOf
        */
       target: this._relationsTarget.bind(this),
       /**
@@ -32,21 +31,18 @@ class PlaidClient {
       /**
        * Delete a relation.
  * @param {string} relationId - Relation-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._relationsDelete.bind(this),
       /**
        * Update a relation's value.
  * @param {string} relationId - Relation-id identifier
  * @param {any} value - Required. Value
- * @param {string} [asOf] - Optional asOf
        */
       update: this._relationsUpdate.bind(this),
       /**
        * Update the source span of a relation.
  * @param {string} relationId - Relation-id identifier
  * @param {string} spanId - Required. Spanid
- * @param {string} [asOf] - Optional asOf
        */
       source: this._relationsSource.bind(this),
       /**
@@ -60,7 +56,6 @@ targetId: the target span this relation goes to
  * @param {string} sourceId - Required. Sourceid
  * @param {string} targetId - Required. Targetid
  * @param {any} value - Required. Value
- * @param {string} [asOf] - Optional asOf
        */
       create: this._relationsCreate.bind(this)
     };
@@ -70,7 +65,6 @@ targetId: the target span this relation goes to
  * @param {string} spanLayerId - Span-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
- * @param {string} [asOf] - Optional asOf
  * @param {any} configValue - Configuration value to set
        */
       setConfig: this._spanLayersSetConfig.bind(this),
@@ -79,7 +73,6 @@ targetId: the target span this relation goes to
  * @param {string} spanLayerId - Span-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
- * @param {string} [asOf] - Optional asOf
        */
       deleteConfig: this._spanLayersDeleteConfig.bind(this),
       /**
@@ -91,28 +84,24 @@ targetId: the target span this relation goes to
       /**
        * Delete a span layer.
  * @param {string} spanLayerId - Span-layer-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._spanLayersDelete.bind(this),
       /**
        * Update a span layer's name.
  * @param {string} spanLayerId - Span-layer-id identifier
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       update: this._spanLayersUpdate.bind(this),
       /**
        * Create a new span layer.
  * @param {string} tokenLayerId - Required. Tokenlayerid
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       create: this._spanLayersCreate.bind(this),
       /**
        * Shift a span layer's order.
  * @param {string} spanLayerId - Span-layer-id identifier
  * @param {string} direction - Required. Direction
- * @param {string} [asOf] - Optional asOf
        */
       shift: this._spanLayersShift.bind(this)
     };
@@ -121,7 +110,6 @@ targetId: the target span this relation goes to
        * Replace tokens for a span.
  * @param {string} spanId - Span-id identifier
  * @param {Array} tokens - Required. Tokens
- * @param {string} [asOf] - Optional asOf
        */
       tokens: this._spansTokens.bind(this),
       /**
@@ -133,7 +121,6 @@ value: the value of the span, used for annotation.
  * @param {string} spanLayerId - Required. Spanlayerid
  * @param {Array} tokens - Required. Tokens
  * @param {any} value - Required. Value
- * @param {string} [asOf] - Optional asOf
        */
       create: this._spansCreate.bind(this),
       /**
@@ -145,14 +132,12 @@ value: the value of the span, used for annotation.
       /**
        * Delete a span.
  * @param {string} spanId - Span-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._spansDelete.bind(this),
       /**
        * Update a span's value.
  * @param {string} spanId - Span-id identifier
  * @param {any} value - Required. Value
- * @param {string} [asOf] - Optional asOf
        */
       update: this._spansUpdate.bind(this)
     };
@@ -165,8 +150,7 @@ documentId: the text's associated document.
 body: the string which is the content of this text.
  * @param {string} textLayerId - Required. Textlayerid
  * @param {string} documentId - Required. Documentid
- * @param {string} bodyText - Required. Bodytext
- * @param {string} [asOf] - Optional asOf
+ * @param {string} body - Required. Body
        */
       create: this._textsCreate.bind(this),
       /**
@@ -178,14 +162,12 @@ body: the string which is the content of this text.
       /**
        * Delete a text and all dependent data.
  * @param {string} textId - Text-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._textsDelete.bind(this),
       /**
        * Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
  * @param {string} textId - Text-id identifier
- * @param {string} bodyText - Required. Bodytext
- * @param {string} [asOf] - Optional asOf
+ * @param {string} body - Required. Body
        */
       update: this._textsUpdate.bind(this)
     };
@@ -200,15 +182,14 @@ body: the string which is the content of this text.
  * @param {string} username - Required. Username
  * @param {string} password - Required. Password
  * @param {boolean} isAdmin - Required. Isadmin
- * @param {string} [asOf] - Optional asOf
        */
       create: this._usersCreate.bind(this),
       /**
        * Get audit log for a user's actions
  * @param {string} userId - User-id identifier
- * @param {string} [asOf] - Optional asOf
  * @param {string} [startTime] - Optional startTime
  * @param {string} [endTime] - Optional endTime
+ * @param {string} [asOf] - Optional asOf
        */
       audit: this._usersAudit.bind(this),
       /**
@@ -220,16 +201,14 @@ body: the string which is the content of this text.
       /**
        * Delete a user
  * @param {string} id - Id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._usersDelete.bind(this),
       /**
        * Modify a user
  * @param {string} id - Id identifier
- * @param {string} password - Optional. Password
- * @param {string} username - Optional. Username
- * @param {boolean} isAdmin - Optional. Isadmin
- * @param {string} [asOf] - Optional asOf
+ * @param {string} [password] - Optional. Password
+ * @param {string} [username] - Optional. Username
+ * @param {boolean} [isAdmin] - Optional. Isadmin
        */
       update: this._usersUpdate.bind(this)
     };
@@ -238,14 +217,12 @@ body: the string which is the content of this text.
        * Shift a token layer's order.
  * @param {string} tokenLayerId - Token-layer-id identifier
  * @param {string} direction - Required. Direction
- * @param {string} [asOf] - Optional asOf
        */
       shift: this._tokenLayersShift.bind(this),
       /**
        * Create a new token layer.
  * @param {string} textLayerId - Required. Textlayerid
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       create: this._tokenLayersCreate.bind(this),
       /**
@@ -253,7 +230,6 @@ body: the string which is the content of this text.
  * @param {string} tokenLayerId - Token-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
- * @param {string} [asOf] - Optional asOf
  * @param {any} configValue - Configuration value to set
        */
       setConfig: this._tokenLayersSetConfig.bind(this),
@@ -262,7 +238,6 @@ body: the string which is the content of this text.
  * @param {string} tokenLayerId - Token-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
- * @param {string} [asOf] - Optional asOf
        */
       deleteConfig: this._tokenLayersDeleteConfig.bind(this),
       /**
@@ -274,14 +249,12 @@ body: the string which is the content of this text.
       /**
        * Delete a token layer.
  * @param {string} tokenLayerId - Token-layer-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._tokenLayersDelete.bind(this),
       /**
        * Update a token layer's name.
  * @param {string} tokenLayerId - Token-layer-id identifier
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       update: this._tokenLayersUpdate.bind(this)
     };
@@ -289,22 +262,21 @@ body: the string which is the content of this text.
       /**
        * Get audit log for a document
  * @param {string} documentId - Document-id identifier
- * @param {string} [asOf] - Optional asOf
  * @param {string} [startTime] - Optional startTime
  * @param {string} [endTime] - Optional endTime
+ * @param {string} [asOf] - Optional asOf
        */
       audit: this._documentsAudit.bind(this),
       /**
        * Get a document. Set includeBody to true in order to include all data contained in the document.
  * @param {string} documentId - Document-id identifier
- * @param {string} [asOf] - Optional asOf
  * @param {boolean} [includeBody] - Optional includeBody
+ * @param {string} [asOf] - Optional asOf
        */
       get: this._documentsGet.bind(this),
       /**
        * Delete a document and all data contained.
  * @param {string} documentId - Document-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._documentsDelete.bind(this),
       /**
@@ -313,14 +285,12 @@ body: the string which is the content of this text.
 name: update a document's name.
  * @param {string} documentId - Document-id identifier
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       update: this._documentsUpdate.bind(this),
       /**
        * Create a new document in a project. Requires projectId and name.
  * @param {string} projectId - Required. Projectid
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       create: this._documentsCreate.bind(this)
     };
@@ -329,70 +299,62 @@ name: update a document's name.
        * Set a user's access level to read and write for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       addWriter: this._projectsAddWriter.bind(this),
       /**
        * Remove a user's writer privileges for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       removeWriter: this._projectsRemoveWriter.bind(this),
       /**
        * Set a user's access level to read-only for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       addReader: this._projectsAddReader.bind(this),
       /**
        * Remove a user's reader privileges for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       removeReader: this._projectsRemoveReader.bind(this),
       /**
        * Assign a user as a maintainer for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       addMaintainer: this._projectsAddMaintainer.bind(this),
       /**
        * Remove a user's maintainer privileges for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       removeMaintainer: this._projectsRemoveMaintainer.bind(this),
       /**
        * Get audit log for a project
  * @param {string} projectId - Project-id identifier
- * @param {string} [asOf] - Optional asOf
  * @param {string} [startTime] - Optional startTime
  * @param {string} [endTime] - Optional endTime
+ * @param {string} [asOf] - Optional asOf
        */
       audit: this._projectsAudit.bind(this),
       /**
        * Get a project by ID. If includeDocuments is true, also include document IDs and names.
  * @param {string} id - Id identifier
- * @param {string} [asOf] - Optional asOf
  * @param {boolean} [includeDocuments] - Optional includeDocuments
+ * @param {string} [asOf] - Optional asOf
        */
       get: this._projectsGet.bind(this),
       /**
        * Delete a project.
  * @param {string} id - Id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._projectsDelete.bind(this),
       /**
        * Update a project's name.
  * @param {string} id - Id identifier
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       update: this._projectsUpdate.bind(this),
       /**
@@ -403,7 +365,6 @@ name: update a document's name.
       /**
        * Create a new project. Note: this also registers the user as a maintainer.
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       create: this._projectsCreate.bind(this)
     };
@@ -413,7 +374,6 @@ name: update a document's name.
  * @param {string} textLayerId - Text-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
- * @param {string} [asOf] - Optional asOf
  * @param {any} configValue - Configuration value to set
        */
       setConfig: this._textLayersSetConfig.bind(this),
@@ -422,7 +382,6 @@ name: update a document's name.
  * @param {string} textLayerId - Text-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
- * @param {string} [asOf] - Optional asOf
        */
       deleteConfig: this._textLayersDeleteConfig.bind(this),
       /**
@@ -434,28 +393,24 @@ name: update a document's name.
       /**
        * Delete a text layer.
  * @param {string} textLayerId - Text-layer-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._textLayersDelete.bind(this),
       /**
        * Update a text layer's name.
  * @param {string} textLayerId - Text-layer-id identifier
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       update: this._textLayersUpdate.bind(this),
       /**
        * Shift a text layer's order within the project.
  * @param {string} textLayerId - Text-layer-id identifier
  * @param {string} direction - Required. Direction
- * @param {string} [asOf] - Optional asOf
        */
       shift: this._textLayersShift.bind(this),
       /**
        * Create a new text layer for a project.
  * @param {string} projectId - Required. Projectid
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       create: this._textLayersCreate.bind(this)
     };
@@ -469,24 +424,22 @@ name: update a document's name.
     };
     this.bulk = {
       /**
-       * Execute multiple API operations in a single request
- * @param {string} [asOf] - Optional asOf
+       * Execute multiple API operations in a single request.
+ * @param {Array} operations - Required. Operations
        */
-      create: this._bulkCreate.bind(this)
+      submit: this._bulkSubmit.bind(this)
     };
     this.relationLayers = {
       /**
        * Shift a relation layer's order.
  * @param {string} relationLayerId - Relation-layer-id identifier
  * @param {string} direction - Required. Direction
- * @param {string} [asOf] - Optional asOf
        */
       shift: this._relationLayersShift.bind(this),
       /**
        * Create a new relation layer.
  * @param {string} spanLayerId - Required. Spanlayerid
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       create: this._relationLayersCreate.bind(this),
       /**
@@ -494,7 +447,6 @@ name: update a document's name.
  * @param {string} relationLayerId - Relation-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
- * @param {string} [asOf] - Optional asOf
  * @param {any} configValue - Configuration value to set
        */
       setConfig: this._relationLayersSetConfig.bind(this),
@@ -503,7 +455,6 @@ name: update a document's name.
  * @param {string} relationLayerId - Relation-layer-id identifier
  * @param {string} namespace - Namespace identifier
  * @param {string} configKey - Config-key identifier
- * @param {string} [asOf] - Optional asOf
        */
       deleteConfig: this._relationLayersDeleteConfig.bind(this),
       /**
@@ -515,14 +466,12 @@ name: update a document's name.
       /**
        * Delete a relation layer.
  * @param {string} relationLayerId - Relation-layer-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._relationLayersDelete.bind(this),
       /**
        * Update a relation layer's name.
  * @param {string} relationLayerId - Relation-layer-id identifier
  * @param {string} name - Required. Name
- * @param {string} [asOf] - Optional asOf
        */
       update: this._relationLayersUpdate.bind(this)
     };
@@ -539,8 +488,7 @@ precedence: used for tokens with the same begin value in order to indicate their
  * @param {string} textId - Required. Textid
  * @param {number} begin - Required. Begin
  * @param {number} end - Required. End
- * @param {number} precedence - Optional. Precedence
- * @param {string} [asOf] - Optional asOf
+ * @param {number} [precedence] - Optional. Precedence
        */
       create: this._tokensCreate.bind(this),
       /**
@@ -552,7 +500,6 @@ precedence: used for tokens with the same begin value in order to indicate their
       /**
        * Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
  * @param {string} tokenId - Token-id identifier
- * @param {string} [asOf] - Optional asOf
        */
       delete: this._tokensDelete.bind(this),
       /**
@@ -562,10 +509,9 @@ begin: start index of the token
 end: end index of the token
 precedence: ordering value for the token relative to other tokens with the same begin--lower means earlier
  * @param {string} tokenId - Token-id identifier
- * @param {number} begin - Optional. Begin
- * @param {number} end - Optional. End
- * @param {number} precedence - Optional. Precedence
- * @param {string} [asOf] - Optional asOf
+ * @param {number} [begin] - Optional. Begin
+ * @param {number} [end] - Optional. End
+ * @param {number} [precedence] - Optional. Precedence
        */
       update: this._tokensUpdate.bind(this)
     };
@@ -1318,12 +1264,12 @@ textLayerId: the text's associated layer.
 documentId: the text's associated document.
 body: the string which is the content of this text.
    */
-  async _textsCreate(textLayerId, documentId, bodyText) {
+  async _textsCreate(textLayerId, documentId, body) {
     const url = `${this.baseUrl}/api/v1/texts`;
     const bodyObj = {
       "text-layer-id": textLayerId,
       "document-id": documentId,
-      "body": bodyText
+      "body": body
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
@@ -1432,10 +1378,10 @@ body: the string which is the content of this text.
   /**
    * Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
    */
-  async _textsUpdate(textId, bodyText) {
+  async _textsUpdate(textId, body) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}`;
     const bodyObj = {
-      "body": bodyText
+      "body": body
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
@@ -1556,14 +1502,14 @@ body: the string which is the content of this text.
   async _usersAudit(userId, startTime = undefined, endTime = undefined, asOf = undefined) {
     const url = `${this.baseUrl}/api/v1/users/${userId}/audit`;
     const queryParams = new URLSearchParams();
-    if (asOf !== undefined && asOf !== null) {
-      queryParams.append('as-of', asOf);
-    }
     if (startTime !== undefined && startTime !== null) {
       queryParams.append('start-time', startTime);
     }
     if (endTime !== undefined && endTime !== null) {
       queryParams.append('end-time', endTime);
+    }
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
@@ -1976,14 +1922,14 @@ body: the string which is the content of this text.
   async _documentsAudit(documentId, startTime = undefined, endTime = undefined, asOf = undefined) {
     const url = `${this.baseUrl}/api/v1/documents/${documentId}/audit`;
     const queryParams = new URLSearchParams();
-    if (asOf !== undefined && asOf !== null) {
-      queryParams.append('as-of', asOf);
-    }
     if (startTime !== undefined && startTime !== null) {
       queryParams.append('start-time', startTime);
     }
     if (endTime !== undefined && endTime !== null) {
       queryParams.append('end-time', endTime);
+    }
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
@@ -2021,11 +1967,11 @@ body: the string which is the content of this text.
   async _documentsGet(documentId, includeBody = undefined, asOf = undefined) {
     const url = `${this.baseUrl}/api/v1/documents/${documentId}`;
     const queryParams = new URLSearchParams();
-    if (asOf !== undefined && asOf !== null) {
-      queryParams.append('as-of', asOf);
-    }
     if (includeBody !== undefined && includeBody !== null) {
       queryParams.append('include-body', includeBody);
+    }
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
@@ -2377,14 +2323,14 @@ name: update a document's name.
   async _projectsAudit(projectId, startTime = undefined, endTime = undefined, asOf = undefined) {
     const url = `${this.baseUrl}/api/v1/projects/${projectId}/audit`;
     const queryParams = new URLSearchParams();
-    if (asOf !== undefined && asOf !== null) {
-      queryParams.append('as-of', asOf);
-    }
     if (startTime !== undefined && startTime !== null) {
       queryParams.append('start-time', startTime);
     }
     if (endTime !== undefined && endTime !== null) {
       queryParams.append('end-time', endTime);
+    }
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
@@ -2422,11 +2368,11 @@ name: update a document's name.
   async _projectsGet(id, includeDocuments = undefined, asOf = undefined) {
     const url = `${this.baseUrl}/api/v1/projects/${id}`;
     const queryParams = new URLSearchParams();
-    if (asOf !== undefined && asOf !== null) {
-      queryParams.append('as-of', asOf);
-    }
     if (includeDocuments !== undefined && includeDocuments !== null) {
       queryParams.append('include-documents', includeDocuments);
+    }
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
@@ -2912,10 +2858,11 @@ name: update a document's name.
   }
 
   /**
-   * Execute multiple API operations in a single request
+   * Execute multiple API operations in a single request.
    */
-  async _bulkCreate() {
+  async _bulkSubmit(operations) {
     const url = `${this.baseUrl}/api/v1/bulk`;
+    const body = operations;
     const fetchOptions = {
       method: 'POST',
       headers: {
