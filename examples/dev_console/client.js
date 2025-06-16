@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Sat Jun 14 11:12:38 EDT 2025
+ * Generated on: Mon Jun 16 13:52:02 EDT 2025
  */
 
 class PlaidClient {
@@ -467,6 +467,13 @@ name: update a document's name.
        */
       create: this._loginCreate.bind(this)
     };
+    this.bulk = {
+      /**
+       * Execute multiple API operations in a single request
+ * @param {string} [asOf] - Optional asOf
+       */
+      create: this._bulkCreate.bind(this)
+    };
     this.relationLayers = {
       /**
        * Shift a relation layer's order.
@@ -625,13 +632,13 @@ precedence: ordering value for the token relative to other tokens with the same 
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -697,13 +704,13 @@ precedence: ordering value for the token relative to other tokens with the same 
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -737,13 +744,13 @@ precedence: ordering value for the token relative to other tokens with the same 
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -777,13 +784,13 @@ precedence: ordering value for the token relative to other tokens with the same 
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -825,13 +832,13 @@ targetId: the target span this relation goes to
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -860,13 +867,13 @@ targetId: the target span this relation goes to
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -893,13 +900,13 @@ targetId: the target span this relation goes to
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -965,13 +972,13 @@ targetId: the target span this relation goes to
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1005,13 +1012,13 @@ targetId: the target span this relation goes to
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -1046,13 +1053,13 @@ targetId: the target span this relation goes to
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1086,13 +1093,13 @@ targetId: the target span this relation goes to
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1126,13 +1133,13 @@ targetId: the target span this relation goes to
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -1172,13 +1179,13 @@ value: the value of the span, used for annotation.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1244,13 +1251,13 @@ value: the value of the span, used for annotation.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1284,13 +1291,13 @@ value: the value of the span, used for annotation.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -1330,13 +1337,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1402,13 +1409,13 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1442,13 +1449,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -1523,13 +1530,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1640,13 +1647,13 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1682,13 +1689,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -1722,13 +1729,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1763,13 +1770,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1798,13 +1805,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -1831,13 +1838,13 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1903,13 +1910,13 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1943,13 +1950,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -2063,13 +2070,13 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2105,13 +2112,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -2146,13 +2153,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -2179,13 +2186,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -2212,13 +2219,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2245,13 +2252,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -2278,13 +2285,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2311,13 +2318,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -2344,13 +2351,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2464,13 +2471,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2504,13 +2511,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -2583,13 +2590,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -2618,13 +2625,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -2651,13 +2658,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2723,13 +2730,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2763,13 +2770,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -2803,13 +2810,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -2844,13 +2851,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -2905,6 +2912,40 @@ name: update a document's name.
   }
 
   /**
+   * Execute multiple API operations in a single request
+   */
+  async _bulkCreate() {
+    const url = `${this.baseUrl}/api/v1/bulk`;
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
    * Shift a relation layer's order.
    */
   async _relationLayersShift(relationLayerId, direction) {
@@ -2924,13 +2965,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -2965,13 +3006,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -3000,13 +3041,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -3033,13 +3074,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -3105,13 +3146,13 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -3145,13 +3186,13 @@ name: update a document's name.
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -3195,13 +3236,13 @@ precedence: used for tokens with the same begin value in order to indicate their
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -3267,13 +3308,13 @@ precedence: used for tokens with the same begin value in order to indicate their
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -3313,13 +3354,13 @@ precedence: ordering value for the token relative to other tokens with the same 
       body: JSON.stringify(body)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
