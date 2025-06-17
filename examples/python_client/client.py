@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Mon Jun 16 15:42:41 EDT 2025
+Generated on: Tue Jun 17 14:49:20 EDT 2025
 """
 
 import requests
@@ -980,24 +980,27 @@ class SpansResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def create(self, span_layer_id: str, tokens: List[Any], value: Any) -> Any:
+    def create(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
         """
-        Create a new span. A span holds a a value and must at all times be associated with one or more tokens.
+        Create a new span. A span holds a primary atomic value and optional metadata, and must at all times be associated with one or more tokens.
 
 span_layer_id: the span's associated layer
 tokens: a list of tokens associated with this span. Must contain at least one token. All tokens must belong to a single layer which is linked to the span layer indicated by span_layer_id.
-value: the value of the span, used for annotation.
+value: the primary value of the span (must be string, number, boolean, or null).
+metadata: optional key-value pairs for additional annotation data.
 
         Args:
             span_layer_id: Required body parameter
             tokens: Required body parameter
             value: Required body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans"
         body_dict = {
             'span-layer-id': span_layer_id,
             'tokens': tokens,
-            'value': value
+            'value': value,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -1014,24 +1017,27 @@ value: the value of the span, used for annotation.
             return self.client._transform_response(data)
         return response.text()
 
-    async def create_async(self, span_layer_id: str, tokens: List[Any], value: Any) -> Any:
+    async def create_async(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
         """
-        Create a new span. A span holds a a value and must at all times be associated with one or more tokens.
+        Create a new span. A span holds a primary atomic value and optional metadata, and must at all times be associated with one or more tokens.
 
 span_layer_id: the span's associated layer
 tokens: a list of tokens associated with this span. Must contain at least one token. All tokens must belong to a single layer which is linked to the span layer indicated by span_layer_id.
-value: the value of the span, used for annotation.
+value: the primary value of the span (must be string, number, boolean, or null).
+metadata: optional key-value pairs for additional annotation data.
 
         Args:
             span_layer_id: Required body parameter
             tokens: Required body parameter
             value: Required body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans"
         body_dict = {
             'span-layer-id': span_layer_id,
             'tokens': tokens,
-            'value': value
+            'value': value,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -1200,6 +1206,104 @@ value: the value of the span, used for annotation.
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def metadata(self, span_id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            span_id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.put(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def metadata_async(self, span_id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            span_id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def metadata(self, span_id: str) -> Any:
+        """
+        Remove all metadata from a span.
+
+        Args:
+            span_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def metadata_async(self, span_id: str) -> Any:
+        """
+        Remove all metadata from a span.
+
+        Args:
+            span_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
                 
                 content_type = response.headers.get('content-type', '').lower()
@@ -4332,8 +4436,15 @@ class PlaidClient:
         if isinstance(obj, list):
             return [self._transform_request(item) for item in obj]
         if isinstance(obj, dict):
-            return {self._transform_key_from_snake(k): self._transform_request(v) 
-                   for k, v in obj.items()}
+            transformed = {}
+            for k, v in obj.items():
+                new_key = self._transform_key_from_snake(k)
+                # Preserve metadata contents without transformation
+                if k == 'metadata' and isinstance(v, dict):
+                    transformed[new_key] = v
+                else:
+                    transformed[new_key] = self._transform_request(v)
+            return transformed
         return obj
     
     def _transform_response(self, obj: Any) -> Any:
@@ -4343,8 +4454,15 @@ class PlaidClient:
         if isinstance(obj, list):
             return [self._transform_response(item) for item in obj]
         if isinstance(obj, dict):
-            return {self._transform_key_to_snake(k): self._transform_response(v) 
-                   for k, v in obj.items()}
+            transformed = {}
+            for k, v in obj.items():
+                new_key = self._transform_key_to_snake(k)
+                # Preserve metadata contents without transformation
+                if new_key == 'metadata' and isinstance(v, dict):
+                    transformed[new_key] = v
+                else:
+                    transformed[new_key] = self._transform_response(v)
+            return transformed
         return obj
     
     def batch(self) -> BatchBuilder:

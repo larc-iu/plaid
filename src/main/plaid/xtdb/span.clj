@@ -2,18 +2,32 @@
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
-            [plaid.xtdb.relation :as r])
+            [plaid.xtdb.relation :as r]
+            [clojure.string :as str])
   (:refer-clojure :exclude [get merge]))
 
-(def attr-keys [:span/id
-                :span/tokens
-                :span/value
-                :span/layer])
+(def core-attr-keys [:span/id
+                     :span/tokens
+                     :span/value
+                     :span/layer])
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
+  "Get a span by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (pxc/find-entity (pxc/->db db-like) {:span/id id}))
+  (when-let [span-entity (pxc/find-entity (pxc/->db db-like) {:span/id id})]
+    (let [core-attrs (select-keys span-entity [:span/id :span/value :span/tokens])
+          metadata-attrs (->> span-entity
+                             (filter (fn [[k v]]
+                                       (and (= "span" (namespace k))
+                                            (str/starts-with? (name k) "_")
+                                            (not (nil? v)))))  ; Filter out nil values
+                             (reduce (fn [m [k v]]
+                                       (assoc m (subs (name k) 1) v))
+                                     {}))]
+      (if (empty? metadata-attrs)
+        core-attrs
+        (assoc core-attrs :metadata metadata-attrs)))))
 
 (defn project-id [db-like id]
   (-> (xt/q (pxc/->db db-like)
@@ -56,6 +70,14 @@
           token-id)))
 
 ;; Mutations --------------------------------------------------------------------------------
+(defn- validate-atomic-value! [value]
+  (when-not (or (nil? value)
+                (string? value)
+                (number? value)
+                (boolean? value))
+    (throw (ex-info "Span value must be atomic (string, number, boolean, or null)"
+                    {:value value :code 400}))))
+
 (defn- check-tokens! [db {:span/keys [tokens layer]} token-records]
   (let [{token-layer-id :token/layer} (first token-records)
         {span-layers :token-layer/span-layers} (pxc/entity db token-layer-id)]
@@ -86,13 +108,19 @@
       (throw (ex-info "Not all token IDs belong to the same document."
                       {:document-ids (map (partial get-doc-id-of-token db) tokens) :code 400})))))
 
+(defn- span-attr? 
+  "Check if an attribute key belongs to span namespace (including metadata attributes)."
+  [k]
+  (= "span" (namespace k)))
 
 (defn create*
   [xt-map attrs]
   (let [{:keys [db node] :as xt-map} (pxc/ensure-db xt-map)
+        span-attrs (filter (fn [[k v]] (span-attr? k)) attrs)
         {:span/keys [id tokens layer value] :as span} (clojure.core/merge (pxc/new-record "span")
-                                                                          (select-keys attrs attr-keys))
+                                                                          (into {} span-attrs))
         token-records (map #(pxc/entity db %) tokens)]
+    (validate-atomic-value! value)
     (check-tokens! db span token-records)
     (cond
       ;; ID is not already taken?
@@ -110,36 +138,49 @@
 
 (defn create-operation
   "Build an operation for creating a span"
-  [xt-map attrs]
+  [xt-map attrs metadata]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:span/keys [layer tokens]} attrs
         project-id (project-id-from-layer db layer)
         doc-id (get-doc-id-of-token db (first tokens))
-        tx-ops (create* xt-map attrs)]
+        ;; Expand metadata into span attributes
+        metadata-attrs (if metadata
+                         (reduce-kv (fn [m k v]
+                                      (assoc m (keyword "span" (str "_" k)) v))
+                                    {}
+                                    metadata)
+                         {})
+        attrs-with-metadata (clojure.core/merge attrs metadata-attrs)
+        tx-ops (create* xt-map attrs-with-metadata)]
     (op/make-operation
      {:type        :span/create
       :project     project-id
       :document    doc-id
-      :description (str "Create span with " (count tokens) " tokens in layer " layer)
+      :description (str "Create span with " (count tokens) " tokens in layer " layer
+                        (when metadata (str " and " (count metadata) " metadata keys")))
       :tx-ops      tx-ops})))
 
-(defn create [xt-map attrs user-id]
-  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+(defn create
+  ([xt-map attrs user-id]
+   (create xt-map attrs user-id nil))
+  ([xt-map attrs user-id metadata]
+   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn merge-operation
-  "Build an operation for updating a span's value"
+  "Build an operation for updating a span's attributes"
   [xt-map eid m]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         span (pxc/entity db eid)
         project-id (project-id db eid)
         doc-id (get-doc-id-of-token db (first (:span/tokens span)))
-        tx-ops (pxc/merge* xt-map eid (select-keys m [:span/value]))]
+        span-attrs (filter (fn [[k v]] (span-attr? k)) m)
+        updates (into {} span-attrs)]
     (op/make-operation
-     {:type        :span/update-value
+     {:type        :span/update-attributes
       :project     project-id
       :document    doc-id
-      :description (str "Update value of span " eid " to " (:span/value m))
-      :tx-ops      tx-ops})))
+      :description (str "Update attributes of span " eid)
+      :tx-ops      (pxc/merge* xt-map eid updates)})))
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m user-id]
@@ -239,3 +280,70 @@
 
 (defn remove-token [xt-map span-id token-id user-id]
   (submit-operations! xt-map [(remove-token-operation xt-map span-id token-id)] user-id))
+
+(defn set-metadata*
+  "Build transaction ops for replacing all metadata on a span"
+  [xt-map eid metadata]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        existing-span (pxc/entity db eid)
+        old-metadata-keys (->> existing-span
+                              (filter (fn [[k _v]]
+                                        (and (= "span" (namespace k))
+                                             (str/starts-with? (name k) "_"))))
+                              (map first))
+        new-metadata (reduce-kv (fn [m k v]
+                                  (assoc m (keyword "span" (str "_" k)) v))
+                                {}
+                                metadata)
+        clear-old (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)
+        final-updates (clojure.core/merge clear-old new-metadata)]
+    (pxc/merge* xt-map eid final-updates)))
+
+(defn set-metadata-operation
+  "Build an operation for replacing all metadata on a span"
+  [xt-map eid metadata]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project-id (project-id db eid)
+        span (pxc/entity db eid)
+        doc-id (get-doc-id-of-token db (first (:span/tokens span)))
+        tx-ops (set-metadata* xt-map eid metadata)]
+    (op/make-operation
+     {:type        :span/set-metadata
+      :project     project-id
+      :document    doc-id
+      :description (str "Set metadata on span " eid " with " (count metadata) " keys")
+      :tx-ops      tx-ops})))
+
+(defn set-metadata [xt-map eid metadata user-id]
+  (submit-operations! xt-map [(set-metadata-operation xt-map eid metadata)] user-id))
+
+(defn delete-metadata*
+  "Build transaction ops for removing all metadata from a span"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        existing-span (pxc/entity db eid)
+        old-metadata-keys (->> existing-span
+                              (filter (fn [[k _v]]
+                                        (and (= "span" (namespace k))
+                                             (str/starts-with? (name k) "_"))))
+                              (map first))
+        clear-updates (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)]
+    (pxc/merge* xt-map eid clear-updates)))
+
+(defn delete-metadata-operation
+  "Build an operation for removing all metadata from a span"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project-id (project-id db eid)
+        span (pxc/entity db eid)
+        doc-id (get-doc-id-of-token db (first (:span/tokens span)))
+        tx-ops (delete-metadata* xt-map eid)]
+    (op/make-operation
+     {:type        :span/delete-metadata
+      :project     project-id
+      :document    doc-id
+      :description (str "Delete all metadata from span " eid)
+      :tx-ops      tx-ops})))
+
+(defn delete-metadata [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-metadata-operation xt-map eid)] user-id))

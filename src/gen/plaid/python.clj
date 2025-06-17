@@ -485,8 +485,15 @@
         if isinstance(obj, list):
             return [self._transform_request(item) for item in obj]
         if isinstance(obj, dict):
-            return {self._transform_key_from_snake(k): self._transform_request(v) 
-                   for k, v in obj.items()}
+            transformed = {}
+            for k, v in obj.items():
+                new_key = self._transform_key_from_snake(k)
+                # Preserve metadata contents without transformation
+                if k == 'metadata' and isinstance(v, dict):
+                    transformed[new_key] = v
+                else:
+                    transformed[new_key] = self._transform_request(v)
+            return transformed
         return obj
     
     def _transform_response(self, obj: Any) -> Any:
@@ -496,8 +503,15 @@
         if isinstance(obj, list):
             return [self._transform_response(item) for item in obj]
         if isinstance(obj, dict):
-            return {self._transform_key_to_snake(k): self._transform_response(v) 
-                   for k, v in obj.items()}
+            transformed = {}
+            for k, v in obj.items():
+                new_key = self._transform_key_to_snake(k)
+                # Preserve metadata contents without transformation
+                if new_key == 'metadata' and isinstance(v, dict):
+                    transformed[new_key] = v
+                else:
+                    transformed[new_key] = self._transform_response(v)
+            return transformed
         return obj
     
     def batch(self) -> BatchBuilder:

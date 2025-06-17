@@ -191,7 +191,12 @@
     const transformed = {};
     for (const [key, value] of Object.entries(obj)) {
       const newKey = this._transformKeyFromCamel(key);
-      transformed[newKey] = this._transformRequest(value);
+      // Preserve metadata contents without transformation
+      if (key === 'metadata' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        transformed[newKey] = value;
+      } else {
+        transformed[newKey] = this._transformRequest(value);
+      }
     }
     return transformed;
   }
@@ -204,7 +209,12 @@
     const transformed = {};
     for (const [key, value] of Object.entries(obj)) {
       const newKey = this._transformKeyToCamel(key);
-      transformed[newKey] = this._transformResponse(value);
+      // Preserve metadata contents without transformation
+      if (newKey === 'metadata' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        transformed[newKey] = value;
+      } else {
+        transformed[newKey] = this._transformResponse(value);
+      }
     }
     return transformed;
   }

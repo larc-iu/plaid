@@ -3,12 +3,14 @@
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.text :as text]
-            [plaid.xtdb.token-layer :as tokl])
+            [plaid.xtdb.token-layer :as tokl]
+            [plaid.xtdb.span :as s])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:document/id
                 :document/name
                 :document/project])
+
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
@@ -56,16 +58,17 @@
 
 (defmethod get-doc-info :span-layer/id [db doc-id parent-id [key id]]
   (let [rl-ids (:span-layer/relation-layers (pxc/entity db id))
-        spans (->> (xt/q db
-                         '{:find  [(pull ?s [:span/id :span/value :span/tokens])]
-                           :where [[?s :span/tokens ?tok]
-                                   [?s :span/layer ?sl]
-                                   [?tok :token/layer ?tokl]
-                                   [?tok :token/text ?txt]
-                                   [?txt :text/document ?doc]]
-                           :in    [[?tokl ?doc ?sl]]}
-                         [parent-id doc-id id])
-                   (mapv (fn [[id]] {:span/id id})))]
+        span-ids (->> (xt/q db
+                           '{:find  [?s]
+                             :where [[?s :span/tokens ?tok]
+                                     [?s :span/layer ?sl]
+                                     [?tok :token/layer ?tokl]
+                                     [?tok :token/text ?txt]
+                                     [?txt :text/document ?doc]]
+                             :in    [[?tokl ?doc ?sl]]}
+                           [parent-id doc-id id])
+                      (mapv first))
+        spans (mapv #(s/get db %) span-ids)]
     (-> (select-keys (pxc/entity db id) [:span-layer/id :span-layer/name :config])
         (assoc :span-layer/spans spans)
         (assoc :span-layer/relation-layers (mapv #(get-doc-info db doc-id id [:relation-layer/id %]) rl-ids)))))

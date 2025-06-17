@@ -95,21 +95,38 @@
                              :path   (str "/api/v1/tokens/" token-id)}))
 
 ;; Span API Helper Functions
-(defn- create-span [user-request-fn span-layer-id tokens value]
-  (api-call user-request-fn {:method :post
-                             :path   "/api/v1/spans"
-                             :body   {:span-layer-id span-layer-id
-                                      :tokens        tokens
-                                      :value         value}}))
+(defn- create-span
+  ([user-request-fn span-layer-id tokens value]
+   (api-call user-request-fn {:method :post
+                              :path   "/api/v1/spans"
+                              :body   {:span-layer-id span-layer-id
+                                       :tokens        tokens
+                                       :value         value}}))
+  ([user-request-fn span-layer-id tokens value metadata]
+   (api-call user-request-fn {:method :post
+                              :path   "/api/v1/spans"
+                              :body   {:span-layer-id span-layer-id
+                                       :tokens        tokens
+                                       :value         value
+                                       :metadata      metadata}})))
 
 (defn- get-span [user-request-fn span-id]
   (api-call user-request-fn {:method :get
                              :path   (str "/api/v1/spans/" span-id)}))
 
-(defn- update-span [user-request-fn span-id value]
+(defn- update-span [user-request-fn span-id & {:keys [value]}]
   (api-call user-request-fn {:method :patch
                              :path   (str "/api/v1/spans/" span-id)
                              :body   {:value value}}))
+
+(defn- update-span-metadata [user-request-fn span-id metadata]
+  (api-call user-request-fn {:method :put
+                             :path   (str "/api/v1/spans/" span-id "/metadata")
+                             :body   metadata}))
+
+(defn- delete-span-metadata [user-request-fn span-id]
+  (api-call user-request-fn {:method :delete
+                             :path   (str "/api/v1/spans/" span-id "/metadata")}))
 
 (defn- update-span-tokens [user-request-fn span-id tokens]
   (api-call user-request-fn {:method :put
@@ -233,13 +250,146 @@
       (assert-bad-request r2))
     ;; get, patch, replace tokens, delete
     (assert-ok (get-span admin-request sid))
-    (assert-ok (update-span admin-request sid "w"))
+    (assert-ok (update-span admin-request sid :value "w"))
     (assert-ok (update-span-tokens admin-request sid [id2]))
     (let [r3 (get-span admin-request sid)]
       (assert-ok r3)
       (is (= [id2] (-> r3 :body :span/tokens))))
     (assert-no-content (delete-span admin-request sid))
     (assert-not-found (get-span admin-request sid))))
+
+(deftest span-atomic-values-and-metadata
+  (let [proj (create-test-project admin-request "AtomicSpanProj")
+        doc (create-test-document admin-request proj "AtomicDoc")
+        tl-res (create-text-layer admin-request proj "AtomicTL")
+        tl (-> tl-res :body :id)
+        tr (create-text admin-request tl doc "test")
+        tid (-> tr :body :id)
+        tkl-res (create-token-layer admin-request tl "AtomicTokenL")
+        tkl (-> tkl-res :body :id)
+        tk1 (create-token admin-request tkl tid 0 2)
+        id1 (-> tk1 :body :id)
+        tk2 (create-token admin-request tkl tid 2 4)
+        id2 (-> tk2 :body :id)
+        sl-res (create-span-layer admin-request tkl "AtomicSL")
+        sl (-> sl-res :body :id)]
+    
+    ;; Test atomic values
+    (testing "Valid atomic values"
+      ;; String value
+      (let [span1 (create-span admin-request sl [id1] "PERSON")]
+        (assert-created span1)
+        (is (= "PERSON" (-> (get-span admin-request (-> span1 :body :id)) :body :span/value)))
+        (assert-no-content (delete-span admin-request (-> span1 :body :id))))
+      
+      ;; Number value
+      (let [span2 (create-span admin-request sl [id1] 42)]
+        (assert-created span2)
+        (is (= 42 (-> (get-span admin-request (-> span2 :body :id)) :body :span/value)))
+        (assert-no-content (delete-span admin-request (-> span2 :body :id))))
+      
+      ;; Boolean value
+      (let [span3 (create-span admin-request sl [id1] true)]
+        (assert-created span3)
+        (is (= true (-> (get-span admin-request (-> span3 :body :id)) :body :span/value)))
+        (assert-no-content (delete-span admin-request (-> span3 :body :id))))
+      
+      ;; Null value
+      (let [span4 (create-span admin-request sl [id1] nil)]
+        (assert-created span4)
+        (is (= nil (-> (get-span admin-request (-> span4 :body :id)) :body :span/value)))
+        (assert-no-content (delete-span admin-request (-> span4 :body :id)))))
+    
+    ;; Test metadata functionality
+    (testing "Metadata support"
+      ;; Create span with metadata
+      (let [metadata {"confidence" 0.95 "source" "model-v2" "reviewed" false}
+            span (create-span admin-request sl [id1 id2] "ENTITY" metadata)
+            sid (-> span :body :id)]
+        (assert-created span)
+        
+        ;; Verify metadata is returned
+        (let [retrieved (get-span admin-request sid)]
+          (assert-ok retrieved)
+          (is (= "ENTITY" (-> retrieved :body :span/value)))
+          (is (= metadata (-> retrieved :body :metadata))))
+        
+        ;; Update metadata
+        (let [new-metadata {"confidence" 0.98 "annotator" "human"}
+              update-result (update-span-metadata admin-request sid new-metadata)]
+          (assert-ok update-result)
+          (is (= new-metadata (-> update-result :body :metadata)))
+          (is (= "ENTITY" (-> update-result :body :span/value))))
+        
+        ;; Update both value and metadata
+        (let [final-metadata {"final" true}]
+          (assert-ok (update-span admin-request sid :value "FINAL"))
+          (let [update-result (update-span-metadata admin-request sid final-metadata)]
+            (assert-ok update-result)
+            (is (= "FINAL" (-> update-result :body :span/value)))
+            (is (= final-metadata (-> update-result :body :metadata)))))
+        
+        (assert-no-content (delete-span admin-request sid)))
+      
+      ;; Span without metadata should not have metadata field
+      (let [span (create-span admin-request sl [id1] "NO_METADATA")
+            sid (-> span :body :id)]
+        (assert-created span)
+        (let [retrieved (get-span admin-request sid)]
+          (assert-ok retrieved)
+          (is (= "NO_METADATA" (-> retrieved :body :span/value)))
+          (is (nil? (-> retrieved :body :metadata))))
+        (assert-no-content (delete-span admin-request sid))))))
+
+(deftest span-metadata-functionality
+  (let [proj (create-test-project admin-request "MetadataProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl-res (create-text-layer admin-request proj "TL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)
+        tr (create-text admin-request tl doc "hello")
+        tid (-> tr :body :id)
+        _ (assert-created tr)
+        tkl-res (create-token-layer admin-request tl "TokenL")
+        tkl (-> tkl-res :body :id)
+        _ (assert-created tkl-res)
+        tk1 (create-token admin-request tkl tid 0 5)
+        id1 (-> tk1 :body :id)
+        _ (assert-created tk1)
+        sl-res (create-span-layer admin-request tkl "SL")
+        sl (-> sl-res :body :id)
+        _ (assert-created sl-res)]
+    ;; Create span with metadata
+    (let [metadata {"logprobs" 0.95 "confidence" "high"}
+          r1 (create-span admin-request sl [id1] "hello" metadata)
+          sid (-> r1 :body :id)]
+      (assert-created r1)
+      ;; Get span and check metadata is returned
+      (let [r2 (get-span admin-request sid)]
+        (assert-ok r2)
+        (is (= "hello" (-> r2 :body :span/value)))
+        (is (= metadata (-> r2 :body :metadata))))
+      ;; Update metadata only
+      (let [new-metadata {"updated" true "score" 1.0}]
+        (assert-ok (update-span-metadata admin-request sid new-metadata))
+        (let [r3 (get-span admin-request sid)]
+          (assert-ok r3)
+          (is (= "hello" (-> r3 :body :span/value)))
+          (is (= new-metadata (-> r3 :body :metadata)))))
+      ;; Update value only (metadata should be preserved)
+      (assert-ok (update-span admin-request sid :value "updated"))
+      (let [r4 (get-span admin-request sid)]
+        (assert-ok r4)
+        (is (= "updated" (-> r4 :body :span/value)))
+        (is (= {"updated" true "score" 1.0} (-> r4 :body :metadata))))
+      ;; Update both value and metadata
+      (let [final-metadata {"final" true}]
+        (assert-ok (update-span admin-request sid :value "final"))
+        (assert-ok (update-span-metadata admin-request sid final-metadata))
+        (let [r5 (get-span admin-request sid)]
+          (assert-ok r5)
+          (is (= "final" (-> r5 :body :span/value)))
+          (is (= final-metadata (-> r5 :body :metadata))))))))
 
 (deftest relation-crud-and-invariants
   (let [proj (create-test-project admin-request "RelProj")
