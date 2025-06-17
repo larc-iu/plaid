@@ -178,8 +178,9 @@
                      (seq optional-body-params)
                      (and is-config? (= http-method :put)))
         
-        ;; Method naming
-        py-method-name (str (kebab->snake method-name) (when-not sync? "_async"))
+        ;; Method naming (transform method-name if it comes from x-client-method)
+        transformed-method-name (common/transform-method-name method-name :snake_case)
+        py-method-name (str transformed-method-name (when-not sync? "_async"))
         
         ;; Parameters
         method-params (generate-python-method-params operation)

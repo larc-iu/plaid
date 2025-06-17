@@ -104,6 +104,14 @@
       (get-in operation ["x-openapi" "x-client-method"])
       (infer-method-name http-method path)))
 
+(defn transform-method-name
+  "Transform method name from kebab-case to target format"
+  [method-name target-format]
+  (case target-format
+    :camelCase (csk/->camelCase method-name)
+    :snake_case (csk/->snake_case method-name)
+    method-name))
+
 (defn extract-request-body-schema
   "Extract the JSON schema from a request body definition"
   [request-body]

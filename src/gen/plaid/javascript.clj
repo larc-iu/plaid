@@ -388,8 +388,9 @@
         ;; Format summary
         formatted-summary (transform-parameter-references (or summary ""))
         
-        ;; Private method name
-        private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
+        ;; Private method name (transform method-name if it comes from x-client-method)
+        transformed-method-name (common/transform-method-name method-name :camelCase)
+        private-method-name (str "_" bundle-name (csk/->PascalCase transformed-method-name))
         
         ;; Determine URL variable name
         url-var (if (or (seq regular-query-params) as-of-param) "finalUrl" "url")]
@@ -452,6 +453,7 @@
   "Generate TypeScript method signature for an operation"
   [operation]
   (let [{:keys [method-name ordered-params path-params special-endpoints http-method]} operation
+        transformed-method-name (common/transform-method-name method-name :camelCase)
         {:keys [required-body-params optional-body-params 
                 regular-query-params as-of-param]} ordered-params
         {:keys [is-config?]} special-endpoints
@@ -507,7 +509,7 @@
         params-str (str/join ", " ts-params)
         return-type "Promise<any>"] ; Could be more specific based on response schema
     
-    (str method-name "(" params-str "): " return-type ";")))
+    (str transformed-method-name "(" params-str "): " return-type ";")))
 
 (defn- generate-jsdoc-params
   "Generate JSDoc parameter documentation from AST operation"
@@ -601,7 +603,8 @@
               (let [methods (->> operations
                                 (map (fn [operation]
                                        (let [{:keys [method-name bundle-name summary path]} operation
-                                             private-method-name (str "_" bundle-name (csk/->PascalCase method-name))
+                                             transformed-method-name (common/transform-method-name method-name :camelCase)
+                                             private-method-name (str "_" bundle-name (csk/->PascalCase transformed-method-name))
                                              formatted-summary (transform-parameter-references (or summary ""))
                                              jsdoc-params (generate-jsdoc-params operation)
                                              jsdoc-comment (when (or formatted-summary (seq jsdoc-params))
@@ -611,7 +614,7 @@
                                                                  (when (seq jsdoc-params) "\n")
                                                                  "       */\n"))]
                                          (str jsdoc-comment
-                                              "      " method-name ": this." private-method-name ".bind(this)"))))
+                                              "      " transformed-method-name ": this." private-method-name ".bind(this)"))))
                                 (str/join ",\n"))]
                 (str "    this." bundle-name " = {\n" methods "\n    };"))))
        (str/join "\n")))
