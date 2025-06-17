@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Tue Jun 17 14:49:20 EDT 2025
+Generated on: Tue Jun 17 15:07:13 EDT 2025
 """
 
 import requests
@@ -191,6 +191,104 @@ class RelationsResource:
     
     def __init__(self, client: 'PlaidClient'):
         self.client = client
+
+    def metadata(self, relation_id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            relation_id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.put(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def metadata_async(self, relation_id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            relation_id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def metadata(self, relation_id: str) -> Any:
+        """
+        Remove all metadata from a relation.
+
+        Args:
+            relation_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def metadata_async(self, relation_id: str) -> Any:
+        """
+        Remove all metadata from a relation.
+
+        Args:
+            relation_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
 
     def target(self, relation_id: str, span_id: str) -> Any:
         """
@@ -462,7 +560,7 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def create(self, layer_id: str, source_id: str, target_id: str, value: Any) -> Any:
+    def create(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
         """
         Create a new relation. A relation is a directed edge between two spans with a value, useful for expressing phenomena such as syntactic or semantic relations. A relation must at all times have both a valid source and target span. These spans must also belong to a single span layer which is linked to the relation's relation layer.
 
@@ -476,13 +574,15 @@ target_id: the target span this relation goes to
             source_id: Required body parameter
             target_id: Required body parameter
             value: Required body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations"
         body_dict = {
             'layer-id': layer_id,
             'source-id': source_id,
             'target-id': target_id,
-            'value': value
+            'value': value,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -499,7 +599,7 @@ target_id: the target span this relation goes to
             return self.client._transform_response(data)
         return response.text()
 
-    async def create_async(self, layer_id: str, source_id: str, target_id: str, value: Any) -> Any:
+    async def create_async(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
         """
         Create a new relation. A relation is a directed edge between two spans with a value, useful for expressing phenomena such as syntactic or semantic relations. A relation must at all times have both a valid source and target span. These spans must also belong to a single span layer which is linked to the relation's relation layer.
 
@@ -513,13 +613,15 @@ target_id: the target span this relation goes to
             source_id: Required body parameter
             target_id: Required body parameter
             value: Required body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations"
         body_dict = {
             'layer-id': layer_id,
             'source-id': source_id,
             'target-id': target_id,
-            'value': value
+            'value': value,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}

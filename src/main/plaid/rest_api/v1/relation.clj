@@ -32,13 +32,14 @@
                                    [:layer-id :uuid]
                                    [:source-id :uuid]
                                    [:target-id :uuid]
-                                   [:value any?]]}
-               :handler    (fn [{{{:keys [layer-id source-id target-id value ]} :body} :parameters xtdb :xtdb user-id :user/id :as request}]
+                                   [:value any?]
+                                   [:metadata {:optional true} [:map-of string? any?]]]}
+               :handler    (fn [{{{:keys [layer-id source-id target-id value metadata]} :body} :parameters xtdb :xtdb user-id :user/id :as request}]
                              (let [attrs {:relation/layer  layer-id
                                           :relation/source source-id
                                           :relation/target target-id
                                           :relation/value  value}
-                                   result (r/create {:node xtdb} attrs user-id)]
+                                   result (r/create {:node xtdb} attrs user-id metadata)]
                                (if (:success result)
                                  {:status 201 :body {:id (:extra result)}}
                                  {:status (or (:code result) 400) :body {:error (:error result)}})))}}]
@@ -74,7 +75,7 @@
                       :handler    (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                                     (let [{:keys [success code error]} (r/set-end {:node xtdb} relation-id :relation/source span-id user-id)]
                                       (if success
-                                        {:status 200 :body (dissoc (r/get xtdb relation-id) :xt/id)}
+                                        {:status 200 :body (r/get xtdb relation-id)}
                                         {:status (or code 400) :body {:error (or error "Failed to update relation source")}})))}}]
     ["/target" {:put {:summary    "Update the target span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]]
@@ -82,5 +83,22 @@
                       :handler    (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                                     (let [{:keys [success code error]} (r/set-end {:node xtdb} relation-id :relation/target span-id user-id)]
                                       (if success
-                                        {:status 200 :body (dissoc (r/get xtdb relation-id) :xt/id)}
-                                        {:status (or code 400) :body {:error (or error "Failed to update relation target")}})))}}]]])
+                                        {:status 200 :body (r/get xtdb relation-id)}
+                                        {:status (or code 400) :body {:error (or error "Failed to update relation target")}})))}}]
+
+    ;; Metadata operations
+    ["/metadata" {:put    {:summary    "Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed."
+                           :middleware [[pra/wrap-writer-required get-project-id]]
+                           :parameters {:body [:map-of string? any?]}
+                           :handler    (fn [{{{:keys [relation-id]} :path metadata :body} :parameters xtdb :xtdb user-id :user/id}]
+                                         (let [{:keys [success code error]} (r/set-metadata {:node xtdb} relation-id metadata user-id)]
+                                           (if success
+                                             {:status 200 :body (r/get xtdb relation-id)}
+                                             {:status (or code 404) :body {:error (or error "Failed to update relation metadata")}})))}
+                  :delete {:summary    "Remove all metadata from a relation."
+                           :middleware [[pra/wrap-writer-required get-project-id]]
+                           :handler    (fn [{{{:keys [relation-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
+                                         (let [{:keys [success code error]} (r/delete-metadata {:node xtdb} relation-id user-id)]
+                                           (if success
+                                             {:status 200 :body (r/get xtdb relation-id)}
+                                             {:status (or code 404) :body {:error (or error "Failed to clear relation metadata")}})))}}]]])

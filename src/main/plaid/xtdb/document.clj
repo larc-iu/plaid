@@ -4,7 +4,8 @@
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.text :as text]
             [plaid.xtdb.token-layer :as tokl]
-            [plaid.xtdb.span :as s])
+            [plaid.xtdb.span :as s]
+            [plaid.xtdb.relation :as r])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:document/id
@@ -74,17 +75,18 @@
         (assoc :span-layer/relation-layers (mapv #(get-doc-info db doc-id id [:relation-layer/id %]) rl-ids)))))
 
 (defmethod get-doc-info :relation-layer/id [db doc-id parent-id [key id]]
-  (let [relations (->> (xt/q db
-                             '{:find  [(pull ?r [:relation/id :relation/value :relation/source :relation/target])]
-                               :where [[?r :relation/source ?s]
-                                       [?r :relation/layer ?rl]
-                                       [?s :span/layer ?sl]
-                                       [?s :span/tokens ?tok]
-                                       [?tok :token/text ?txt]
-                                       [?txt :text/document ?doc]]
-                               :in    [[?sl ?doc ?rl]]}
-                             [parent-id doc-id id])
-                       (mapv (fn [[id]] {:relation/id id})))]
+  (let [relation-ids (->> (xt/q db
+                                '{:find  [?r]
+                                  :where [[?r :relation/source ?s]
+                                          [?r :relation/layer ?rl]
+                                          [?s :span/layer ?sl]
+                                          [?s :span/tokens ?tok]
+                                          [?tok :token/text ?txt]
+                                          [?txt :text/document ?doc]]
+                                  :in    [[?sl ?doc ?rl]]}
+                                [parent-id doc-id id])
+                          (mapv first))
+        relations (mapv #(r/get db %) relation-ids)]
     (-> (select-keys (pxc/entity db id) [:relation-layer/id :relation-layer/name :config])
         (assoc :relation-layer/relations relations))))
 
