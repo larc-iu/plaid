@@ -71,6 +71,7 @@
     ;; Replace tokens on a span
     ["/tokens" {:put {:summary    "Replace tokens for a span."
                       :middleware [[pra/wrap-writer-required get-project-id]]
+                      :openapi    {:x-client-method "set-tokens"}
                       :parameters {:body [:map [:tokens [:vector uuid?]]]}
                       :handler    (fn [{{{:keys [span-id]} :path {:keys [tokens]} :body} :parameters xtdb :xtdb user-id :user/id}]
                                     (let [{:keys [success code error]} (s/set-tokens {:node xtdb} span-id tokens user-id)]
@@ -81,6 +82,7 @@
     ;; Metadata operations
     ["/metadata" {:put    {:summary    "Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed."
                            :middleware [[pra/wrap-writer-required get-project-id]]
+                           :openapi    {:x-client-method "set-metadata"}
                            :parameters {:body [:map-of string? any?]}
                            :handler    (fn [{{{:keys [span-id]} :path metadata :body} :parameters xtdb :xtdb user-id :user/id}]
                                          (let [{:keys [success code error]} (s/set-metadata {:node xtdb} span-id metadata user-id)]
@@ -89,6 +91,7 @@
                                              {:status (or code 404) :body {:error (or error "Failed to update span metadata")}})))}
                   :delete {:summary    "Remove all metadata from a span."
                            :middleware [[pra/wrap-writer-required get-project-id]]
+                           :openapi    {:x-client-method "delete-metadata"}
                            :handler    (fn [{{{:keys [span-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                                          (let [{:keys [success code error]} (s/delete-metadata {:node xtdb} span-id user-id)]
                                            (if success

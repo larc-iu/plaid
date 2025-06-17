@@ -71,6 +71,7 @@
                                     {:status (or code 404) :body {:error (or error "Relation not found")}})))}}]
     ["/source" {:put {:summary    "Update the source span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]]
+                      :openapi    {:x-client-method "set-source"}
                       :parameters {:body [:map [:span-id :uuid]]}
                       :handler    (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                                     (let [{:keys [success code error]} (r/set-end {:node xtdb} relation-id :relation/source span-id user-id)]
@@ -79,6 +80,7 @@
                                         {:status (or code 400) :body {:error (or error "Failed to update relation source")}})))}}]
     ["/target" {:put {:summary    "Update the target span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]]
+                      :openapi    {:x-client-method "set-target"}
                       :parameters {:body [:map [:span-id :uuid]]}
                       :handler    (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                                     (let [{:keys [success code error]} (r/set-end {:node xtdb} relation-id :relation/target span-id user-id)]
@@ -89,6 +91,7 @@
     ;; Metadata operations
     ["/metadata" {:put    {:summary    "Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed."
                            :middleware [[pra/wrap-writer-required get-project-id]]
+                           :openapi    {:x-client-method "set-metadata"}
                            :parameters {:body [:map-of string? any?]}
                            :handler    (fn [{{{:keys [relation-id]} :path metadata :body} :parameters xtdb :xtdb user-id :user/id}]
                                          (let [{:keys [success code error]} (r/set-metadata {:node xtdb} relation-id metadata user-id)]
@@ -97,6 +100,7 @@
                                              {:status (or code 404) :body {:error (or error "Failed to update relation metadata")}})))}
                   :delete {:summary    "Remove all metadata from a relation."
                            :middleware [[pra/wrap-writer-required get-project-id]]
+                           :openapi    {:x-client-method "delete-metadata"}
                            :handler    (fn [{{{:keys [relation-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                                          (let [{:keys [success code error]} (r/delete-metadata {:node xtdb} relation-id user-id)]
                                            (if success

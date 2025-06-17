@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Tue Jun 17 15:07:15 EDT 2025
+ * Generated on: Tue Jun 17 15:25:54 EDT 2025
  */
 
   /**
@@ -164,18 +164,18 @@ class PlaidClient {
  * @param {string} relationId - Relation-id identifier
  * @param {any} body - Required. Body
        */
-      metadata: this._relationsMetadata.bind(this),
+      setMetadata: this._relationsSetMetadata.bind(this),
       /**
        * Remove all metadata from a relation.
  * @param {string} relationId - Relation-id identifier
        */
-      metadata: this._relationsMetadata.bind(this),
+      deleteMetadata: this._relationsDeleteMetadata.bind(this),
       /**
        * Update the target span of a relation.
  * @param {string} relationId - Relation-id identifier
  * @param {string} spanId - Required. Spanid
        */
-      target: this._relationsTarget.bind(this),
+      setTarget: this._relationsSetTarget.bind(this),
       /**
        * Get a relation by ID.
  * @param {string} relationId - Relation-id identifier
@@ -198,7 +198,7 @@ class PlaidClient {
  * @param {string} relationId - Relation-id identifier
  * @param {string} spanId - Required. Spanid
        */
-      source: this._relationsSource.bind(this),
+      setSource: this._relationsSetSource.bind(this),
       /**
        * Create a new relation. A relation is a directed edge between two spans with a value, useful for expressing phenomena such as syntactic or semantic relations. A relation must at all times have both a valid source and target span. These spans must also belong to a single span layer which is linked to the relation's relation layer.
 
@@ -266,7 +266,7 @@ targetId: the target span this relation goes to
  * @param {string} spanId - Span-id identifier
  * @param {Array} tokens - Required. Tokens
        */
-      tokens: this._spansTokens.bind(this),
+      setTokens: this._spansSetTokens.bind(this),
       /**
        * Create a new span. A span holds a primary atomic value and optional metadata, and must at all times be associated with one or more tokens.
 
@@ -302,12 +302,12 @@ metadata: optional key-value pairs for additional annotation data.
  * @param {string} spanId - Span-id identifier
  * @param {any} body - Required. Body
        */
-      metadata: this._spansMetadata.bind(this),
+      setMetadata: this._spansSetMetadata.bind(this),
       /**
        * Remove all metadata from a span.
  * @param {string} spanId - Span-id identifier
        */
-      metadata: this._spansMetadata.bind(this)
+      deleteMetadata: this._spansDeleteMetadata.bind(this)
     };
     this.texts = {
       /**
@@ -747,7 +747,7 @@ precedence: ordering value for the token relative to other tokens with the same 
   /**
    * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _relationsMetadata(relationId, body) {
+  async _relationsSetMetadata(relationId, body) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
     const bodyObj = {
       "body": body
@@ -787,7 +787,7 @@ precedence: ordering value for the token relative to other tokens with the same 
   /**
    * Remove all metadata from a relation.
    */
-  async _relationsMetadata(relationId) {
+  async _relationsDeleteMetadata(relationId) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
     const fetchOptions = {
       method: 'DELETE',
@@ -820,7 +820,7 @@ precedence: ordering value for the token relative to other tokens with the same 
   /**
    * Update the target span of a relation.
    */
-  async _relationsTarget(relationId, spanId) {
+  async _relationsSetTarget(relationId, spanId) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}/target`;
     const bodyObj = {
       "span-id": spanId
@@ -972,7 +972,7 @@ precedence: ordering value for the token relative to other tokens with the same 
   /**
    * Update the source span of a relation.
    */
-  async _relationsSource(relationId, spanId) {
+  async _relationsSetSource(relationId, spanId) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}/source`;
     const bodyObj = {
       "span-id": spanId
@@ -1322,7 +1322,7 @@ targetId: the target span this relation goes to
   /**
    * Replace tokens for a span.
    */
-  async _spansTokens(spanId, tokens) {
+  async _spansSetTokens(spanId, tokens) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}/tokens`;
     const bodyObj = {
       "tokens": tokens
@@ -1522,7 +1522,7 @@ metadata: optional key-value pairs for additional annotation data.
   /**
    * Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _spansMetadata(spanId, body) {
+  async _spansSetMetadata(spanId, body) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
     const bodyObj = {
       "body": body
@@ -1562,7 +1562,7 @@ metadata: optional key-value pairs for additional annotation data.
   /**
    * Remove all metadata from a span.
    */
-  async _spansMetadata(spanId) {
+  async _spansDeleteMetadata(spanId) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
     const fetchOptions = {
       method: 'DELETE',
