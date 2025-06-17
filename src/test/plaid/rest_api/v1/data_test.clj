@@ -138,13 +138,22 @@
                              :path   (str "/api/v1/spans/" span-id)}))
 
 ;; Relation API Helper Functions
-(defn- create-relation [user-request-fn layer-id source-id target-id value]
-  (api-call user-request-fn {:method :post
-                             :path   "/api/v1/relations"
-                             :body   {:layer-id  layer-id
-                                      :source-id source-id
-                                      :target-id target-id
-                                      :value     value}}))
+(defn- create-relation
+  ([user-request-fn layer-id source-id target-id value]
+   (api-call user-request-fn {:method :post
+                              :path   "/api/v1/relations"
+                              :body   {:layer-id  layer-id
+                                       :source-id source-id
+                                       :target-id target-id
+                                       :value     value}}))
+  ([user-request-fn layer-id source-id target-id value metadata]
+   (api-call user-request-fn {:method :post
+                              :path   "/api/v1/relations"
+                              :body   {:layer-id  layer-id
+                                       :source-id source-id
+                                       :target-id target-id
+                                       :value     value
+                                       :metadata  metadata}})))
 
 (defn- get-relation [user-request-fn relation-id]
   (api-call user-request-fn {:method :get
@@ -164,6 +173,15 @@
   (api-call user-request-fn {:method :put
                              :path   (str "/api/v1/relations/" relation-id "/target")
                              :body   {:span-id span-id}}))
+
+(defn- update-relation-metadata [user-request-fn relation-id metadata]
+  (api-call user-request-fn {:method :put
+                             :path   (str "/api/v1/relations/" relation-id "/metadata")
+                             :body   metadata}))
+
+(defn- delete-relation-metadata [user-request-fn relation-id]
+  (api-call user-request-fn {:method :delete
+                             :path   (str "/api/v1/relations/" relation-id "/metadata")}))
 
 (defn- delete-relation [user-request-fn relation-id]
   (api-call user-request-fn {:method :delete
@@ -390,6 +408,93 @@
           (assert-ok r5)
           (is (= "final" (-> r5 :body :span/value)))
           (is (= final-metadata (-> r5 :body :metadata))))))))
+
+(deftest relation-metadata-functionality
+  (let [proj (create-test-project admin-request "RelMetadataProj")
+        doc (create-test-document admin-request proj "RelDoc")
+        tl-res (create-text-layer admin-request proj "RelTL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)
+        tr (create-text admin-request tl doc "source target")
+        tid (-> tr :body :id)
+        _ (assert-created tr)
+        tkl-res (create-token-layer admin-request tl "RelTokenL")
+        tkl (-> tkl-res :body :id)
+        _ (assert-created tkl-res)
+        tk1 (create-token admin-request tkl tid 0 6)  ; "source"
+        id1 (-> tk1 :body :id)
+        _ (assert-created tk1)
+        tk2 (create-token admin-request tkl tid 7 13) ; "target"
+        id2 (-> tk2 :body :id)
+        _ (assert-created tk2)
+        sl-res (create-span-layer admin-request tkl "RelSL")
+        sl (-> sl-res :body :id)
+        _ (assert-created sl-res)
+        span1 (create-span admin-request sl [id1] "SOURCE")
+        sid1 (-> span1 :body :id)
+        _ (assert-created span1)
+        span2 (create-span admin-request sl [id2] "TARGET")
+        sid2 (-> span2 :body :id)
+        _ (assert-created span2)
+        rl-res (create-relation-layer admin-request sl "RelRL")
+        rl (-> rl-res :body :id)
+        _ (assert-created rl-res)]
+    
+    ;; Test creating relation with metadata
+    (testing "Create relation with metadata"
+      (let [metadata {"confidence" 0.92 "type" "semantic" "annotator" "model"}
+            rel (create-relation admin-request rl sid1 sid2 "depends-on" metadata)
+            rid (-> rel :body :id)]
+        (assert-created rel)
+        
+        ;; Verify metadata is returned
+        (let [retrieved (get-relation admin-request rid)]
+          (assert-ok retrieved)
+          (is (= "depends-on" (-> retrieved :body :relation/value)))
+          (is (= sid1 (-> retrieved :body :relation/source)))
+          (is (= sid2 (-> retrieved :body :relation/target)))
+          (is (= metadata (-> retrieved :body :metadata))))
+        
+        ;; Update metadata
+        (let [new-metadata {"confidence" 0.98 "reviewer" "human"}
+              update-result (update-relation-metadata admin-request rid new-metadata)]
+          (assert-ok update-result)
+          (is (= new-metadata (-> update-result :body :metadata)))
+          (is (= "depends-on" (-> update-result :body :relation/value))))
+        
+        ;; Update value only (metadata should be preserved)
+        (assert-ok (update-relation admin-request rid "modified-depends-on"))
+        (let [after-value-update (get-relation admin-request rid)]
+          (assert-ok after-value-update)
+          (is (= "modified-depends-on" (-> after-value-update :body :relation/value)))
+          (is (= {"confidence" 0.98 "reviewer" "human"} (-> after-value-update :body :metadata))))
+        
+        ;; Clear metadata
+        (let [clear-result (delete-relation-metadata admin-request rid)]
+          (assert-ok clear-result)
+          (is (= "modified-depends-on" (-> clear-result :body :relation/value)))
+          (is (nil? (-> clear-result :body :metadata))))
+        
+        (assert-no-content (delete-relation admin-request rid))))
+    
+    ;; Test relation without metadata
+    (testing "Relation without metadata"
+      (let [rel (create-relation admin-request rl sid1 sid2 "simple-relation")
+            rid (-> rel :body :id)]
+        (assert-created rel)
+        (let [retrieved (get-relation admin-request rid)]
+          (assert-ok retrieved)
+          (is (= "simple-relation" (-> retrieved :body :relation/value)))
+          (is (nil? (-> retrieved :body :metadata))))
+        
+        ;; Add metadata to existing relation
+        (let [metadata {"added-later" true}
+              update-result (update-relation-metadata admin-request rid metadata)]
+          (assert-ok update-result)
+          (is (= metadata (-> update-result :body :metadata)))
+          (is (= "simple-relation" (-> update-result :body :relation/value))))
+        
+        (assert-no-content (delete-relation admin-request rid))))))
 
 (deftest relation-crud-and-invariants
   (let [proj (create-test-project admin-request "RelProj")

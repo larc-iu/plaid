@@ -2,19 +2,33 @@
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
-            [plaid.xtdb.relation-layer :as rl])
+            [plaid.xtdb.relation-layer :as rl]
+            [clojure.string :as str])
   (:refer-clojure :exclude [get merge]))
 
-(def attr-keys [:relation/id
-                :relation/layer
-                :relation/source
-                :relation/target
-                :relation/value])
+(def core-attr-keys [:relation/id
+                     :relation/layer
+                     :relation/source
+                     :relation/target
+                     :relation/value])
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
+  "Get a relation by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (pxc/find-entity (pxc/->db db-like) {:relation/id id}))
+  (when-let [relation-entity (pxc/find-entity (pxc/->db db-like) {:relation/id id})]
+    (let [core-attrs (select-keys relation-entity [:relation/id :relation/layer :relation/source :relation/target :relation/value])
+          metadata-attrs (->> relation-entity
+                             (filter (fn [[k v]]
+                                       (and (= "relation" (namespace k))
+                                            (str/starts-with? (name k) "_")
+                                            (not (nil? v)))))  ; Filter out nil values
+                             (reduce (fn [m [k v]]
+                                       (assoc m (subs (name k) 1) v))
+                                     {}))]
+      (if (empty? metadata-attrs)
+        core-attrs
+        (assoc core-attrs :metadata metadata-attrs)))))
 
 (defn project-id [db-like id]
   (-> (xt/q (pxc/->db db-like)
@@ -54,10 +68,16 @@
           span-id)))
 
 ;; Mutations --------------------------------------------------------------------------------
+(defn- relation-attr? 
+  "Check if an attribute key belongs to relation namespace (including metadata attributes)."
+  [k]
+  (= "relation" (namespace k)))
+
 (defn create* [xt-map attrs]
   (let [{:keys [db node] :as xt-map} (pxc/ensure-db xt-map)
+        relation-attrs (filter (fn [[k v]] (relation-attr? k)) attrs)
         {:relation/keys [id layer source target] :as r} (clojure.core/merge (pxc/new-record "relation")
-                                                                            (select-keys attrs attr-keys))
+                                                                            (into {} relation-attrs))
         source-record (pxc/entity db source)
         target-record (pxc/entity db target)]
 
@@ -106,36 +126,49 @@
 
 (defn create-operation
   "Build an operation for creating a relation"
-  [xt-map attrs]
+  [xt-map attrs metadata]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:relation/keys [layer source target]} attrs
         project-id (rl/project-id db layer)
         doc-id (get-doc-id-of-span db source)
-        tx-ops (create* xt-map attrs)]
+        ;; Expand metadata into relation attributes
+        metadata-attrs (if metadata
+                         (reduce-kv (fn [m k v]
+                                      (assoc m (keyword "relation" (str "_" k)) v))
+                                    {}
+                                    metadata)
+                         {})
+        attrs-with-metadata (clojure.core/merge attrs metadata-attrs)
+        tx-ops (create* xt-map attrs-with-metadata)]
     (op/make-operation
      {:type        :relation/create
       :project     project-id
       :document    doc-id
-      :description (str "Create relation from span " source " to span " target " in layer " layer)
+      :description (str "Create relation from span " source " to span " target " in layer " layer
+                        (when metadata (str " and " (count metadata) " metadata keys")))
       :tx-ops      tx-ops})))
 
-(defn create [xt-map attrs user-id]
-  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+(defn create
+  ([xt-map attrs user-id]
+   (create xt-map attrs user-id nil))
+  ([xt-map attrs user-id metadata]
+   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn merge-operation
-  "Build an operation for updating a relation's value"
+  "Build an operation for updating a relation's attributes"
   [xt-map eid m]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         relation (pxc/entity db eid)
         project-id (project-id db eid)
         doc-id (get-doc-id-of-span db (:relation/source relation))
-        tx-ops (pxc/merge* xt-map eid (select-keys m [:relation/value]))]
+        relation-attrs (filter (fn [[k v]] (relation-attr? k)) m)
+        updates (into {} relation-attrs)]
     (op/make-operation
-     {:type        :relation/update-value
+     {:type        :relation/update-attributes
       :project     project-id
       :document    doc-id
-      :description (str "Update value of relation " eid " to " (:relation/value m))
-      :tx-ops      tx-ops})))
+      :description (str "Update attributes of relation " eid)
+      :tx-ops      (pxc/merge* xt-map eid updates)})))
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m user-id]
@@ -226,7 +259,7 @@
   [xt-map eid]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         relation (pxc/entity db eid)
-        project-id (project-id-from-layer db eid)
+        project-id (project-id db eid)
         doc-id (when relation (get-doc-id-of-span db (:relation/source relation)))
         tx-ops (delete* xt-map eid)]
     (op/make-operation
@@ -238,3 +271,70 @@
 
 (defn delete [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
+
+(defn set-metadata*
+  "Build transaction ops for replacing all metadata on a relation"
+  [xt-map eid metadata]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        existing-relation (pxc/entity db eid)
+        old-metadata-keys (->> existing-relation
+                              (filter (fn [[k _v]]
+                                        (and (= "relation" (namespace k))
+                                             (str/starts-with? (name k) "_"))))
+                              (map first))
+        new-metadata (reduce-kv (fn [m k v]
+                                  (assoc m (keyword "relation" (str "_" k)) v))
+                                {}
+                                metadata)
+        clear-old (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)
+        final-updates (clojure.core/merge clear-old new-metadata)]
+    (pxc/merge* xt-map eid final-updates)))
+
+(defn set-metadata-operation
+  "Build an operation for replacing all metadata on a relation"
+  [xt-map eid metadata]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project-id (project-id db eid)
+        relation (pxc/entity db eid)
+        doc-id (get-doc-id-of-span db (:relation/source relation))
+        tx-ops (set-metadata* xt-map eid metadata)]
+    (op/make-operation
+     {:type        :relation/set-metadata
+      :project     project-id
+      :document    doc-id
+      :description (str "Set metadata on relation " eid " with " (count metadata) " keys")
+      :tx-ops      tx-ops})))
+
+(defn set-metadata [xt-map eid metadata user-id]
+  (submit-operations! xt-map [(set-metadata-operation xt-map eid metadata)] user-id))
+
+(defn delete-metadata*
+  "Build transaction ops for removing all metadata from a relation"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        existing-relation (pxc/entity db eid)
+        old-metadata-keys (->> existing-relation
+                              (filter (fn [[k _v]]
+                                        (and (= "relation" (namespace k))
+                                             (str/starts-with? (name k) "_"))))
+                              (map first))
+        clear-updates (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)]
+    (pxc/merge* xt-map eid clear-updates)))
+
+(defn delete-metadata-operation
+  "Build an operation for removing all metadata from a relation"
+  [xt-map eid]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        project-id (project-id db eid)
+        relation (pxc/entity db eid)
+        doc-id (get-doc-id-of-span db (:relation/source relation))
+        tx-ops (delete-metadata* xt-map eid)]
+    (op/make-operation
+     {:type        :relation/delete-metadata
+      :project     project-id
+      :document    doc-id
+      :description (str "Delete all metadata from relation " eid)
+      :tx-ops      tx-ops})))
+
+(defn delete-metadata [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-metadata-operation xt-map eid)] user-id))

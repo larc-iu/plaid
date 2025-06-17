@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Tue Jun 17 14:49:17 EDT 2025
+ * Generated on: Tue Jun 17 15:07:15 EDT 2025
  */
 
   /**
@@ -160,6 +160,17 @@ class PlaidClient {
     // Initialize API bundles
     this.relations = {
       /**
+       * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+ * @param {string} relationId - Relation-id identifier
+ * @param {any} body - Required. Body
+       */
+      metadata: this._relationsMetadata.bind(this),
+      /**
+       * Remove all metadata from a relation.
+ * @param {string} relationId - Relation-id identifier
+       */
+      metadata: this._relationsMetadata.bind(this),
+      /**
        * Update the target span of a relation.
  * @param {string} relationId - Relation-id identifier
  * @param {string} spanId - Required. Spanid
@@ -199,6 +210,7 @@ targetId: the target span this relation goes to
  * @param {string} sourceId - Required. Sourceid
  * @param {string} targetId - Required. Targetid
  * @param {any} value - Required. Value
+ * @param {any} [metadata] - Optional. Metadata
        */
       create: this._relationsCreate.bind(this)
     };
@@ -733,6 +745,79 @@ precedence: ordering value for the token relative to other tokens with the same 
   }
 
   /**
+   * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+   */
+  async _relationsMetadata(relationId, body) {
+    const url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
+    const bodyObj = {
+      "body": body
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'PUT';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove all metadata from a relation.
+   */
+  async _relationsMetadata(relationId) {
+    const url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
    * Update the target span of a relation.
    */
   async _relationsTarget(relationId, spanId) {
@@ -932,13 +1017,14 @@ sourceId: the source span this relation originates from
 targetId: the target span this relation goes to
 <body>value</value>: the label for the relation
    */
-  async _relationsCreate(layerId, sourceId, targetId, value) {
+  async _relationsCreate(layerId, sourceId, targetId, value, metadata = undefined) {
     const url = `${this.baseUrl}/api/v1/relations`;
     const bodyObj = {
       "layer-id": layerId,
       "source-id": sourceId,
       "target-id": targetId,
-      "value": value
+      "value": value,
+      "metadata": metadata
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
