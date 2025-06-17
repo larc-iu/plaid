@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Mon Jun 16 15:42:38 EDT 2025
+ * Generated on: Tue Jun 17 14:49:17 EDT 2025
  */
 
   /**
@@ -256,14 +256,16 @@ targetId: the target span this relation goes to
        */
       tokens: this._spansTokens.bind(this),
       /**
-       * Create a new span. A span holds a a value and must at all times be associated with one or more tokens.
+       * Create a new span. A span holds a primary atomic value and optional metadata, and must at all times be associated with one or more tokens.
 
 spanLayerId: the span's associated layer
 tokens: a list of tokens associated with this span. Must contain at least one token. All tokens must belong to a single layer which is linked to the span layer indicated by spanLayerId.
-value: the value of the span, used for annotation.
+value: the primary value of the span (must be string, number, boolean, or null).
+metadata: optional key-value pairs for additional annotation data.
  * @param {string} spanLayerId - Required. Spanlayerid
  * @param {Array} tokens - Required. Tokens
  * @param {any} value - Required. Value
+ * @param {any} [metadata] - Optional. Metadata
        */
       create: this._spansCreate.bind(this),
       /**
@@ -282,7 +284,18 @@ value: the value of the span, used for annotation.
  * @param {string} spanId - Span-id identifier
  * @param {any} value - Required. Value
        */
-      update: this._spansUpdate.bind(this)
+      update: this._spansUpdate.bind(this),
+      /**
+       * Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+ * @param {string} spanId - Span-id identifier
+ * @param {any} body - Required. Body
+       */
+      metadata: this._spansMetadata.bind(this),
+      /**
+       * Remove all metadata from a span.
+ * @param {string} spanId - Span-id identifier
+       */
+      metadata: this._spansMetadata.bind(this)
     };
     this.texts = {
       /**
@@ -683,7 +696,12 @@ precedence: ordering value for the token relative to other tokens with the same 
     const transformed = {};
     for (const [key, value] of Object.entries(obj)) {
       const newKey = this._transformKeyFromCamel(key);
-      transformed[newKey] = this._transformRequest(value);
+      // Preserve metadata contents without transformation
+      if (key === 'metadata' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        transformed[newKey] = value;
+      } else {
+        transformed[newKey] = this._transformRequest(value);
+      }
     }
     return transformed;
   }
@@ -696,7 +714,12 @@ precedence: ordering value for the token relative to other tokens with the same 
     const transformed = {};
     for (const [key, value] of Object.entries(obj)) {
       const newKey = this._transformKeyToCamel(key);
-      transformed[newKey] = this._transformResponse(value);
+      // Preserve metadata contents without transformation
+      if (newKey === 'metadata' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        transformed[newKey] = value;
+      } else {
+        transformed[newKey] = this._transformResponse(value);
+      }
     }
     return transformed;
   }
@@ -1251,18 +1274,20 @@ targetId: the target span this relation goes to
   }
 
   /**
-   * Create a new span. A span holds a a value and must at all times be associated with one or more tokens.
+   * Create a new span. A span holds a primary atomic value and optional metadata, and must at all times be associated with one or more tokens.
 
 spanLayerId: the span's associated layer
 tokens: a list of tokens associated with this span. Must contain at least one token. All tokens must belong to a single layer which is linked to the span layer indicated by spanLayerId.
-value: the value of the span, used for annotation.
+value: the primary value of the span (must be string, number, boolean, or null).
+metadata: optional key-value pairs for additional annotation data.
    */
-  async _spansCreate(spanLayerId, tokens, value) {
+  async _spansCreate(spanLayerId, tokens, value, metadata = undefined) {
     const url = `${this.baseUrl}/api/v1/spans`;
     const bodyObj = {
       "span-layer-id": spanLayerId,
       "tokens": tokens,
-      "value": value
+      "value": value,
+      "metadata": metadata
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
@@ -1396,6 +1421,79 @@ value: the value of the span, used for annotation.
       error.statusText = response.statusText;
       error.url = url;
       error.method = 'PATCH';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+   */
+  async _spansMetadata(spanId, body) {
+    const url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
+    const bodyObj = {
+      "body": body
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'PUT';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove all metadata from a span.
+   */
+  async _spansMetadata(spanId) {
+    const url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }

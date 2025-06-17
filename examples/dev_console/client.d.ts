@@ -19,10 +19,12 @@ interface SpanLayersBundle {
 
 interface SpansBundle {
   tokens(spanId: string, tokens: any[]): Promise<any>;
-  create(spanLayerId: string, tokens: any[], value: any): Promise<any>;
+  create(spanLayerId: string, tokens: any[], value: any, metadata?: any): Promise<any>;
   get(spanId: string, asOf?: string): Promise<any>;
   delete(spanId: string): Promise<any>;
   update(spanId: string, value: any): Promise<any>;
+  metadata(spanId: string, body: any): Promise<any>;
+  metadata(spanId: string): Promise<any>;
 }
 
 interface TextsBundle {
