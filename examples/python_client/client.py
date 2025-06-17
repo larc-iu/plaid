@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Tue Jun 17 15:07:13 EDT 2025
+Generated on: Tue Jun 17 15:25:56 EDT 2025
 """
 
 import requests
@@ -192,7 +192,7 @@ class RelationsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def metadata(self, relation_id: str, body: Any) -> Any:
+    def set_metadata(self, relation_id: str, body: Any) -> Any:
         """
         Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
@@ -219,7 +219,7 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def metadata_async(self, relation_id: str, body: Any) -> Any:
+    async def set_metadata_async(self, relation_id: str, body: Any) -> Any:
         """
         Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
@@ -248,7 +248,7 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def metadata(self, relation_id: str) -> Any:
+    def delete_metadata(self, relation_id: str) -> Any:
         """
         Remove all metadata from a relation.
 
@@ -268,7 +268,7 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def metadata_async(self, relation_id: str) -> Any:
+    async def delete_metadata_async(self, relation_id: str) -> Any:
         """
         Remove all metadata from a relation.
 
@@ -290,7 +290,7 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def target(self, relation_id: str, span_id: str) -> Any:
+    def set_target(self, relation_id: str, span_id: str) -> Any:
         """
         Update the target span of a relation.
 
@@ -317,7 +317,7 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def target_async(self, relation_id: str, span_id: str) -> Any:
+    async def set_target_async(self, relation_id: str, span_id: str) -> Any:
         """
         Update the target span of a relation.
 
@@ -504,7 +504,7 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def source(self, relation_id: str, span_id: str) -> Any:
+    def set_source(self, relation_id: str, span_id: str) -> Any:
         """
         Update the source span of a relation.
 
@@ -531,7 +531,7 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def source_async(self, relation_id: str, span_id: str) -> Any:
+    async def set_source_async(self, relation_id: str, span_id: str) -> Any:
         """
         Update the source span of a relation.
 
@@ -1026,7 +1026,7 @@ class SpansResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def tokens(self, span_id: str, tokens: List[Any]) -> Any:
+    def set_tokens(self, span_id: str, tokens: List[Any]) -> Any:
         """
         Replace tokens for a span.
 
@@ -1053,7 +1053,7 @@ class SpansResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def tokens_async(self, span_id: str, tokens: List[Any]) -> Any:
+    async def set_tokens_async(self, span_id: str, tokens: List[Any]) -> Any:
         """
         Replace tokens for a span.
 
@@ -1316,7 +1316,7 @@ metadata: optional key-value pairs for additional annotation data.
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def metadata(self, span_id: str, body: Any) -> Any:
+    def set_metadata(self, span_id: str, body: Any) -> Any:
         """
         Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
@@ -1343,7 +1343,7 @@ metadata: optional key-value pairs for additional annotation data.
             return self.client._transform_response(data)
         return response.text()
 
-    async def metadata_async(self, span_id: str, body: Any) -> Any:
+    async def set_metadata_async(self, span_id: str, body: Any) -> Any:
         """
         Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
@@ -1372,7 +1372,7 @@ metadata: optional key-value pairs for additional annotation data.
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def metadata(self, span_id: str) -> Any:
+    def delete_metadata(self, span_id: str) -> Any:
         """
         Remove all metadata from a span.
 
@@ -1392,7 +1392,7 @@ metadata: optional key-value pairs for additional annotation data.
             return self.client._transform_response(data)
         return response.text()
 
-    async def metadata_async(self, span_id: str) -> Any:
+    async def delete_metadata_async(self, span_id: str) -> Any:
         """
         Remove all metadata from a span.
 

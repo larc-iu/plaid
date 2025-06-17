@@ -1,11 +1,11 @@
 interface RelationsBundle {
-  metadata(relationId: string, body: any): Promise<any>;
-  metadata(relationId: string): Promise<any>;
-  target(relationId: string, spanId: string): Promise<any>;
+  setMetadata(relationId: string, body: any): Promise<any>;
+  deleteMetadata(relationId: string): Promise<any>;
+  setTarget(relationId: string, spanId: string): Promise<any>;
   get(relationId: string, asOf?: string): Promise<any>;
   delete(relationId: string): Promise<any>;
   update(relationId: string, value: any): Promise<any>;
-  source(relationId: string, spanId: string): Promise<any>;
+  setSource(relationId: string, spanId: string): Promise<any>;
   create(layerId: string, sourceId: string, targetId: string, value: any, metadata?: any): Promise<any>;
 }
 
@@ -20,13 +20,13 @@ interface SpanLayersBundle {
 }
 
 interface SpansBundle {
-  tokens(spanId: string, tokens: any[]): Promise<any>;
+  setTokens(spanId: string, tokens: any[]): Promise<any>;
   create(spanLayerId: string, tokens: any[], value: any, metadata?: any): Promise<any>;
   get(spanId: string, asOf?: string): Promise<any>;
   delete(spanId: string): Promise<any>;
   update(spanId: string, value: any): Promise<any>;
-  metadata(spanId: string, body: any): Promise<any>;
-  metadata(spanId: string): Promise<any>;
+  setMetadata(spanId: string, body: any): Promise<any>;
+  deleteMetadata(spanId: string): Promise<any>;
 }
 
 interface TextsBundle {
