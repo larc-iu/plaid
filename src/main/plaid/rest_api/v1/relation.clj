@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.relation
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.metadata :as metadata]
             [reitit.coercion.malli]
             [plaid.xtdb.relation :as r]
             [plaid.xtdb.relation-layer :as rl]))
@@ -52,7 +53,7 @@
                   :handler    (fn [{{{:keys [relation-id]} :path} :parameters db :db}]
                                 (let [relation (r/get db relation-id)]
                                   (if (some? relation)
-                                    {:status 200 :body (dissoc relation :xt/id)}
+                                    {:status 200 :body relation}
                                     {:status 404 :body {:error "Relation not found"}})))}
          :patch  {:summary    "Update a relation's value."
                   :middleware [[pra/wrap-writer-required get-project-id]]
@@ -60,7 +61,7 @@
                   :handler    (fn [{{{:keys [relation-id]} :path {:keys [value]} :body} :parameters xtdb :xtdb user-id :user/id :as request}]
                                 (let [{:keys [success code error]} (r/merge {:node xtdb} relation-id {:relation/value value} user-id)]
                                   (if success
-                                    {:status 200 :body (dissoc (r/get xtdb relation-id) :xt/id)}
+                                    {:status 200 :body (r/get xtdb relation-id)}
                                     {:status (or code 404) :body {:error (or error "Failed to update relation or relation not found")}})))}
          :delete {:summary    "Delete a relation."
                   :middleware [[pra/wrap-writer-required get-project-id]]
@@ -88,21 +89,5 @@
                                         {:status 200 :body (r/get xtdb relation-id)}
                                         {:status (or code 400) :body {:error (or error "Failed to update relation target")}})))}}]
 
-    ;; Metadata operations
-    ["/metadata" {:put    {:summary    "Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed."
-                           :middleware [[pra/wrap-writer-required get-project-id]]
-                           :openapi    {:x-client-method "set-metadata"}
-                           :parameters {:body [:map-of string? any?]}
-                           :handler    (fn [{{{:keys [relation-id]} :path metadata :body} :parameters xtdb :xtdb user-id :user/id}]
-                                         (let [{:keys [success code error]} (r/set-metadata {:node xtdb} relation-id metadata user-id)]
-                                           (if success
-                                             {:status 200 :body (r/get xtdb relation-id)}
-                                             {:status (or code 404) :body {:error (or error "Failed to update relation metadata")}})))}
-                  :delete {:summary    "Remove all metadata from a relation."
-                           :middleware [[pra/wrap-writer-required get-project-id]]
-                           :openapi    {:x-client-method "delete-metadata"}
-                           :handler    (fn [{{{:keys [relation-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                                         (let [{:keys [success code error]} (r/delete-metadata {:node xtdb} relation-id user-id)]
-                                           (if success
-                                             {:status 200 :body (r/get xtdb relation-id)}
-                                             {:status (or code 404) :body {:error (or error "Failed to clear relation metadata")}})))}}]]])
+    ;; Metadata operations  
+    (metadata/metadata-routes "relation" :relation-id get-project-id r/get r/set-metadata r/delete-metadata)]])

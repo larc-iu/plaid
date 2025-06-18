@@ -3,6 +3,7 @@
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.text :as text]
+            [plaid.xtdb.token :as token]
             [plaid.xtdb.token-layer :as tokl]
             [plaid.xtdb.span :as s]
             [plaid.xtdb.relation :as r])
@@ -34,24 +35,27 @@
 
 (defmethod get-doc-info :text-layer/id [db doc-id parent-id [key id]]
   (let [tokl-ids (:text-layer/token-layers (pxc/entity db id))
-        text (pxc/find-entity db [[:text/document parent-id]
-                                  [:text/layer id]])
+        text-entity (pxc/find-entity db [[:text/document parent-id]
+                                         [:text/layer id]])
+        text (when text-entity (text/get db (:text/id text-entity)))
         token-layers (mapv #(get-doc-info db doc-id id [:token-layer/id %]) tokl-ids)]
     (-> (select-keys (pxc/entity db id) [:text-layer/id :text-layer/name :config])
         (assoc :text-layer/token-layers token-layers)
-        (cond-> (some? text) (assoc :text-layer/text (select-keys text [:text/body :text/id]))))))
+        (cond-> (some? text) (assoc :text-layer/text text)))))
 
 (defmethod get-doc-info :token-layer/id [db doc-id parent-id [key id]]
   (let [sl-ids (:token-layer/span-layers (pxc/entity db id))
-        tokens (->> (xt/q db
-                          '{:find  [(pull ?tok [:token/id :token/begin :token/end :token/text :token/precedence])]
-                            :where [[?tok :token/text ?txt]
-                                    [?tok :token/layer ?tokl]
-                                    [?txt :text/layer ?txtl]
-                                    [?txt :text/document ?doc]]
-                            :in    [[?txtl ?doc ?tokl]]}
-                          [parent-id doc-id id])
-                    (mapv first)
+        token-ids (->> (xt/q db
+                             '{:find  [?tok]
+                               :where [[?tok :token/text ?txt]
+                                       [?tok :token/layer ?tokl]
+                                       [?txt :text/layer ?txtl]
+                                       [?txt :text/document ?doc]]
+                               :in    [[?txtl ?doc ?tokl]]}
+                             [parent-id doc-id id])
+                       (mapv first))
+        tokens (->> token-ids
+                    (mapv #(token/get db %))
                     tokl/sort-token-records)]
     (-> (select-keys (pxc/entity db id) [:token-layer/id :token-layer/name :config])
         (assoc :token-layer/tokens tokens)

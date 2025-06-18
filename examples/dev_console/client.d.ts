@@ -30,7 +30,9 @@ interface SpansBundle {
 }
 
 interface TextsBundle {
-  create(textLayerId: string, documentId: string, body: string): Promise<any>;
+  setMetadata(textId: string, body: any): Promise<any>;
+  deleteMetadata(textId: string): Promise<any>;
+  create(textLayerId: string, documentId: string, body: string, metadata?: any): Promise<any>;
   get(textId: string, asOf?: string): Promise<any>;
   delete(textId: string): Promise<any>;
   update(textId: string, body: string): Promise<any>;
@@ -113,10 +115,12 @@ interface RelationLayersBundle {
 }
 
 interface TokensBundle {
-  create(tokenLayerId: string, textId: string, begin: number, end: number, precedence?: number): Promise<any>;
+  create(tokenLayerId: string, textId: string, begin: number, end: number, precedence?: number, metadata?: any): Promise<any>;
   get(tokenId: string, asOf?: string): Promise<any>;
   delete(tokenId: string): Promise<any>;
   update(tokenId: string, begin?: number, end?: number, precedence?: number): Promise<any>;
+  setMetadata(tokenId: string, body: any): Promise<any>;
+  deleteMetadata(tokenId: string): Promise<any>;
 }
 
 declare class PlaidClient {

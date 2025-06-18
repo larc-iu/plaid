@@ -3,6 +3,7 @@
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.relation-layer :as rl]
+            [plaid.xtdb.metadata :as metadata]
             [clojure.string :as str])
   (:refer-clojure :exclude [get merge]))
 
@@ -17,18 +18,8 @@
   "Get a relation by ID, formatted for external consumption (API responses)."
   [db-like id]
   (when-let [relation-entity (pxc/find-entity (pxc/->db db-like) {:relation/id id})]
-    (let [core-attrs (select-keys relation-entity [:relation/id :relation/layer :relation/source :relation/target :relation/value])
-          metadata-attrs (->> relation-entity
-                             (filter (fn [[k v]]
-                                       (and (= "relation" (namespace k))
-                                            (str/starts-with? (name k) "_")
-                                            (not (nil? v)))))  ; Filter out nil values
-                             (reduce (fn [m [k v]]
-                                       (assoc m (subs (name k) 1) v))
-                                     {}))]
-      (if (empty? metadata-attrs)
-        core-attrs
-        (assoc core-attrs :metadata metadata-attrs)))))
+    (let [core-attrs (select-keys relation-entity [:relation/id :relation/layer :relation/source :relation/target :relation/value])]
+      (metadata/add-metadata-to-response core-attrs relation-entity "relation"))))
 
 (defn project-id [db-like id]
   (-> (xt/q (pxc/->db db-like)
@@ -132,12 +123,7 @@
         project-id (rl/project-id db layer)
         doc-id (get-doc-id-of-span db source)
         ;; Expand metadata into relation attributes
-        metadata-attrs (if metadata
-                         (reduce-kv (fn [m k v]
-                                      (assoc m (keyword "relation" (str "_" k)) v))
-                                    {}
-                                    metadata)
-                         {})
+        metadata-attrs (metadata/transform-metadata-for-storage metadata "relation")
         attrs-with-metadata (clojure.core/merge attrs metadata-attrs)
         tx-ops (create* xt-map attrs-with-metadata)]
     (op/make-operation
@@ -275,66 +261,33 @@
 (defn set-metadata*
   "Build transaction ops for replacing all metadata on a relation"
   [xt-map eid metadata]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        existing-relation (pxc/entity db eid)
-        old-metadata-keys (->> existing-relation
-                              (filter (fn [[k _v]]
-                                        (and (= "relation" (namespace k))
-                                             (str/starts-with? (name k) "_"))))
-                              (map first))
-        new-metadata (reduce-kv (fn [m k v]
-                                  (assoc m (keyword "relation" (str "_" k)) v))
-                                {}
-                                metadata)
-        clear-old (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)
-        final-updates (clojure.core/merge clear-old new-metadata)]
-    (pxc/merge* xt-map eid final-updates)))
+  (metadata/set-metadata-tx-ops* xt-map eid metadata "relation"))
 
 (defn set-metadata-operation
   "Build an operation for replacing all metadata on a relation"
   [xt-map eid metadata]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        project-id (project-id db eid)
-        relation (pxc/entity db eid)
-        doc-id (get-doc-id-of-span db (:relation/source relation))
-        tx-ops (set-metadata* xt-map eid metadata)]
-    (op/make-operation
-     {:type        :relation/set-metadata
-      :project     project-id
-      :document    doc-id
-      :description (str "Set metadata on relation " eid " with " (count metadata) " keys")
-      :tx-ops      tx-ops})))
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db relation] (get-doc-id-of-span db (:relation/source relation)))]
+    (metadata/make-set-metadata-operation xt-map eid metadata "relation" project-id-fn document-id-fn)))
 
 (defn set-metadata [xt-map eid metadata user-id]
-  (submit-operations! xt-map [(set-metadata-operation xt-map eid metadata)] user-id))
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db relation] (get-doc-id-of-span db (:relation/source relation)))]
+    (metadata/set-metadata xt-map eid metadata user-id "relation" project-id-fn document-id-fn)))
 
 (defn delete-metadata*
   "Build transaction ops for removing all metadata from a relation"
   [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        existing-relation (pxc/entity db eid)
-        old-metadata-keys (->> existing-relation
-                              (filter (fn [[k _v]]
-                                        (and (= "relation" (namespace k))
-                                             (str/starts-with? (name k) "_"))))
-                              (map first))
-        clear-updates (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)]
-    (pxc/merge* xt-map eid clear-updates)))
+  (metadata/delete-metadata-tx-ops* xt-map eid "relation"))
 
 (defn delete-metadata-operation
   "Build an operation for removing all metadata from a relation"
   [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        project-id (project-id db eid)
-        relation (pxc/entity db eid)
-        doc-id (get-doc-id-of-span db (:relation/source relation))
-        tx-ops (delete-metadata* xt-map eid)]
-    (op/make-operation
-     {:type        :relation/delete-metadata
-      :project     project-id
-      :document    doc-id
-      :description (str "Delete all metadata from relation " eid)
-      :tx-ops      tx-ops})))
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db relation] (get-doc-id-of-span db (:relation/source relation)))]
+    (metadata/make-delete-metadata-operation xt-map eid "relation" project-id-fn document-id-fn)))
 
 (defn delete-metadata [xt-map eid user-id]
-  (submit-operations! xt-map [(delete-metadata-operation xt-map eid)] user-id))
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db relation] (get-doc-id-of-span db (:relation/source relation)))]
+    (metadata/delete-metadata xt-map eid user-id "relation" project-id-fn document-id-fn)))
