@@ -119,7 +119,7 @@
                                 (let [{:keys [success code error]} (prj/delete {:node xtdb} id user-id)]
                                   (if success
                                     {:status 204}
-                                    {:status (or code 404) :body {:error error}})))}}]
+                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
    ;; Access management endpoints
    ["/:id"

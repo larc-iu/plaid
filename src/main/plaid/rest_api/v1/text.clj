@@ -63,16 +63,16 @@
                                   (if success
                                     {:status 200
                                      :body   (txt/get xtdb text-id)}
-                                    {:status (or code 404)
-                                     :body   {:error (or error "Failed to update text or text not found")}})))}
+                                    {:status (or code 500)
+                                     :body   {:error (or error "Internal server error")}})))}
          :delete {:summary    "Delete a text and all dependent data."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :handler    (fn [{{{:keys [text-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                                 (let [{:keys [success code error]} (txt/delete {:node xtdb} text-id user-id)]
                                   (if success
                                     {:status 204}
-                                    {:status (or code 404)
-                                     :body   {:error (or error "Text not found")}})))}}]
+                                    {:status (or code 500)
+                                     :body   {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "text" :text-id get-project-id txt/get txt/set-metadata txt/delete-metadata)]])

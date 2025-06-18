@@ -60,14 +60,14 @@
                                 (let [{:keys [success code error]} (s/merge {:node xtdb} span-id {:span/value value} user-id)]
                                   (if success
                                     {:status 200 :body (s/get xtdb span-id)}
-                                    {:status (or code 404) :body {:error (or error "Failed to update span or span not found")}})))}
+                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary    "Delete a span."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :handler    (fn [{{{:keys [span-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                                 (let [{:keys [success code error]} (s/delete {:node xtdb} span-id user-id)]
                                   (if success
                                     {:status 204}
-                                    {:status (or code 404) :body {:error (or error "Span not found")}})))}}]
+                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ;; Replace tokens on a span
     ["/tokens" {:put {:summary    "Replace tokens for a span."

@@ -58,16 +58,16 @@
                                (if success
                                  {:status 200
                                   :body   (rl/get xtdb relation-layer-id)}
-                                 {:status (or code 404)
-                                  :body   {:error (or error "Failed to update relation layer or relation layer not found")}})))}
+                                 {:status (or code 500)
+                                  :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a relation layer."
                :x-client-method "delete"
                :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                           (let [{:keys [success code error]} (rl/delete {:node xtdb} relation-layer-id user-id)]
                             (if success
                               {:status 204}
-                              {:status (or code 404)
-                               :body   {:error (or error "Relation layer not found")}})))}}]
+                              {:status (or code 500)
+                               :body   {:error (or error "Internal server error")}})))}}]
 
     ["/shift"
      {:post {:summary    "Shift a relation layer's order."

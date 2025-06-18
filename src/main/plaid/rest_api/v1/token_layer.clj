@@ -55,15 +55,15 @@
                                (if success
                                  {:status 200
                                   :body   (tokl/get xtdb token-layer-id)}
-                                 {:status (or code 404)
-                                  :body   {:error (or error "Failed to update token layer or token layer not found")}})))}
+                                 {:status (or code 500)
+                                  :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a token layer."
                :handler (fn [{{{:keys [token-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                           (let [{:keys [success code error]} (tokl/delete {:node xtdb} token-layer-id user-id)]
                             (if success
                               {:status 204}
-                              {:status (or code 404)
-                               :body   {:error (or error "Token layer not found")}})))}}]
+                              {:status (or code 500)
+                               :body   {:error (or error "Internal server error")}})))}}]
 
     ["/shift"
      {:post {:summary    "Shift a token layer's order."

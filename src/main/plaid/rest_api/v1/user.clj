@@ -57,4 +57,4 @@
                           (let [{:keys [success code error]} (user/delete {:node xtdb} id)]
                             (if success
                               {:status 204}
-                              {:status (or code 404) :body {:error error}})))}}]]])
+                              {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]]])
