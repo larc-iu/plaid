@@ -14,7 +14,7 @@
                             "authentication to the server.")
            :parameters {:body {:username string? :password string?}}
            :handler    (fn [{{{:keys [username password]} :body} :parameters xtdb :xtdb secret-key :secret-key}]
-                         (if-let [{:user/keys [id password-changes password-hash]} (user/get xtdb username)]
+                         (if-let [{:user/keys [id password-changes password-hash]} (user/get-internal xtdb username)]
                            (if (hashers/check password password-hash)
                              (let [token (jwt/sign {:user/id id :version password-changes} secret-key)]
                                {:status 200
@@ -45,7 +45,7 @@
             (let [token (subs auth-header 7)
                   token-data (try (jwt/unsign token secret-key)
                                   (catch Exception e e))
-                  user (and (map? token-data) (user/get xtdb (:user/id token-data)))]
+                  user (and (map? token-data) (user/get-internal xtdb (:user/id token-data)))]
               (cond
                 (instance? Exception token-data)
                 (do (log/warn token-data "JWT validation error")
