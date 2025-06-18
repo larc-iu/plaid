@@ -7,7 +7,7 @@
 
 ;; Global event bus for audit log events
 (defstate event-bus
-  :start 
+  :start
   (let [ch (async/chan (async/sliding-buffer 1000))]
     (log/info "Started audit event bus")
     ch)
@@ -41,34 +41,33 @@
   [audit-entry operations user-id]
   (try
     (log/debug "Publishing audit event" {:audit-id (:audit/id audit-entry) :projects (:audit/projects audit-entry) :user-id user-id})
-    (let [bus event-bus]
-      (cond
-        (nil? bus)
-        (do (log/warn "Event bus is not initialized") false)
+    (cond
+      (nil? event-bus)
+      (do (log/warn "Event bus is not initialized") false)
 
-        (not (satisfies? clojure.core.async.impl.protocols/WritePort bus))
-        (do (log/warn "Event bus is not writable") false)
+      (not (satisfies? clojure.core.async.impl.protocols/WritePort event-bus))
+      (do (log/warn "Event bus is not writable") false)
 
-        :else
-        (let [event {:event/type :audit-log
-                     :audit/id (:audit/id audit-entry)
-                     :audit/projects (:audit/projects audit-entry)
-                     :audit/documents (:audit/documents audit-entry)
-                     :audit/user user-id
-                     :audit/time (java.util.Date.)
-                     :audit/ops (mapv #(-> (select-keys % [:op/id :op/type :op/project :op/document :op/description])
-                                           (update :op/type op-type-to-string))
-                                operations)}]
-          (log/debug "Event data:" event)
-          (let [put-result (async/put! bus event)]
-            (if put-result
-              (do (log/debug "Event published successfully") true)
-              (do (log/warn "Failed to put event on bus - channel may be closed") false))))))
+      :else
+      (let [event {:event/type      :audit-log
+                   :audit/id        (:audit/id audit-entry)
+                   :audit/projects  (:audit/projects audit-entry)
+                   :audit/documents (:audit/documents audit-entry)
+                   :audit/user      user-id
+                   :audit/time      (java.util.Date.)
+                   :audit/ops       (mapv #(-> (select-keys % [:op/id :op/type :op/project :op/document :op/description])
+                                               (update :op/type op-type-to-string))
+                                          operations)}]
+        (log/debug "Event data:" event)
+        (let [put-result (async/put! event-bus event)]
+          (if put-result
+            (do (log/debug "Event published successfully") true)
+            (do (log/warn "Failed to put event on bus - channel may be closed") false)))))
     (catch Exception e
       (log/error e "Exception while publishing audit event"
                  {:audit-id (:audit/id audit-entry)
                   :projects (:audit/projects audit-entry)
-                  :user-id user-id})
+                  :user-id  user-id})
       false)))
 
 (defn register-client!
@@ -115,9 +114,9 @@
 (defn register-channel-mapping!
   "Register a mapping between http-kit channel and client channel for cleanup"
   [http-channel client-chan project-id stop-chan]
-  (swap! channel-mappings assoc http-channel {:client-chan client-chan 
-                                              :project-id project-id 
-                                              :stop-chan stop-chan})
+  (swap! channel-mappings assoc http-channel {:client-chan client-chan
+                                              :project-id  project-id
+                                              :stop-chan   stop-chan})
   (log/debug "Registered channel mapping for project" project-id))
 
 (defn cleanup-channel!
