@@ -1,6 +1,7 @@
 (ns plaid.xtdb.operation
   (:require [xtdb.api :as xt]
-            [plaid.xtdb.common :as pxc]))
+            [plaid.xtdb.common :as pxc]
+            [plaid.server.events :as events]))
 
 (defn make-operation
   "Create an operation data structure"
@@ -45,22 +46,50 @@
   The operations-expr is deferred to allow exception handling."
   [xt-map operations-expr user-id]
   `(let [xt-map# ~xt-map
-         node# (:node xt-map#)]
-     (pxc/submit! node#
-                  (let [operations# ~operations-expr
-                        audit-txs# (store-operations xt-map# operations# ~user-id)
-                        all-tx-ops# (mapcat :op/tx-ops operations#)]
-                    (into audit-txs# all-tx-ops#)))))
+         node# (:node xt-map#)
+         operations-vol# (volatile! nil)
+         audit-entry-vol# (volatile! nil)]
+     (let [result# (pxc/submit! node#
+                                (let [operations# ~operations-expr
+                                      audit-txs# (store-operations xt-map# operations# ~user-id)
+                                      all-tx-ops# (mapcat :op/tx-ops operations#)
+                                      audit-entry# (first (filter #(contains? % :audit/id) 
+                                                                  (map second audit-txs#)))]
+                                  ;; Store for later use
+                                  (vreset! operations-vol# operations#)
+                                  (vreset! audit-entry-vol# audit-entry#)
+                                  (into audit-txs# all-tx-ops#)))]
+       ;; Publish audit event if transaction succeeded
+       (when (:success result#)
+         (let [operations# @operations-vol#
+               audit-entry# @audit-entry-vol#]
+           (when (and operations# audit-entry#)
+             (events/publish-audit-event! audit-entry# operations# ~user-id))))
+       result#)))
 
 (defmacro submit-operations-with-extras!
   "Submit operations and return extra data from the transaction.
   The operations-expr is deferred to allow exception handling."
   [xt-map operations-expr user-id extras-fn]
   `(let [xt-map# ~xt-map
-         node# (:node xt-map#)]
-     (pxc/submit-with-extras! node#
-                              (let [operations# ~operations-expr
-                                    audit-txs# (store-operations xt-map# operations# ~user-id)
-                                    all-tx-ops# (mapcat :op/tx-ops operations#)]
-                                (into audit-txs# all-tx-ops#))
-                              ~extras-fn)))
+         node# (:node xt-map#)
+         operations-vol# (volatile! nil)
+         audit-entry-vol# (volatile! nil)]
+     (let [result# (pxc/submit-with-extras! node#
+                                            (let [operations# ~operations-expr
+                                                  audit-txs# (store-operations xt-map# operations# ~user-id)
+                                                  all-tx-ops# (mapcat :op/tx-ops operations#)
+                                                  audit-entry# (first (filter #(contains? % :audit/id) 
+                                                                              (map second audit-txs#)))]
+                                              ;; Store for later use
+                                              (vreset! operations-vol# operations#)
+                                              (vreset! audit-entry-vol# audit-entry#)
+                                              (into audit-txs# all-tx-ops#))
+                                            ~extras-fn)]
+       ;; Publish audit event if transaction succeeded
+       (when (:success result#)
+         (let [operations# @operations-vol#
+               audit-entry# @audit-entry-vol#]
+           (when (and operations# audit-entry#)
+             (events/publish-audit-event! audit-entry# operations# ~user-id))))
+       result#)))

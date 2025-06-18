@@ -238,40 +238,45 @@
   (let [{:keys [path-params required-body-params optional-body-params 
                 regular-query-params as-of-param]} (:ordered-params operation)
         {:keys [is-config?]} (:special-endpoints operation)
-        http-method (:http-method operation)
-        
-        ;; Path parameters
-        path-param-names (map kebab->camel path-params)
-        
-        ;; Config value parameter for config PUT endpoints
-        config-params (when (and is-config? (= http-method :put)) 
-                       ["configValue"])
-        
-        ;; Body parameters (skip if config endpoint)
-        body-param-names (when-not (and is-config? (= http-method :put))
-                          (concat
-                           (map #(transform-key-name (:name %))
-                                required-body-params)
-                           (map #(str (transform-key-name (:name %)) " = undefined")
-                                optional-body-params)))
-        
-        ;; Query parameters
-        query-param-names (map (fn [param]
-                                (let [param-name (transform-key-name (:name param))]
-                                  (if (:required? param)
-                                    param-name
-                                    (str param-name " = undefined"))))
-                              regular-query-params)
-        
-        ;; asOf parameter (only for GET requests)
-        as-of-param-name (when (and as-of-param (= http-method :get))
-                          [(str (transform-key-name (:name as-of-param)) " = undefined")])
-        
-        ;; Combine all parameters
-        all-params (concat path-param-names config-params body-param-names 
-                          query-param-names as-of-param-name)]
+        http-method (:http-method operation)]
     
-    (str/join ", " (filter some? all-params))))
+    ;; Special handling for SSE listen method
+    (if (= (:method-name operation) "listen")
+      ;; SSE listen method has project ID and handlers parameters
+      (str (kebab->camel (first path-params)) ", handlers = {}")
+      ;; Regular method parameter generation
+      (let [;; Path parameters
+            path-param-names (map kebab->camel path-params)
+            
+            ;; Config value parameter for config PUT endpoints
+            config-params (when (and is-config? (= http-method :put)) 
+                           ["configValue"])
+            
+            ;; Body parameters (skip if config endpoint)
+            body-param-names (when-not (and is-config? (= http-method :put))
+                              (concat
+                               (map #(transform-key-name (:name %))
+                                    required-body-params)
+                               (map #(str (transform-key-name (:name %)) " = undefined")
+                                    optional-body-params)))
+            
+            ;; Query parameters
+            query-param-names (map (fn [param]
+                                    (let [param-name (transform-key-name (:name param))]
+                                      (if (:required? param)
+                                        param-name
+                                        (str param-name " = undefined"))))
+                                  regular-query-params)
+            
+            ;; asOf parameter (only for GET requests)
+            as-of-param-name (when (and as-of-param (= http-method :get))
+                              [(str (transform-key-name (:name as-of-param)) " = undefined")])
+            
+            ;; Combine all parameters
+            all-params (concat path-param-names config-params body-param-names 
+                              query-param-names as-of-param-name)]
+        
+        (str/join ", " (filter some? all-params))))))
 
 (defn- generate-url-construction
   "Generate JavaScript code to construct the URL with path parameters"
@@ -349,79 +354,184 @@
            "      }\n"
            "    };"))))
 
+(defn- generate-sse-listen-method
+  "Generate JavaScript SSE listen method"
+  [operation]
+  (let [{:keys [bundle-name method-name path path-params summary]} operation
+        ;; Extract project ID from path parameters
+        project-id-param (first path-params)  ; Should be "id" for /projects/{id}/listen
+        transformed-method-name (common/transform-method-name method-name :camelCase)
+        private-method-name (str "_" bundle-name (csk/->PascalCase transformed-method-name))
+        formatted-summary (transform-parameter-references (or summary ""))
+        
+        ;; Generate URL construction
+        js-path (str/replace path (str "{" project-id-param "}") (str "${" (kebab->camel project-id-param) "}"))]
+    
+    (str "  /**\n"
+         "   * " formatted-summary "\n"
+         "   * @param {string} " (kebab->camel project-id-param) " - The UUID of the project to listen to\n"
+         "   * @param {object} handlers - Event handlers object\n"
+         "   * @param {function} handlers.onAuditLog - Called when an audit log event is received\n"
+         "   * @param {function} [handlers.onConnected] - Called when connection is established\n"
+         "   * @param {function} [handlers.onError] - Called on connection error\n"
+         "   * @param {function} [handlers.onHeartbeat] - Called on heartbeat events\n"
+         "   * @returns {EventSource} The EventSource instance (call .close() to stop listening)\n"
+         "   */\n"
+         "  " private-method-name "(" (kebab->camel project-id-param) ", handlers = {}) {\n"
+         "    const url = `${this.baseUrl}" js-path "`;\n"
+         "    \n"
+         "    // For Node.js environments, try to use the eventsource package\n"
+         "    let EventSourceImpl;\n"
+         "    if (typeof EventSource !== 'undefined') {\n"
+         "      EventSourceImpl = EventSource;\n"
+         "    } else {\n"
+         "      try {\n"
+         "        EventSourceImpl = require('eventsource');\n"
+         "      } catch (e) {\n"
+         "        throw new Error('EventSource is not available. Install the \"eventsource\" package for Node.js.');\n"
+         "      }\n"
+         "    }\n"
+         "    \n"
+         "    const eventSource = new EventSourceImpl(url, {\n"
+         "      headers: {\n"
+         "        'Authorization': `Bearer ${this.token}`\n"
+         "      }\n"
+         "    });\n"
+         "    \n"
+         "    // Track statistics\n"
+         "    const stats = {\n"
+         "      auditEvents: 0,\n"
+         "      connectionEvents: 0,\n"
+         "      heartbeatEvents: 0,\n"
+         "      errorEvents: 0,\n"
+         "      startTime: Date.now(),\n"
+         "      lastHeartbeat: null\n"
+         "    };\n"
+         "    \n"
+         "    // Attach statistics to eventSource for access\n"
+         "    eventSource.getStats = () => ({\n"
+         "      ...stats,\n"
+         "      durationSeconds: (Date.now() - stats.startTime) / 1000,\n"
+         "      lastHeartbeatSecondsAgo: stats.lastHeartbeat ? (Date.now() - stats.lastHeartbeat) / 1000 : null\n"
+         "    });\n"
+         "    \n"
+         "    // Handle connection established\n"
+         "    eventSource.addEventListener('connected', (event) => {\n"
+         "      stats.connectionEvents++;\n"
+         "      console.log(`🔗 Connected to audit stream for project ${" (kebab->camel project-id-param) "}`);\n"
+         "      if (handlers.onConnected) {\n"
+         "        handlers.onConnected(JSON.parse(event.data));\n"
+         "      }\n"
+         "    });\n"
+         "    \n"
+         "    // Handle audit log events\n"
+         "    eventSource.addEventListener('audit-log', (event) => {\n"
+         "      stats.auditEvents++;\n"
+         "      const auditData = JSON.parse(event.data);\n"
+         "      const transformedData = this._transformResponse(auditData);\n"
+         "      if (handlers.onAuditLog) {\n"
+         "        handlers.onAuditLog(transformedData);\n"
+         "      }\n"
+         "    });\n"
+         "    \n"
+         "    // Handle heartbeat\n"
+         "    eventSource.addEventListener('heartbeat', (event) => {\n"
+         "      stats.heartbeatEvents++;\n"
+         "      stats.lastHeartbeat = Date.now();\n"
+         "      if (handlers.onHeartbeat) {\n"
+         "        handlers.onHeartbeat(event.data);\n"
+         "      }\n"
+         "    });\n"
+         "    \n"
+         "    // Handle errors\n"
+         "    eventSource.onerror = (error) => {\n"
+         "      stats.errorEvents++;\n"
+         "      console.error('❌ SSE connection error:', error);\n"
+         "      if (handlers.onError) {\n"
+         "        handlers.onError(error);\n"
+         "      }\n"
+         "    };\n"
+         "    \n"
+         "    return eventSource;\n"
+         "  }\n")))
+
 (defn- generate-private-method-from-ast
   "Generate a private JavaScript method from AST operation"
   [operation]
   (let [{:keys [bundle-name method-name path http-method summary ordered-params special-endpoints]} operation
         {:keys [path-params required-body-params optional-body-params 
                 regular-query-params as-of-param]} ordered-params
-        {:keys [is-config? is-login?]} special-endpoints
-        
-        ;; Check if there's a request body
-        has-body? (or (seq required-body-params) 
-                     (seq optional-body-params)
-                     (and is-config? (= http-method :put)))
-        
-        ;; Generate method parameters
-        method-params (generate-method-params-from-operation operation)
-        
-        ;; Generate URL construction
-        url-construction (generate-url-construction path path-params 
-                                                   (concat regular-query-params 
-                                                          (when as-of-param [as-of-param]))
-                                                   http-method)
-        
-        ;; Generate body construction
-        body-params (concat required-body-params optional-body-params)
-        body-construction (cond
-                           (and is-config? (= http-method :put))
-                           "const requestBody = configValue;"
-                           
-                           (seq body-params)
-                           (generate-body-construction body-params)
-                           
-                           :else nil)
-        
-        ;; Generate fetch options
-        fetch-options (generate-fetch-options http-method has-body? is-login?)
-        
-        ;; Format summary
-        formatted-summary (transform-parameter-references (or summary ""))
-        
-        ;; Private method name (transform method-name if it comes from x-client-method)
-        transformed-method-name (common/transform-method-name method-name :camelCase)
-        private-method-name (str "_" bundle-name (csk/->PascalCase transformed-method-name))
-        
-        ;; Determine URL variable name
-        url-var (if (or (seq regular-query-params) as-of-param) "finalUrl" "url")]
+        {:keys [is-config? is-login?]} special-endpoints]
     
-    (str "  /**\n"
-         "   * " formatted-summary "\n"
-         "   */\n"
-         "  async " private-method-name "(" method-params ") {\n"
-         "    " url-construction "\n"
-         (when body-construction (str "    " body-construction "\n"))
-         "    " fetch-options "\n"
-         "    \n"
-         "    const response = await fetch(" url-var ", fetchOptions);\n"
-         "    if (!response.ok) {\n"
-         "      const errorBody = await response.text().catch(() => 'Unable to read error response');\n"
-         "      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${" url-var "}`);\n"
-         "      error.status = response.status;\n"
-         "      error.statusText = response.statusText;\n"
-         "      error.url = " url-var ";\n"
-         "      error.method = '" (str/upper-case (name http-method)) "';\n"
-         "      error.responseBody = errorBody;\n"
-         "      throw error;\n"
-         "    }\n"
-         "    \n"
-         "    const contentType = response.headers.get('content-type');\n"
-         "    if (contentType && contentType.includes('application/json')) {\n"
-         "      const data = await response.json();\n"
-         "      return this._transformResponse(data);\n"
-         "    }\n"
-         "    return await response.text();\n"
-         "  }\n")))
+    ;; Check if this is an SSE listen endpoint
+    (if (= method-name "listen")
+      (generate-sse-listen-method operation)
+      ;; Regular method generation continues below
+      (let [;; Check if there's a request body
+            has-body? (or (seq required-body-params) 
+                         (seq optional-body-params)
+                         (and is-config? (= http-method :put)))
+            
+            ;; Generate method parameters
+            method-params (generate-method-params-from-operation operation)
+            
+            ;; Generate URL construction
+            url-construction (generate-url-construction path path-params 
+                                                       (concat regular-query-params 
+                                                              (when as-of-param [as-of-param]))
+                                                       http-method)
+            
+            ;; Generate body construction
+            body-params (concat required-body-params optional-body-params)
+            body-construction (cond
+                               (and is-config? (= http-method :put))
+                               "const requestBody = configValue;"
+                               
+                               (seq body-params)
+                               (generate-body-construction body-params)
+                               
+                               :else nil)
+            
+            ;; Generate fetch options
+            fetch-options (generate-fetch-options http-method has-body? is-login?)
+            
+            ;; Format summary
+            formatted-summary (transform-parameter-references (or summary ""))
+            
+            ;; Private method name (transform method-name if it comes from x-client-method)
+            transformed-method-name (common/transform-method-name method-name :camelCase)
+            private-method-name (str "_" bundle-name (csk/->PascalCase transformed-method-name))
+            
+            ;; Determine URL variable name
+            url-var (if (or (seq regular-query-params) as-of-param) "finalUrl" "url")]
+        
+        (str "  /**\n"
+             "   * " formatted-summary "\n"
+             "   */\n"
+             "  async " private-method-name "(" method-params ") {\n"
+             "    " url-construction "\n"
+             (when body-construction (str "    " body-construction "\n"))
+             "    " fetch-options "\n"
+             "    \n"
+             "    const response = await fetch(" url-var ", fetchOptions);\n"
+             "    if (!response.ok) {\n"
+             "      const errorBody = await response.text().catch(() => 'Unable to read error response');\n"
+             "      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${" url-var "}`);\n"
+             "      error.status = response.status;\n"
+             "      error.statusText = response.statusText;\n"
+             "      error.url = " url-var ";\n"
+             "      error.method = '" (str/upper-case (name http-method)) "';\n"
+             "      error.responseBody = errorBody;\n"
+             "      throw error;\n"
+             "    }\n"
+             "    \n"
+             "    const contentType = response.headers.get('content-type');\n"
+             "    if (contentType && contentType.includes('application/json')) {\n"
+             "      const data = await response.json();\n"
+             "      return this._transformResponse(data);\n"
+             "    }\n"
+             "    return await response.text();\n"
+             "  }\n")))))
 
 (defn- generate-bundle-methods
   "Generate all private methods for the PlaidClient class"
@@ -456,117 +566,141 @@
         transformed-method-name (common/transform-method-name method-name :camelCase)
         {:keys [required-body-params optional-body-params 
                 regular-query-params as-of-param]} ordered-params
-        {:keys [is-config?]} special-endpoints
-        
-        ;; Generate parameter list with types
-        ts-params (concat
-                   ;; Path parameters
-                   (map (fn [param]
-                          (str (kebab->camel param) ": string"))
-                        path-params)
-                   
-                   ;; Config value parameter
-                   (when (and is-config? (= http-method :put))
-                     ["configValue: any"])
-                   
-                   ;; Body parameters (unless config endpoint)
-                   (when-not (and is-config? (= http-method :put))
-                     (concat
-                      (map (fn [{:keys [name original-name type]}]
-                             (let [ts-name (transform-key-name name)
-                                   ts-type (case type
-                                            "string" "string"
-                                            "integer" "number"
-                                            "boolean" "boolean"
-                                            "array" "any[]"
-                                            "any")]
-                               (str ts-name ": " ts-type)))
-                           required-body-params)
-                      (map (fn [{:keys [name original-name type]}]
-                             (let [ts-name (transform-key-name name)
-                                   ts-type (case type
-                                            "string" "string"
-                                            "integer" "number"
-                                            "boolean" "boolean"
-                                            "array" "any[]"
-                                            "any")]
-                               (str ts-name "?: " ts-type)))
-                           optional-body-params)))
-                   
-                   ;; Query parameters
-                   (map (fn [param]
-                          (let [param-name (transform-key-name (:name param))
-                                param-type (openapi-type-to-ts (:schema param))
-                                optional-marker (if (:required? param) "" "?")]
-                            (str param-name optional-marker ": " param-type)))
-                        regular-query-params)
-                   
-                   ;; asOf parameter at the end (only for GET requests)
-                   (when (and as-of-param (= http-method :get))
-                     [(str (transform-key-name (:name as-of-param)) "?: " 
-                           (openapi-type-to-ts (:schema as-of-param)))]))
-        
-        params-str (str/join ", " ts-params)
-        return-type "Promise<any>"] ; Could be more specific based on response schema
+        {:keys [is-config?]} special-endpoints]
     
-    (str transformed-method-name "(" params-str "): " return-type ";")))
+    ;; Special handling for SSE listen method
+    (if (= method-name "listen")
+      (let [path-param-str (str/join ", " (map #(str (kebab->camel %) ": string") path-params))]
+        (str transformed-method-name "(" path-param-str ", handlers: {\n"
+             "    onAuditLog?: (event: any) => void;\n"
+             "    onConnected?: (data: any) => void;\n"
+             "    onError?: (error: any) => void;\n"
+             "    onHeartbeat?: (data: string) => void;\n"
+             "  }): EventSource;"))
+      ;; Regular method generation
+      (let [;; Generate parameter list with types
+            ts-params (concat
+                       ;; Path parameters
+                       (map (fn [param]
+                              (str (kebab->camel param) ": string"))
+                            path-params)
+                       
+                       ;; Config value parameter
+                       (when (and is-config? (= http-method :put))
+                         ["configValue: any"])
+                       
+                       ;; Body parameters (unless config endpoint)
+                       (when-not (and is-config? (= http-method :put))
+                         (concat
+                          (map (fn [{:keys [name original-name type]}]
+                                 (let [ts-name (transform-key-name name)
+                                       ts-type (case type
+                                                "string" "string"
+                                                "integer" "number"
+                                                "boolean" "boolean"
+                                                "array" "any[]"
+                                                "any")]
+                                   (str ts-name ": " ts-type)))
+                               required-body-params)
+                          (map (fn [{:keys [name original-name type]}]
+                                 (let [ts-name (transform-key-name name)
+                                       ts-type (case type
+                                                "string" "string"
+                                                "integer" "number"
+                                                "boolean" "boolean"
+                                                "array" "any[]"
+                                                "any")]
+                                   (str ts-name "?: " ts-type)))
+                               optional-body-params)))
+                       
+                       ;; Query parameters
+                       (map (fn [param]
+                              (let [param-name (transform-key-name (:name param))
+                                    param-type (openapi-type-to-ts (:schema param))
+                                    optional-marker (if (:required? param) "" "?")]
+                                (str param-name optional-marker ": " param-type)))
+                            regular-query-params)
+                       
+                       ;; asOf parameter at the end (only for GET requests)
+                       (when (and as-of-param (= http-method :get))
+                         [(str (transform-key-name (:name as-of-param)) "?: " 
+                               (openapi-type-to-ts (:schema as-of-param)))]))
+            
+            params-str (str/join ", " ts-params)
+            return-type "Promise<any>"] ; Could be more specific based on response schema
+        
+        (str transformed-method-name "(" params-str "): " return-type ";")))))
 
 (defn- generate-jsdoc-params
   "Generate JSDoc parameter documentation from AST operation"
   [operation]
-  (let [{:keys [path-params ordered-params special-endpoints]} operation
+  (let [{:keys [method-name path-params ordered-params special-endpoints]} operation
         {:keys [required-body-params optional-body-params 
                 regular-query-params as-of-param]} ordered-params
         {:keys [is-config?]} special-endpoints
         all-query-params (concat regular-query-params (when as-of-param [as-of-param]))]
     
-    (concat
-      ;; Path parameters
-      (map (fn [param]
-             (str " * @param {string} " (kebab->camel param) " - " (str/capitalize param) " identifier"))
-           path-params)
-      
-      ;; Config value parameter
-      (when (and is-config? (= (:http-method operation) :put))
-        [" * @param {any} configValue - Configuration value to set"])
-      
-      ;; Body parameters (unless config endpoint)
-      (when-not (and is-config? (= (:http-method operation) :put))
-        (concat
-         (map (fn [{:keys [name original-name type required?]}]
-                (let [js-name (transform-key-name name)
-                      js-type (case type
-                               "string" "string"
-                               "integer" "number"
-                               "boolean" "boolean"
-                               "array" "Array"
-                               "any")]
-                  (str " * @param {" js-type "} " js-name " - Required. " (str/capitalize js-name))))
-              required-body-params)
-         (map (fn [{:keys [name original-name type]}]
-                (let [js-name (transform-key-name name)
-                      js-type (case type
-                               "string" "string"
-                               "integer" "number"
-                               "boolean" "boolean"
-                               "array" "Array"
-                               "any")]
-                  (str " * @param {" js-type "} [" js-name "] - Optional. " (str/capitalize js-name))))
-              optional-body-params)))
-      
-      ;; Query parameters  
-      (map (fn [param]
-             (let [param-name (transform-key-name (:name param))
-                   param-type (case (get-in param [:schema "type"])
-                               "string" "string"
-                               "integer" "number" 
-                               "boolean" "boolean"
-                               "string")
-                   required? (:required? param)]
-               (str " * @param {" param-type "} " 
-                    (if required? param-name (str "[" param-name "]"))
-                    " - " (or (:description param) (str (if required? "Required" "Optional") " " param-name)))))
-           all-query-params))))
+    ;; Special handling for SSE listen method
+    (if (= method-name "listen")
+      (concat
+        ;; Path parameters
+        (map (fn [param]
+               (str " * @param {string} " (kebab->camel param) " - The UUID of the project to listen to"))
+             path-params)
+        ;; Handlers parameter
+        [" * @param {object} handlers - Event handlers"
+         " * @param {function} handlers.onAuditLog - Audit log event handler"
+         " * @param {function} [handlers.onConnected] - Connection event handler"
+         " * @param {function} [handlers.onError] - Error event handler"
+         " * @param {function} [handlers.onHeartbeat] - Heartbeat event handler"])
+      ;; Regular method parameters
+      (concat
+        ;; Path parameters
+        (map (fn [param]
+               (str " * @param {string} " (kebab->camel param) " - " (str/capitalize param) " identifier"))
+             path-params)
+        
+        ;; Config value parameter
+        (when (and is-config? (= (:http-method operation) :put))
+          [" * @param {any} configValue - Configuration value to set"])
+        
+        ;; Body parameters (unless config endpoint)
+        (when-not (and is-config? (= (:http-method operation) :put))
+          (concat
+           (map (fn [{:keys [name original-name type required?]}]
+                  (let [js-name (transform-key-name name)
+                        js-type (case type
+                                 "string" "string"
+                                 "integer" "number"
+                                 "boolean" "boolean"
+                                 "array" "Array"
+                                 "any")]
+                    (str " * @param {" js-type "} " js-name " - Required. " (str/capitalize js-name))))
+                required-body-params)
+           (map (fn [{:keys [name original-name type]}]
+                  (let [js-name (transform-key-name name)
+                        js-type (case type
+                                 "string" "string"
+                                 "integer" "number"
+                                 "boolean" "boolean"
+                                 "array" "Array"
+                                 "any")]
+                    (str " * @param {" js-type "} [" js-name "] - Optional. " (str/capitalize js-name))))
+                optional-body-params)))
+        
+        ;; Query parameters  
+        (map (fn [param]
+               (let [param-name (transform-key-name (:name param))
+                     param-type (case (get-in param [:schema "type"])
+                                 "string" "string"
+                                 "integer" "number" 
+                                 "boolean" "boolean"
+                                 "string")
+                     required? (:required? param)]
+                 (str " * @param {" param-type "} " 
+                      (if required? param-name (str "[" param-name "]"))
+                      " - " (or (:description param) (str (if required? "Required" "Optional") " " param-name)))))
+             all-query-params)))))
 
 (defn- generate-ts-bundle-interface
   "Generate TypeScript interface for a bundle"
