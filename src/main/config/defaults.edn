@@ -5,17 +5,17 @@
                                                :nested     true
                                                :urlencoded true}
                                    :cookies   false
+                                   :session   false
                                    :responses {:absolute-redirects     true
                                                :content-types          true
                                                :default-charset        "utf-8"
                                                :not-modified-responses true}
                                    :static    {:resources "public"}
-                                   :session   false
                                    :security  {:anti-forgery   false
                                                :hsts           true
                                                :ssl-redirect   false
-                                               :frame-options  :sameorigin
-                                               :xss-protection {:enable? true
+                                               :frame-options  :deny
+                                               :xss-protection {:enable? false
                                                                 :mode    :block}}}
 
  :taoensso.timbre/logging-config  {:min-level    :info
