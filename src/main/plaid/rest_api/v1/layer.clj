@@ -14,8 +14,8 @@
                                (let [{:keys [success code error]} (prj/assoc-editor-config-pair {:node xtdb} id namespace config-key config-value)]
                                  (if success
                                    {:status 204}
-                                   {:status (or code 400)
-                                    :body   {:error error}})))}
+                                   {:status (or code 500)
+                                    :body   {:error (or error "Internal server error")}})))}
 
     :delete     {:summary    "Remove a configuration value for a layer."
                  :parameters {:path [:map [:id :uuid] [:namespace string?] [:config-key string?]]}
@@ -23,5 +23,5 @@
                                (let [{:keys [success code error]} (prj/dissoc-editor-config-pair {:node xtdb} id namespace config-key)]
                                  (if success
                                    {:status 204}
-                                   {:status (or code 400)
-                                    :body   {:error error}})))}}])
+                                   {:status (or code 500)
+                                    :body   {:error (or error "Internal server error")}})))}}])

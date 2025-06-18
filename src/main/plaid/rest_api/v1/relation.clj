@@ -62,14 +62,14 @@
                                 (let [{:keys [success code error]} (r/merge {:node xtdb} relation-id {:relation/value value} user-id)]
                                   (if success
                                     {:status 200 :body (r/get xtdb relation-id)}
-                                    {:status (or code 404) :body {:error (or error "Failed to update relation or relation not found")}})))}
+                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary    "Delete a relation."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :handler    (fn [{{{:keys [relation-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                                 (let [{:keys [success code error]} (r/delete {:node xtdb} relation-id user-id)]
                                   (if success
                                     {:status 204}
-                                    {:status (or code 404) :body {:error (or error "Relation not found")}})))}}]
+                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
     ["/source" {:put {:summary    "Update the source span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]]
                       :openapi    {:x-client-method "set-source"}

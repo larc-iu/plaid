@@ -54,15 +54,15 @@
                                (if success
                                  {:status 200
                                   :body   (sl/get xtdb span-layer-id)}
-                                 {:status (or code 404)
-                                  :body   {:error (or error "Failed to update span layer or span layer not found")}})))}
+                                 {:status (or code 500)
+                                  :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a span layer."
                :handler (fn [{{{:keys [span-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                           (let [{:keys [success code error]} (sl/delete {:node xtdb} span-layer-id user-id)]
                             (if success
                               {:status 204}
-                              {:status (or code 404)
-                               :body   {:error (or error "Span layer not found")}})))}}]
+                              {:status (or code 500)
+                               :body   {:error (or error "Internal server error")}})))}}]
 
     ["/shift"
      {:post {:summary    "Shift a span layer's order."

@@ -28,7 +28,7 @@
                                  {:keys [success code error]} (entity-set-metadata-fn {:node xtdb} entity-id metadata user-id)]
                              (if success
                                {:status 200 :body (entity-get-fn xtdb entity-id)}
-                               {:status (or code 404) :body {:error (or error (str "Failed to update " entity-type " metadata"))}})))}
+                               {:status (or code 500) :body {:error (or error "Internal server error")}})))}
     :delete {:summary    (str "Remove all metadata from a " entity-type ".")
              :middleware [[pra/wrap-writer-required get-project-id-fn]]
              :openapi    {:x-client-method "delete-metadata"}
@@ -37,4 +37,4 @@
                                  {:keys [success code error]} (entity-delete-metadata-fn {:node xtdb} entity-id user-id)]
                              (if success
                                {:status 200 :body (entity-get-fn xtdb entity-id)}
-                               {:status (or code 404) :body {:error (or error (str "Failed to clear " entity-type " metadata"))}})))}}])
+                               {:status (or code 500) :body {:error (or error "Internal server error")}})))}}])

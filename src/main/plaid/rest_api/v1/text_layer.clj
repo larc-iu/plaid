@@ -53,15 +53,15 @@
                                (if success
                                  {:status 200
                                   :body   (txtl/get xtdb text-layer-id)}
-                                 {:status (or code 404)
-                                  :body   {:error (or error "Failed to update text layer or text layer not found")}})))}
+                                 {:status (or code 500)
+                                  :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a text layer."
                :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                           (let [{:keys [success code error]} (txtl/delete {:node xtdb} text-layer-id user-id)]
                             (if success
                               {:status 204}
-                              {:status (or code 404)
-                               :body   {:error (or error "Text layer not found")}})))}}]
+                              {:status (or code 500)
+                               :body   {:error (or error "Internal server error")}})))}}]
 
     ["/shift"
      {:post {:summary    "Shift a text layer's order within the project."

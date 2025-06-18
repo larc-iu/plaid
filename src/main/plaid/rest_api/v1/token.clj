@@ -74,7 +74,7 @@
                                       {success :success code :code error :error} (tok/merge {:node xtdb} token-id raw-attrs user-id)]
                                   (if success
                                     {:status 200 :body (tok/get xtdb token-id)}
-                                    {:status (or code 404) :body {:error (or error "Failed to update token or token not found")}})))}
+                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary    (str "Delete a token and remove it from any spans. If this causes the span to have no "
                                    "remaining associated tokens, the span will also be deleted.")
                   :middleware [[pra/wrap-writer-required get-project-id]]
@@ -82,7 +82,7 @@
                                 (let [{:keys [success code error]} (tok/delete {:node xtdb} token-id user-id)]
                                   (if success
                                     {:status 204}
-                                    {:status (or code 404) :body {:error (or error "Token not found")}})))}}]
+                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "token" :token-id get-project-id tok/get tok/set-metadata tok/delete-metadata)]]) 

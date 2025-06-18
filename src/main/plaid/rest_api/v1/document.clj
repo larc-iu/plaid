@@ -54,13 +54,13 @@
                                   (if success
                                     {:status 200
                                      :body   (doc/get xtdb document-id)}
-                                    {:status (or code 404)
-                                     :body   {:error (or error "Failed to update document or document not found")}})))}
+                                    {:status (or code 500)
+                                     :body   {:error (or error "Internal server error")}})))}
          :delete {:summary    "Delete a document and all data contained."
                   :middleware [[pra/wrap-writer-required get-project-id]]
                   :handler    (fn [{{{:keys [document-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                                 (let [{:keys [success code error]} (doc/delete {:node xtdb} document-id user-id)]
                                   (if success
                                     {:status 204}
-                                    {:status (or code 404)
-                                     :body   {:error (or error "Document not found")}})))}}]]])
+                                    {:status (or code 500)
+                                     :body   {:error (or error "Internal server error")}})))}}]]])
