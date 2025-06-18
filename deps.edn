@@ -26,7 +26,7 @@
            mount/mount                         {:mvn/version "0.1.23"}
 
            ;; http
-           http-kit/http-kit                   {:mvn/version "2.8.0"}
+           http-kit/http-kit                   {:mvn/version "2.9.0-beta1"}
            ring/ring-core                      {:mvn/version "1.14.1"}
            ring/ring-defaults                  {:mvn/version "0.6.0"}
            metosin/ring-http-response          {:mvn/version "0.9.5"}
