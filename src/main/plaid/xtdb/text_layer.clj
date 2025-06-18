@@ -12,9 +12,10 @@
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
+  "Get a text layer by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (let [db (pxc/->db db-like)]
-    (pxc/find-entity db {:text-layer/id id})))
+  (when-let [text-layer-entity (pxc/find-entity (pxc/->db db-like) {:text-layer/id id})]
+    (select-keys text-layer-entity attr-keys)))
 
 (defn- parent-id [db id]
   (-> (xt/q db

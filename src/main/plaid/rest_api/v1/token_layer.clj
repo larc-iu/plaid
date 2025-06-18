@@ -44,7 +44,7 @@
                           (let [token-layer (tokl/get db token-layer-id)]
                             (if (some? token-layer)
                               {:status 200
-                               :body   (dissoc token-layer :xt/id)}
+                               :body   token-layer}
                               {:status 404
                                :body   {:error "Token layer not found"}})))}
 
@@ -54,7 +54,7 @@
                              (let [{:keys [success code error]} (tokl/merge {:node xtdb} token-layer-id {:token-layer/name name} user-id)]
                                (if success
                                  {:status 200
-                                  :body   (dissoc (tokl/get xtdb token-layer-id) :xt/id)}
+                                  :body   (tokl/get xtdb token-layer-id)}
                                  {:status (or code 404)
                                   :body   {:error (or error "Failed to update token layer or token layer not found")}})))}
       :delete {:summary "Delete a token layer."

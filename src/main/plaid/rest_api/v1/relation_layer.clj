@@ -47,7 +47,7 @@
                           (let [relation-layer (rl/get db relation-layer-id)]
                             (if (some? relation-layer)
                               {:status 200
-                               :body   (dissoc relation-layer :xt/id)}
+                               :body   relation-layer}
                               {:status 404
                                :body   {:error "Relation layer not found"}})))}
       :patch  {:summary    "Update a relation layer's name."
@@ -57,7 +57,7 @@
                              (let [{:keys [success code error]} (rl/merge {:node xtdb} relation-layer-id {:relation-layer/name name} user-id)]
                                (if success
                                  {:status 200
-                                  :body   (dissoc (rl/get xtdb relation-layer-id) :xt/id)}
+                                  :body   (rl/get xtdb relation-layer-id)}
                                  {:status (or code 404)
                                   :body   {:error (or error "Failed to update relation layer or relation layer not found")}})))}
       :delete {:summary "Delete a relation layer."

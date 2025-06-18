@@ -3,12 +3,6 @@
             [reitit.coercion.malli]
             [plaid.xtdb.user :as user]))
 
-(defn filter-keys
-  [u]
-  (-> u
-      (dissoc :user/password-hash)
-      (dissoc :user/password-changes)
-      (dissoc :xt/id)))
 
 (def user-routes
   ["/users"
@@ -19,8 +13,7 @@
     {:get  {:summary "List all users"
             :handler (fn [{db :db}]
                        {:status 200
-                        :body   (->> (user/get-all db)
-                                     (map filter-keys))})}
+                        :body   (user/get-all db)})}
      :post {:summary    "Create a new user"
             :parameters {:body {:username string? :password string? :is-admin boolean?}}
             :handler    (fn [{{{:keys [username password is-admin]} :body} :parameters xtdb :xtdb}]
@@ -39,7 +32,7 @@
                           (let [user (user/get db id)]
                             (if (some? user)
                               {:status 200
-                               :body   (filter-keys user)}
+                               :body   user}
                               {:status 404
                                :body   {:error "User not found"}})))}
       :patch  {:summary    "Modify a user"
@@ -55,8 +48,7 @@
                                                                              :user/is-admin is-admin})]
                                (if success
                                  {:status 200
-                                  :body   (select-keys (user/get xtdb id)
-                                                       [:user/id :user/username :user/is-admin])}
+                                  :body   (user/get xtdb id)}
                                  {:status (or code 500)
                                   :body   {:error error}})))}
 

@@ -44,7 +44,7 @@
                           (let [span-layer (sl/get db span-layer-id)]
                             (if (some? span-layer)
                               {:status 200
-                               :body   (dissoc span-layer :xt/id)}
+                               :body   span-layer}
                               {:status 404
                                :body   {:error "Span layer not found"}})))}
       :patch  {:summary    "Update a span layer's name."
@@ -53,7 +53,7 @@
                              (let [{:keys [success code error]} (sl/merge {:node xtdb} span-layer-id {:span-layer/name name} user-id)]
                                (if success
                                  {:status 200
-                                  :body   (dissoc (sl/get xtdb span-layer-id) :xt/id)}
+                                  :body   (sl/get xtdb span-layer-id)}
                                  {:status (or code 404)
                                   :body   {:error (or error "Failed to update span layer or span layer not found")}})))}
       :delete {:summary "Delete a span layer."
