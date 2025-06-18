@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Tue Jun 17 15:25:54 EDT 2025
+ * Generated on: Tue Jun 17 22:56:11 EDT 2025
  */
 
   /**
@@ -487,6 +487,16 @@ name: update a document's name.
  * @param {string} userId - User-id identifier
        */
       removeReader: this._projectsRemoveReader.bind(this),
+      /**
+       * Listen to audit log events for a project via Server-Sent Events
+ * @param {string} id - The UUID of the project to listen to
+ * @param {object} handlers - Event handlers
+ * @param {function} handlers.onAuditLog - Audit log event handler
+ * @param {function} [handlers.onConnected] - Connection event handler
+ * @param {function} [handlers.onError] - Error event handler
+ * @param {function} [handlers.onHeartbeat] - Heartbeat event handler
+       */
+      listen: this._projectsListen.bind(this),
       /**
        * Assign a user as a maintainer for this project.
  * @param {string} id - Id identifier
@@ -2584,6 +2594,237 @@ name: update a document's name.
       return this._transformResponse(data);
     }
     return await response.text();
+  }
+
+  /**
+   * Listen to audit log events for a project via Server-Sent Events
+   * @param {string} id - The UUID of the project to listen to
+   * @param {object} handlers - Event handlers object
+   * @param {function} handlers.onAuditLog - Called when an audit log event is received
+   * @param {function} [handlers.onConnected] - Called when connection is established
+   * @param {function} [handlers.onError] - Called on connection error
+   * @param {function} [handlers.onHeartbeat] - Called on heartbeat events
+   * @returns {EventSource} The EventSource instance (call .close() to stop listening)
+   */
+  _projectsListen(id, handlers = {}) {
+    const url = `${this.baseUrl}/api/v1/projects/${id}/listen`;
+    
+    // Browser EventSource doesn't support custom headers
+    // We'll use a fetch-based EventSource polyfill for browsers
+    let eventSource;
+    
+    if (typeof window !== 'undefined' && typeof EventSource !== 'undefined') {
+      // Browser environment - use fetch-based SSE
+      const controller = new AbortController();
+      let isClosed = false;
+      let isClosedByUser = false;
+      
+      // Create a mock EventSource object
+      eventSource = {
+        close: () => {
+          isClosed = true;
+          isClosedByUser = true;
+          controller.abort();
+        },
+        readyState: 0, // CONNECTING
+        getStats: () => ({
+          ...stats,
+          durationSeconds: (Date.now() - stats.startTime) / 1000,
+          lastHeartbeatSecondsAgo: stats.lastHeartbeat ? (Date.now() - stats.lastHeartbeat) / 1000 : null
+        })
+      };
+      
+      // Track statistics
+      const stats = {
+        auditEvents: 0,
+        connectionEvents: 0,
+        heartbeatEvents: 0,
+        errorEvents: 0,
+        startTime: Date.now(),
+        lastHeartbeat: null
+      };
+      
+      // Start the fetch-based SSE connection
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache'
+        },
+        signal: controller.signal
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        eventSource.readyState = 1; // OPEN
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        
+        function processLine(line) {
+          if (line.startsWith('event: ')) {
+            const eventType = line.substring(7);
+            return { type: 'event', value: eventType };
+          } else if (line.startsWith('data: ')) {
+            const data = line.substring(6);
+            return { type: 'data', value: data };
+          }
+          return null;
+        }
+        
+        let currentEvent = null;
+        const self = this; // Preserve context
+        
+        function pump() {
+          return reader.read().then(({done, value}) => {
+            if (done || isClosed) {
+              eventSource.readyState = 2; // CLOSED
+              return;
+            }
+            
+            buffer += decoder.decode(value, {stream: true});
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) continue;
+              
+              const parsed = processLine(trimmed);
+              if (parsed) {
+                if (parsed.type === 'event') {
+                  currentEvent = parsed.value;
+                } else if (parsed.type === 'data' && currentEvent) {
+                  // Handle different event types
+                  switch (currentEvent) {
+                    case 'connected':
+                      stats.connectionEvents++;
+                      console.log(`🔗 Connected to audit stream for project ${id}`);
+                      if (handlers.onConnected) {
+                        try {
+                          handlers.onConnected(JSON.parse(parsed.value));
+                        } catch (e) {
+                          console.error('Error parsing connected event:', e);
+                        }
+                      }
+                      break;
+                    case 'audit-log':
+                      stats.auditEvents++;
+                      if (handlers.onAuditLog) {
+                        try {
+                          const auditData = JSON.parse(parsed.value);
+                          const transformedData = self._transformResponse(auditData);
+                          handlers.onAuditLog(transformedData);
+                        } catch (e) {
+                          console.error('Error parsing audit event:', e);
+                        }
+                      }
+                      break;
+                    case 'heartbeat':
+                      stats.heartbeatEvents++;
+                      stats.lastHeartbeat = Date.now();
+                      if (handlers.onHeartbeat) {
+                        handlers.onHeartbeat(parsed.value);
+                      }
+                      break;
+                  }
+                }
+              }
+            }
+            
+            return pump();
+          });
+        }
+        
+        return pump();
+      })
+      .catch(error => {
+        eventSource.readyState = 2; // CLOSED
+        // Only treat as error if not closed by user
+        if (!isClosedByUser) {
+          stats.errorEvents++;
+          console.error('❌ SSE connection error:', error);
+          if (handlers.onError) {
+            handlers.onError(error);
+          }
+        }
+      });
+      
+      return eventSource;
+    } else {
+      // Node.js environment - try to use eventsource package
+      let EventSourceImpl;
+      try {
+        EventSourceImpl = require('eventsource');
+      } catch (e) {
+        throw new Error('EventSource is not available. Install the "eventsource" package for Node.js.');
+      }
+      
+      eventSource = new EventSourceImpl(url, {
+        headers: {
+          'Authorization': `Bearer ${this.token}`
+        }
+      });
+      
+      // Track statistics
+      const stats = {
+        auditEvents: 0,
+        connectionEvents: 0,
+        heartbeatEvents: 0,
+        errorEvents: 0,
+        startTime: Date.now(),
+        lastHeartbeat: null
+      };
+      
+      // Attach statistics to eventSource for access
+      eventSource.getStats = () => ({
+        ...stats,
+        durationSeconds: (Date.now() - stats.startTime) / 1000,
+        lastHeartbeatSecondsAgo: stats.lastHeartbeat ? (Date.now() - stats.lastHeartbeat) / 1000 : null
+      });
+      
+      // Handle connection established
+      eventSource.addEventListener('connected', (event) => {
+        stats.connectionEvents++;
+        console.log(`🔗 Connected to audit stream for project ${id}`);
+        if (handlers.onConnected) {
+          handlers.onConnected(JSON.parse(event.data));
+        }
+      });
+      
+      // Handle audit log events
+      eventSource.addEventListener('audit-log', (event) => {
+        stats.auditEvents++;
+        const auditData = JSON.parse(event.data);
+        const transformedData = this._transformResponse(auditData);
+        if (handlers.onAuditLog) {
+          handlers.onAuditLog(transformedData);
+        }
+      });
+      
+      // Handle heartbeat
+      eventSource.addEventListener('heartbeat', (event) => {
+        stats.heartbeatEvents++;
+        stats.lastHeartbeat = Date.now();
+        if (handlers.onHeartbeat) {
+          handlers.onHeartbeat(event.data);
+        }
+      });
+      
+      // Handle errors
+      eventSource.onerror = (error) => {
+        stats.errorEvents++;
+        console.error('❌ SSE connection error:', error);
+        if (handlers.onError) {
+          handlers.onError(error);
+        }
+      };
+    }
+    
+    return eventSource;
   }
 
   /**
