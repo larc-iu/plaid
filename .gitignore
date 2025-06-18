@@ -35,3 +35,4 @@ Gemfile.lock
 .aider*
 .lsp
 .clj-kondo
+__pycache__/
