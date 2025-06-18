@@ -14,9 +14,10 @@
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
+  "Get a token layer by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (let [db (pxc/->db db-like)]
-    (pxc/find-entity db {:token-layer/id id})))
+  (when-let [token-layer-entity (pxc/find-entity (pxc/->db db-like) {:token-layer/id id})]
+    (select-keys token-layer-entity attr-keys)))
 
 (defn- parent-id [db id]
   (-> (xt/q db

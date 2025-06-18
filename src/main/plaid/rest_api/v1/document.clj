@@ -43,7 +43,7 @@
                                                  (doc/get db document-id))]
                                   (if (some? document)
                                     {:status 200
-                                     :body   (dissoc document :xt/id)}
+                                     :body   document}
                                     {:status 404
                                      :body   {:error "Document not found"}})))}
          :patch  {:summary    "Update a document. Supported keys:\n\n<body>name</body>: update a document's name."
@@ -53,7 +53,7 @@
                                 (let [{:keys [success code error]} (doc/merge {:node xtdb} document-id {:document/name name} user-id)]
                                   (if success
                                     {:status 200
-                                     :body   (dissoc (doc/get xtdb document-id) :xt/id)}
+                                     :body   (doc/get xtdb document-id)}
                                     {:status (or code 404)
                                      :body   {:error (or error "Failed to update document or document not found")}})))}
          :delete {:summary    "Delete a document and all data contained."

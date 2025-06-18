@@ -43,7 +43,7 @@
                           (let [text-layer (txtl/get db text-layer-id)]
                             (if (some? text-layer)
                               {:status 200
-                               :body   (dissoc text-layer :xt/id)}
+                               :body   text-layer}
                               {:status 404
                                :body   {:error "Text layer not found"}})))}
       :patch  {:summary    "Update a text layer's name."
@@ -52,7 +52,7 @@
                              (let [{:keys [success code error]} (txtl/merge {:node xtdb} text-layer-id {:text-layer/name name} user-id)]
                                (if success
                                  {:status 200
-                                  :body   (dissoc (txtl/get xtdb text-layer-id) :xt/id)}
+                                  :body   (txtl/get xtdb text-layer-id)}
                                  {:status (or code 404)
                                   :body   {:error (or error "Failed to update text layer or text layer not found")}})))}
       :delete {:summary "Delete a text layer."

@@ -10,9 +10,10 @@
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
+  "Get a relation layer by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (let [db (pxc/->db db-like)]
-    (pxc/find-entity db {:relation-layer/id id})))
+  (when-let [relation-layer-entity (pxc/find-entity (pxc/->db db-like) {:relation-layer/id id})]
+    (select-keys relation-layer-entity attr-keys)))
 
 (defn- parent-id [db id]
   (-> (xt/q db

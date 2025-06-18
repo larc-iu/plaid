@@ -16,9 +16,10 @@
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
+  "Get a document by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (let [db (pxc/->db db-like)]
-    (pxc/find-entity db {:document/id id})))
+  (when-let [document-entity (pxc/find-entity (pxc/->db db-like) {:document/id id})]
+    (select-keys document-entity attr-keys)))
 
 (defn project-id [db-like id]
   (:document/project (pxc/entity (pxc/->db db-like) id)))

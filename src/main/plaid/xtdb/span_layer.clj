@@ -12,9 +12,10 @@
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
+  "Get a span layer by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (let [db (pxc/->db db-like)]
-    (pxc/find-entity db {:span-layer/id id})))
+  (when-let [span-layer-entity (pxc/find-entity (pxc/->db db-like) {:span-layer/id id})]
+    (select-keys span-layer-entity attr-keys)))
 
 (defn- parent-id [db id]
   (-> (xt/q db

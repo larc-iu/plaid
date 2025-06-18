@@ -12,14 +12,20 @@
                 :user/is-admin])
 
 ;; reads --------------------------------------------------------------------------------
-(defn get [db-like id]
-  (pxc/find-entity (pxc/->db db-like) {:user/id id}))
+(defn get 
+  "Get a user by ID, formatted for external consumption (API responses)."
+  [db-like id]
+  (when-let [user-entity (pxc/find-entity (pxc/->db db-like) {:user/id id})]
+    (select-keys user-entity [:user/id :user/username :user/is-admin])))
 
 (defn admin? [user-record]
   (:user/is-admin user-record))
 
-(defn get-all [db-like]
-  (pxc/find-entities (pxc/->db db-like) {:user/id '_}))
+(defn get-all 
+  "Get all users, formatted for external consumption (API responses)."
+  [db-like]
+  (map #(select-keys % [:user/id :user/username :user/is-admin])
+       (pxc/find-entities (pxc/->db db-like) {:user/id '_})))
 
 ;; writes --------------------------------------------------------------------------------
 (defn create* [xt-map id is-admin password]
