@@ -12,10 +12,15 @@
                 :user/is-admin])
 
 ;; reads --------------------------------------------------------------------------------
+(defn get-internal
+  "Internal function to get a user by ID with all fields (including sensitive ones)."
+  [db-like id]
+  (pxc/find-entity (pxc/->db db-like) {:user/id id}))
+
 (defn get 
   "Get a user by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (when-let [user-entity (pxc/find-entity (pxc/->db db-like) {:user/id id})]
+  (when-let [user-entity (get-internal db-like id)]
     (select-keys user-entity [:user/id :user/username :user/is-admin])))
 
 (defn admin? [user-record]
@@ -53,7 +58,7 @@
   (when-let [name (:user/username m)]
     (pxc/valid-name? name))
   (let [{:keys [db node]} (pxc/ensure-db xt-map)
-        attrs (select-keys (get db eid) [:user/password-hash :user/password-changes :user/username :user/is-admin])
+        attrs (select-keys (get-internal db eid) [:user/password-hash :user/password-changes :user/username :user/is-admin])
         attrs (if-let [new-password (:password m)]
                 (-> attrs
                     (assoc :user/password-hash (hashers/derive new-password))
