@@ -4,6 +4,7 @@
             [org.httpkit.server :as http-kit]
             [plaid.server.config :refer [config]]
             [plaid.server.middleware :refer [middleware]]
+            [plaid.server.events] ; Start the events system
             [taoensso.timbre :as log]))
 
 ;; https://github.com/ptaoussanis/sente/blob/master/src/taoensso/sente/server_adapters/jetty9.clj

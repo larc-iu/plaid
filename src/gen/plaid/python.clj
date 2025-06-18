@@ -168,6 +168,101 @@
       
       :else nil)))
 
+(defn- generate-python-sse-listen-method
+  "Generate a Python SSE listen method for audit events"
+  [operation]
+  (let [{:keys [bundle-name method-name path path-params summary]} operation
+        ;; Extract project ID from path parameters
+        project-id-param (first path-params)  ; Should be "id" for /projects/{id}/listen
+        transformed-method-name (common/transform-method-name method-name :snake_case)]
+    
+    (str "    def " transformed-method-name "(self, " (kebab->snake project-id-param) ": str, on_event: Callable, timeout: int = 30) -> Dict[str, Any]:\n"
+         "        \"\"\"\n"
+         "        " (transform-parameter-references (or summary "")) "\n"
+         "        \n"
+         "        Args:\n"
+         "            " (kebab->snake project-id-param) ": The UUID of the project to listen to\n"
+         "            on_event: Callback function that receives audit event data (dict)\n"
+         "            timeout: Maximum time to listen in seconds (None for infinite)\n"
+         "            \n"
+         "        Returns:\n"
+         "            Dict[str, Any]: Summary of the listening session\n"
+         "        \"\"\"\n"
+         "        import requests\n"
+         "        import json\n"
+         "        import time\n"
+         "        \n"
+         "        url = f\"{self.client.base_url}" path "\"\n"
+         "        headers = {\n"
+         "            'Authorization': f'Bearer {self.client.token}',\n"
+         "            'Accept': 'text/event-stream',\n"
+         "            'Cache-Control': 'no-cache',\n"
+         "            'Connection': 'keep-alive'\n"
+         "        }\n"
+         "        \n"
+         "        session = requests.Session()\n"
+         "        session.headers.update(headers)\n"
+         "        \n"
+         "        audit_events_received = 0\n"
+         "        connection_events = 0\n"
+         "        heartbeat_events = 0\n"
+         "        error_events = 0\n"
+         "        start_time = time.time()\n"
+         "        last_heartbeat = time.time()\n"
+         "        \n"
+         "        try:\n"
+         "            with session.get(url, stream=True, timeout=None) as response:\n"
+         "                response.raise_for_status()\n"
+         "                \n"
+         "                for line in response.iter_lines(decode_unicode=True, chunk_size=None):\n"
+         "                    if timeout and (time.time() - start_time) > timeout:\n"
+         "                        break\n"
+         "                        \n"
+         "                    if line and line.strip():\n"
+         "                        if line.startswith('event: '):\n"
+         "                            event_type = line[7:].strip()\n"
+         "                        elif line.startswith('data: '):\n"
+         "                            try:\n"
+         "                                data_str = line[6:].strip()\n"
+         "                                if data_str:\n"
+         "                                    data = json.loads(data_str)\n"
+         "                                    \n"
+         "                                    # Handle different event types internally\n"
+         "                                    if event_type == 'connected':\n"
+         "                                        connection_events += 1\n"
+         "                                        print(f'🔗 Connected to audit stream for project {" (kebab->snake project-id-param) "}')\n"
+         "                                    elif event_type == 'heartbeat':\n"
+         "                                        heartbeat_events += 1\n"
+         "                                        last_heartbeat = time.time()\n"
+         "                                        # Heartbeats handled silently\n"
+         "                                    elif event_type == 'audit-log':\n"
+         "                                        audit_events_received += 1\n"
+         "                                        # Transform response data and call user callback\n"
+         "                                        transformed_data = self.client._transform_response(data)\n"
+         "                                        on_event(transformed_data)\n"
+         "                                    else:\n"
+         "                                        print(f'⚠️  Unknown event type received: {event_type}')\n"
+         "                                        \n"
+         "                            except json.JSONDecodeError as e:\n"
+         "                                error_events += 1\n"
+         "                                print(f'❌ JSON decode error: {e}')\n"
+         "                                # Don't call user callback for JSON errors\n"
+         "        \n"
+         "        except requests.exceptions.RequestException as e:\n"
+         "            error_events += 1\n"
+         "            print(f'❌ Connection error: {e}')\n"
+         "            # Don't call user callback for connection errors\n"
+         "        \n"
+         "        # Return session summary\n"
+         "        return {\n"
+         "            'audit_events': audit_events_received,\n"
+         "            'connection_events': connection_events,\n"
+         "            'heartbeat_events': heartbeat_events,\n"
+         "            'error_events': error_events,\n"
+         "            'duration_seconds': time.time() - start_time,\n"
+         "            'last_heartbeat_seconds_ago': time.time() - last_heartbeat if heartbeat_events > 0 else None\n"
+         "        }\n")))
+
 (defn- generate-python-method
   "Generate a Python method for an API endpoint"
   [operation sync?]
@@ -273,8 +368,13 @@
   [bundle-name operations]
   (let [class-name (str (kebab->pascal bundle-name) "Resource")
         methods (mapcat (fn [op]
-                         [(generate-python-method op true)
-                          (generate-python-method op false)])
+                         ;; Check if this is an SSE listen method
+                         (if (= (:method-name op) "listen")
+                           ;; Generate only the SSE method for listen endpoints
+                           [(generate-python-sse-listen-method op)]
+                           ;; Generate sync and async methods for regular endpoints
+                           [(generate-python-method op true)
+                            (generate-python-method op false)]))
                        operations)]
     (str "class " class-name ":\n"
          "    \"\"\"\n"
@@ -611,7 +711,7 @@
          "\n"
          "import requests\n"
          "import aiohttp\n"
-         "from typing import Any, Dict, List, Optional, Union\n"
+         "from typing import Any, Dict, List, Optional, Union, Callable\n"
          "\n"
          "\n"
          batch-builder-class "\n\n"

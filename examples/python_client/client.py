@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Tue Jun 17 15:25:56 EDT 2025
+Generated on: Tue Jun 17 20:41:33 EDT 2025
 """
 
 import requests
@@ -2886,6 +2886,93 @@ class ProjectsResource:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text()
+
+    def listen(self, id: str, on_event, timeout: int = 30) -> Dict[str, Any]:
+        """
+        Listen to audit log events for a project via Server-Sent Events
+        
+        Args:
+            id: The UUID of the project to listen to
+            on_event: Callback function that receives audit event data (dict)
+            timeout: Maximum time to listen in seconds (None for infinite)
+            
+        Returns:
+            Dict[str, Any]: Summary of the listening session
+        """
+        import requests
+        import json
+        import time
+        
+        url = f"{self.client.base_url}/api/v1/projects/{id}/listen"
+        headers = {
+            'Authorization': f'Bearer {self.client.token}',
+            'Accept': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+        }
+        
+        session = requests.Session()
+        session.headers.update(headers)
+        
+        audit_events_received = 0
+        connection_events = 0
+        heartbeat_events = 0
+        error_events = 0
+        start_time = time.time()
+        last_heartbeat = time.time()
+        
+        try:
+            with session.get(url, stream=True, timeout=None) as response:
+                response.raise_for_status()
+                
+                for line in response.iter_lines(decode_unicode=True, chunk_size=None):
+                    if timeout and (time.time() - start_time) > timeout:
+                        break
+                        
+                    if line and line.strip():
+                        if line.startswith('event: '):
+                            event_type = line[7:].strip()
+                        elif line.startswith('data: '):
+                            try:
+                                data_str = line[6:].strip()
+                                if data_str:
+                                    data = json.loads(data_str)
+                                    
+                                    # Handle different event types internally
+                                    if event_type == 'connected':
+                                        connection_events += 1
+                                        print(f'🔗 Connected to audit stream for project {id}')
+                                    elif event_type == 'heartbeat':
+                                        heartbeat_events += 1
+                                        last_heartbeat = time.time()
+                                        # Heartbeats handled silently
+                                    elif event_type == 'audit-log':
+                                        audit_events_received += 1
+                                        # Transform response data and call user callback
+                                        transformed_data = self.client._transform_response(data)
+                                        on_event(transformed_data)
+                                    else:
+                                        print(f'⚠️  Unknown event type received: {event_type}')
+                                        
+                            except json.JSONDecodeError as e:
+                                error_events += 1
+                                print(f'❌ JSON decode error: {e}')
+                                # Don't call user callback for JSON errors
+        
+        except requests.exceptions.RequestException as e:
+            error_events += 1
+            print(f'❌ Connection error: {e}')
+            # Don't call user callback for connection errors
+        
+        # Return session summary
+        return {
+            'audit_events': audit_events_received,
+            'connection_events': connection_events,
+            'heartbeat_events': heartbeat_events,
+            'error_events': error_events,
+            'duration_seconds': time.time() - start_time,
+            'last_heartbeat_seconds_ago': time.time() - last_heartbeat if heartbeat_events > 0 else None
+        }
 
     def add_maintainer(self, id: str, user_id: str) -> Any:
         """

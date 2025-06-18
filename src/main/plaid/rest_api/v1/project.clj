@@ -3,7 +3,70 @@
             [reitit.coercion.malli]
             [plaid.xtdb.project :as prj]
             [plaid.xtdb.common :as pxc]
-            [xtdb.api :as xt]))
+            [xtdb.api :as xt]
+            [plaid.server.events :as events]
+            [clojure.core.async :as async]
+            [clojure.data.json :as json]
+            [org.httpkit.server :as http-kit]))
+
+(defn sse-handler
+  "Handle SSE connections for project audit log events"
+  [{{{:keys [id]} :path} :parameters :as req}]
+  (http-kit/as-channel req
+    {:on-open  (fn [channel]
+                 (let [client-chan (async/chan (async/sliding-buffer 100))
+                       stop-chan   (async/chan)]
+
+                   ;; Register client for this project
+                   (events/register-client! id client-chan)
+
+                   ;; Send SSE headers
+                   (http-kit/send! channel
+                                   {:status  200
+                                    :headers {"Content-Type"                 "text/event-stream"
+                                              "Cache-Control"                "no-cache"
+                                              "Connection"                   "keep-alive"
+                                              "Access-Control-Allow-Origin"  "*"
+                                              "Access-Control-Allow-Headers" "Content-Type"}}
+                                   false)                   ; don't close connection
+
+                   ;; Send initial connection message
+                   (http-kit/send! channel "event: connected\ndata: {\"status\": \"connected\"}\n\n" false)
+
+                   ;; Start heartbeat with proper shutdown handling
+                   (async/go-loop []
+                     (let [[_ ch] (async/alts! [(async/timeout 30000) stop-chan])]
+                       (if (= ch stop-chan)
+                         nil  ; exit loop on stop signal
+                         (if (try
+                               (http-kit/send! channel "event: heartbeat\ndata: ping\n\n" false)
+                               true
+                               (catch Exception _
+                                 false))
+                           (recur)
+                           nil))))
+
+                   ;; Main event loop with proper shutdown handling
+                   (async/go-loop []
+                     (let [[event ch] (async/alts! [client-chan stop-chan])]
+                       (cond
+                         (= ch stop-chan) nil  ; exit loop on stop signal
+                         event             (if (try
+                                                 (let [event-str (str "event: audit-log\n"
+                                                                      "data: " (json/write-str event) "\n\n")]
+                                                   (http-kit/send! channel event-str false)
+                                                   true)
+                                                 (catch Exception _
+                                                   false))
+                                             (recur)
+                                             nil)
+                         :else             nil)))  ; channel closed, exit
+
+                   ;; Store mapping for cleanup using the channel itself as key
+                   (events/register-channel-mapping! channel client-chan id stop-chan)))
+
+     :on-close (fn [channel _]
+                 (events/cleanup-channel! channel))}))
 
 (def project-routes
   ["/projects"
@@ -108,4 +171,12 @@
                              (let [{:keys [success code error]} (prj/remove-maintainer {:node xtdb} id user-id actor-user-id)]
                                (if success
                                  {:status 204}
-                                 {:status (or code 400) :body {:error error}})))}}]]])
+                                 {:status (or code 400) :body {:error error}})))}}]]
+
+   ;; SSE endpoint for audit log events
+   ["/:id/listen"
+    {:parameters {:path [:map [:id :uuid]]}
+     :get        {:summary    "Listen to audit log events for a project via Server-Sent Events"
+                  :middleware [[pra/wrap-reader-required #(-> % :parameters :path :id)]]
+                  :openapi    {:x-client-method "listen"}
+                  :handler    sse-handler}}]])
