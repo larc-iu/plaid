@@ -31,15 +31,12 @@
 
 ;; Route handling
 (defn wrap-rest-routes
-  [xtdb-node]
+  [handler xtdb-node]
   (let [rest-handler (rest-handler xtdb-node secret-key)]
     (fn [{:keys [uri] :as req}]
-      (cond
-        (re-matches #"^/api/v1/" uri)
+      (if (str/starts-with? uri "/api/v1/")
         (rest-handler req)
-
-        :else
-        (rest-handler req)))))
+        (handler req)))))
 
 (defn wrap-xtdb-inspector [ring-handler]
   (let [inspector? (-> config :plaid.server.xtdb/config :use-inspector)
@@ -54,6 +51,7 @@
 (mount/defstate middleware
   :start
   (let [defaults-config (:ring.middleware/defaults-config config)]
-    (-> (wrap-rest-routes xtdb-node)
+    (-> (fn [_] {:status 404 :body "Not Found"})
+        (wrap-rest-routes xtdb-node)
         wrap-xtdb-inspector
         (wrap-defaults defaults-config))))
