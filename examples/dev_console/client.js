@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Tue Jun 17 23:47:37 EDT 2025
+ * Generated on: Wed Jun 18 19:41:54 EDT 2025
  */
 
   /**
@@ -476,6 +476,12 @@ name: update a document's name.
     };
     this.projects = {
       /**
+       * Send a message to all clients that are listening to a project. Useful for e.g. telling an NLP service to perform some work.
+ * @param {string} id - Id identifier
+ * @param {any} body - Required. Body
+       */
+      sendMessage: this._projectsSendMessage.bind(this),
+      /**
        * Set a user's access level to read and write for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
@@ -500,13 +506,10 @@ name: update a document's name.
        */
       removeReader: this._projectsRemoveReader.bind(this),
       /**
-       * Listen to audit log events for a project via Server-Sent Events
+       * Listen to audit log events and messages for a project via Server-Sent Events
  * @param {string} id - The UUID of the project to listen to
- * @param {object} handlers - Event handlers
- * @param {function} handlers.onAuditLog - Audit log event handler
- * @param {function} [handlers.onConnected] - Connection event handler
- * @param {function} [handlers.onError] - Error event handler
- * @param {function} [handlers.onHeartbeat] - Heartbeat event handler
+ * @param {function} onEvent - Callback function that receives (eventType, data)
+ * @param {number} [timeout=30] - Maximum time to listen in seconds
        */
       listen: this._projectsListen.bind(this),
       /**
@@ -2563,6 +2566,46 @@ name: update a document's name.
   }
 
   /**
+   * Send a message to all clients that are listening to a project. Useful for e.g. telling an NLP service to perform some work.
+   */
+  async _projectsSendMessage(id, body) {
+    const url = `${this.baseUrl}/api/v1/projects/${id}/message`;
+    const bodyObj = {
+      "body": body
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
    * Set a user's access level to read and write for this project.
    */
   async _projectsAddWriter(id, userId) {
@@ -2695,16 +2738,13 @@ name: update a document's name.
   }
 
   /**
-   * Listen to audit log events for a project via Server-Sent Events
+   * Listen to audit log events and messages for a project via Server-Sent Events
    * @param {string} id - The UUID of the project to listen to
-   * @param {object} handlers - Event handlers object
-   * @param {function} handlers.onAuditLog - Called when an audit log event is received
-   * @param {function} [handlers.onConnected] - Called when connection is established
-   * @param {function} [handlers.onError] - Called on connection error
-   * @param {function} [handlers.onHeartbeat] - Called on heartbeat events
+   * @param {function} onEvent - Callback function that receives (eventType, data)
+   * @param {number} [timeout=30] - Maximum time to listen in seconds
    * @returns {EventSource} The EventSource instance (call .close() to stop listening)
    */
-  _projectsListen(id, handlers = {}) {
+  _projectsListen(id, onEvent, timeout = 30) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/listen`;
     
     // Browser EventSource doesn't support custom headers
@@ -2716,30 +2756,40 @@ name: update a document's name.
       const controller = new AbortController();
       let isClosed = false;
       let isClosedByUser = false;
+      const startTime = Date.now();
       
       // Create a mock EventSource object
       eventSource = {
         close: () => {
+          if (isClosed) return; // Already closed
           isClosed = true;
           isClosedByUser = true;
+          
           controller.abort();
+          eventSource._cleanup?.();
         },
         readyState: 0, // CONNECTING
         getStats: () => ({
-          ...stats,
-          durationSeconds: (Date.now() - stats.startTime) / 1000,
-          lastHeartbeatSecondsAgo: stats.lastHeartbeat ? (Date.now() - stats.lastHeartbeat) / 1000 : null
+          durationSeconds: (Date.now() - startTime) / 1000
         })
       };
       
-      // Track statistics
-      const stats = {
-        auditEvents: 0,
-        connectionEvents: 0,
-        heartbeatEvents: 0,
-        errorEvents: 0,
-        startTime: Date.now(),
-        lastHeartbeat: null
+      // Clean up connection when page is unloaded
+      const beforeUnloadHandler = () => {
+        eventSource.close();
+      };
+      
+      if (typeof window !== 'undefined') {
+        window.addEventListener('beforeunload', beforeUnloadHandler);
+        window.addEventListener('pagehide', beforeUnloadHandler);
+      }
+      
+      // Store cleanup function on eventSource for manual cleanup
+      eventSource._cleanup = () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('beforeunload', beforeUnloadHandler);
+          window.removeEventListener('pagehide', beforeUnloadHandler);
+        }
       };
       
       // Start the fetch-based SSE connection
@@ -2783,6 +2833,12 @@ name: update a document's name.
               return;
             }
             
+            // Check timeout
+            if (timeout && (Date.now() - startTime) / 1000 > timeout) {
+              eventSource.close();
+              return;
+            }
+            
             buffer += decoder.decode(value, {stream: true});
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
@@ -2796,38 +2852,20 @@ name: update a document's name.
                 if (parsed.type === 'event') {
                   currentEvent = parsed.value;
                 } else if (parsed.type === 'data' && currentEvent) {
-                  // Handle different event types
-                  switch (currentEvent) {
-                    case 'connected':
-                      stats.connectionEvents++;
-                      console.log(`🔗 Connected to audit stream for project ${id}`);
-                      if (handlers.onConnected) {
-                        try {
-                          handlers.onConnected(JSON.parse(parsed.value));
-                        } catch (e) {
-                          console.error('Error parsing connected event:', e);
-                        }
-                      }
-                      break;
-                    case 'audit-log':
-                      stats.auditEvents++;
-                      if (handlers.onAuditLog) {
-                        try {
-                          const auditData = JSON.parse(parsed.value);
-                          const transformedData = self._transformResponse(auditData);
-                          handlers.onAuditLog(transformedData);
-                        } catch (e) {
-                          console.error('Error parsing audit event:', e);
-                        }
-                      }
-                      break;
-                    case 'heartbeat':
-                      stats.heartbeatEvents++;
-                      stats.lastHeartbeat = Date.now();
-                      if (handlers.onHeartbeat) {
-                        handlers.onHeartbeat(parsed.value);
-                      }
-                      break;
+                  // Handle internal events
+                  if (currentEvent === 'connected') {
+                    // Connected to event stream
+                  } else if (currentEvent === 'heartbeat') {
+                    // Handle heartbeats silently
+                  } else {
+                    // Pass all other event types to callback
+                    try {
+                      const eventData = JSON.parse(parsed.value);
+                      const transformedData = self._transformResponse(eventData);
+                      onEvent(currentEvent, transformedData);
+                    } catch (e) {
+                      // Error parsing event data
+                    }
                   }
                 }
               }
@@ -2841,13 +2879,10 @@ name: update a document's name.
       })
       .catch(error => {
         eventSource.readyState = 2; // CLOSED
+        eventSource._cleanup?.();
         // Only treat as error if not closed by user
         if (!isClosedByUser) {
-          stats.errorEvents++;
-          console.error('❌ SSE connection error:', error);
-          if (handlers.onError) {
-            handlers.onError(error);
-          }
+          // SSE connection error occurred
         }
       });
       
@@ -2856,7 +2891,8 @@ name: update a document's name.
       // Node.js environment - try to use eventsource package
       let EventSourceImpl;
       try {
-        EventSourceImpl = require('eventsource');
+        const EventSourceModule = require('eventsource');
+        EventSourceImpl = EventSourceModule.default || EventSourceModule;
       } catch (e) {
         throw new Error('EventSource is not available. Install the "eventsource" package for Node.js.');
       }
@@ -2867,59 +2903,69 @@ name: update a document's name.
         }
       });
       
-      // Track statistics
-      const stats = {
-        auditEvents: 0,
-        connectionEvents: 0,
-        heartbeatEvents: 0,
-        errorEvents: 0,
-        startTime: Date.now(),
-        lastHeartbeat: null
-      };
+      const startTime = Date.now();
       
       // Attach statistics to eventSource for access
       eventSource.getStats = () => ({
-        ...stats,
-        durationSeconds: (Date.now() - stats.startTime) / 1000,
-        lastHeartbeatSecondsAgo: stats.lastHeartbeat ? (Date.now() - stats.lastHeartbeat) / 1000 : null
+        durationSeconds: (Date.now() - startTime) / 1000
       });
       
       // Handle connection established
       eventSource.addEventListener('connected', (event) => {
-        stats.connectionEvents++;
-        console.log(`🔗 Connected to audit stream for project ${id}`);
-        if (handlers.onConnected) {
-          handlers.onConnected(JSON.parse(event.data));
-        }
-      });
-      
-      // Handle audit log events
-      eventSource.addEventListener('audit-log', (event) => {
-        stats.auditEvents++;
-        const auditData = JSON.parse(event.data);
-        const transformedData = this._transformResponse(auditData);
-        if (handlers.onAuditLog) {
-          handlers.onAuditLog(transformedData);
-        }
+        // Connected to event stream
       });
       
       // Handle heartbeat
       eventSource.addEventListener('heartbeat', (event) => {
-        stats.heartbeatEvents++;
-        stats.lastHeartbeat = Date.now();
-        if (handlers.onHeartbeat) {
-          handlers.onHeartbeat(event.data);
+        // Handle heartbeats silently
+      });
+      
+      // Handle all other events generically
+      const originalAddEventListener = eventSource.addEventListener.bind(eventSource);
+      
+      // Override addEventListener to catch all events
+      eventSource.addEventListener = (eventType, handler) => {
+        if (eventType === 'connected' || eventType === 'heartbeat') {
+          // Use original for internal events
+          originalAddEventListener(eventType, handler);
+        } else {
+          // For all other events, transform and call onEvent
+          originalAddEventListener(eventType, (event) => {
+            try {
+              const eventData = JSON.parse(event.data);
+              const transformedData = this._transformResponse(eventData);
+              onEvent(eventType, transformedData);
+            } catch (e) {
+              // Error parsing event data
+            }
+          });
         }
+      };
+      
+      // Add generic listener for audit-log and message events
+      ['audit-log', 'message'].forEach(eventType => {
+        originalAddEventListener(eventType, (event) => {
+          try {
+            const eventData = JSON.parse(event.data);
+            const transformedData = this._transformResponse(eventData);
+            onEvent(eventType, transformedData);
+          } catch (e) {
+            // Error parsing event data
+          }
+        });
       });
       
       // Handle errors
       eventSource.onerror = (error) => {
-        stats.errorEvents++;
-        console.error('❌ SSE connection error:', error);
-        if (handlers.onError) {
-          handlers.onError(error);
-        }
+        // SSE connection error occurred
       };
+      
+      // Add timeout if specified
+      if (timeout) {
+        setTimeout(() => {
+          eventSource.close();
+        }, timeout * 1000);
+      }
     }
     
     return eventSource;
@@ -4067,6 +4113,38 @@ precedence: ordering value for the token relative to other tokens with the same 
       return this._transformResponse(data);
     }
     return await response.text();
+  }
+
+  /**
+   * Authenticate and return a new client instance with token
+   * @param {string} baseUrl - The base URL for the API
+   * @param {string} username - Username for authentication
+   * @param {string} password - Password for authentication
+   * @returns {Promise<PlaidClient>} - Authenticated client instance
+   */
+  static async login(baseUrl, username, password) {
+    const response = await fetch(`${baseUrl}/api/v1/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ username, password })
+    });
+    
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${baseUrl}/api/v1/login`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = `${baseUrl}/api/v1/login`;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const data = await response.json();
+    const token = data.token || '';
+    return new PlaidClient(baseUrl, token);
   }
 }
 

@@ -66,16 +66,12 @@ interface DocumentsBundle {
 }
 
 interface ProjectsBundle {
+  sendMessage(id: string, body: any): Promise<any>;
   addWriter(id: string, userId: string): Promise<any>;
   removeWriter(id: string, userId: string): Promise<any>;
   addReader(id: string, userId: string): Promise<any>;
   removeReader(id: string, userId: string): Promise<any>;
-  listen(id: string, handlers: {
-    onAuditLog?: (event: any) => void;
-    onConnected?: (data: any) => void;
-    onError?: (error: any) => void;
-    onHeartbeat?: (data: string) => void;
-  }): EventSource;
+  listen(id: string, onEvent: (eventType: string, data: any) => void, timeout?: number): EventSource;
   addMaintainer(id: string, userId: string): Promise<any>;
   removeMaintainer(id: string, userId: string): Promise<any>;
   audit(projectId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any>;
@@ -125,6 +121,7 @@ interface TokensBundle {
 
 declare class PlaidClient {
   constructor(baseUrl: string, token: string);
+  static login(baseUrl: string, username: string, password: string): Promise<PlaidClient>;
   relations: RelationsBundle;
   spanLayers: SpanLayersBundle;
   spans: SpansBundle;

@@ -2,8 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [reitit.coercion.malli]
             [plaid.xtdb.project :as prj]
-            [plaid.xtdb.common :as pxc]
-            [xtdb.api :as xt]
+            [taoensso.timbre :as log]
             [plaid.server.events :as events]
             [clojure.core.async :as async]
             [clojure.data.json :as json]
@@ -12,13 +11,16 @@
 (defn sse-handler
   "Handle SSE connections for project audit log events"
   [{{{:keys [id]} :path} :parameters :as req}]
+  ;; TODO: for some reason, JS client never disconnects...
   (http-kit/as-channel req
-    {:on-open  (fn [channel]
+      {:on-open  (fn [channel]
                  (let [client-chan (async/chan (async/sliding-buffer 100))
                        stop-chan (async/chan)]
 
                    ;; Register client for this project
                    (events/register-client! id client-chan)
+                   (log/debug "New SSE client connected for project" id
+                              "- Total clients:" (events/get-client-count))
 
                    ;; Send SSE headers
                    (http-kit/send! channel
@@ -31,40 +33,57 @@
                    ;; Send initial connection message
                    (http-kit/send! channel "event: connected\ndata: {\"status\": \"connected\"}\n\n" false)
 
-                   ;; Start heartbeat with proper shutdown handling
-                   (async/go-loop []
-                     (let [[_ ch] (async/alts! [(async/timeout 30000) stop-chan])]
+                   ;; Start heartbeat loop with failure detection
+                   (async/go-loop [heartbeat-failures 0]
+                     (let [[_ ch] (async/alts! [(async/timeout 3000) stop-chan])]
                        (if (= ch stop-chan)
                          nil  ; exit loop on stop signal
-                         (if (try
-                               (http-kit/send! channel "event: heartbeat\ndata: ping\n\n" false)
-                               true
-                               (catch Exception _
-                                 false))
-                           (recur)
-                           nil))))
+                         (let [send-success
+                               (try
+                                 ;; Check if channel is still open before sending
+                                 (if (http-kit/send! channel "event: heartbeat\ndata: \"ping\"\n\n" false)
+                                   (do (log/debug "Heartbeat sent successfully for project" id)
+                                       true)
+                                   (do (log/warn "Heartbeat send failed for project" id "- send returned false")
+                                       false))
+                                 (catch Exception e
+                                   (log/warn "Heartbeat failed for project" id ":" (.getMessage e))
+                                   false))]
+                           (if send-success
+                             (recur 0)  ; reset failure count
+                             (if (< heartbeat-failures 3)  ; allow only 1 failure before cleanup
+                               (recur (inc heartbeat-failures))
+                               (do
+                                 (log/info "Too many heartbeat failures, cleaning up connection for project" id)
+                                 (events/cleanup-channel! channel)
+                                 nil)))))))
 
-                   ;; Main event loop with proper shutdown handling
+                   ;; Main event loop
                    (async/go-loop []
                      (let [[event ch] (async/alts! [client-chan stop-chan])]
                        (cond
                          (= ch stop-chan) nil ; exit loop on stop signal
-                         event (if (try
-                                     (let [event-str (str "event: audit-log\n"
-                                                          "data: " (json/write-str event) "\n\n")]
-                                       (http-kit/send! channel event-str false)
-                                       true)
-                                     (catch Exception _
-                                       false))
-                                 (recur)
-                                 nil)
+                         event (do
+                                 (try
+                                   (let [event-type (case (:event/type event)
+                                                      :audit-log "audit-log"
+                                                      :message "message"
+                                                      "unknown")
+                                         event-str (str "event: " event-type "\n"
+                                                        "data: " (json/write-str event) "\n\n")]
+                                     (http-kit/send! channel event-str false))
+                                   (catch Exception e
+                                     (log/warn "Event send failed for project" id ":" (.getMessage e))))
+                                 (recur))
                          :else nil)))  ; channel closed, exit
 
                    ;; Store mapping for cleanup using the channel itself as key
                    (events/register-channel-mapping! channel client-chan id stop-chan)))
 
-     :on-close (fn [channel _]
-                 (events/cleanup-channel! channel))}))
+       :on-close (fn [channel _]
+                   (log/debug "SSE connection closed, cleaning up channel for project" id)
+                   (events/cleanup-channel! channel)
+                   (log/debug "After cleanup - Total clients:" (events/get-client-count)))}))
 
 (def project-routes
   ["/projects"
@@ -174,7 +193,26 @@
    ;; SSE endpoint for audit log events
    ["/:id/listen"
     {:parameters {:path [:map [:id :uuid]]}
-     :get        {:summary    "Listen to audit log events for a project via Server-Sent Events"
+     :get        {:summary    "Listen to audit log events and messages for a project via Server-Sent Events"
                   :middleware [[pra/wrap-reader-required #(-> % :parameters :path :id)]]
                   :openapi    {:x-client-method "listen"}
-                  :handler    sse-handler}}]])
+                  :handler    sse-handler}}]
+
+   ;; Message endpoint for sending arbitrary messages to project subscribers
+   ["/:id/message"
+    {:parameters {:path [:map [:id :uuid]]}
+     :post       {:summary    (str "Send a message to all clients that are listening to a project. "
+                                   "Useful for e.g. telling an NLP service to perform some work.")
+                  :middleware [[pra/wrap-writer-required #(-> % :parameters :path :id)]]
+                  :openapi    {:x-client-method "send-message"}
+                  :parameters {:body any?}  ; Accept any JSON payload
+                  :handler    (fn [{{{:keys [id]} :path
+                                     body         :body} :parameters
+                                    user-id              :user/id
+                                    :as                  req}]
+                                (if (events/publish-message! id body user-id)
+                                  {:status 200
+                                   :body   {:success true
+                                            :message "Message sent to subscribers"}}
+                                  {:status 500
+                                   :body   {:error "Failed to publish message"}}))}}]])
