@@ -3,6 +3,7 @@
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.relation :as r]
+            [plaid.xtdb.metadata :as metadata]
             [clojure.string :as str])
   (:refer-clojure :exclude [get merge]))
 
@@ -16,18 +17,8 @@
   "Get a span by ID, formatted for external consumption (API responses)."
   [db-like id]
   (when-let [span-entity (pxc/find-entity (pxc/->db db-like) {:span/id id})]
-    (let [core-attrs (select-keys span-entity [:span/id :span/value :span/tokens])
-          metadata-attrs (->> span-entity
-                             (filter (fn [[k v]]
-                                       (and (= "span" (namespace k))
-                                            (str/starts-with? (name k) "_")
-                                            (not (nil? v)))))  ; Filter out nil values
-                             (reduce (fn [m [k v]]
-                                       (assoc m (subs (name k) 1) v))
-                                     {}))]
-      (if (empty? metadata-attrs)
-        core-attrs
-        (assoc core-attrs :metadata metadata-attrs)))))
+    (let [core-attrs (select-keys span-entity [:span/id :span/value :span/tokens])]
+      (metadata/add-metadata-to-response core-attrs span-entity "span"))))
 
 (defn project-id [db-like id]
   (-> (xt/q (pxc/->db db-like)
@@ -144,12 +135,7 @@
         project-id (project-id-from-layer db layer)
         doc-id (get-doc-id-of-token db (first tokens))
         ;; Expand metadata into span attributes
-        metadata-attrs (if metadata
-                         (reduce-kv (fn [m k v]
-                                      (assoc m (keyword "span" (str "_" k)) v))
-                                    {}
-                                    metadata)
-                         {})
+        metadata-attrs (metadata/transform-metadata-for-storage metadata "span")
         attrs-with-metadata (clojure.core/merge attrs metadata-attrs)
         tx-ops (create* xt-map attrs-with-metadata)]
     (op/make-operation
@@ -284,66 +270,33 @@
 (defn set-metadata*
   "Build transaction ops for replacing all metadata on a span"
   [xt-map eid metadata]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        existing-span (pxc/entity db eid)
-        old-metadata-keys (->> existing-span
-                              (filter (fn [[k _v]]
-                                        (and (= "span" (namespace k))
-                                             (str/starts-with? (name k) "_"))))
-                              (map first))
-        new-metadata (reduce-kv (fn [m k v]
-                                  (assoc m (keyword "span" (str "_" k)) v))
-                                {}
-                                metadata)
-        clear-old (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)
-        final-updates (clojure.core/merge clear-old new-metadata)]
-    (pxc/merge* xt-map eid final-updates)))
+  (metadata/set-metadata-tx-ops* xt-map eid metadata "span"))
 
 (defn set-metadata-operation
   "Build an operation for replacing all metadata on a span"
   [xt-map eid metadata]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        project-id (project-id db eid)
-        span (pxc/entity db eid)
-        doc-id (get-doc-id-of-token db (first (:span/tokens span)))
-        tx-ops (set-metadata* xt-map eid metadata)]
-    (op/make-operation
-     {:type        :span/set-metadata
-      :project     project-id
-      :document    doc-id
-      :description (str "Set metadata on span " eid " with " (count metadata) " keys")
-      :tx-ops      tx-ops})))
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db span] (get-doc-id-of-token db (first (:span/tokens span))))]
+    (metadata/make-set-metadata-operation xt-map eid metadata "span" project-id-fn document-id-fn)))
 
 (defn set-metadata [xt-map eid metadata user-id]
-  (submit-operations! xt-map [(set-metadata-operation xt-map eid metadata)] user-id))
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db span] (get-doc-id-of-token db (first (:span/tokens span))))]
+    (metadata/set-metadata xt-map eid metadata user-id "span" project-id-fn document-id-fn)))
 
 (defn delete-metadata*
   "Build transaction ops for removing all metadata from a span"
   [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        existing-span (pxc/entity db eid)
-        old-metadata-keys (->> existing-span
-                              (filter (fn [[k _v]]
-                                        (and (= "span" (namespace k))
-                                             (str/starts-with? (name k) "_"))))
-                              (map first))
-        clear-updates (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)]
-    (pxc/merge* xt-map eid clear-updates)))
+  (metadata/delete-metadata-tx-ops* xt-map eid "span"))
 
 (defn delete-metadata-operation
   "Build an operation for removing all metadata from a span"
   [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        project-id (project-id db eid)
-        span (pxc/entity db eid)
-        doc-id (get-doc-id-of-token db (first (:span/tokens span)))
-        tx-ops (delete-metadata* xt-map eid)]
-    (op/make-operation
-     {:type        :span/delete-metadata
-      :project     project-id
-      :document    doc-id
-      :description (str "Delete all metadata from span " eid)
-      :tx-ops      tx-ops})))
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db span] (get-doc-id-of-token db (first (:span/tokens span))))]
+    (metadata/make-delete-metadata-operation xt-map eid "span" project-id-fn document-id-fn)))
 
 (defn delete-metadata [xt-map eid user-id]
-  (submit-operations! xt-map [(delete-metadata-operation xt-map eid)] user-id))
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db span] (get-doc-id-of-token db (first (:span/tokens span))))]
+    (metadata/delete-metadata xt-map eid user-id "span" project-id-fn document-id-fn)))

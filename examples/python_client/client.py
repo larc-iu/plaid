@@ -1,12 +1,12 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Tue Jun 17 20:41:33 EDT 2025
+Generated on: Tue Jun 17 23:47:39 EDT 2025
 """
 
 import requests
 import aiohttp
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Callable
 
 
 class BatchBuilder:
@@ -1423,7 +1423,105 @@ class TextsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def create(self, text_layer_id: str, document_id: str, body: str) -> Any:
+    def set_metadata(self, text_id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            text_id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.put(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def set_metadata_async(self, text_id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            text_id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def delete_metadata(self, text_id: str) -> Any:
+        """
+        Remove all metadata from a text.
+
+        Args:
+            text_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def delete_metadata_async(self, text_id: str) -> Any:
+        """
+        Remove all metadata from a text.
+
+        Args:
+            text_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def create(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
         """
         Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
@@ -1435,12 +1533,14 @@ body: the string which is the content of this text.
             text_layer_id: Required body parameter
             document_id: Required body parameter
             body: Required body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
         body_dict = {
             'text-layer-id': text_layer_id,
             'document-id': document_id,
-            'body': body
+            'body': body,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -1457,7 +1557,7 @@ body: the string which is the content of this text.
             return self.client._transform_response(data)
         return response.text()
 
-    async def create_async(self, text_layer_id: str, document_id: str, body: str) -> Any:
+    async def create_async(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
         """
         Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
@@ -1469,12 +1569,14 @@ body: the string which is the content of this text.
             text_layer_id: Required body parameter
             document_id: Required body parameter
             body: Required body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
         body_dict = {
             'text-layer-id': text_layer_id,
             'document-id': document_id,
-            'body': body
+            'body': body,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -2887,7 +2989,7 @@ class ProjectsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def listen(self, id: str, on_event, timeout: int = 30) -> Dict[str, Any]:
+    def listen(self, id: str, on_event: Callable, timeout: int = 30) -> Dict[str, Any]:
         """
         Listen to audit log events for a project via Server-Sent Events
         
@@ -4291,7 +4393,7 @@ class TokensResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def create(self, token_layer_id: str, text_id: str, begin: int, end: int, precedence: int = None) -> Any:
+    def create(self, token_layer_id: str, text_id: str, begin: int, end: int, precedence: int = None, metadata: Any = None) -> Any:
         """
         Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
 
@@ -4307,6 +4409,7 @@ precedence: used for tokens with the same begin value in order to indicate their
             begin: Required body parameter
             end: Required body parameter
             precedence: Optional body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens"
         body_dict = {
@@ -4314,7 +4417,8 @@ precedence: used for tokens with the same begin value in order to indicate their
             'text-id': text_id,
             'begin': begin,
             'end': end,
-            'precedence': precedence
+            'precedence': precedence,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -4331,7 +4435,7 @@ precedence: used for tokens with the same begin value in order to indicate their
             return self.client._transform_response(data)
         return response.text()
 
-    async def create_async(self, token_layer_id: str, text_id: str, begin: int, end: int, precedence: int = None) -> Any:
+    async def create_async(self, token_layer_id: str, text_id: str, begin: int, end: int, precedence: int = None, metadata: Any = None) -> Any:
         """
         Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
 
@@ -4347,6 +4451,7 @@ precedence: used for tokens with the same begin value in order to indicate their
             begin: Required body parameter
             end: Required body parameter
             precedence: Optional body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens"
         body_dict = {
@@ -4354,7 +4459,8 @@ precedence: used for tokens with the same begin value in order to indicate their
             'text-id': text_id,
             'begin': begin,
             'end': end,
-            'precedence': precedence
+            'precedence': precedence,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -4539,6 +4645,104 @@ precedence: ordering value for the token relative to other tokens with the same 
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def set_metadata(self, token_id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            token_id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.put(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def set_metadata_async(self, token_id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            token_id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def delete_metadata(self, token_id: str) -> Any:
+        """
+        Remove all metadata from a token.
+
+        Args:
+            token_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def delete_metadata_async(self, token_id: str) -> Any:
+        """
+        Remove all metadata from a token.
+
+        Args:
+            token_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
                 
                 content_type = response.headers.get('content-type', '').lower()

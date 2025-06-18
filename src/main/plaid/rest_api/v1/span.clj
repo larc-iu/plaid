@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.span
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.metadata :as metadata]
             [reitit.coercion.malli]
             [plaid.xtdb.span :as s]
             [plaid.xtdb.span-layer :as sl]))
@@ -80,20 +81,4 @@
                                         {:status (or code 400) :body {:error (or error "Failed to set span tokens")}})))}}]
 
     ;; Metadata operations
-    ["/metadata" {:put    {:summary    "Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed."
-                           :middleware [[pra/wrap-writer-required get-project-id]]
-                           :openapi    {:x-client-method "set-metadata"}
-                           :parameters {:body [:map-of string? any?]}
-                           :handler    (fn [{{{:keys [span-id]} :path metadata :body} :parameters xtdb :xtdb user-id :user/id}]
-                                         (let [{:keys [success code error]} (s/set-metadata {:node xtdb} span-id metadata user-id)]
-                                           (if success
-                                             {:status 200 :body (s/get xtdb span-id)}
-                                             {:status (or code 404) :body {:error (or error "Failed to update span metadata")}})))}
-                  :delete {:summary    "Remove all metadata from a span."
-                           :middleware [[pra/wrap-writer-required get-project-id]]
-                           :openapi    {:x-client-method "delete-metadata"}
-                           :handler    (fn [{{{:keys [span-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                                         (let [{:keys [success code error]} (s/delete-metadata {:node xtdb} span-id user-id)]
-                                           (if success
-                                             {:status 200 :body (s/get xtdb span-id)}
-                                             {:status (or code 404) :body {:error (or error "Failed to clear span metadata")}})))}}]]])
+    (metadata/metadata-routes "span" :span-id get-project-id s/get s/set-metadata s/delete-metadata)]])

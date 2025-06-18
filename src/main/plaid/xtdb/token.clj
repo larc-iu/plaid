@@ -3,6 +3,7 @@
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.span :as s]
+            [plaid.xtdb.metadata :as metadata]
             [taoensso.timbre :as log])
   (:refer-clojure :exclude [get merge]))
 
@@ -15,8 +16,11 @@
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
+  "Get a token by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (pxc/find-entity (pxc/->db db-like) {:token/id id}))
+  (when-let [token-entity (pxc/find-entity (pxc/->db db-like) {:token/id id})]
+    (let [core-attrs (select-keys token-entity [:token/id :token/text :token/begin :token/end :token/layer :token/precedence])]
+      (metadata/add-metadata-to-response core-attrs token-entity "token"))))
 
 (defn project-id [db-like id]
   (-> (xt/q (pxc/->db db-like)
@@ -68,12 +72,18 @@
   [db text-id]
   (:text/document (pxc/entity db text-id)))
 
-;; Mutations --------------------------------------------------------------------------------
+;; Mutations ----------------------------------------------------------------------
+(defn- token-attr? 
+  "Check if an attribute key belongs to token namespace (including metadata attributes)."
+  [k]
+  (= "token" (namespace k)))
+
 (defn create*
   [xt-map attrs]
   (let [{:keys [db node] :as xt-map} (pxc/ensure-db xt-map)
+        token-attrs (filter (fn [[k v]] (token-attr? k)) attrs)
         {:token/keys [id end begin text layer precedence] :as token} (clojure.core/merge (pxc/new-record "token")
-                                                                                         (select-keys attrs attr-keys))
+                                                                                          (into {} token-attrs))
         #_#_other-tokens (map first (xt/q db
                                           '{:find  [(pull ?t [:token/begin :token/end])]
                                             :where [[?t :token/layer layer]
@@ -149,8 +159,30 @@
       :description (str "Create token " begin "-" end " in layer " layer)
       :tx-ops      tx-ops})))
 
-(defn create [xt-map attrs user-id]
-  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+(defn create-operation-with-metadata
+  "Build an operation for creating a token with metadata"
+  [xt-map attrs metadata]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        {:token/keys [layer text begin end]} attrs
+        project-id (project-id-from-layer db layer)
+        doc-id (get-doc-id-of-text db text)
+        ;; Expand metadata into token attributes
+        metadata-attrs (metadata/transform-metadata-for-storage metadata "token")
+        attrs-with-metadata (clojure.core/merge attrs metadata-attrs)
+        tx-ops (create* xt-map attrs-with-metadata)]
+    (op/make-operation
+     {:type        :token/create
+      :project     project-id
+      :document    doc-id
+      :description (str "Create token " begin "-" end " in layer " layer
+                        (when metadata (str " with " (count metadata) " metadata keys")))
+      :tx-ops      tx-ops})))
+
+(defn create
+  ([xt-map attrs user-id]
+   (create xt-map attrs user-id nil))
+  ([xt-map attrs user-id metadata]
+   (submit-operations-with-extras! xt-map [(create-operation-with-metadata xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn- set-extent [{:keys [node db] :as xt-map} eid {new-begin :token/begin new-end :token/end}]
   (let [{:token/keys [begin end text layer] :as token} (pxc/entity db eid)
@@ -337,3 +369,13 @@
 
 (defn delete [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
+
+(defn set-metadata [xt-map eid metadata user-id]
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db token] (get-doc-id-of-text db (:token/text token)))]
+    (metadata/set-metadata xt-map eid metadata user-id "token" project-id-fn document-id-fn)))
+
+(defn delete-metadata [xt-map eid user-id]
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db token] (get-doc-id-of-text db (:token/text token)))]
+    (metadata/delete-metadata xt-map eid user-id "token" project-id-fn document-id-fn)))

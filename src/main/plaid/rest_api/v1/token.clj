@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.token
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.metadata :as metadata]
             [reitit.coercion.malli]
             [plaid.xtdb.token :as tok]
             [plaid.xtdb.token-layer :as tokl]))
@@ -32,14 +33,15 @@
                                    [:text-id :uuid]
                                    [:begin int?]
                                    [:end int?]
-                                   [:precedence {:optional true} int?]]}
-               :handler    (fn [{{{:keys [token-layer-id text-id begin end precedence]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                                   [:precedence {:optional true} int?]
+                                   [:metadata {:optional true} [:map-of string? any?]]]}
+               :handler    (fn [{{{:keys [token-layer-id text-id begin end precedence metadata]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [attrs (cond-> {:token/layer token-layer-id
                                                   :token/text  text-id
                                                   :token/begin begin
                                                   :token/end   end}
                                                  (some? precedence) (assoc :token/precedence precedence))
-                                   result (tok/create {:node xtdb} attrs user-id)]
+                                   result (tok/create {:node xtdb} attrs user-id metadata)]
                                (if (:success result)
                                  {:status 201 :body {:id (:extra result)}}
                                  {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
@@ -52,7 +54,7 @@
                   :handler    (fn [{{{:keys [token-id]} :path} :parameters db :db}]
                                 (let [token (tok/get db token-id)]
                                   (if (some? token)
-                                    {:status 200 :body (dissoc token :xt/id)}
+                                    {:status 200 :body token}
                                     {:status 404 :body {:error "Token not found"}})))}
          :patch  {:summary    (str "Update a token. Supported keys:"
                                    "\n"
@@ -71,7 +73,7 @@
                                                         (some? precedence) (assoc :token/precedence precedence))
                                       {success :success code :code error :error} (tok/merge {:node xtdb} token-id raw-attrs user-id)]
                                   (if success
-                                    {:status 200 :body (dissoc (tok/get xtdb token-id) :xt/id)}
+                                    {:status 200 :body (tok/get xtdb token-id)}
                                     {:status (or code 404) :body {:error (or error "Failed to update token or token not found")}})))}
          :delete {:summary    (str "Delete a token and remove it from any spans. If this causes the span to have no "
                                    "remaining associated tokens, the span will also be deleted.")
@@ -80,4 +82,7 @@
                                 (let [{:keys [success code error]} (tok/delete {:node xtdb} token-id user-id)]
                                   (if success
                                     {:status 204}
-                                    {:status (or code 404) :body {:error (or error "Token not found")}})))}}]]]) 
+                                    {:status (or code 404) :body {:error (or error "Token not found")}})))}}]
+
+    ;; Metadata operations
+    (metadata/metadata-routes "token" :token-id get-project-id tok/get tok/set-metadata tok/delete-metadata)]]) 

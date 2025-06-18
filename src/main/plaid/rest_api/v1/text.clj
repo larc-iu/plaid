@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.text
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.metadata :as metadata]
             [reitit.coercion.malli]
             [plaid.xtdb.text-layer :as txtl]
             [plaid.xtdb.text :as txt]))
@@ -25,12 +26,13 @@
                :parameters {:body [:map
                                    [:text-layer-id :uuid]
                                    [:document-id :uuid]
-                                   [:body string?]]}
-               :handler    (fn [{{{:keys [text-layer-id document-id body]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                                   [:body string?]
+                                   [:metadata {:optional true} [:map-of string? any?]]]}
+               :handler    (fn [{{{:keys [text-layer-id document-id body metadata]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [attrs {:text/layer    text-layer-id
                                           :text/document document-id
                                           :text/body     body}
-                                   result (txt/create {:node xtdb} attrs user-id)]
+                                   result (txt/create {:node xtdb} attrs user-id metadata)]
                                (if (:success result)
                                  {:status 201
                                   :body   {:id (:extra result)}}
@@ -46,7 +48,7 @@
                                 (let [text (txt/get db text-id)]
                                   (if (some? text)
                                     {:status 200
-                                     :body   (dissoc text :xt/id)}
+                                     :body   text}
                                     {:status 404
                                      :body   {:error "Text not found"}})))}
          :patch  {:summary    (str "Update a text's <body>body</body>. A diff is computed between the new and old "
@@ -60,7 +62,7 @@
                                 (let [{:keys [success code error]} (txt/update-body {:node xtdb} text-id body user-id)]
                                   (if success
                                     {:status 200
-                                     :body   (dissoc (txt/get xtdb text-id) :xt/id)}
+                                     :body   (txt/get xtdb text-id)}
                                     {:status (or code 404)
                                      :body   {:error (or error "Failed to update text or text not found")}})))}
          :delete {:summary    "Delete a text and all dependent data."
@@ -70,4 +72,7 @@
                                   (if success
                                     {:status 204}
                                     {:status (or code 404)
-                                     :body   {:error (or error "Text not found")}})))}}]]])
+                                     :body   {:error (or error "Text not found")}})))}}]
+
+    ;; Metadata operations
+    (metadata/metadata-routes "text" :text-id get-project-id txt/get txt/set-metadata txt/delete-metadata)]])

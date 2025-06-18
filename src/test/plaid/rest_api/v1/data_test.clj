@@ -48,12 +48,20 @@
                              :body   {:span-layer-id span-layer-id :name name}}))
 
 ;; Text API Helper Functions
-(defn- create-text [user-request-fn text-layer-id document-id body]
-  (api-call user-request-fn {:method :post
-                             :path   "/api/v1/texts"
-                             :body   {:text-layer-id text-layer-id
-                                      :document-id   document-id
-                                      :body          body}}))
+(defn- create-text
+  ([user-request-fn text-layer-id document-id body]
+   (api-call user-request-fn {:method :post
+                              :path   "/api/v1/texts"
+                              :body   {:text-layer-id text-layer-id
+                                       :document-id   document-id
+                                       :body          body}}))
+  ([user-request-fn text-layer-id document-id body metadata]
+   (api-call user-request-fn {:method :post
+                              :path   "/api/v1/texts"
+                              :body   {:text-layer-id text-layer-id
+                                       :document-id   document-id
+                                       :body          body
+                                       :metadata      metadata}})))
 
 (defn- get-text [user-request-fn text-id]
   (api-call user-request-fn {:method :get
@@ -64,19 +72,45 @@
                              :path   (str "/api/v1/texts/" text-id)
                              :body   {:body new-body}}))
 
+(defn- update-text-metadata [user-request-fn text-id metadata]
+  (api-call user-request-fn {:method :put
+                             :path   (str "/api/v1/texts/" text-id "/metadata")
+                             :body   metadata}))
+
+(defn- delete-text-metadata [user-request-fn text-id]
+  (api-call user-request-fn {:method :delete
+                             :path   (str "/api/v1/texts/" text-id "/metadata")}))
+
 (defn- delete-text [user-request-fn text-id]
   (api-call user-request-fn {:method :delete
                              :path   (str "/api/v1/texts/" text-id)}))
 
 ;; Token API Helper Functions
-(defn- create-token [user-request-fn token-layer-id text-id begin end & [precedence]]
-  (api-call user-request-fn {:method :post
-                             :path   "/api/v1/tokens"
-                             :body   (cond-> {:token-layer-id token-layer-id
-                                              :text-id        text-id
-                                              :begin          begin
-                                              :end            end}
-                                             precedence (assoc :precedence precedence))}))
+(defn- create-token 
+  ([user-request-fn token-layer-id text-id begin end]
+   (api-call user-request-fn {:method :post
+                              :path   "/api/v1/tokens"
+                              :body   {:token-layer-id token-layer-id
+                                       :text-id        text-id
+                                       :begin          begin
+                                       :end            end}}))
+  ([user-request-fn token-layer-id text-id begin end precedence]
+   (api-call user-request-fn {:method :post
+                              :path   "/api/v1/tokens"
+                              :body   (cond-> {:token-layer-id token-layer-id
+                                               :text-id        text-id
+                                               :begin          begin
+                                               :end            end}
+                                              (some? precedence) (assoc :precedence precedence))}))
+  ([user-request-fn token-layer-id text-id begin end precedence metadata]
+   (api-call user-request-fn {:method :post
+                              :path   "/api/v1/tokens"
+                              :body   (cond-> {:token-layer-id token-layer-id
+                                               :text-id        text-id
+                                               :begin          begin
+                                               :end            end}
+                                              (some? precedence) (assoc :precedence precedence)
+                                              (some? metadata) (assoc :metadata metadata))})))
 
 (defn- get-token [user-request-fn token-id]
   (api-call user-request-fn {:method :get
@@ -89,6 +123,15 @@
                                              begin (assoc :begin begin)
                                              end (assoc :end end)
                                              precedence (assoc :precedence precedence))}))
+
+(defn- update-token-metadata [user-request-fn token-id metadata]
+  (api-call user-request-fn {:method :put
+                             :path   (str "/api/v1/tokens/" token-id "/metadata")
+                             :body   metadata}))
+
+(defn- delete-token-metadata [user-request-fn token-id]
+  (api-call user-request-fn {:method :delete
+                             :path   (str "/api/v1/tokens/" token-id "/metadata")}))
 
 (defn- delete-token [user-request-fn token-id]
   (api-call user-request-fn {:method :delete
@@ -1214,3 +1257,232 @@
         (assert-not-found (get-relation admin-request rel-id)) ; deleted with span
         
         (delete-text admin-request text-id)))))
+
+(deftest text-metadata-functionality
+  (let [proj (create-test-project admin-request "TextMetadataProj")
+        doc (create-test-document admin-request proj "TextDoc")
+        tl-res (create-text-layer admin-request proj "TextTL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)]
+    
+    (testing "Create text with metadata"
+      (let [metadata {"source" "corpus-v2" "language" "en" "annotated" true "quality" 0.95}
+            text-res (create-text admin-request tl doc "Hello world" metadata)
+            text-id (-> text-res :body :id)]
+        (assert-created text-res)
+        
+        ;; Verify metadata is returned
+        (let [retrieved (get-text admin-request text-id)]
+          (assert-ok retrieved)
+          (is (= "Hello world" (-> retrieved :body :text/body)))
+          (is (= metadata (-> retrieved :body :metadata))))
+        
+        ;; Update metadata
+        (let [new-metadata {"source" "corpus-v3" "reviewer" "human"}
+              update-result (update-text-metadata admin-request text-id new-metadata)]
+          (assert-ok update-result)
+          (is (= new-metadata (-> update-result :body :metadata)))
+          (is (= "Hello world" (-> update-result :body :text/body))))
+        
+        ;; Update text body (metadata should be preserved)
+        (assert-ok (update-text admin-request text-id "Updated text"))
+        (let [after-body-update (get-text admin-request text-id)]
+          (assert-ok after-body-update)
+          (is (= "Updated text" (-> after-body-update :body :text/body)))
+          (is (= {"source" "corpus-v3" "reviewer" "human"} (-> after-body-update :body :metadata))))
+        
+        ;; Clear metadata
+        (let [clear-result (delete-text-metadata admin-request text-id)]
+          (assert-ok clear-result)
+          (is (= "Updated text" (-> clear-result :body :text/body)))
+          (is (nil? (-> clear-result :body :metadata))))
+        
+        (assert-no-content (delete-text admin-request text-id))))
+    
+    (testing "Text without metadata"
+      (let [text-res (create-text admin-request tl doc "Simple text")
+            text-id (-> text-res :body :id)]
+        (assert-created text-res)
+        (let [retrieved (get-text admin-request text-id)]
+          (assert-ok retrieved)
+          (is (= "Simple text" (-> retrieved :body :text/body)))
+          (is (nil? (-> retrieved :body :metadata))))
+        
+        ;; Add metadata to existing text
+        (let [metadata {"added-later" true}
+              update-result (update-text-metadata admin-request text-id metadata)]
+          (assert-ok update-result)
+          (is (= metadata (-> update-result :body :metadata)))
+          (is (= "Simple text" (-> update-result :body :text/body))))
+        
+        (assert-no-content (delete-text admin-request text-id))))))
+
+(deftest token-metadata-functionality
+  (let [proj (create-test-project admin-request "TokenMetadataProj")
+        doc (create-test-document admin-request proj "TokenDoc")
+        tl-res (create-text-layer admin-request proj "TokenTL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)
+        text-res (create-text admin-request tl doc "hello world test")
+        text-id (-> text-res :body :id)
+        _ (assert-created text-res)
+        tkl-res (create-token-layer admin-request tl "TokenTKL")
+        tkl (-> tkl-res :body :id)
+        _ (assert-created tkl-res)]
+    
+    (testing "Create token with metadata"
+      (let [metadata {"pos" "NOUN" "lemma" "hello" "confidence" 0.98 "manual" false}
+            token-res (create-token admin-request tkl text-id 0 5 nil metadata)
+            token-id (-> token-res :body :id)]
+        (assert-created token-res)
+        
+        ;; Verify metadata is returned
+        (let [retrieved (get-token admin-request token-id)]
+          (assert-ok retrieved)
+          (is (= 0 (-> retrieved :body :token/begin)))
+          (is (= 5 (-> retrieved :body :token/end)))
+          (is (= metadata (-> retrieved :body :metadata))))
+        
+        ;; Update metadata
+        (let [new-metadata {"pos" "INTJ" "annotator" "human"}
+              update-result (update-token-metadata admin-request token-id new-metadata)]
+          (assert-ok update-result)
+          (is (= new-metadata (-> update-result :body :metadata)))
+          (is (= 0 (-> update-result :body :token/begin)))
+          (is (= 5 (-> update-result :body :token/end))))
+        
+        ;; Update token extents (metadata should be preserved)
+        (assert-ok (update-token admin-request token-id :begin 1 :end 4))
+        (let [after-extent-update (get-token admin-request token-id)]
+          (assert-ok after-extent-update)
+          (is (= 1 (-> after-extent-update :body :token/begin)))
+          (is (= 4 (-> after-extent-update :body :token/end)))
+          (is (= {"pos" "INTJ" "annotator" "human"} (-> after-extent-update :body :metadata))))
+        
+        ;; Clear metadata
+        (let [clear-result (delete-token-metadata admin-request token-id)]
+          (assert-ok clear-result)
+          (is (= 1 (-> clear-result :body :token/begin)))
+          (is (= 4 (-> clear-result :body :token/end)))
+          (is (nil? (-> clear-result :body :metadata))))
+        
+        (assert-no-content (delete-token admin-request token-id))))
+    
+    (testing "Token without metadata"
+      (let [token-res (create-token admin-request tkl text-id 6 11)
+            token-id (-> token-res :body :id)]
+        (assert-created token-res)
+        (let [retrieved (get-token admin-request token-id)]
+          (assert-ok retrieved)
+          (is (= 6 (-> retrieved :body :token/begin)))
+          (is (= 11 (-> retrieved :body :token/end)))
+          (is (nil? (-> retrieved :body :metadata))))
+        
+        ;; Add metadata to existing token
+        (let [metadata {"added-later" true "type" "word"}
+              update-result (update-token-metadata admin-request token-id metadata)]
+          (assert-ok update-result)
+          (is (= metadata (-> update-result :body :metadata)))
+          (is (= 6 (-> update-result :body :token/begin)))
+          (is (= 11 (-> update-result :body :token/end))))
+        
+        (assert-no-content (delete-token admin-request token-id))))
+    
+    (testing "Token with precedence and metadata"
+      (let [metadata {"priority" "high" "manual" true}
+            token-res (create-token admin-request tkl text-id 12 16 100 metadata)
+            token-id (-> token-res :body :id)]
+        (assert-created token-res)
+        (let [retrieved (get-token admin-request token-id)]
+          (assert-ok retrieved)
+          (is (= 12 (-> retrieved :body :token/begin)))
+          (is (= 16 (-> retrieved :body :token/end)))
+          (is (= 100 (-> retrieved :body :token/precedence)))
+          (is (= metadata (-> retrieved :body :metadata))))
+        
+        (assert-no-content (delete-token admin-request token-id))))))
+
+(deftest metadata-type-validation
+  (let [proj (create-test-project admin-request "MetadataValidationProj")
+        doc (create-test-document admin-request proj "ValidationDoc")
+        tl-res (create-text-layer admin-request proj "ValidationTL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)
+        text-res (create-text admin-request tl doc "test text")
+        text-id (-> text-res :body :id)
+        _ (assert-created text-res)
+        tkl-res (create-token-layer admin-request tl "ValidationTKL")
+        tkl (-> tkl-res :body :id)
+        _ (assert-created tkl-res)
+        token-res (create-token admin-request tkl text-id 0 4)
+        token-id (-> token-res :body :id)
+        _ (assert-created token-res)
+        sl-res (create-span-layer admin-request tkl "ValidationSL")
+        sl (-> sl-res :body :id)
+        _ (assert-created sl-res)
+        span-res (create-span admin-request sl [token-id] "test")
+        span-id (-> span-res :body :id)
+        _ (assert-created span-res)
+        rl-res (create-relation-layer admin-request sl "ValidationRL")
+        rl (-> rl-res :body :id)
+        _ (assert-created rl-res)]
+    
+    (testing "Complex metadata values work for all entity types"
+      (let [complex-metadata {"string" "value"
+                              "number" 42
+                              "float" 3.14
+                              "boolean" true
+                              "nested" {:inner "value"}  ; Use keyword keys for nested maps
+                              "array" [1 2 3]
+                              "mixed-array" ["string" 42 true nil]}]
+        
+        ;; Test text metadata (check each key-value pair)
+        (let [update-result (update-text-metadata admin-request text-id complex-metadata)
+              returned-metadata (-> update-result :body :metadata)]
+          (assert-ok update-result)
+          (is (= (count complex-metadata) (count returned-metadata)))
+          (doseq [[k v] complex-metadata]
+            (is (= v (get returned-metadata k)))))
+        
+        ;; Test token metadata  
+        (let [update-result (update-token-metadata admin-request token-id complex-metadata)
+              returned-metadata (-> update-result :body :metadata)]
+          (assert-ok update-result)
+          (is (= (count complex-metadata) (count returned-metadata)))
+          (doseq [[k v] complex-metadata]
+            (is (= v (get returned-metadata k)))))
+        
+        ;; Test span metadata
+        (let [update-result (update-span-metadata admin-request span-id complex-metadata)
+              returned-metadata (-> update-result :body :metadata)]
+          (assert-ok update-result)
+          (is (= (count complex-metadata) (count returned-metadata)))
+          (doseq [[k v] complex-metadata]
+            (is (= v (get returned-metadata k)))))
+        
+        ;; Create relation for testing
+        (let [span2-res (create-span admin-request sl [token-id] "test2")
+              span2-id (-> span2-res :body :id)
+              _ (assert-created span2-res)
+              rel-res (create-relation admin-request rl span-id span2-id "rel" complex-metadata)
+              rel-id (-> rel-res :body :id)]
+          (assert-created rel-res)
+          (let [retrieved (get-relation admin-request rel-id)
+                returned-metadata (-> retrieved :body :metadata)]
+            (assert-ok retrieved)
+            (is (= (count complex-metadata) (count returned-metadata)))
+            (doseq [[k v] complex-metadata]
+              (is (= v (get returned-metadata k)))))
+          (assert-no-content (delete-relation admin-request rel-id))
+          (assert-no-content (delete-span admin-request span2-id)))))
+    
+    (testing "Empty metadata handling"
+      (let [empty-metadata {}]
+        (assert-ok (update-text-metadata admin-request text-id empty-metadata))
+        (assert-ok (update-token-metadata admin-request token-id empty-metadata))
+        (assert-ok (update-span-metadata admin-request span-id empty-metadata))
+        
+        ;; Empty metadata means no :metadata key should be present
+        (is (nil? (-> (get-text admin-request text-id) :body :metadata)))
+        (is (nil? (-> (get-token admin-request token-id) :body :metadata)))
+        (is (nil? (-> (get-span admin-request span-id) :body :metadata)))))))

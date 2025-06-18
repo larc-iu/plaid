@@ -4,7 +4,8 @@
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.token :as tok]
-            [plaid.xtdb.span :as s])
+            [plaid.xtdb.span :as s]
+            [plaid.xtdb.metadata :as metadata])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:text/id
@@ -14,9 +15,11 @@
 
 ;; Queries ------------------------------------------------------------------------
 (defn get
+  "Get a text by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (let [db (pxc/->db db-like)]
-    (pxc/find-entity db {:text/id id})))
+  (when-let [text-entity (pxc/find-entity (pxc/->db db-like) {:text/id id})]
+    (let [core-attrs (select-keys text-entity [:text/id :text/document :text/layer :text/body])]
+      (metadata/add-metadata-to-response core-attrs text-entity "text"))))
 
 (defn project-id [db-like id]
   (-> (xt/q (pxc/->db db-like)
@@ -57,13 +60,19 @@
       first))
 
 ;; Mutations ----------------------------------------------------------------------
+(defn- text-attr? 
+  "Check if an attribute key belongs to text namespace (including metadata attributes)."
+  [k]
+  (= "text" (namespace k)))
+
 (defn create* [xt-map attrs]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         body (or (and (string? (:text/body attrs)) (:text/body attrs))
                  "")
+        text-attrs (filter (fn [[k v]] (text-attr? k)) attrs)
         {:text/keys [id document layer body] :as record} (clojure.core/merge (pxc/new-record "text")
                                                                              {:text/body ""}
-                                                                             (select-keys attrs attr-keys))
+                                                                             (into {} text-attrs))
         {project-id :document/project :as document-record} (pxc/entity db document)
         {:project/keys [text-layers] :as project} (pxc/entity db project-id)
         tx [[::xt/match document (pxc/entity db document)]
@@ -109,8 +118,30 @@
       :description (str "Create text in layer " layer " for document " document)
       :tx-ops      tx-ops})))
 
-(defn create [xt-map attrs user-id]
-  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+(defn create-operation-with-metadata
+  "Build an operation for creating a text with metadata"
+  [xt-map attrs metadata]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        {:text/keys [layer document]} attrs
+        project-id (project-id-from-layer db layer)
+        doc-id document
+        ;; Expand metadata into text attributes
+        metadata-attrs (metadata/transform-metadata-for-storage metadata "text")
+        attrs-with-metadata (clojure.core/merge attrs metadata-attrs)
+        tx-ops (create* xt-map attrs-with-metadata)]
+    (op/make-operation
+     {:type        :text/create
+      :project     project-id
+      :document    doc-id
+      :description (str "Create text in layer " layer " for document " document
+                        (when metadata (str " with " (count metadata) " metadata keys")))
+      :tx-ops      tx-ops})))
+
+(defn create
+  ([xt-map attrs user-id]
+   (create xt-map attrs user-id nil))
+  ([xt-map attrs user-id metadata]
+   (submit-operations-with-extras! xt-map [(create-operation-with-metadata xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn update-body*
   "Change the textual content (:text/body) of a text item in a way that will also update tokens
@@ -196,3 +227,13 @@
 
 (defn delete [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
+
+(defn set-metadata [xt-map eid metadata user-id]
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db text] (:text/document text))]
+    (metadata/set-metadata xt-map eid metadata user-id "text" project-id-fn document-id-fn)))
+
+(defn delete-metadata [xt-map eid user-id]
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db text] (:text/document text))]
+    (metadata/delete-metadata xt-map eid user-id "text" project-id-fn document-id-fn)))

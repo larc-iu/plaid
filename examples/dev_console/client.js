@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Tue Jun 17 22:56:11 EDT 2025
+ * Generated on: Tue Jun 17 23:47:37 EDT 2025
  */
 
   /**
@@ -311,6 +311,17 @@ metadata: optional key-value pairs for additional annotation data.
     };
     this.texts = {
       /**
+       * Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+ * @param {string} textId - Text-id identifier
+ * @param {any} body - Required. Body
+       */
+      setMetadata: this._textsSetMetadata.bind(this),
+      /**
+       * Remove all metadata from a text.
+ * @param {string} textId - Text-id identifier
+       */
+      deleteMetadata: this._textsDeleteMetadata.bind(this),
+      /**
        * Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
 textLayerId: the text's associated layer.
@@ -319,6 +330,7 @@ body: the string which is the content of this text.
  * @param {string} textLayerId - Required. Textlayerid
  * @param {string} documentId - Required. Documentid
  * @param {string} body - Required. Body
+ * @param {any} [metadata] - Optional. Metadata
        */
       create: this._textsCreate.bind(this),
       /**
@@ -667,6 +679,7 @@ precedence: used for tokens with the same begin value in order to indicate their
  * @param {number} begin - Required. Begin
  * @param {number} end - Required. End
  * @param {number} [precedence] - Optional. Precedence
+ * @param {any} [metadata] - Optional. Metadata
        */
       create: this._tokensCreate.bind(this),
       /**
@@ -691,7 +704,18 @@ precedence: ordering value for the token relative to other tokens with the same 
  * @param {number} [end] - Optional. End
  * @param {number} [precedence] - Optional. Precedence
        */
-      update: this._tokensUpdate.bind(this)
+      update: this._tokensUpdate.bind(this),
+      /**
+       * Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+ * @param {string} tokenId - Token-id identifier
+ * @param {any} body - Required. Body
+       */
+      setMetadata: this._tokensSetMetadata.bind(this),
+      /**
+       * Remove all metadata from a token.
+ * @param {string} tokenId - Token-id identifier
+       */
+      deleteMetadata: this._tokensDeleteMetadata.bind(this)
     };
   }
 
@@ -1603,18 +1627,92 @@ metadata: optional key-value pairs for additional annotation data.
   }
 
   /**
+   * Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+   */
+  async _textsSetMetadata(textId, body) {
+    const url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
+    const bodyObj = {
+      "body": body
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'PUT';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove all metadata from a text.
+   */
+  async _textsDeleteMetadata(textId) {
+    const url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
    * Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
 textLayerId: the text's associated layer.
 documentId: the text's associated document.
 body: the string which is the content of this text.
    */
-  async _textsCreate(textLayerId, documentId, body) {
+  async _textsCreate(textLayerId, documentId, body, metadata = undefined) {
     const url = `${this.baseUrl}/api/v1/texts`;
     const bodyObj = {
       "text-layer-id": textLayerId,
       "document-id": documentId,
-      "body": body
+      "body": body,
+      "metadata": metadata
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
@@ -3738,14 +3836,15 @@ begin: the inclusive character-based offset at which this token begins in the bo
 end: the exclusive character-based offset at which this token ends in the body of the text specified by textId
 precedence: used for tokens with the same begin value in order to indicate their preferred linear order.
    */
-  async _tokensCreate(tokenLayerId, textId, begin, end, precedence = undefined) {
+  async _tokensCreate(tokenLayerId, textId, begin, end, precedence = undefined, metadata = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens`;
     const bodyObj = {
       "token-layer-id": tokenLayerId,
       "text-id": textId,
       "begin": begin,
       "end": end,
-      "precedence": precedence
+      "precedence": precedence,
+      "metadata": metadata
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
@@ -3885,6 +3984,79 @@ precedence: ordering value for the token relative to other tokens with the same 
       error.statusText = response.statusText;
       error.url = url;
       error.method = 'PATCH';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+   */
+  async _tokensSetMetadata(tokenId, body) {
+    const url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
+    const bodyObj = {
+      "body": body
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'PUT';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove all metadata from a token.
+   */
+  async _tokensDeleteMetadata(tokenId) {
+    const url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
