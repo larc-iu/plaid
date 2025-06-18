@@ -64,6 +64,12 @@
   [project-id]
   (get @client-registry project-id #{}))
 
+(defn get-client-count
+  "Get the total number of clients currently registered across all projects."
+  []
+  (reduce + (map count (vals @client-registry))))
+
+
 (defn register-channel-mapping!
   "Register the relationship between an http-kit channel and its associated
    client channel, project, and stop channel. This enables proper cleanup
@@ -192,5 +198,50 @@
       (log/error e "Exception while publishing audit event"
                  {:audit-id (:audit/id audit-entry)
                   :projects (:audit/projects audit-entry)
+                  :user-id  user-id})
+      false)))
+
+(defn publish-message!
+  "Publish a message event to the event bus for distribution to subscribed clients.
+   
+   Messages are arbitrary data payloads that can be sent to project subscribers.
+   Unlike audit events, messages are not tied to database operations and are
+   purely for real-time communication.
+   
+   Parameters:
+   - project-id: The project ID this message is for
+   - message-data: Arbitrary data to send (will be JSON serialized)
+   - user-id: The user sending the message
+   
+   Returns true if message was successfully published, false otherwise."
+  [project-id message-data user-id]
+  (try
+    (log/debug "Publishing message event" {:project-id project-id 
+                                          :user-id user-id})
+    (cond
+      (nil? event-bus)
+      (do (log/warn "Event bus is not initialized") false)
+
+      (not (satisfies? clojure.core.async.impl.protocols/WritePort event-bus))
+      (do (log/warn "Event bus is not writable") false)
+
+      :else
+      (let [message-id (java.util.UUID/randomUUID)
+            event {:event/type      :message
+                   :message/id      message-id
+                   :message/project project-id
+                   :message/user    user-id
+                   :message/time    (java.util.Date.)
+                   :message/data    message-data
+                   ;; Include in audit/projects for routing compatibility
+                   :audit/projects  #{project-id}}]
+        (log/debug "Message event data:" event)
+        (let [put-result (async/put! event-bus event)]
+          (if put-result
+            (do (log/debug "Message published successfully") true)
+            (do (log/warn "Failed to put message on bus - channel may be closed") false)))))
+    (catch Exception e
+      (log/error e "Exception while publishing message event"
+                 {:project-id project-id
                   :user-id  user-id})
       false)))

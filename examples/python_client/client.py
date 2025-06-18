@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Tue Jun 17 23:47:39 EDT 2025
+Generated on: Wed Jun 18 19:41:56 EDT 2025
 """
 
 import requests
@@ -2813,6 +2813,62 @@ class ProjectsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
+    def send_message(self, id: str, body: Any) -> Any:
+        """
+        Send a message to all clients that are listening to a project. Useful for e.g. telling an NLP service to perform some work.
+
+        Args:
+            id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/message"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        response = requests.post(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def send_message_async(self, id: str, body: Any) -> Any:
+        """
+        Send a message to all clients that are listening to a project. Useful for e.g. telling an NLP service to perform some work.
+
+        Args:
+            id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/message"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
     def add_writer(self, id: str, user_id: str) -> Any:
         """
         Set a user's access level to read and write for this project.
@@ -2989,13 +3045,13 @@ class ProjectsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def listen(self, id: str, on_event: Callable, timeout: int = 30) -> Dict[str, Any]:
+    def listen(self, id: str, on_event: Callable[[str, Dict[str, Any]], None], timeout: int = 30) -> Dict[str, Any]:
         """
-        Listen to audit log events for a project via Server-Sent Events
+        Listen to audit log events and messages for a project via Server-Sent Events
         
         Args:
             id: The UUID of the project to listen to
-            on_event: Callback function that receives audit event data (dict)
+            on_event: Callback function that receives (event_type: str, data: dict)
             timeout: Maximum time to listen in seconds (None for infinite)
             
         Returns:
@@ -3034,16 +3090,19 @@ class ProjectsResource:
                     if line and line.strip():
                         if line.startswith('event: '):
                             event_type = line[7:].strip()
+                            # Event type received
                         elif line.startswith('data: '):
                             try:
                                 data_str = line[6:].strip()
-                                if data_str:
+                                # Only attempt JSON parsing if we have non-empty, JSON-like content
+                                if data_str and len(data_str) > 0 and (data_str.startswith('{') or data_str.startswith('[') or data_str.startswith('"')):
+                                    # Parse JSON data
                                     data = json.loads(data_str)
                                     
                                     # Handle different event types internally
                                     if event_type == 'connected':
                                         connection_events += 1
-                                        print(f'🔗 Connected to audit stream for project {id}')
+                                        # Connected to event stream
                                     elif event_type == 'heartbeat':
                                         heartbeat_events += 1
                                         last_heartbeat = time.time()
@@ -3052,19 +3111,26 @@ class ProjectsResource:
                                         audit_events_received += 1
                                         # Transform response data and call user callback
                                         transformed_data = self.client._transform_response(data)
-                                        on_event(transformed_data)
+                                        on_event(event_type, transformed_data)
                                     else:
-                                        print(f'⚠️  Unknown event type received: {event_type}')
-                                        
+                                        # Pass all other event types to the callback
+                                        transformed_data = self.client._transform_response(data)
+                                        on_event(event_type, transformed_data)
+                                else:
+                                    # Skip non-JSON data
+                                    pass
                             except json.JSONDecodeError as e:
                                 error_events += 1
-                                print(f'❌ JSON decode error: {e}')
+                                # JSON decode error occurred
                                 # Don't call user callback for JSON errors
         
         except requests.exceptions.RequestException as e:
             error_events += 1
-            print(f'❌ Connection error: {e}')
+            # Connection error occurred
             # Don't call user callback for connection errors
+        finally:
+            # Explicitly close the session to ensure connection cleanup
+            session.close()
         
         # Return session summary
         return {
