@@ -2,10 +2,9 @@
   "mcpServers": {
     "clojure-mcp": {
       "type": "stdio",
-      "command": "/bin/sh",
+      "command": "clojure",
       "args": [
-        "-c",
-        "clojure -X:mcp :port 7888"
+        "-X:mcp"
       ],
       "env": {}
     }
