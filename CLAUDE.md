@@ -172,3 +172,6 @@ jq -r '.paths | keys[] | select(contains("projects"))' examples/dev_console/open
 # Show authentication requirements
 jq -r '.paths | to_entries[] | select(.value | to_entries[] | .value.security) | .key' examples/dev_console/openapi.json
 ```
+
+## clojure-mcp
+When `clojure-mcp` is active, note that you can `user/start` and `user/stop` the web server. See @src/dev/user.clj.
