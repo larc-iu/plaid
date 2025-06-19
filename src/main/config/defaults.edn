@@ -25,4 +25,7 @@
  :plaid.server.xtdb/config        {:main-db-dir "data"}
 
  :plaid.xtdb.common/config        {:min-name-length 1
-                                   :max-name-length 500}}
+                                   :max-name-length 500}
+
+ :plaid.server.events/heartbeat   {:interval-ms 30000
+                                   :max-consecutive-misses 2}}

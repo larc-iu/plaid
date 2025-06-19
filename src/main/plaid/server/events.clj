@@ -23,8 +23,19 @@
             [mount.core :refer [defstate] :as mount]
             [taoensso.timbre :as log]
             [clojure.instant :as instant]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [plaid.server.config :refer [config]]
+            [org.httpkit.server :as http-kit]))
 
+;; =============================================================================
+;; Configuration
+;; =============================================================================
+
+(defn heartbeat-config []
+  "Get heartbeat configuration from global config"
+  (get config :plaid.server.events/heartbeat
+       {:interval-ms            30000
+        :max-consecutive-misses 2}))
 
 ;; =============================================================================
 ;; Client Subscription Management
@@ -36,12 +47,18 @@
   :start (atom {})
   :stop (reset! client-registry {}))
 
-;; Channel mappings for lifecycle management
-;; Maps http-kit-channel -> {:client-chan chan :project-id id :stop-chan chan}
+;; Channel mappings for lifecycle management  
+;; Maps http-kit-channel -> {:client-chan chan :project-id id :stop-chan chan :client-id id}
 ;; This allows us to clean up resources when an SSE connection closes
 (defstate channel-mappings
   :start (atom {})
   :stop (reset! channel-mappings {}))
+
+;; Heartbeat tracking maps client-id -> {:project-id id :last-heartbeat timestamp}
+;; This tracks when clients last confirmed they're alive via /heartbeat endpoint
+(defstate heartbeat-registry
+  :start (atom {})
+  :stop (reset! heartbeat-registry {}))
 
 (defn register-client!
   "Register a client channel to receive events for a specific project.
@@ -69,16 +86,43 @@
   []
   (reduce + (map count (vals @client-registry))))
 
+(defn register-client-with-id!
+  "Register a client with a unique client ID for heartbeat tracking.
+   Returns the generated client-id."
+  [project-id client-chan]
+  (let [client-id (str (java.util.UUID/randomUUID))]
+    (register-client! project-id client-chan)
+    (swap! heartbeat-registry assoc client-id {:project-id     project-id
+                                               :last-heartbeat (System/currentTimeMillis)})
+    (log/debug "Registered client with ID" client-id "for project" project-id)
+    client-id))
+
+(defn record-heartbeat!
+  "Record a heartbeat from a client. Returns true if client exists, false otherwise."
+  [project-id client-id]
+  (if-let [client-info (get @heartbeat-registry client-id)]
+    (if (= (:project-id client-info) project-id)
+      (do
+        (swap! heartbeat-registry assoc-in [client-id :last-heartbeat] (System/currentTimeMillis))
+        (log/debug "Recorded heartbeat for client" client-id "on project" project-id)
+        true)
+      (do
+        (log/warn "Client" client-id "heartbeat for wrong project:" project-id "vs" (:project-id client-info))
+        false))
+    (do
+      (log/warn "Heartbeat for unknown client" client-id)
+      false)))
 
 (defn register-channel-mapping!
   "Register the relationship between an http-kit channel and its associated
-   client channel, project, and stop channel. This enables proper cleanup
+   client channel, project, stop channel, and client ID. This enables proper cleanup
    when the SSE connection closes."
-  [http-channel client-chan project-id stop-chan]
+  [http-channel client-chan project-id stop-chan client-id]
   (swap! channel-mappings assoc http-channel {:client-chan client-chan
                                               :project-id  project-id
-                                              :stop-chan   stop-chan})
-  (log/debug "Registered channel mapping for project" project-id))
+                                              :stop-chan   stop-chan
+                                              :client-id   client-id})
+  (log/debug "Registered channel mapping for client" client-id "on project" project-id))
 
 (defn cleanup-channel!
   "Clean up all resources associated with a closed SSE connection.
@@ -86,22 +130,27 @@
    - Closing the stop channel to signal any associated go-loops
    - Unregistering the client from the project
    - Closing the client channel
+   - Removing the client from heartbeat registry
    - Removing the channel mapping"
   [http-channel]
-  (when-let [{:keys [client-chan project-id stop-chan]} (get @channel-mappings http-channel)]
-    (log/debug "Cleaning up channel for project" project-id)
+  (when-let [{:keys [client-chan project-id stop-chan client-id]} (get @channel-mappings http-channel)]
+    (log/debug "Cleaning up channel for client" client-id "on project" project-id)
     (try
       ;; Signal shutdown to any associated go-loops
       (when stop-chan
         (async/close! stop-chan))
       ;; Remove client from project subscription
       (unregister-client! project-id client-chan)
+      ;; Remove from heartbeat registry
+      (when client-id
+        (swap! heartbeat-registry dissoc client-id))
       ;; Close the client channel
       (async/close! client-chan)
+      ;; Close the http-kit channel to free server resources
+      (http-kit/close http-channel)
       (catch Exception e
         (log/warn e "Error during channel cleanup")))
     (swap! channel-mappings dissoc http-channel)))
-
 
 ;; =============================================================================
 ;; Helper Functions
@@ -120,7 +169,6 @@
           name-part (-> (name op-type-kw)
                         (str/replace #"-" "_"))]
       (str ns-part ":" name-part))))
-
 
 ;; =============================================================================
 ;; Event Publishing and Distribution
@@ -168,9 +216,9 @@
    Returns true if event was successfully published, false otherwise."
   [audit-entry operations user-id]
   (try
-    (log/debug "Publishing audit event" {:audit-id (:audit/id audit-entry) 
-                                        :projects (:audit/projects audit-entry) 
-                                        :user-id user-id})
+    (log/debug "Publishing audit event" {:audit-id (:audit/id audit-entry)
+                                         :projects (:audit/projects audit-entry)
+                                         :user-id  user-id})
     (cond
       (nil? event-bus)
       (do (log/warn "Event bus is not initialized") false)
@@ -185,7 +233,7 @@
                    :audit/documents (:audit/documents audit-entry)
                    :audit/user      user-id
                    :audit/time      (java.util.Date.)
-                   :audit/ops       (mapv #(-> (select-keys % [:op/id :op/type :op/project 
+                   :audit/ops       (mapv #(-> (select-keys % [:op/id :op/type :op/project
                                                                :op/document :op/description])
                                                (update :op/type op-type-to-string))
                                           operations)}]
@@ -216,8 +264,8 @@
    Returns true if message was successfully published, false otherwise."
   [project-id message-data user-id]
   (try
-    (log/debug "Publishing message event" {:project-id project-id 
-                                          :user-id user-id})
+    (log/debug "Publishing message event" {:project-id project-id
+                                           :user-id    user-id})
     (cond
       (nil? event-bus)
       (do (log/warn "Event bus is not initialized") false)
@@ -243,5 +291,5 @@
     (catch Exception e
       (log/error e "Exception while publishing message event"
                  {:project-id project-id
-                  :user-id  user-id})
+                  :user-id    user-id})
       false)))

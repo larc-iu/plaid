@@ -57,11 +57,12 @@ def print_header():
     print(f"📍 Base URL: {CONFIG['base_url']}")
     print(f"🏷️  Project ID: {CONFIG['project_id']}")
     print()
-    print("📝 This demonstrates the NEW unified callback approach:")
+    print("📝 This demonstrates the NEW heartbeat confirmation protocol:")
     print("   • Single callback receives (event_type, data)")
-    print("   • connected/heartbeat handled internally")
-    print("   • audit-log/message events passed to callback")
+    print("   • connected/heartbeat handled internally with confirmation")
+    print("   • audit-log/message events passed to callback") 
     print("   • Same API as JavaScript client")
+    print("   • Automatic heartbeat confirmation to server")
     print()
 
 def handle_event(event_type: str, data: Dict[str, Any], stats: EventStats) -> None:
@@ -226,7 +227,7 @@ async def run_automated_tests(client: PlaidClient, project_id: str):
     await send_test_messages(client, project_id)
     
     # Wait a bit
-    await asyncio.sleep(1)
+    await asyncio.sleep(5)
     
     # Trigger audit events  
     await trigger_audit_events(client, project_id)
@@ -274,7 +275,7 @@ def main():
         session_summary = client.projects.listen(
             CONFIG['project_id'], 
             event_handler, 
-            timeout=20
+            timeout=15
         )
         
         # Show final summary
@@ -288,15 +289,25 @@ def main():
         print(f"Total Events: {stats.audit_log + stats.message + stats.other}")
         
         if session_summary:
-            print(f"Session Data: {json.dumps(session_summary, indent=2)}")
+            print("🔧 Server Connection Details:")
+            print(f"  • Audit Events: {session_summary.get('audit_events', 0)}")
+            print(f"  • Message Events: {session_summary.get('message_events', 0)}")
+            print(f"  • Connection Events: {session_summary.get('connection_events', 0)}")
+            print(f"  • Heartbeat Events: {session_summary.get('heartbeat_events', 0)}")
+            print(f"  • Heartbeat Confirmations Sent: {session_summary.get('heartbeat_confirmations_sent', 0)}")
+            print(f"  • Error Events: {session_summary.get('error_events', 0)}")
+            print(f"  • Client ID: {session_summary.get('client_id', 'N/A')}")
+            if session_summary.get('last_heartbeat_seconds_ago') is not None:
+                print(f"  • Last Heartbeat: {session_summary.get('last_heartbeat_seconds_ago'):.1f}s ago")
         
         print()
-        print("🎉 Python client alignment test completed!")
-        print("🔍 This demonstrated the NEW unified event handling:")
+        print("🎉 Python client test completed!")
+        print("🔍 This demonstrated the NEW heartbeat confirmation protocol:")
         print("   ✅ Single callback receives (event_type, data)")  
         print("   ✅ Same API structure as JavaScript client")
         print("   ✅ Both message and audit-log events handled")
-        print("   ✅ Proper data extraction and display")
+        print("   ✅ Automatic heartbeat confirmation to server")
+        print("   ✅ Proper connection cleanup and server notification")
         
     except KeyboardInterrupt:
         print("\n👋 Test interrupted by user")

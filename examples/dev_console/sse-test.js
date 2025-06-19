@@ -20,7 +20,7 @@ async function testSSEListen(username, password) {
     return;
   }
 
-  console.log('🚀 Starting SSE Listen API Test...');
+  console.log('🚀 Starting Fetch SSE Listen API Test (Python-like Connection Cleanup)...');
   
   try {
     // Step 1: Authenticate and get a client
@@ -44,11 +44,11 @@ async function testSSEListen(username, password) {
       console.log(`✅ Created new project: ${projectId}`);
     }
     
-    // Step 3: Set up event listener
-    console.log('📝 Step 3: Setting up SSE listener...');
+    // Step 3: Set up event listener with NEW Fetch-based SSE implementation
+    console.log('📝 Step 3: Setting up Fetch SSE listener (replaces EventSource)...');
     let eventCount = 0;
     
-    const eventSource = client.projects.listen(
+    const sseConnection = client.projects.listen(
       projectId, 
       (eventType, data) => {
         eventCount++;
@@ -69,27 +69,36 @@ async function testSSEListen(username, password) {
       30 // 30 second timeout
     );
     
-    console.log('✅ SSE listener started. Listening for events...');
+    console.log('✅ Fetch SSE connection started (Python-like behavior)');
     console.log('📢 You can now:');
     console.log('   1. Perform operations on the project to generate audit events');
     console.log('   2. Send test messages using client.projects.sendMessage()');
-    console.log('   3. Wait to see heartbeat events (every 3 seconds)');
+    console.log('   3. Watch heartbeat confirmations in the console');
     console.log('');
     console.log('🔧 Test commands you can run:');
     console.log(`   testSendMessage('${projectId}');`);
     console.log(`   testAuditEvent('${projectId}');`);
-    console.log('   eventSource.close(); // to stop listening');
+    console.log('   sseConnection.close(); // to stop listening');
+    console.log('');
+    console.log('🔥 NEW: Fetch-based SSE (Python-like Connection Cleanup)');
+    console.log('   - Uses Fetch + ReadableStream instead of EventSource');
+    console.log('   - AbortController enables immediate server cleanup');
+    console.log('   - Server detects disconnection immediately when closed');
+    console.log('   - No more stale connections like with EventSource!');
+    console.log('   - Automatic heartbeat confirmation system included');
     
     // Store references globally for easy access
-    window.testEventSource = eventSource;
+    window.testSSEConnection = sseConnection;
     window.testProjectId = projectId;
     window.testClient = client;
     
     // Set up auto-close after timeout
     setTimeout(() => {
       console.log('⏰ 30 seconds elapsed, closing connection...');
-      eventSource.close();
+      sseConnection.close();
       console.log(`📊 Test completed! Received ${eventCount} events total.`);
+      console.log(`📈 Final stats:`, sseConnection.getStats());
+      console.log('🎉 Server should have detected disconnection immediately!');
     }, 30000);
     
   } catch (error) {
@@ -140,12 +149,32 @@ async function testAuditEvent(projectId = window.testProjectId) {
 }
 
 // Start the test
-console.log('🎯 SSE Test Script Loaded!');
+console.log('🎯 Fetch SSE Test Script Loaded (Python-like Connection Cleanup)!');
 console.log('🚀 Run testSSEListen("username", "password") to start the test');
 console.log('💡 Example: testSSEListen("admin", "mypassword")');
+console.log('');
+console.log('🔥 NEW Fetch-based SSE Features:');
+console.log('  - Uses Fetch + ReadableStream instead of EventSource');
+console.log('  - AbortController enables immediate server cleanup');
+console.log('  - Automatic heartbeat confirmation every 3 seconds');
+console.log('  - Server detects disconnection immediately when closed');
+console.log('  - No more stale connection accumulation!');
 console.log('');
 
 // Expose the test function globally
 window.testSSEListen = testSSEListen;
 window.testSendMessage = testSendMessage;  
 window.testAuditEvent = testAuditEvent;
+
+// Add helper for getting connection stats
+window.getSSEConnectionStats = () => {
+  if (window.testSSEConnection && window.testSSEConnection.getStats) {
+    return window.testSSEConnection.getStats();
+  } else {
+    console.log('❌ No active SSE connection. Run testSSEListen() first.');
+    return null;
+  }
+};
+
+// Legacy alias for compatibility
+window.getEventSourceStats = window.getSSEConnectionStats;
