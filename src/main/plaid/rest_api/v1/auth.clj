@@ -28,21 +28,36 @@
   (-> request :jwt-data :user/id))
 
 (defn wrap-read-jwt
-  "Reitit middleware that looks for \"Authorization: Bearer ...\" in the header and attempts to
-  decode the bearer token if present. On success, it is stored in the request map under :jwt-data."
+  "Reitit middleware that looks for JWT tokens in either:
+  1. \"Authorization: Bearer ...\" header (standard approach)
+  2. \"token\" query parameter (for EventSource compatibility)
+  
+  On success, token data is stored in the request map under :jwt-data."
   [handler]
   (fn [{:keys [xtdb] :as request}]
     (let [secret-key (:secret-key request)
-          auth-header (get-in request [:headers "authorization"])]
+          auth-header (get-in request [:headers "authorization"])
+          query-token (get-in request [:query-params "token"])]
       (cond (nil? secret-key)
             (do (log/error "Secret key not found in request! Are middlewares properly ordered?" nil)
                 {:status 500 :body {:error (str "Improperly configured server. Contact admin.")}})
 
-            (or (nil? auth-header) (not (.startsWith auth-header "Bearer ")))
+            ;; No auth header and no query token
+            (and (or (nil? auth-header) (not (.startsWith auth-header "Bearer ")))
+                 (nil? query-token))
             (handler request)
 
             :else
-            (let [token (subs auth-header 7)
+            (let [token (cond
+                          ;; Prefer header if available
+                          (and auth-header (.startsWith auth-header "Bearer "))
+                          (subs auth-header 7)
+
+                          ;; Fall back to query parameter
+                          query-token
+                          query-token
+
+                          :else nil)
                   token-data (try (jwt/unsign token secret-key)
                                   (catch Exception e e))
                   user (and (map? token-data) (user/get-internal xtdb (:user/id token-data)))]
@@ -63,10 +78,11 @@
 
                 :else
                 (do
-                  (log/debug (str "Found JWT data: " token-data))
-                  (handler (assoc request 
-                                  :jwt-data token-data
-                                  :user/id (:user/id token-data))))))))))
+                  (log/debug (str "Found JWT data: " token-data " (source: "
+                                  (if (and auth-header (.startsWith auth-header "Bearer ")) "header" "query") ")"))
+                  (handler (assoc request
+                             :jwt-data token-data
+                             :user/id (:user/id token-data))))))))))
 
 (defn wrap-login-required [handler]
   (fn [request]
@@ -114,3 +130,5 @@
   (wrap-project-privileges-required handler :project/writers get-project-id))
 (defn wrap-maintainer-required [handler get-project-id]
   (wrap-project-privileges-required handler :project/maintainers get-project-id))
+
+
