@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Wed Jun 18 19:41:56 EDT 2025
+Generated on: Thu Jun 19 17:30:53 EDT 2025
 """
 
 import requests
@@ -3047,7 +3047,7 @@ class ProjectsResource:
 
     def listen(self, id: str, on_event: Callable[[str, Dict[str, Any]], None], timeout: int = 30) -> Dict[str, Any]:
         """
-        Listen to audit log events and messages for a project via Server-Sent Events
+        Listen to audit log events and messages for a project via Server-Sent Events (with heartbeat confirmation protocol)
         
         Args:
             id: The UUID of the project to listen to
@@ -3060,6 +3060,7 @@ class ProjectsResource:
         import requests
         import json
         import time
+        import threading
         
         url = f"{self.client.base_url}/api/v1/projects/{id}/listen"
         headers = {
@@ -3072,16 +3073,38 @@ class ProjectsResource:
         session = requests.Session()
         session.headers.update(headers)
         
+        # Event counters
         audit_events_received = 0
+        message_events_received = 0
         connection_events = 0
         heartbeat_events = 0
+        heartbeat_confirmations_sent = 0
         error_events = 0
         start_time = time.time()
         last_heartbeat = time.time()
+        client_id = None
+        
+        def send_heartbeat_confirmation(client_id: str):
+            """Send heartbeat confirmation to server"""
+            nonlocal heartbeat_confirmations_sent
+            try:
+                heartbeat_url = f"{self.client.base_url}/api/v1/projects/{id}/heartbeat"
+                heartbeat_response = session.post(
+                    heartbeat_url,
+                    json={'client-id': client_id},
+                    headers={'Content-Type': 'application/json'}
+                )
+                if heartbeat_response.status_code == 200:
+                    heartbeat_confirmations_sent += 1
+            except Exception as e:
+                pass
         
         try:
             with session.get(url, stream=True, timeout=None) as response:
                 response.raise_for_status()
+                
+                # Parse SSE stream
+                event_type = None
                 
                 for line in response.iter_lines(decode_unicode=True, chunk_size=None):
                     if timeout and (time.time() - start_time) > timeout:
@@ -3090,7 +3113,6 @@ class ProjectsResource:
                     if line and line.strip():
                         if line.startswith('event: '):
                             event_type = line[7:].strip()
-                            # Event type received
                         elif line.startswith('data: '):
                             try:
                                 data_str = line[6:].strip()
@@ -3099,21 +3121,28 @@ class ProjectsResource:
                                     # Parse JSON data
                                     data = json.loads(data_str)
                                     
-                                    # Handle different event types internally
+                                    # Handle different event types
                                     if event_type == 'connected':
                                         connection_events += 1
-                                        # Connected to event stream
+                                        client_id = data.get('client-id') or data.get('clientId')
                                     elif event_type == 'heartbeat':
                                         heartbeat_events += 1
                                         last_heartbeat = time.time()
-                                        # Heartbeats handled silently
+                                        if client_id:
+                                            threading.Thread(
+                                                target=send_heartbeat_confirmation,
+                                                args=(client_id,),
+                                                daemon=True
+                                            ).start()
                                     elif event_type == 'audit-log':
                                         audit_events_received += 1
-                                        # Transform response data and call user callback
+                                        transformed_data = self.client._transform_response(data)
+                                        on_event(event_type, transformed_data)
+                                    elif event_type == 'message':
+                                        message_events_received += 1
                                         transformed_data = self.client._transform_response(data)
                                         on_event(event_type, transformed_data)
                                     else:
-                                        # Pass all other event types to the callback
                                         transformed_data = self.client._transform_response(data)
                                         on_event(event_type, transformed_data)
                                 else:
@@ -3121,25 +3150,25 @@ class ProjectsResource:
                                     pass
                             except json.JSONDecodeError as e:
                                 error_events += 1
-                                # JSON decode error occurred
-                                # Don't call user callback for JSON errors
+                    elif line == '':
+                        event_type = None
         
         except requests.exceptions.RequestException as e:
             error_events += 1
-            # Connection error occurred
-            # Don't call user callback for connection errors
         finally:
-            # Explicitly close the session to ensure connection cleanup
             session.close()
         
         # Return session summary
         return {
             'audit_events': audit_events_received,
+            'message_events': message_events_received,
             'connection_events': connection_events,
             'heartbeat_events': heartbeat_events,
+            'heartbeat_confirmations_sent': heartbeat_confirmations_sent,
             'error_events': error_events,
             'duration_seconds': time.time() - start_time,
-            'last_heartbeat_seconds_ago': time.time() - last_heartbeat if heartbeat_events > 0 else None
+            'last_heartbeat_seconds_ago': time.time() - last_heartbeat if heartbeat_events > 0 else None,
+            'client_id': client_id
         }
 
     def add_maintainer(self, id: str, user_id: str) -> Any:

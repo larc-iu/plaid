@@ -71,7 +71,7 @@ interface ProjectsBundle {
   removeWriter(id: string, userId: string): Promise<any>;
   addReader(id: string, userId: string): Promise<any>;
   removeReader(id: string, userId: string): Promise<any>;
-  listen(id: string, onEvent: (eventType: string, data: any) => void, timeout?: number): EventSource;
+  listen(id: string, onEvent: (eventType: string, data: any) => void, timeout?: number): { close(): void; getStats(): any; readyState: number; };
   addMaintainer(id: string, userId: string): Promise<any>;
   removeMaintainer(id: string, userId: string): Promise<any>;
   audit(projectId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any>;

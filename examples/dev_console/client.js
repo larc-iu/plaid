@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Wed Jun 18 19:41:54 EDT 2025
+ * Generated on: Thu Jun 19 17:43:31 EDT 2025
  */
 
   /**
@@ -509,7 +509,8 @@ name: update a document's name.
        * Listen to audit log events and messages for a project via Server-Sent Events
  * @param {string} id - The UUID of the project to listen to
  * @param {function} onEvent - Callback function that receives (eventType, data)
- * @param {number} [timeout=30] - Maximum time to listen in seconds
+ * @param {number} [timeout=300] - Maximum time to listen in seconds
+ * @returns {Object} SSE connection object with .close() and .getStats() methods
        */
       listen: this._projectsListen.bind(this),
       /**
@@ -2738,237 +2739,166 @@ name: update a document's name.
   }
 
   /**
-   * Listen to audit log events and messages for a project via Server-Sent Events
+   * Listen to audit log events and messages for a project via Server-Sent Events (with Fetch-based connection for Python-like cleanup)
    * @param {string} id - The UUID of the project to listen to
    * @param {function} onEvent - Callback function that receives (eventType, data)
-   * @param {number} [timeout=30] - Maximum time to listen in seconds
-   * @returns {EventSource} The EventSource instance (call .close() to stop listening)
+   * @param {number} [timeout=300] - Maximum time to listen in seconds
+   * @returns {Object} SSE connection object with .close() method and .getStats() method
    */
-  _projectsListen(id, onEvent, timeout = 30) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/listen`;
+  _projectsListen(id, onEvent, timeout = 300) {
     
-    // Browser EventSource doesn't support custom headers
-    // We'll use a fetch-based EventSource polyfill for browsers
-    let eventSource;
+    const startTime = Date.now();
+    let isConnected = false;
+    let isClosed = false;
+    let clientId = null;
+    let eventStats = { 'audit-log': 0, message: 0, heartbeat: 0, connected: 0, other: 0 };
+    let abortController = new AbortController();
     
-    if (typeof window !== 'undefined' && typeof EventSource !== 'undefined') {
-      // Browser environment - use fetch-based SSE
-      const controller = new AbortController();
-      let isClosed = false;
-      let isClosedByUser = false;
-      const startTime = Date.now();
+    // Capture client context for event handling
+    const client = this;
+    
+    // Helper function to send heartbeat confirmation
+    const sendHeartbeatConfirmation = async () => {
+      if (!clientId || isClosed) return;
       
-      // Create a mock EventSource object
-      eventSource = {
-        close: () => {
-          if (isClosed) return; // Already closed
-          isClosed = true;
-          isClosedByUser = true;
-          
-          controller.abort();
-          eventSource._cleanup?.();
-        },
-        readyState: 0, // CONNECTING
-        getStats: () => ({
-          durationSeconds: (Date.now() - startTime) / 1000
-        })
-      };
-      
-      // Clean up connection when page is unloaded
-      const beforeUnloadHandler = () => {
-        eventSource.close();
-      };
-      
-      if (typeof window !== 'undefined') {
-        window.addEventListener('beforeunload', beforeUnloadHandler);
-        window.addEventListener('pagehide', beforeUnloadHandler);
-      }
-      
-      // Store cleanup function on eventSource for manual cleanup
-      eventSource._cleanup = () => {
-        if (typeof window !== 'undefined') {
-          window.removeEventListener('beforeunload', beforeUnloadHandler);
-          window.removeEventListener('pagehide', beforeUnloadHandler);
-        }
-      };
-      
-      // Start the fetch-based SSE connection
-      fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Accept': 'text/event-stream',
-          'Cache-Control': 'no-cache'
-        },
-        signal: controller.signal
-      })
-      .then(response => {
+      try {
+        const response = await fetch(`${this.baseUrl}/api/v1/projects/${id}/heartbeat`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 'client-id': clientId }),
+          signal: abortController.signal
+        });
+        
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          // Heartbeat confirmation failed
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          // Heartbeat confirmation error
+        }
+      }
+    };
+    
+    // Create SSE-like object that behaves like EventSource but uses Fetch
+    const sseConnection = {
+      readyState: 0, // CONNECTING
+      close: () => {
+        if (!isClosed) {
+          isClosed = true;
+          isConnected = false;
+          sseConnection.readyState = 2; // CLOSED
+          abortController.abort();
+        }
+      },
+      getStats: () => ({
+        durationSeconds: (Date.now() - startTime) / 1000,
+        isConnected,
+        isClosed,
+        clientId,
+        events: { ...eventStats },
+        readyState: sseConnection.readyState
+      })
+    };
+    
+    // Auto-close after timeout
+    if (timeout > 0) {
+      setTimeout(() => {
+        if (!isClosed) {
+          sseConnection.close();
+        }
+      }, timeout * 1000);
+    }
+    
+    // Start the fetch streaming connection
+    (async () => {
+      try {
+        const url = `${this.baseUrl}/api/v1/projects/${id}/listen`;
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.token}`,
+            'Accept': 'text/event-stream',
+            'Cache-Control': 'no-cache'
+          },
+          signal: abortController.signal
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} ${response.statusText}`);
         }
         
-        eventSource.readyState = 1; // OPEN
+        isConnected = true;
+        sseConnection.readyState = 1; // OPEN
+        
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
         
-        function processLine(line) {
-          if (line.startsWith('event: ')) {
-            const eventType = line.substring(7);
-            return { type: 'event', value: eventType };
-          } else if (line.startsWith('data: ')) {
-            const data = line.substring(6);
-            return { type: 'data', value: data };
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done || isClosed) {
+            break;
           }
-          return null;
-        }
-        
-        let currentEvent = null;
-        const self = this; // Preserve context
-        
-        function pump() {
-          return reader.read().then(({done, value}) => {
-            if (done || isClosed) {
-              eventSource.readyState = 2; // CLOSED
-              return;
-            }
-            
-            // Check timeout
-            if (timeout && (Date.now() - startTime) / 1000 > timeout) {
-              eventSource.close();
-              return;
-            }
-            
-            buffer += decoder.decode(value, {stream: true});
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-            
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (!trimmed) continue;
-              
-              const parsed = processLine(trimmed);
-              if (parsed) {
-                if (parsed.type === 'event') {
-                  currentEvent = parsed.value;
-                } else if (parsed.type === 'data' && currentEvent) {
-                  // Handle internal events
-                  if (currentEvent === 'connected') {
-                    // Connected to event stream
-                  } else if (currentEvent === 'heartbeat') {
-                    // Handle heartbeats silently
-                  } else {
-                    // Pass all other event types to callback
-                    try {
-                      const eventData = JSON.parse(parsed.value);
-                      const transformedData = self._transformResponse(eventData);
-                      onEvent(currentEvent, transformedData);
-                    } catch (e) {
-                      // Error parsing event data
-                    }
-                  }
+          
+          // Decode chunk and add to buffer
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete SSE messages
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+          
+          let eventType = '';
+          let data = '';
+          
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              data = line.slice(6);
+            } else if (line === '' && eventType && data) {
+              // Complete SSE message received
+              try {
+                // Track event stats
+                eventStats[eventType] = (eventStats[eventType] || 0) + 1;
+                
+                if (eventType === 'connected') {
+                  // Extract client ID from connection message
+                  const parsedData = JSON.parse(data);
+                  clientId = parsedData['client-id'] || parsedData.clientId;
+                } else if (eventType === 'heartbeat') {
+                  // Automatically respond to heartbeat with confirmation
+                  sendHeartbeatConfirmation();
+                } else {
+                  // Pass audit-log, message, and other events to callback
+                  const parsedData = JSON.parse(data);
+                  onEvent(eventType, client._transformResponse(parsedData));
                 }
+              } catch (e) {
+                // Failed to parse event data
               }
+              
+              // Reset for next message
+              eventType = '';
+              data = '';
             }
-            
-            return pump();
-          });
+          }
         }
         
-        return pump();
-      })
-      .catch(error => {
-        eventSource.readyState = 2; // CLOSED
-        eventSource._cleanup?.();
-        // Only treat as error if not closed by user
-        if (!isClosedByUser) {
-          // SSE connection error occurred
-        }
-      });
-      
-      return eventSource;
-    } else {
-      // Node.js environment - try to use eventsource package
-      let EventSourceImpl;
-      try {
-        const EventSourceModule = require('eventsource');
-        EventSourceImpl = EventSourceModule.default || EventSourceModule;
-      } catch (e) {
-        throw new Error('EventSource is not available. Install the "eventsource" package for Node.js.');
+      } catch (error) {
+        // SSE connection error or abort
+      } finally {
+        isConnected = false;
+        isClosed = true;
+        sseConnection.readyState = 2; // CLOSED
       }
-      
-      eventSource = new EventSourceImpl(url, {
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        }
-      });
-      
-      const startTime = Date.now();
-      
-      // Attach statistics to eventSource for access
-      eventSource.getStats = () => ({
-        durationSeconds: (Date.now() - startTime) / 1000
-      });
-      
-      // Handle connection established
-      eventSource.addEventListener('connected', (event) => {
-        // Connected to event stream
-      });
-      
-      // Handle heartbeat
-      eventSource.addEventListener('heartbeat', (event) => {
-        // Handle heartbeats silently
-      });
-      
-      // Handle all other events generically
-      const originalAddEventListener = eventSource.addEventListener.bind(eventSource);
-      
-      // Override addEventListener to catch all events
-      eventSource.addEventListener = (eventType, handler) => {
-        if (eventType === 'connected' || eventType === 'heartbeat') {
-          // Use original for internal events
-          originalAddEventListener(eventType, handler);
-        } else {
-          // For all other events, transform and call onEvent
-          originalAddEventListener(eventType, (event) => {
-            try {
-              const eventData = JSON.parse(event.data);
-              const transformedData = this._transformResponse(eventData);
-              onEvent(eventType, transformedData);
-            } catch (e) {
-              // Error parsing event data
-            }
-          });
-        }
-      };
-      
-      // Add generic listener for audit-log and message events
-      ['audit-log', 'message'].forEach(eventType => {
-        originalAddEventListener(eventType, (event) => {
-          try {
-            const eventData = JSON.parse(event.data);
-            const transformedData = this._transformResponse(eventData);
-            onEvent(eventType, transformedData);
-          } catch (e) {
-            // Error parsing event data
-          }
-        });
-      });
-      
-      // Handle errors
-      eventSource.onerror = (error) => {
-        // SSE connection error occurred
-      };
-      
-      // Add timeout if specified
-      if (timeout) {
-        setTimeout(() => {
-          eventSource.close();
-        }, timeout * 1000);
-      }
-    }
+    })();
     
-    return eventSource;
+    return sseConnection;
   }
 
   /**
