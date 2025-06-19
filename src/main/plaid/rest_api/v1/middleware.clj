@@ -1,8 +1,8 @@
 (ns plaid.rest-api.v1.middleware
   (:require [clojure.instant :as instant]
-            [plaid.xtdb.user :as pxu]
             [taoensso.timbre :as log]
-            [xtdb.api :as xt]))
+            [xtdb.api :as xt]
+            [clojure.string :as str]))
 
 (defn wrap-request-extras [handler xtdb secret-key]
   (fn [request]
@@ -12,20 +12,16 @@
 
 (defn wrap-logging [handler]
   (fn [request]
-    (let [req-id (hash request)]
-      (log/debug (str "Received request " req-id ": " (-> request
-                                                         (dissoc :secret-key)
-                                                         (dissoc :xtdb)
-                                                         (dissoc :headers)
-                                                         (dissoc :reitit.core/match)
-                                                         (dissoc :reitit.core/router)
-                                                         (dissoc :async-channel)
-                                                         (dissoc :muuntaja/response)
-                                                         (dissoc :cookies))
-                      "\n"
-                      "Headers: " (-> request :headers (dissoc "authorization"))))
+    (let [req-id (hash request)
+          uri (:uri request)
+          skip? (or (= uri "/api/v1/openapi.json")
+                    (str/starts-with? uri "/api/v1/docs"))]
+      (when-not skip?
+        (log/debug (str "Received request " req-id ": "
+                        (select-keys request [:remote-addr :user/id :form-params :parameters :scheme :request-method :uri]))))
       (let [response (handler request)]
-        (log/debug (str "Sending response to request " req-id ": " response))
+        (when-not skip?
+          (log/debug (str "Sending response to request " req-id ": " response)))
         response))))
 
 (defn wrap-as-of-db
