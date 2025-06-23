@@ -1,0 +1,1 @@
+../../../../target/clients/client.js
