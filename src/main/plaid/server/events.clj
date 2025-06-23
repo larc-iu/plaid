@@ -187,11 +187,13 @@
         (log/debug "Event distributor received event:" event)
         (let [affected-projects (:audit/projects event)
               client-count (reduce + (map #(count (get-project-clients %)) affected-projects))]
-          (log/debug "Distributing to" client-count "clients across projects" affected-projects)
+          (when (> client-count 0)
+            (log/debug "Distributing to" client-count "clients across projects" affected-projects))
           ;; Send event to all clients subscribed to affected projects
           (doseq [project-id affected-projects
                   client-chan (get-project-clients project-id)]
-            (log/debug "Sending event to client for project" project-id)
+            (when (> client-count 0)
+              (log/debug "Sending event to client for project" project-id))
             ;; Using put! here is non-blocking; if client is slow, events may be dropped
             (async/put! client-chan event)))
         (recur)))
