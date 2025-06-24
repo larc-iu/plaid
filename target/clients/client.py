@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Tue Jun 24 13:29:06 EDT 2025
+Generated on: Tue Jun 24 17:15:33 EDT 2025
 """
 
 import requests
@@ -1557,6 +1557,138 @@ metadata: optional key-value pairs for additional annotation data.
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def bulk_create(self, operations: List[Any]) -> Any:
+        """
+        Create multiple spans in a single operation.
+
+        Args:
+            operations: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/spans/bulk"
+        body_data = operations
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def bulk_create_async(self, operations: List[Any]) -> Any:
+        """
+        Create multiple spans in a single operation.
+
+        Args:
+            operations: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/spans/bulk"
+        body_data = operations
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def bulk_delete(self, operations: List[Any]) -> Any:
+        """
+        Delete multiple spans in a single operation.
+
+        Args:
+            operations: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/spans/bulk"
+        body_data = operations
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def bulk_delete_async(self, operations: List[Any]) -> Any:
+        """
+        Delete multiple spans in a single operation.
+
+        Args:
+            operations: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/spans/bulk"
+        body_data = operations
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
                 content_type = response.headers.get('content-type', '').lower()
@@ -6311,7 +6443,7 @@ precedence: ordering value for the token relative to other tokens with the same 
 
     def bulk_create(self, operations: List[Any]) -> Any:
         """
-        Create multiple tokens in a single operation
+        Create multiple tokens in a single operation.
 
         Args:
             operations: Required body parameter
@@ -6343,7 +6475,7 @@ precedence: ordering value for the token relative to other tokens with the same 
 
     async def bulk_create_async(self, operations: List[Any]) -> Any:
         """
-        Create multiple tokens in a single operation
+        Create multiple tokens in a single operation.
 
         Args:
             operations: Required body parameter
@@ -6377,7 +6509,7 @@ precedence: ordering value for the token relative to other tokens with the same 
 
     def bulk_delete(self, operations: List[Any]) -> Any:
         """
-        Delete multiple tokens in a single operation
+        Delete multiple tokens in a single operation.
 
         Args:
             operations: Required body parameter
@@ -6409,7 +6541,7 @@ precedence: ordering value for the token relative to other tokens with the same 
 
     async def bulk_delete_async(self, operations: List[Any]) -> Any:
         """
-        Delete multiple tokens in a single operation
+        Delete multiple tokens in a single operation.
 
         Args:
             operations: Required body parameter
