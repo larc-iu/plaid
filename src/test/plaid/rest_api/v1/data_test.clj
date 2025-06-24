@@ -675,8 +675,7 @@
 
     (testing "Token end beyond text bounds"
       (let [res (create-token admin-request tkl text-id 0 100)]
-        ;; This validation happens at database level and returns 500
-        (assert-status 500 res)))
+        (assert-status 400 res)))
 
     (testing "Non-integer precedence - coercion catches this at middleware level"
       (is (thrown? clojure.lang.ExceptionInfo

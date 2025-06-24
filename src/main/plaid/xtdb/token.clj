@@ -129,7 +129,8 @@
        (> end (count text-body))
        (throw (ex-info "Token ends beyond the end of its associated text" {:token       token
                                                                            :text-length (count text-body)
-                                                                           :text        text-body})))))
+                                                                           :text        text-body
+                                                                           :code        400})))))
   ;; Overlap with other tokens
   ;; (some (fn [[{t1-end :token/end} {t2-begin :token/begin}]]
   ;;         (< t2-begin t1-end))
@@ -144,9 +145,9 @@
         {:token/keys [text layer] :as token} (clojure.core/merge (pxc/new-record "token")
                                                                  (into {} token-attrs))]
     (schema-check! db token)
-    [[::xt/match (:xt/id token) nil]
-     [::xt/match layer (pxc/entity db layer)]
-     [::xt/match (:xt/id text) text]
+    [[::xt/match layer (pxc/entity db layer)]
+     [::xt/match text (pxc/entity db text)]
+     [::xt/match (:xt/id token) nil]
      [::xt/put token]]))
 
 (defn create-operation
@@ -371,6 +372,11 @@
   times in a transaction could lead to conflicting matches and puts."
   [xt-map eids]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
+        tokens-attrs (mapv #(pxc/entity db %) eids)
+        _ (when-not (= 1 (->> tokens-attrs (map :token/text) distinct count))
+            (throw (ex-info "Tokens must all belong to the same text" {:code 400})))
+        _ (when-not (= 1 (->> tokens-attrs (map :token/layer) distinct count))
+            (throw (ex-info "Tokens must all belong to the same layer" {:code 400})))
         eids-set (set eids)
         ;; Find all spans that contain any of the tokens being deleted
         spans (->> (xt/q db
