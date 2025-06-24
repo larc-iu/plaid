@@ -161,7 +161,7 @@ Project
 - **Routing**: React Router v6
 - **State Management**: React Context + useReducer pattern
 - **HTTP Client**: Generated PlaidClient from target/clients/client.js (with TypeScript definitions)
-- **Styling**: CSS Modules or Styled Components (minimal dependencies)
+- **Styling**: Tailwind CSS v4 with custom GitHub-inspired theme
 - **Tree Visualization**: D3.js for dependency trees
 - **Build Tool**: Vite
 
@@ -210,6 +210,41 @@ src/
 2. **Project State**: Current project, documents, and layer configurations
 3. **Editor State**: Current document, text, tokens, and annotations
 4. **UI State**: Loading states, error messages, form validation
+
+### Styling Conventions (Tailwind CSS)
+
+The application uses Tailwind CSS v4 with a custom GitHub-inspired design system focused on minimalism and functionality.
+
+#### Design Principles
+- **Minimal Color Palette**: Primarily grays with limited accent colors
+- **Function Over Form**: Clean, utilitarian interface without decorative elements
+- **Consistent Spacing**: Using Tailwind's default spacing scale
+- **Subtle Interactions**: Minimal hover states and transitions
+
+#### Color System
+- **Primary Text**: `text-gray-900` (light mode)
+- **Secondary Text**: `text-gray-600`
+- **Backgrounds**: `bg-white` with `bg-gray-50` for subtle contrast
+- **Borders**: `border-gray-200` for dividers
+- **Interactive Elements**:
+  - Links: `text-blue-600 hover:text-blue-800`
+  - Primary buttons: `bg-gray-900 hover:bg-gray-800`
+  - Danger actions: `text-red-600 hover:text-red-800`
+  - Success states: `text-green-600` or `bg-green-600`
+
+#### Component Patterns
+- **Cards/Lists**: White background with gray borders, no shadows
+- **Forms**: Gray borders with blue focus states (`focus:border-blue-500`)
+- **Modals**: Fixed overlay with centered white card
+- **Tables**: List-style with `divide-y divide-gray-200`
+- **Navigation**: Clean white header with bottom border
+
+#### Typography
+- **Headings**: Bold with standard gray-900 color
+- **Body**: Default sans-serif (system font stack)
+- **Code/Tokens**: `font-mono` for monospace display
+
+No custom CSS files are used; all styling is done through Tailwind utility classes.
 
 ## API Integration
 
