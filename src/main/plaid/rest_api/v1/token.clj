@@ -6,8 +6,16 @@
             [plaid.xtdb.token-layer :as tokl]))
 
 (defn get-project-id [{db :db params :params}]
-  (let [tokl-id (-> params :body :token-layer-id)
+  (let [tokl-id (or (-> params :body :token-layer-id))
         token-id (-> params :path :token-id)]
+    (cond
+      tokl-id (tokl/project-id db tokl-id)
+      token-id (tok/project-id db token-id)
+      :else nil)))
+
+(defn bulk-get-project-id [{db :db params :params}]
+  (let [tokl-id (or (-> params :body first :token-layer-id))
+        token-id (-> params :body first)]
     (cond
       tokl-id (tokl/project-id db tokl-id)
       token-id (tok/project-id db token-id)
@@ -49,7 +57,7 @@
    ["/bulk" {:conflicting true
              :post {:summary "Create multiple tokens in a single operation."
                     :openapi {:x-client-method "bulkCreate"}
-                    :middleware [[pra/wrap-writer-required get-project-id]]
+                    :middleware [[pra/wrap-writer-required bulk-get-project-id]]
                     :parameters {:body [:sequential
                                         [:map
                                          [:token-layer-id :uuid]
@@ -76,7 +84,7 @@
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple tokens in a single operation."
                       :openapi {:x-client-method "bulkDelete"}
-                      :middleware [[pra/wrap-writer-required get-project-id]]
+                      :middleware [[pra/wrap-writer-required bulk-get-project-id]]
                       :parameters {:body [:sequential :uuid]}
                       :handler (fn [{{token-ids :body} :parameters xtdb :xtdb user-id :user/id}]
                                  (let [{:keys [success code error]} (tok/bulk-delete {:node xtdb} token-ids user-id)]
