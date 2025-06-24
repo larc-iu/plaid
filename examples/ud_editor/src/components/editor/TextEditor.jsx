@@ -72,7 +72,30 @@ export const TextEditor = () => {
     const text = textLayer?.text;
     const tokenLayer = textLayer?.tokenLayers?.[0];
     const tokens = tokenLayer?.tokens || [];
-    return { textLayer, text, tokenLayer, tokens };
+    
+    // Find the span layers
+    const spanLayers = tokenLayer?.spanLayers || [];
+    const sentenceLayer = spanLayers.find(layer => layer.name === 'Sentence');
+    const sentenceSpans = sentenceLayer?.spans || [];
+    
+    // Find the Lemma span layer and its relation layer
+    const lemmaLayer = spanLayers.find(layer => layer.name === 'Lemma');
+    const lemmaSpans = lemmaLayer?.spans || [];
+    const relationLayer = lemmaLayer?.relationLayers?.[0];
+    const relations = relationLayer?.relations || [];
+    
+    return { 
+      textLayer, 
+      text, 
+      tokenLayer, 
+      tokens, 
+      sentenceLayer, 
+      sentenceSpans,
+      lemmaLayer,
+      lemmaSpans,
+      relationLayer,
+      relations
+    };
   };
 
   // Save text function
@@ -333,6 +356,196 @@ export const TextEditor = () => {
     }
   };
 
+  // Helper function to delete relations that cross sentence boundaries
+  const deleteInvalidRelations = async () => {
+    const client = getClient();
+    const { tokens, sentenceSpans, lemmaSpans, relations } = getLayerData();
+    
+    if (!relations || relations.length === 0) return [];
+    
+    // Build a map of token ID to sentence number
+    const tokenToSentence = new Map();
+    
+    // Sort sentence spans by their starting token position
+    const sentenceStartTokenIds = sentenceSpans
+      .map(span => span.tokens?.[0] || span.begin)
+      .filter(id => id != null);
+    
+    // Sort tokens by their position in text
+    const sortedTokens = [...tokens].sort((a, b) => a.begin - b.begin);
+    
+    let currentSentence = 0;
+    sortedTokens.forEach(token => {
+      // Check if this token starts a new sentence
+      if (sentenceStartTokenIds.includes(token.id) && tokenToSentence.size > 0) {
+        currentSentence++;
+      }
+      tokenToSentence.set(token.id, currentSentence);
+    });
+    
+    // Build a map of span ID to the tokens it covers
+    const spanToTokens = new Map();
+    lemmaSpans.forEach(span => {
+      if (span.tokens && span.tokens.length > 0) {
+        spanToTokens.set(span.id, span.tokens);
+      }
+    });
+    
+    // Find relations to delete
+    const relationsToDelete = [];
+    
+    relations.forEach(relation => {
+      const sourceTokens = spanToTokens.get(relation.source) || [];
+      const targetTokens = spanToTokens.get(relation.target) || [];
+      
+      // Check if source and target are in different sentences
+      let sourceSentence = null;
+      let targetSentence = null;
+      
+      // Get sentence for source span (use first token)
+      if (sourceTokens.length > 0) {
+        sourceSentence = tokenToSentence.get(sourceTokens[0]);
+      }
+      
+      // Get sentence for target span (use first token)
+      if (targetTokens.length > 0) {
+        targetSentence = tokenToSentence.get(targetTokens[0]);
+      }
+      
+      // If they're in different sentences, mark for deletion
+      if (sourceSentence !== null && targetSentence !== null && sourceSentence !== targetSentence) {
+        relationsToDelete.push(relation);
+      }
+    });
+    
+    // Delete the invalid relations
+    const deletedRelationIds = [];
+    for (const relation of relationsToDelete) {
+      try {
+        await client.relations.delete(relation.id);
+        deletedRelationIds.push(relation.id);
+        console.log(`Deleted cross-sentence relation: ${relation.id} (${relation.value})`);
+      } catch (error) {
+        console.error(`Failed to delete relation ${relation.id}:`, error);
+      }
+    }
+    
+    return deletedRelationIds;
+  };
+
+  const handleSentenceToggle = async (tokenId, isStartOfSentence) => {
+    try {
+      const client = getClient();
+      const { sentenceLayer, sentenceSpans, tokens } = getLayerData();
+      
+      if (!sentenceLayer?.id) {
+        throw new Error('No sentence layer found');
+      }
+
+      const token = tokens.find(t => t.id === tokenId);
+      if (!token) {
+        throw new Error('Token not found');
+      }
+
+      // Find existing sentence span for this token
+      const existingSpan = sentenceSpans.find(span => {
+        // Check if span has tokens array
+        if (span.tokens && span.tokens.length > 0) {
+          return span.tokens.includes(token.id);
+        }
+        // Fallback to begin/end properties
+        return span.begin === token.id && span.end === token.id;
+      });
+
+      if (isStartOfSentence && !existingSpan) {
+        // Create new sentence span
+        console.log('Creating sentence span for token:', tokenId);
+        const newSpan = await client.spans.create(
+          sentenceLayer.id,
+          [token.id],
+          null
+        );
+        
+        // Delete any relations that now cross sentence boundaries
+        const deletedRelationIds = await deleteInvalidRelations();
+        
+        // Update client state
+        setDocument(prevDocument => {
+          const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+          const textLayer = updatedDocument.textLayers?.[0];
+          const tokenLayer = textLayer?.tokenLayers?.[0];
+          const spanLayers = tokenLayer?.spanLayers || [];
+          const sentenceLayerDoc = spanLayers.find(layer => layer.name === 'Sentence');
+          
+          if (sentenceLayerDoc) {
+            if (!sentenceLayerDoc.spans) {
+              sentenceLayerDoc.spans = [];
+            }
+            // Ensure the span has the correct structure with tokens array
+            const spanToAdd = {
+              ...newSpan,
+              tokens: [token.id]  // Ensure tokens array exists
+            };
+            sentenceLayerDoc.spans.push(spanToAdd);
+          }
+          
+          // Remove deleted relations from the client state
+          if (deletedRelationIds.length > 0) {
+            const lemmaLayerDoc = spanLayers.find(layer => layer.name === 'Lemma');
+            const relationLayerDoc = lemmaLayerDoc?.relationLayers?.[0];
+            if (relationLayerDoc && relationLayerDoc.relations) {
+              relationLayerDoc.relations = relationLayerDoc.relations.filter(
+                relation => !deletedRelationIds.includes(relation.id)
+              );
+            }
+          }
+          
+          return updatedDocument;
+        });
+      } else if (!isStartOfSentence && existingSpan) {
+        // Delete existing sentence span
+        console.log('Deleting sentence span:', existingSpan.id);
+        await client.spans.delete(existingSpan.id);
+        
+        // Delete any relations that now cross sentence boundaries after removing this boundary
+        const deletedRelationIds = await deleteInvalidRelations();
+        
+        // Update client state
+        setDocument(prevDocument => {
+          const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+          const textLayer = updatedDocument.textLayers?.[0];
+          const tokenLayer = textLayer?.tokenLayers?.[0];
+          const spanLayers = tokenLayer?.spanLayers || [];
+          const sentenceLayerDoc = spanLayers.find(layer => layer.name === 'Sentence');
+          
+          if (sentenceLayerDoc && sentenceLayerDoc.spans) {
+            const spanIndex = sentenceLayerDoc.spans.findIndex(span => span.id === existingSpan.id);
+            if (spanIndex !== -1) {
+              sentenceLayerDoc.spans.splice(spanIndex, 1);
+            }
+          }
+          
+          // Remove deleted relations from the client state
+          if (deletedRelationIds.length > 0) {
+            const lemmaLayerDoc = spanLayers.find(layer => layer.name === 'Lemma');
+            const relationLayerDoc = lemmaLayerDoc?.relationLayers?.[0];
+            if (relationLayerDoc && relationLayerDoc.relations) {
+              relationLayerDoc.relations = relationLayerDoc.relations.filter(
+                relation => !deletedRelationIds.includes(relation.id)
+              );
+            }
+          }
+          
+          return updatedDocument;
+        });
+      }
+    } catch (error) {
+      console.error('Sentence toggle failed, refreshing:', error);
+      await fetchData();
+      throw error;
+    }
+  };
+
   if (loading) {
     return <div className="text-center text-gray-600 py-8">Loading document...</div>;
   }
@@ -345,7 +558,7 @@ export const TextEditor = () => {
     );
   }
 
-  const { tokens } = getLayerData();
+  const { tokens, sentenceSpans } = getLayerData();
   
   // Check if text is dirty (different from what was tokenized or saved)
   const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
@@ -438,9 +651,11 @@ This is a second sentence for testing."
             text={textContent}
             originalText={originalTokenizedText}
             tokens={tokens}
+            sentenceSpans={sentenceSpans}
             onTokenUpdate={handleTokenUpdate}
             onTokenDelete={handleTokenDelete}
             onTokenCreate={handleTokenCreate}
+            onSentenceToggle={handleSentenceToggle}
           />
         </div>
       </div>
