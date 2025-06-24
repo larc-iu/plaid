@@ -16,7 +16,7 @@
   [body content-type]
   (let [body-str (cond
                    (instance? java.io.InputStream body) (slurp body)
-                   (string? body) body
+                   (nil? body) nil
                    :else (str body))]
     (cond
       (or (nil? body-str) (empty? body-str)) nil
@@ -28,7 +28,7 @@
   "Build a Ring request map from a bulk operation spec and the original request"
   [original-request operation]
   (let [{:keys [uri query-string]} (parse-path-and-query (:path operation))
-        method (keyword (:method operation))
+        method (keyword (.toLowerCase (:method operation)))
         headers (merge (select-keys (:headers original-request)
                                     ["authorization" "accept"])
                        (when (:body operation)
@@ -49,8 +49,7 @@
       (when query-string
         {:query-string query-string})
       (when-let [body (:body operation)]
-        {:body        (ring-io/string-input-stream (m/encode "application/json" body))
-         :body-params body}))))
+        {:body-params body}))))
 
 (defn process-bulk-operation
   "Process a single bulk operation through the rest handler"
@@ -80,7 +79,7 @@
            :parameters {:body [:sequential
                                [:map
                                 [:path string?]
-                                [:method [:enum "get" "post" "put" "patch" "delete"]]
+                                [:method [:enum "get" "GET" "post" "POST" "put" "PUT" "patch" "PATCH" "delete" "DELETE"]]
                                 [:body {:optional true} any?]]]}
            :responses  {200 {:description "Array of responses for each operation"}}
            :handler    bulk-handler}}])
