@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
-import './DocumentList.css';
 
 export const DocumentList = () => {
   const { projectId } = useParams();
@@ -64,32 +63,40 @@ export const DocumentList = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading documents...</div>;
+    return <div className="text-center text-gray-600 py-8">Loading documents...</div>;
   }
 
   if (!project) {
-    return <div className="error-message">Project not found</div>;
+    return (
+      <div className="rounded-md bg-red-50 p-4">
+        <p className="text-sm text-red-800">Project not found</p>
+      </div>
+    );
   }
 
   return (
-    <div className="document-list-container">
-      <div className="breadcrumb">
-        <Link to="/projects">Projects</Link>
-        <span className="separator">/</span>
-        <span>{project.name}</span>
-      </div>
+    <div>
+      <nav className="flex items-center text-sm text-gray-500 mb-6">
+        <Link to="/projects" className="text-blue-600 hover:text-blue-800">Projects</Link>
+        <span className="mx-2">/</span>
+        <span className="text-gray-900">{project.name}</span>
+      </nav>
 
-      <div className="document-list-header">
-        <h2>Documents in {project.name}</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Documents in {project.name}</h2>
         <button 
-          className="create-button"
+          className="px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors text-sm font-medium"
           onClick={() => setShowCreateForm(true)}
         >
           + New Document
         </button>
       </div>
 
-      {error && <div className="error-message">{error}</div>}
+      {error && (
+        <div className="rounded-md bg-red-50 p-4 mb-4">
+          <p className="text-sm text-red-800">{error}</p>
+        </div>
+      )}
 
       {showCreateForm && (
         <DocumentForm 
@@ -100,39 +107,45 @@ export const DocumentList = () => {
       )}
 
       {documents.length === 0 ? (
-        <div className="empty-state">
-          <p>No documents yet. Create your first document to start annotating!</p>
+        <div className="text-center py-12">
+          <p className="text-gray-500">No documents yet. Create your first document to start annotating!</p>
         </div>
       ) : (
-        <div className="document-grid">
-          {documents.map(document => (
-            <div key={document.id} className="document-card">
-              <h3>{document.name}</h3>
-              <div className="document-metadata">
-                <span className="document-id">ID: {document.id}</span>
-              </div>
-              <div className="document-actions">
-                <Link 
-                  to={`/projects/${projectId}/documents/${document.id}/edit`}
-                  className="edit-button"
-                >
-                  Edit Text
-                </Link>
-                <Link 
-                  to={`/projects/${projectId}/documents/${document.id}/annotate`}
-                  className="annotate-button"
-                >
-                  Annotate
-                </Link>
-                <button 
-                  className="delete-button"
-                  onClick={() => handleDelete(document.id, document.name)}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
+        <div className="bg-white shadow overflow-hidden sm:rounded-md">
+          <ul className="divide-y divide-gray-200">
+            {documents.map(document => (
+              <li key={document.id} className="hover:bg-gray-50 transition-colors">
+                <div className="px-4 py-4 sm:px-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-medium text-gray-900">{document.name}</h3>
+                      <p className="mt-1 text-sm text-gray-500">ID: {document.id}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Link 
+                        to={`/projects/${projectId}/documents/${document.id}/edit`}
+                        className="px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                      >
+                        Edit Text
+                      </Link>
+                      <Link 
+                        to={`/projects/${projectId}/documents/${document.id}/annotate`}
+                        className="px-3 py-1.5 text-sm text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors"
+                      >
+                        Annotate
+                      </Link>
+                      <button 
+                        className="px-3 py-1.5 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
+                        onClick={() => handleDelete(document.id, document.name)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
