@@ -301,54 +301,86 @@ export const TokenVisualizer = ({ text, originalText, tokens, onTokenUpdate, onT
       return tokens; // No adjustment needed
     }
 
+    // Calculate the difference between original and current text
+    // This helps us understand what kind of edit was made
+    const findEditPosition = (original, current) => {
+      let i = 0;
+      // Find first difference from the start
+      while (i < Math.min(original.length, current.length) && original[i] === current[i]) {
+        i++;
+      }
+      return i;
+    };
+
+    const editPos = findEditPosition(originalText, currentText);
+    const lengthDiff = currentText.length - originalText.length;
+    
     return tokens.map(token => {
-      // Get original token text
       const originalTokenText = originalText.slice(token.begin, token.end);
       
-      // Try to find exact match first
-      let tokenIndex = currentText.indexOf(originalTokenText);
-      if (tokenIndex !== -1) {
-        const newBegin = tokenIndex;
-        const newEnd = newBegin + originalTokenText.length;
-        return {
-          ...token,
-          begin: newBegin,
-          end: newEnd,
-          adjusted: true
-        };
+      // If token is completely before the edit position, it's unaffected
+      if (token.end <= editPos) {
+        return token;
       }
       
-      // If exact match not found, check if the token position overlaps with current text
-      // This handles cases where part of the token was deleted
-      if (token.begin < currentText.length) {
-        // Find the actual end of meaningful text starting from the token's begin position
-        let actualEnd = token.begin;
-        for (let i = token.begin; i < currentText.length; i++) {
-          const char = currentText[i];
-          if (char === ' ' || char === '\t' || char === '\n') {
-            break; // Stop at whitespace
-          }
-          actualEnd = i + 1;
-        }
+      // If token starts after the edit position, shift it by the length difference
+      if (token.begin >= editPos) {
+        const newBegin = token.begin + lengthDiff;
+        const newEnd = token.end + lengthDiff;
         
-        if (actualEnd > token.begin) {
-          const remainingText = currentText.slice(token.begin, actualEnd);
-          if (remainingText.trim().length > 0) {
+        // Validate the new positions
+        if (newBegin >= 0 && newEnd <= currentText.length) {
+          const newTokenText = currentText.slice(newBegin, newEnd);
+          if (newTokenText === originalTokenText) {
             return {
               ...token,
-              begin: token.begin,
-              end: actualEnd,
+              begin: newBegin,
+              end: newEnd,
               adjusted: true
             };
           }
         }
       }
       
-      // Try to find any part of the original token in the current text
-      // Look for suffixes first (most common case when deleting from beginning)
-      for (let i = 1; i < originalTokenText.length; i++) {
-        const suffix = originalTokenText.slice(i);
-        if (suffix.length >= 2) { // Only consider meaningful suffixes
+      // Token overlaps with edit - try to find it in the current text
+      let bestMatch = null;
+      let bestScore = 0;
+      
+      // Look for exact matches first
+      let searchStart = 0;
+      while (true) {
+        const index = currentText.indexOf(originalTokenText, searchStart);
+        if (index === -1) break;
+        
+        // Prefer matches that are close to the original position
+        const distance = Math.abs(index - token.begin);
+        const score = 1000 - distance; // Higher score for closer matches
+        
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = {
+            begin: index,
+            end: index + originalTokenText.length
+          };
+        }
+        
+        searchStart = index + 1;
+      }
+      
+      if (bestMatch) {
+        return {
+          ...token,
+          begin: bestMatch.begin,
+          end: bestMatch.end,
+          adjusted: true
+        };
+      }
+      
+      // Try partial matches (prefixes and suffixes)
+      for (let len = Math.max(2, Math.floor(originalTokenText.length * 0.6)); len >= 2; len--) {
+        // Try suffix
+        if (len < originalTokenText.length) {
+          const suffix = originalTokenText.slice(-len);
           const suffixIndex = currentText.indexOf(suffix);
           if (suffixIndex !== -1) {
             return {
@@ -359,12 +391,10 @@ export const TokenVisualizer = ({ text, originalText, tokens, onTokenUpdate, onT
             };
           }
         }
-      }
-      
-      // Look for prefixes (less common but possible)
-      for (let i = originalTokenText.length - 1; i > 0; i--) {
-        const prefix = originalTokenText.slice(0, i);
-        if (prefix.length >= 2) { // Only consider meaningful prefixes
+        
+        // Try prefix
+        if (len < originalTokenText.length) {
+          const prefix = originalTokenText.slice(0, len);
           const prefixIndex = currentText.indexOf(prefix);
           if (prefixIndex !== -1) {
             return {

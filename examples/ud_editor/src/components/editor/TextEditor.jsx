@@ -371,7 +371,7 @@ export const TextEditor = () => {
               Saved: {lastSaved.toLocaleTimeString()}
             </span>
           )}
-          {!saving && !lastSaved && textContent && (
+          {!saving && !lastSaved && textContent && isTextDirty && (
             <span className="text-yellow-600 italic">Unsaved changes</span>
           )}
         </div>
