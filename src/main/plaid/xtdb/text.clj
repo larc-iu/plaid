@@ -162,11 +162,13 @@
         needs-update? (fn [{:token/keys [begin end id]}]
                         (or (not= begin (:token/begin (clojure.core/get indexed-tokens id)))
                             (not= end (:token/end (clojure.core/get indexed-tokens id)))))
-        deletion-tx (tok/multi-delete* xt-map deleted-token-ids)
-        update-tx (mapcat (fn [{:token/keys [id] :as token}]
-                            [[::xt/match id (pxc/entity db id)]
-                             [::xt/put token]])
-                          (filter needs-update? new-tokens))
+        deletion-tx (when (seq deleted-token-ids) (tok/multi-delete* xt-map deleted-token-ids))
+        tokens-to-update (filter needs-update? new-tokens)
+        update-tx (when (seq tokens-to-update)
+                    (mapcat (fn [{:token/keys [id] :as token}]
+                              [[::xt/match id (pxc/entity db id)]
+                               [::xt/put token]])
+                            tokens-to-update))
         text-tx [[::xt/match (:text/id text) text]
                  [::xt/put (assoc text :text/body (:text/body new-text))]]
         tx (reduce into [text-tx deletion-tx update-tx])]
