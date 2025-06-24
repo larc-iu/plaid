@@ -122,41 +122,34 @@ export const TextEditor = () => {
       setError('');
       const client = getClient();
       
-      // Clear existing tokens first
+      // Clear existing tokens first using bulk delete
       if (tokens.length > 0) {
-        await Promise.all(tokens.map(token => 
-          client.tokens.delete(token.id)
-        ));
+        const tokenIds = tokens.map(token => token.id);
+        const deleteResult = await client.tokens.bulkDelete(tokenIds);
       }
       
       // Simple whitespace tokenization
       const tokenData = [];
       let currentIndex = 0;
-      let precedence = 1;
-      
+
       // Split by whitespace but preserve positions
       const parts = textContent.split(/(\s+)/);
       
       for (const part of parts) {
         if (part.trim()) {
           tokenData.push({
+            tokenLayerId: tokenLayer.id,
+            textId: text.id,
             begin: currentIndex,
             end: currentIndex + part.length,
-            precedence: precedence++
           });
         }
         currentIndex += part.length;
       }
 
-      // Create tokens via Plaid API
-      for (const tokenInfo of tokenData) {
-        await client.tokens.create(
-          tokenLayer.id,
-          text.id,
-          tokenInfo.begin,
-          tokenInfo.end,
-          tokenInfo.precedence
-        );
+      // Create new tokens using bulk create
+      if (tokenData.length > 0) {
+        await client.tokens.bulkCreate(tokenData);
       }
 
       // Refresh document to get updated tokens
@@ -181,10 +174,11 @@ export const TextEditor = () => {
       setSaving(true);
       const client = getClient();
       
-      // Delete all tokens via API
-      await Promise.all(tokens.map(token => 
-        client.tokens.delete(token.id)
-      ));
+      // Delete all tokens using bulk delete
+      if (tokens.length > 0) {
+        const tokenIds = tokens.map(token => token.id);
+        await client.tokens.bulkDelete(tokenIds);
+      }
       
       // Refresh document
       await fetchData();

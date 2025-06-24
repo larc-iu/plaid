@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Tue Jun 24 13:29:04 EDT 2025
+ * Generated on: Tue Jun 24 13:00:58 EDT 2025
  */
 
 class PlaidClient {
