@@ -18,42 +18,35 @@
   [summary-text]
   (common/transform-parameter-references summary-text :camelCase))
 
-(defn- generate-batch-builder-class
-  "Generate JavaScript BatchBuilder class"
+(defn- generate-batch-methods
+  "Generate JavaScript batch control methods"
   []
   "  /**
-   * BatchBuilder class for building and executing batch operations
+   * Begin a batch of operations. All subsequent API calls will be queued instead of executed.
+   * @returns {void}
    */
-  class BatchBuilder {
-    constructor(client) {
-      this.client = client;
-      this.operations = [];
+  beginBatch() {
+    this.isBatching = true;
+    this.batchOperations = [];
+  }
+
+  /**
+   * Submit all queued batch operations as a single bulk request.
+   * @returns {Promise<Array>} Array of results corresponding to each operation
+   */
+  async submitBatch() {
+    if (!this.isBatching) {
+      throw new Error('No active batch. Call beginBatch() first.');
+    }
+    
+    if (this.batchOperations.length === 0) {
+      this.isBatching = false;
+      return [];
     }
 
-    /**
-     * Add an operation to the batch
-     * @param {Function} method - The client method to call
-     * @param {...any} args - Arguments for the method
-     * @returns {BatchBuilder} - Returns this for chaining
-     */
-    add(method, ...args) {
-      // Extract the method metadata to build the operation
-      const methodInfo = this._extractMethodInfo(method, args);
-      this.operations.push(methodInfo);
-      return this;
-    }
-
-    /**
-     * Execute all operations in the batch
-     * @returns {Promise<Array>} - Array of results corresponding to each operation
-     */
-    async execute() {
-      if (this.operations.length === 0) {
-        return [];
-      }
-
-      const url = `${this.client.baseUrl}/api/v1/bulk`;
-      const body = this.operations.map(op => ({
+    try {
+      const url = `${this.baseUrl}/api/v1/bulk`;
+      const body = this.batchOperations.map(op => ({
         path: op.path,
         method: op.method.toUpperCase(),
         ...(op.body && { body: op.body })
@@ -62,7 +55,7 @@
       const fetchOptions = {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.client.token}`,
+          'Authorization': `Bearer ${this.token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(body)
@@ -81,88 +74,28 @@
       }
 
       const results = await response.json();
-      return results.map(result => this.client._transformResponse(result));
+      return results.map(result => this._transformResponse(result));
+    } finally {
+      this.isBatching = false;
+      this.batchOperations = [];
     }
+  }
 
-    /**
-     * Extract method information from a bound method and its arguments
-     * @private
-     */
-    _extractMethodInfo(method, args) {
-      // Find the method in the client bundles
-      for (const [bundleName, bundle] of Object.entries(this.client)) {
-        if (typeof bundle === 'object' && bundle !== null) {
-          for (const [methodName, boundMethod] of Object.entries(bundle)) {
-            if (boundMethod === method) {
-              return this._buildOperationFromMethod(bundleName, methodName, args);
-            }
-          }
-        }
-      }
-      throw new Error('Method not found in client bundles');
-    }
+  /**
+   * Abort the current batch without executing any operations.
+   * @returns {void}
+   */
+  abortBatch() {
+    this.isBatching = false;
+    this.batchOperations = [];
+  }
 
-    /**
-     * Build operation descriptor from method name and arguments
-     * @private
-     */
-    _buildOperationFromMethod(bundleName, methodName, args) {
-      // This is a simplified approach - in a real implementation, we'd need
-      // to reconstruct the full operation based on the method signature
-      // For now, we'll store the method info and delegate to the actual method
-      // when we have more sophisticated introspection
-      
-      // Get the private method name
-      const privateMethodName = `_${bundleName}${methodName.charAt(0).toUpperCase() + methodName.slice(1)}`;
-      const privateMethod = this.client[privateMethodName];
-      
-      if (!privateMethod) {
-        throw new Error(`Private method ${privateMethodName} not found`);
-      }
-
-      // Extract operation info from the method's path construction
-      // This is a simplified version - real implementation would be more robust
-      return this._simulateMethodCall(privateMethod, args);
-    }
-
-    /**
-     * Simulate a method call to extract the operation details
-     * @private
-     */
-    _simulateMethodCall(method, args) {
-      // Create a mock fetch function to capture the request details
-      const originalFetch = global.fetch;
-      let capturedOperation = null;
-
-      global.fetch = (url, options) => {
-        const parsedUrl = new URL(url);
-        const path = parsedUrl.pathname;
-        const method = options.method || 'GET';
-        const body = options.body ? JSON.parse(options.body) : undefined;
-        
-        capturedOperation = {
-          path: path,
-          method: method.toLowerCase(),
-          body: body
-        };
-        
-        // Return a resolved promise to avoid actually making the request
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({}),
-          text: () => Promise.resolve('')
-        });
-      };
-
-      try {
-        // Call the method to capture the operation
-        method.apply(this.client, args);
-        return capturedOperation;
-      } finally {
-        // Restore original fetch
-        global.fetch = originalFetch;
-      }
-    }
+  /**
+   * Check if currently in batch mode.
+   * @returns {boolean} True if batching is active
+   */
+  isBatchMode() {
+    return this.isBatching;
   }")
 
 (defn- generate-key-transformation-functions
@@ -219,13 +152,6 @@
     return transformed;
   }
 
-  /**
-   * Create a new batch builder for executing multiple operations
-   * @returns {BatchBuilder} - New batch builder instance
-   */
-  batch() {
-    return new BatchBuilder(this);
-  }
 ")
 
 (defn- generate-method-params-from-operation
@@ -310,7 +236,7 @@
            (= (:type (first body-params)) "array")
            (= (:original-name (first body-params)) "body"))
       (let [param-name (transform-key-name (:name (first body-params)))]
-        (str "const requestBody = " param-name ";"))
+        (str "const requestBody = this._transformRequest(" param-name ");"))
 
       ;; Regular case: object parameters
       :else
@@ -582,6 +508,18 @@
              "  async " private-method-name "(" method-params ") {\n"
              "    " url-construction "\n"
              (when body-construction (str "    " body-construction "\n"))
+             "    \n"
+             "    // Check if we're in batch mode\n"
+             "    if (this.isBatching) {\n"
+             "      const operation = {\n"
+             "        path: " (if (or (seq regular-query-params) as-of-param) "finalUrl.replace(this.baseUrl, '')" "url.replace(this.baseUrl, '')") ",\n"
+             "        method: '" (str/upper-case (name http-method)) "'\n"
+             (when has-body? "        , body: requestBody\n")
+             "      };\n"
+             "      this.batchOperations.push(operation);\n"
+             "      return { batched: true }; // Return placeholder\n"
+             "    }\n"
+             "    \n"
              "    " fetch-options "\n"
              "    \n"
              "    const response = await fetch(" url-var ", fetchOptions);\n"
@@ -825,7 +763,7 @@
         {:keys [title version description]} info
         bundle-initialization (generate-bundle-initialization bundles)
         private-methods (generate-bundle-methods bundles)
-        batch-builder-class (generate-batch-builder-class)
+        batch-methods (generate-batch-methods)
         transformation-functions (generate-key-transformation-functions)]
 
     (str "/**\n"
@@ -833,8 +771,6 @@
          " * Version: " version "\n"
          " * Generated on: " (java.util.Date.) "\n"
          " */\n"
-         "\n"
-         batch-builder-class
          "\n"
          "class PlaidClient {\n"
          "  /**\n"
@@ -846,11 +782,17 @@
          "    this.baseUrl = baseUrl.replace(/\\/$/, ''); // Remove trailing slash\n"
          "    this.token = token;\n"
          "    \n"
+         "    // Initialize batch state\n"
+         "    this.isBatching = false;\n"
+         "    this.batchOperations = [];\n"
+         "    \n"
          "    // Initialize API bundles\n"
          bundle-initialization "\n"
          "  }\n"
          "\n"
          transformation-functions
+         "\n"
+         batch-methods
          "\n"
          private-methods
          "\n"

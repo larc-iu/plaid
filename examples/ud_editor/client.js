@@ -1,152 +1,9 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Thu Jun 19 17:43:31 EDT 2025
+ * Generated on: Tue Jun 24 12:13:50 EDT 2025
  */
 
-  /**
-   * BatchBuilder class for building and executing batch operations
-   */
-  class BatchBuilder {
-    constructor(client) {
-      this.client = client;
-      this.operations = [];
-    }
-
-    /**
-     * Add an operation to the batch
-     * @param {Function} method - The client method to call
-     * @param {...any} args - Arguments for the method
-     * @returns {BatchBuilder} - Returns this for chaining
-     */
-    add(method, ...args) {
-      // Extract the method metadata to build the operation
-      const methodInfo = this._extractMethodInfo(method, args);
-      this.operations.push(methodInfo);
-      return this;
-    }
-
-    /**
-     * Execute all operations in the batch
-     * @returns {Promise<Array>} - Array of results corresponding to each operation
-     */
-    async execute() {
-      if (this.operations.length === 0) {
-        return [];
-      }
-
-      const url = `${this.client.baseUrl}/api/v1/bulk`;
-      const body = this.operations.map(op => ({
-        path: op.path,
-        method: op.method.toUpperCase(),
-        ...(op.body && { body: op.body })
-      }));
-
-      const fetchOptions = {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.client.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      };
-
-      const response = await fetch(url, fetchOptions);
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => 'Unable to read error response');
-        const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-        error.status = response.status;
-        error.statusText = response.statusText;
-        error.url = url;
-        error.method = 'POST';
-        error.responseBody = errorBody;
-        throw error;
-      }
-
-      const results = await response.json();
-      return results.map(result => this.client._transformResponse(result));
-    }
-
-    /**
-     * Extract method information from a bound method and its arguments
-     * @private
-     */
-    _extractMethodInfo(method, args) {
-      // Find the method in the client bundles
-      for (const [bundleName, bundle] of Object.entries(this.client)) {
-        if (typeof bundle === 'object' && bundle !== null) {
-          for (const [methodName, boundMethod] of Object.entries(bundle)) {
-            if (boundMethod === method) {
-              return this._buildOperationFromMethod(bundleName, methodName, args);
-            }
-          }
-        }
-      }
-      throw new Error('Method not found in client bundles');
-    }
-
-    /**
-     * Build operation descriptor from method name and arguments
-     * @private
-     */
-    _buildOperationFromMethod(bundleName, methodName, args) {
-      // This is a simplified approach - in a real implementation, we'd need
-      // to reconstruct the full operation based on the method signature
-      // For now, we'll store the method info and delegate to the actual method
-      // when we have more sophisticated introspection
-      
-      // Get the private method name
-      const privateMethodName = `_${bundleName}${methodName.charAt(0).toUpperCase() + methodName.slice(1)}`;
-      const privateMethod = this.client[privateMethodName];
-      
-      if (!privateMethod) {
-        throw new Error(`Private method ${privateMethodName} not found`);
-      }
-
-      // Extract operation info from the method's path construction
-      // This is a simplified version - real implementation would be more robust
-      return this._simulateMethodCall(privateMethod, args);
-    }
-
-    /**
-     * Simulate a method call to extract the operation details
-     * @private
-     */
-    _simulateMethodCall(method, args) {
-      // Create a mock fetch function to capture the request details
-      const originalFetch = global.fetch;
-      let capturedOperation = null;
-
-      global.fetch = (url, options) => {
-        const parsedUrl = new URL(url);
-        const path = parsedUrl.pathname;
-        const method = options.method || 'GET';
-        const body = options.body ? JSON.parse(options.body) : undefined;
-        
-        capturedOperation = {
-          path: path,
-          method: method.toLowerCase(),
-          body: body
-        };
-        
-        // Return a resolved promise to avoid actually making the request
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({}),
-          text: () => Promise.resolve('')
-        });
-      };
-
-      try {
-        // Call the method to capture the operation
-        method.apply(this.client, args);
-        return capturedOperation;
-      } finally {
-        // Restore original fetch
-        global.fetch = originalFetch;
-      }
-    }
-  }
 class PlaidClient {
   /**
    * Create a new PlaidClient instance
@@ -156,6 +13,10 @@ class PlaidClient {
   constructor(baseUrl, token) {
     this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash
     this.token = token;
+    
+    // Initialize batch state
+    this.isBatching = false;
+    this.batchOperations = [];
     
     // Initialize API bundles
     this.relations = {
@@ -384,7 +245,7 @@ body: the string which is the content of this text.
        */
       delete: this._usersDelete.bind(this),
       /**
-       * Modify a user
+       * Modify a user. Admins may change the username, password, and admin status of any user. All other users may only modify their own username or password.
  * @param {string} id - Id identifier
  * @param {string} [password] - Optional. Password
  * @param {string} [username] - Optional. Username
@@ -505,6 +366,12 @@ name: update a document's name.
  * @param {string} userId - User-id identifier
        */
       removeReader: this._projectsRemoveReader.bind(this),
+      /**
+       * INTERNAL, do not use directly.
+ * @param {string} id - Id identifier
+ * @param {string} clientId - Required. Clientid
+       */
+      heartbeat: this._projectsHeartbeat.bind(this),
       /**
        * Listen to audit log events and messages for a project via Server-Sent Events
  * @param {string} id - The UUID of the project to listen to
@@ -710,6 +577,16 @@ precedence: ordering value for the token relative to other tokens with the same 
        */
       update: this._tokensUpdate.bind(this),
       /**
+       * Create multiple tokens in a single operation
+ * @param {Array} operations - Required. Operations
+       */
+      create: this._tokensCreate.bind(this),
+      /**
+       * Delete multiple tokens in a single operation
+ * @param {Array} operations - Required. Operations
+       */
+      delete: this._tokensDelete.bind(this),
+      /**
        * Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} tokenId - Token-id identifier
  * @param {any} body - Required. Body
@@ -774,14 +651,83 @@ precedence: ordering value for the token relative to other tokens with the same 
     return transformed;
   }
 
+
   /**
-   * Create a new batch builder for executing multiple operations
-   * @returns {BatchBuilder} - New batch builder instance
+   * Begin a batch of operations. All subsequent API calls will be queued instead of executed.
+   * @returns {void}
    */
-  batch() {
-    return new BatchBuilder(this);
+  beginBatch() {
+    this.isBatching = true;
+    this.batchOperations = [];
   }
 
+  /**
+   * Submit all queued batch operations as a single bulk request.
+   * @returns {Promise<Array>} Array of results corresponding to each operation
+   */
+  async submitBatch() {
+    if (!this.isBatching) {
+      throw new Error('No active batch. Call beginBatch() first.');
+    }
+    
+    if (this.batchOperations.length === 0) {
+      this.isBatching = false;
+      return [];
+    }
+
+    try {
+      const url = `${this.baseUrl}/api/v1/bulk`;
+      const body = this.batchOperations.map(op => ({
+        path: op.path,
+        method: op.method.toUpperCase(),
+        ...(op.body && { body: op.body })
+      }));
+
+      const fetchOptions = {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      };
+
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'Unable to read error response');
+        const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseBody = errorBody;
+        throw error;
+      }
+
+      const results = await response.json();
+      return results.map(result => this._transformResponse(result));
+    } finally {
+      this.isBatching = false;
+      this.batchOperations = [];
+    }
+  }
+
+  /**
+   * Abort the current batch without executing any operations.
+   * @returns {void}
+   */
+  abortBatch() {
+    this.isBatching = false;
+    this.batchOperations = [];
+  }
+
+  /**
+   * Check if currently in batch mode.
+   * @returns {boolean} True if batching is active
+   */
+  isBatchMode() {
+    return this.isBatching;
+  }
   /**
    * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
@@ -793,6 +739,18 @@ precedence: ordering value for the token relative to other tokens with the same 
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -827,6 +785,17 @@ precedence: ordering value for the token relative to other tokens with the same 
    */
   async _relationsDeleteMetadata(relationId) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -866,6 +835,18 @@ precedence: ordering value for the token relative to other tokens with the same 
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -906,6 +887,17 @@ precedence: ordering value for the token relative to other tokens with the same 
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -939,6 +931,17 @@ precedence: ordering value for the token relative to other tokens with the same 
    */
   async _relationsDelete(relationId) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -978,6 +981,18 @@ precedence: ordering value for the token relative to other tokens with the same 
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -1018,6 +1033,18 @@ precedence: ordering value for the token relative to other tokens with the same 
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -1067,6 +1094,18 @@ targetId: the target span this relation goes to
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -1102,6 +1141,18 @@ targetId: the target span this relation goes to
   async _spanLayersSetConfig(spanLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -1136,6 +1187,17 @@ targetId: the target span this relation goes to
    */
   async _spanLayersDeleteConfig(spanLayerId, namespace, configKey) {
     const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -1175,6 +1237,17 @@ targetId: the target span this relation goes to
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -1208,6 +1281,17 @@ targetId: the target span this relation goes to
    */
   async _spanLayersDelete(spanLayerId) {
     const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -1247,6 +1331,18 @@ targetId: the target span this relation goes to
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -1288,6 +1384,18 @@ targetId: the target span this relation goes to
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -1328,6 +1436,18 @@ targetId: the target span this relation goes to
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -1368,6 +1488,18 @@ targetId: the target span this relation goes to
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -1416,6 +1548,18 @@ metadata: optional key-value pairs for additional annotation data.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -1456,6 +1600,17 @@ metadata: optional key-value pairs for additional annotation data.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -1489,6 +1644,17 @@ metadata: optional key-value pairs for additional annotation data.
    */
   async _spansDelete(spanId) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -1528,6 +1694,18 @@ metadata: optional key-value pairs for additional annotation data.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -1568,6 +1746,18 @@ metadata: optional key-value pairs for additional annotation data.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -1602,6 +1792,17 @@ metadata: optional key-value pairs for additional annotation data.
    */
   async _spansDeleteMetadata(spanId) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -1641,6 +1842,18 @@ metadata: optional key-value pairs for additional annotation data.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -1675,6 +1888,17 @@ metadata: optional key-value pairs for additional annotation data.
    */
   async _textsDeleteMetadata(textId) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -1721,6 +1945,18 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -1761,6 +1997,17 @@ body: the string which is the content of this text.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -1794,6 +2041,17 @@ body: the string which is the content of this text.
    */
   async _textsDelete(textId) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -1833,6 +2091,18 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -1873,6 +2143,17 @@ body: the string which is the content of this text.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -1914,6 +2195,18 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -1960,6 +2253,17 @@ body: the string which is the content of this text.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -1999,6 +2303,17 @@ body: the string which is the content of this text.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -2032,6 +2347,17 @@ body: the string which is the content of this text.
    */
   async _usersDelete(id) {
     const url = `${this.baseUrl}/api/v1/users/${id}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -2061,7 +2387,7 @@ body: the string which is the content of this text.
   }
 
   /**
-   * Modify a user
+   * Modify a user. Admins may change the username, password, and admin status of any user. All other users may only modify their own username or password.
    */
   async _usersUpdate(id, password = undefined, username = undefined, isAdmin = undefined) {
     const url = `${this.baseUrl}/api/v1/users/${id}`;
@@ -2073,6 +2399,18 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -2113,6 +2451,18 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -2154,6 +2504,18 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -2189,6 +2551,18 @@ body: the string which is the content of this text.
   async _tokenLayersSetConfig(tokenLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -2223,6 +2597,17 @@ body: the string which is the content of this text.
    */
   async _tokenLayersDeleteConfig(tokenLayerId, namespace, configKey) {
     const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -2262,6 +2647,17 @@ body: the string which is the content of this text.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -2295,6 +2691,17 @@ body: the string which is the content of this text.
    */
   async _tokenLayersDelete(tokenLayerId) {
     const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -2334,6 +2741,18 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -2380,6 +2799,17 @@ body: the string which is the content of this text.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -2422,6 +2852,17 @@ body: the string which is the content of this text.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -2455,6 +2896,17 @@ body: the string which is the content of this text.
    */
   async _documentsDelete(documentId) {
     const url = `${this.baseUrl}/api/v1/documents/${documentId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -2496,6 +2948,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -2537,6 +3001,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -2577,6 +3053,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -2611,6 +3099,17 @@ name: update a document's name.
    */
   async _projectsAddWriter(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/writers/${userId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -2644,6 +3143,17 @@ name: update a document's name.
    */
   async _projectsRemoveWriter(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/writers/${userId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -2677,6 +3187,17 @@ name: update a document's name.
    */
   async _projectsAddReader(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/readers/${userId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -2710,6 +3231,17 @@ name: update a document's name.
    */
   async _projectsRemoveReader(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/readers/${userId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -2726,6 +3258,58 @@ name: update a document's name.
       error.statusText = response.statusText;
       error.url = url;
       error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * INTERNAL, do not use directly.
+   */
+  async _projectsHeartbeat(id, clientId) {
+    const url = `${this.baseUrl}/api/v1/projects/${id}/heartbeat`;
+    const bodyObj = {
+      "client-id": clientId
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
@@ -2906,6 +3490,17 @@ name: update a document's name.
    */
   async _projectsAddMaintainer(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/maintainers/${userId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -2939,6 +3534,17 @@ name: update a document's name.
    */
   async _projectsRemoveMaintainer(id, userId) {
     const url = `${this.baseUrl}/api/v1/projects/${id}/maintainers/${userId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -2984,6 +3590,17 @@ name: update a document's name.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -3026,6 +3643,17 @@ name: update a document's name.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -3059,6 +3687,17 @@ name: update a document's name.
    */
   async _projectsDelete(id) {
     const url = `${this.baseUrl}/api/v1/projects/${id}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -3098,6 +3737,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -3138,6 +3789,17 @@ name: update a document's name.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -3177,6 +3839,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -3212,6 +3886,18 @@ name: update a document's name.
   async _textLayersSetConfig(textLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -3246,6 +3932,17 @@ name: update a document's name.
    */
   async _textLayersDeleteConfig(textLayerId, namespace, configKey) {
     const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -3285,6 +3982,17 @@ name: update a document's name.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -3318,6 +4026,17 @@ name: update a document's name.
    */
   async _textLayersDelete(textLayerId) {
     const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -3357,6 +4076,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -3397,6 +4128,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -3438,6 +4181,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -3479,6 +4234,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -3513,6 +4280,18 @@ name: update a document's name.
   async _bulkSubmit(operations) {
     const url = `${this.baseUrl}/api/v1/bulk`;
     const requestBody = operations;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -3553,6 +4332,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -3594,6 +4385,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -3629,6 +4432,18 @@ name: update a document's name.
   async _relationLayersSetConfig(relationLayerId, namespace, configKey, configValue) {
     const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -3663,6 +4478,17 @@ name: update a document's name.
    */
   async _relationLayersDeleteConfig(relationLayerId, namespace, configKey) {
     const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -3702,6 +4528,17 @@ name: update a document's name.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -3735,6 +4572,17 @@ name: update a document's name.
    */
   async _relationLayersDelete(relationLayerId) {
     const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -3774,6 +4622,18 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -3825,6 +4685,18 @@ precedence: used for tokens with the same begin value in order to indicate their
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -3865,6 +4737,17 @@ precedence: used for tokens with the same begin value in order to indicate their
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'GET',
       headers: {
@@ -3898,6 +4781,17 @@ precedence: used for tokens with the same begin value in order to indicate their
    */
   async _tokensDelete(tokenId) {
     const url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {
@@ -3943,6 +4837,18 @@ precedence: ordering value for the token relative to other tokens with the same 
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PATCH',
       headers: {
@@ -3973,6 +4879,100 @@ precedence: ordering value for the token relative to other tokens with the same 
   }
 
   /**
+   * Create multiple tokens in a single operation
+   */
+  async _tokensCreate(operations) {
+    const url = `${this.baseUrl}/api/v1/tokens/bulk`;
+    const requestBody = operations;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Delete multiple tokens in a single operation
+   */
+  async _tokensDelete(operations) {
+    const url = `${this.baseUrl}/api/v1/tokens/bulk`;
+    const requestBody = operations;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
    * Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
   async _tokensSetMetadata(tokenId, body) {
@@ -3983,6 +4983,18 @@ precedence: ordering value for the token relative to other tokens with the same 
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'PUT',
       headers: {
@@ -4017,6 +5029,17 @@ precedence: ordering value for the token relative to other tokens with the same 
    */
   async _tokensDeleteMetadata(tokenId) {
     const url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
     const fetchOptions = {
       method: 'DELETE',
       headers: {

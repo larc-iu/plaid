@@ -1,187 +1,12 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Fri Jun 20 13:52:13 EDT 2025
+Generated on: Tue Jun 24 13:29:06 EDT 2025
 """
 
 import requests
 import aiohttp
 from typing import Any, Dict, List, Optional, Union, Callable
-
-
-class BatchBuilder:
-    """
-    BatchBuilder class for building and executing batch operations
-    """
-    
-    def __init__(self, client: 'PlaidClient'):
-        self.client = client
-        self.operations = []
-    
-    def add(self, method, *args, **kwargs) -> 'BatchBuilder':
-        """
-        Add an operation to the batch
-        
-        Args:
-            method: The client method to call
-            *args: Positional arguments for the method
-            **kwargs: Keyword arguments for the method
-            
-        Returns:
-            BatchBuilder: Returns self for chaining
-        """
-        operation = self._extract_method_info(method, args, kwargs)
-        self.operations.append(operation)
-        return self
-    
-    def execute(self) -> List[Any]:
-        """
-        Execute all operations in the batch synchronously
-        
-        Returns:
-            List[Any]: List of results corresponding to each operation
-        """
-        if not self.operations:
-            return []
-        
-        url = f"{self.client.base_url}/api/v1/bulk"
-        body = []
-        
-        for op in self.operations:
-            operation_data = {
-                'path': op['path'],
-                'method': op['method'].upper()
-            }
-            if op.get('body'):
-                operation_data['body'] = op['body']
-            body.append(operation_data)
-        
-        headers = {
-            'Authorization': f'Bearer {self.client.token}',
-            'Content-Type': 'application/json'
-        }
-        
-        response = requests.post(url, json=body, headers=headers)
-        response.raise_for_status()
-        
-        results = response.json()
-        return [self.client._transform_response(result) for result in results]
-    
-    async def execute_async(self) -> List[Any]:
-        """
-        Execute all operations in the batch asynchronously
-        
-        Returns:
-            List[Any]: List of results corresponding to each operation
-        """
-        if not self.operations:
-            return []
-        
-        url = f"{self.client.base_url}/api/v1/bulk"
-        body = []
-        
-        for op in self.operations:
-            operation_data = {
-                'path': op['path'],
-                'method': op['method'].upper()
-            }
-            if op.get('body'):
-                operation_data['body'] = op['body']
-            body.append(operation_data)
-        
-        headers = {
-            'Authorization': f'Bearer {self.client.token}',
-            'Content-Type': 'application/json'
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body, headers=headers) as response:
-                response.raise_for_status()
-                results = await response.json()
-                return [self.client._transform_response(result) for result in results]
-    
-    def _extract_method_info(self, method, args, kwargs) -> Dict[str, Any]:
-        """
-        Extract method information from a bound method and its arguments
-        """
-        # Find the method in the client resources
-        for resource_name in dir(self.client):
-            resource = getattr(self.client, resource_name)
-            if hasattr(resource, '__class__') and hasattr(resource.__class__, '__name__'):
-                if resource.__class__.__name__.endswith('Resource'):
-                    for method_name in dir(resource):
-                        if not method_name.startswith('_'):
-                            bound_method = getattr(resource, method_name)
-                            if bound_method == method:
-                                return self._build_operation_from_method(
-                                    resource_name, method_name, args, kwargs)
-        
-        raise ValueError('Method not found in client resources')
-    
-    def _build_operation_from_method(self, resource_name: str, method_name: str, 
-                                   args: tuple, kwargs: dict) -> Dict[str, Any]:
-        """
-        Build operation descriptor from method name and arguments
-        """
-        # This is a simplified approach - we simulate the method call
-        # to capture the HTTP request details
-        return self._simulate_method_call(resource_name, method_name, args, kwargs)
-    
-    def _simulate_method_call(self, resource_name: str, method_name: str, 
-                            args: tuple, kwargs: dict) -> Dict[str, Any]:
-        """
-        Simulate a method call to extract the operation details
-        """
-        # Import the mock library to patch requests/aiohttp
-        try:
-            from unittest.mock import patch, MagicMock
-        except ImportError:
-            from mock import patch, MagicMock
-        
-        captured_operation = None
-        
-        def capture_request(method, url, **request_kwargs):
-            nonlocal captured_operation
-            from urllib.parse import urlparse
-            parsed_url = urlparse(url)
-            
-            captured_operation = {
-                'path': parsed_url.path,
-                'method': method.lower(),
-                'body': request_kwargs.get('json')
-            }
-            
-            # Return a mock response
-            mock_response = MagicMock()
-            mock_response.raise_for_status.return_value = None
-            mock_response.json.return_value = {}
-            mock_response.text.return_value = ''
-            return mock_response
-        
-        # Patch requests methods
-        with patch('requests.get', side_effect=lambda url, **kwargs: capture_request('GET', url, **kwargs)), \
-             patch('requests.post', side_effect=lambda url, **kwargs: capture_request('POST', url, **kwargs)), \
-             patch('requests.put', side_effect=lambda url, **kwargs: capture_request('PUT', url, **kwargs)), \
-             patch('requests.patch', side_effect=lambda url, **kwargs: capture_request('PATCH', url, **kwargs)), \
-             patch('requests.delete', side_effect=lambda url, **kwargs: capture_request('DELETE', url, **kwargs)):
-            
-            # Get the resource and method
-            resource = getattr(self.client, resource_name)
-            method = getattr(resource, method_name)
-            
-            # Call the method to capture the operation
-            try:
-                method(*args, **kwargs)
-            except Exception:
-                # Ignore exceptions from the simulated call
-                pass
-        
-        if captured_operation is None:
-            raise ValueError(f'Could not capture operation for {resource_name}.{method_name}')
-        
-        return captured_operation
-
-
 
 
 class RelationsResource:
@@ -211,6 +36,17 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -238,6 +74,17 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -260,6 +107,16 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -279,6 +136,16 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -309,6 +176,17 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -335,6 +213,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
@@ -367,6 +256,16 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -396,6 +295,16 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -418,6 +327,16 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -437,6 +356,16 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -467,6 +396,17 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -493,6 +433,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -523,6 +474,17 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -549,6 +511,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
@@ -591,6 +564,17 @@ target_id: the target span this relation goes to
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -630,6 +614,17 @@ target_id: the target span this relation goes to
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -665,6 +660,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -688,6 +694,17 @@ class SpanLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
@@ -713,6 +730,16 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -734,6 +761,16 @@ class SpanLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -766,6 +803,16 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -795,6 +842,16 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -817,6 +874,16 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -836,6 +903,16 @@ class SpanLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -866,6 +943,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -892,6 +980,17 @@ class SpanLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -923,6 +1022,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -950,6 +1060,17 @@ class SpanLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -980,6 +1101,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -1006,6 +1138,17 @@ class SpanLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -1045,6 +1188,17 @@ class SpansResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -1071,6 +1225,17 @@ class SpansResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
@@ -1111,6 +1276,17 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -1148,6 +1324,17 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -1179,6 +1366,16 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -1208,6 +1405,16 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -1230,6 +1437,16 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -1249,6 +1466,16 @@ metadata: optional key-value pairs for additional annotation data.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -1279,6 +1506,17 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -1305,6 +1543,17 @@ metadata: optional key-value pairs for additional annotation data.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -1335,6 +1584,17 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -1362,6 +1622,17 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -1384,6 +1655,16 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -1403,6 +1684,16 @@ metadata: optional key-value pairs for additional annotation data.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -1442,6 +1733,17 @@ class TextsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -1469,6 +1771,17 @@ class TextsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -1491,6 +1804,16 @@ class TextsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -1510,6 +1833,16 @@ class TextsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -1549,6 +1882,17 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -1585,6 +1929,17 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -1616,6 +1971,16 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -1645,6 +2010,16 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -1667,6 +2042,16 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -1686,6 +2071,16 @@ body: the string which is the content of this text.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -1716,6 +2111,17 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -1742,6 +2148,17 @@ body: the string which is the content of this text.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -1782,6 +2199,16 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -1809,6 +2236,16 @@ class UsersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
@@ -1842,6 +2279,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -1871,6 +2319,17 @@ class UsersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -1909,6 +2368,16 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -1944,6 +2413,16 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -1975,6 +2454,16 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -2004,6 +2493,16 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -2026,6 +2525,16 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -2046,6 +2555,16 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
@@ -2058,7 +2577,7 @@ class UsersResource:
 
     def update(self, id: str, password: str = None, username: str = None, is_admin: bool = None) -> Any:
         """
-        Modify a user
+        Modify a user. Admins may change the username, password, and admin status of any user. All other users may only modify their own username or password.
 
         Args:
             id: Path parameter
@@ -2078,6 +2597,17 @@ class UsersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
@@ -2089,7 +2619,7 @@ class UsersResource:
 
     async def update_async(self, id: str, password: str = None, username: str = None, is_admin: bool = None) -> Any:
         """
-        Modify a user
+        Modify a user. Admins may change the username, password, and admin status of any user. All other users may only modify their own username or password.
 
         Args:
             id: Path parameter
@@ -2109,6 +2639,17 @@ class UsersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -2148,6 +2689,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -2174,6 +2726,17 @@ class TokenLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -2205,6 +2768,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -2233,6 +2807,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -2259,6 +2844,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -2282,6 +2878,17 @@ class TokenLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
@@ -2307,6 +2914,16 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -2328,6 +2945,16 @@ class TokenLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -2360,6 +2987,16 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -2389,6 +3026,16 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -2411,6 +3058,16 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -2430,6 +3087,16 @@ class TokenLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -2460,6 +3127,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -2486,6 +3164,17 @@ class TokenLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -2533,6 +3222,16 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -2568,6 +3267,16 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -2602,6 +3311,16 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -2634,6 +3353,16 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -2656,6 +3385,16 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -2675,6 +3414,16 @@ class DocumentsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -2707,6 +3456,17 @@ name: update a document's name.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -2735,6 +3495,17 @@ name: update a document's name.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -2766,6 +3537,17 @@ name: update a document's name.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -2793,6 +3575,17 @@ name: update a document's name.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -2832,6 +3625,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -2859,6 +3663,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -2882,6 +3697,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, headers=headers)
         response.raise_for_status()
         
@@ -2902,6 +3727,16 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers) as response:
@@ -2926,6 +3761,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -2946,6 +3791,16 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -2970,6 +3825,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, headers=headers)
         response.raise_for_status()
         
@@ -2990,6 +3855,16 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers) as response:
@@ -3014,6 +3889,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -3034,6 +3919,16 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -3064,6 +3959,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -3090,6 +3996,17 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -3240,6 +4157,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, headers=headers)
         response.raise_for_status()
         
@@ -3260,6 +4187,16 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers) as response:
@@ -3284,6 +4221,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -3304,6 +4251,16 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -3342,6 +4299,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -3377,6 +4344,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -3411,6 +4388,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -3443,6 +4430,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -3465,6 +4462,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -3484,6 +4491,16 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -3514,6 +4531,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -3540,6 +4568,17 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -3571,6 +4610,16 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -3598,6 +4647,16 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
@@ -3627,6 +4686,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -3652,6 +4722,17 @@ class ProjectsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -3688,6 +4769,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -3711,6 +4803,17 @@ class TextLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
@@ -3736,6 +4839,16 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -3757,6 +4870,16 @@ class TextLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -3789,6 +4912,16 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -3818,6 +4951,16 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -3840,6 +4983,16 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -3859,6 +5012,16 @@ class TextLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -3889,6 +5052,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -3915,6 +5089,17 @@ class TextLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -3945,6 +5130,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -3971,6 +5167,17 @@ class TextLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -4002,6 +5209,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -4029,6 +5247,17 @@ class TextLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -4068,6 +5297,17 @@ class LoginResource:
         
         headers = {'Content-Type': 'application/json'}
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -4094,6 +5334,17 @@ class LoginResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -4127,6 +5378,17 @@ class BulkResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -4147,6 +5409,17 @@ class BulkResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -4186,6 +5459,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -4212,6 +5496,17 @@ class RelationLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
@@ -4243,6 +5538,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -4271,6 +5577,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -4297,6 +5614,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -4320,6 +5648,17 @@ class RelationLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
@@ -4345,6 +5684,16 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -4366,6 +5715,16 @@ class RelationLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -4398,6 +5757,16 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -4427,6 +5796,16 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -4449,6 +5828,16 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -4468,6 +5857,16 @@ class RelationLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -4498,6 +5897,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -4524,6 +5934,17 @@ class RelationLayersResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
@@ -4578,6 +5999,17 @@ precedence: used for tokens with the same begin value in order to indicate their
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -4620,6 +6052,17 @@ precedence: used for tokens with the same begin value in order to indicate their
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -4651,6 +6094,16 @@ precedence: used for tokens with the same begin value in order to indicate their
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -4680,6 +6133,16 @@ precedence: used for tokens with the same begin value in order to indicate their
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
@@ -4702,6 +6165,16 @@ precedence: used for tokens with the same begin value in order to indicate their
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -4721,6 +6194,16 @@ precedence: used for tokens with the same begin value in order to indicate their
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -4759,6 +6242,17 @@ precedence: ordering value for the token relative to other tokens with the same 
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
@@ -4794,8 +6288,151 @@ precedence: ordering value for the token relative to other tokens with the same 
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def bulk_create(self, operations: List[Any]) -> Any:
+        """
+        Create multiple tokens in a single operation
+
+        Args:
+            operations: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/tokens/bulk"
+        body_data = operations
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def bulk_create_async(self, operations: List[Any]) -> Any:
+        """
+        Create multiple tokens in a single operation
+
+        Args:
+            operations: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/tokens/bulk"
+        body_data = operations
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def bulk_delete(self, operations: List[Any]) -> Any:
+        """
+        Delete multiple tokens in a single operation
+
+        Args:
+            operations: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/tokens/bulk"
+        body_data = operations
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def bulk_delete_async(self, operations: List[Any]) -> Any:
+        """
+        Delete multiple tokens in a single operation
+
+        Args:
+            operations: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/tokens/bulk"
+        body_data = operations
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
                 content_type = response.headers.get('content-type', '').lower()
@@ -4822,6 +6459,17 @@ precedence: ordering value for the token relative to other tokens with the same 
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
@@ -4850,6 +6498,17 @@ precedence: ordering value for the token relative to other tokens with the same 
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
@@ -4872,6 +6531,16 @@ precedence: ordering value for the token relative to other tokens with the same 
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
@@ -4891,6 +6560,16 @@ precedence: ordering value for the token relative to other tokens with the same 
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
@@ -4913,16 +6592,16 @@ class PlaidClient:
     
     Batch operations:
         # Synchronous batch
-        results = client.batch() \
-            .add(client.projects.create, name='Project 1') \
-            .add(client.projects.create, name='Project 2') \
-            .execute()
+        client.begin_batch()
+        client.projects.create(name='Project 1')  # Gets queued
+        client.projects.create(name='Project 2')  # Gets queued
+        results = client.submit_batch()  # Executes all as one bulk request
         
         # Asynchronous batch
-        results = await client.batch() \
-            .add(client.projects.create, name='Project 1') \
-            .add(client.projects.create, name='Project 2') \
-            .execute_async()
+        client.begin_batch()
+        await client.projects.create_async(name='Project 1')  # Gets queued
+        await client.projects.create_async(name='Project 2')  # Gets queued
+        results = await client.submit_batch_async()  # Executes all as one bulk request
     
     Example:
         # Authenticate
@@ -4945,6 +6624,10 @@ class PlaidClient:
         """
         self.base_url = base_url.rstrip('/')
         self.token = token
+        
+        # Initialize batch state
+        self._is_batching = False
+        self._batch_operations = []
         
         # Initialize resource objects
         self.relations = RelationsResource(self)
@@ -5009,14 +6692,112 @@ class PlaidClient:
             return transformed
         return obj
     
-    def batch(self) -> BatchBuilder:
+
+    
+    def begin_batch(self) -> None:
         """
-        Create a new batch builder for executing multiple operations
+        Begin a batch of operations. All subsequent API calls will be queued instead of executed.
+        """
+        self._is_batching = True
+        self._batch_operations = []
+    
+    def submit_batch(self) -> List[Any]:
+        """
+        Submit all queued batch operations as a single bulk request (synchronous).
         
         Returns:
-            BatchBuilder: New batch builder instance
+            List[Any]: Array of results corresponding to each operation
         """
-        return BatchBuilder(self)
+        if not self._is_batching:
+            raise ValueError('No active batch. Call begin_batch() first.')
+        
+        if not self._batch_operations:
+            self._is_batching = False
+            return []
+        
+        try:
+            url = f"{self.base_url}/api/v1/bulk"
+            body = []
+            
+            for op in self._batch_operations:
+                operation_data = {
+                    'path': op['path'],
+                    'method': op['method'].upper()
+                }
+                if op.get('body'):
+                    operation_data['body'] = op['body']
+                body.append(operation_data)
+            
+            headers = {
+                'Authorization': f'Bearer {self.token}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.post(url, json=body, headers=headers)
+            response.raise_for_status()
+            
+            results = response.json()
+            return [self._transform_response(result) for result in results]
+        finally:
+            self._is_batching = False
+            self._batch_operations = []
+    
+    async def submit_batch_async(self) -> List[Any]:
+        """
+        Submit all queued batch operations as a single bulk request (asynchronous).
+        
+        Returns:
+            List[Any]: Array of results corresponding to each operation
+        """
+        if not self._is_batching:
+            raise ValueError('No active batch. Call begin_batch() first.')
+        
+        if not self._batch_operations:
+            self._is_batching = False
+            return []
+        
+        try:
+            url = f"{self.base_url}/api/v1/bulk"
+            body = []
+            
+            for op in self._batch_operations:
+                operation_data = {
+                    'path': op['path'],
+                    'method': op['method'].upper()
+                }
+                if op.get('body'):
+                    operation_data['body'] = op['body']
+                body.append(operation_data)
+            
+            headers = {
+                'Authorization': f'Bearer {self.token}',
+                'Content-Type': 'application/json'
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body, headers=headers) as response:
+                    response.raise_for_status()
+                    results = await response.json()
+                    return [self._transform_response(result) for result in results]
+        finally:
+            self._is_batching = False
+            self._batch_operations = []
+    
+    def abort_batch(self) -> None:
+        """
+        Abort the current batch without executing any operations.
+        """
+        self._is_batching = False
+        self._batch_operations = []
+    
+    def is_batch_mode(self) -> bool:
+        """
+        Check if currently in batch mode.
+        
+        Returns:
+            bool: True if batching is active
+        """
+        return self._is_batching
     
     @classmethod
     def login(cls, base_url: str, username: str, password: str) -> 'PlaidClient':

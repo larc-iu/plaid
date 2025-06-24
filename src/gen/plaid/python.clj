@@ -380,6 +380,17 @@
          "        headers = {'Content-Type': 'application/json'}\n"
          auth-header
          "        \n"
+         "        # Check if we're in batch mode\n"
+         "        if self.client._is_batching:\n"
+         "            operation = {\n"
+         "                'path': url.replace(self.client.base_url, ''),\n"
+         "                'method': '" (str/upper-case (name http-method)) "'\n"
+         (when has-body? "                ,'body': body_data\n")
+         "            }\n"
+         "            self.client._batch_operations.append(operation)\n"
+         "            return {'batched': True}  # Return placeholder\n"
+         "        \n"
+         "        \n"
          (if sync?
            ;; Sync version using requests
            (str "        response = requests." (str/lower-case (name http-method))
@@ -425,183 +436,113 @@
          "\n"
          (str/join "\n" methods))))
 
-(defn- generate-python-batch-builder-class
-  "Generate Python BatchBuilder class"  
+(defn- generate-python-batch-methods
+  "Generate Python batch control methods"
   []
-  "class BatchBuilder:
-    \"\"\"
-    BatchBuilder class for building and executing batch operations
-    \"\"\"
-    
-    def __init__(self, client: 'PlaidClient'):
-        self.client = client
-        self.operations = []
-    
-    def add(self, method, *args, **kwargs) -> 'BatchBuilder':
+  "    def begin_batch(self) -> None:
         \"\"\"
-        Add an operation to the batch
-        
-        Args:
-            method: The client method to call
-            *args: Positional arguments for the method
-            **kwargs: Keyword arguments for the method
-            
-        Returns:
-            BatchBuilder: Returns self for chaining
+        Begin a batch of operations. All subsequent API calls will be queued instead of executed.
         \"\"\"
-        operation = self._extract_method_info(method, args, kwargs)
-        self.operations.append(operation)
-        return self
+        self._is_batching = True
+        self._batch_operations = []
     
-    def execute(self) -> List[Any]:
+    def submit_batch(self) -> List[Any]:
         \"\"\"
-        Execute all operations in the batch synchronously
+        Submit all queued batch operations as a single bulk request (synchronous).
         
         Returns:
-            List[Any]: List of results corresponding to each operation
+            List[Any]: Array of results corresponding to each operation
         \"\"\"
-        if not self.operations:
+        if not self._is_batching:
+            raise ValueError('No active batch. Call begin_batch() first.')
+        
+        if not self._batch_operations:
+            self._is_batching = False
             return []
         
-        url = f\"{self.client.base_url}/api/v1/bulk\"
-        body = []
-        
-        for op in self.operations:
-            operation_data = {
-                'path': op['path'],
-                'method': op['method'].upper()
-            }
-            if op.get('body'):
-                operation_data['body'] = op['body']
-            body.append(operation_data)
-        
-        headers = {
-            'Authorization': f'Bearer {self.client.token}',
-            'Content-Type': 'application/json'
-        }
-        
-        response = requests.post(url, json=body, headers=headers)
-        response.raise_for_status()
-        
-        results = response.json()
-        return [self.client._transform_response(result) for result in results]
-    
-    async def execute_async(self) -> List[Any]:
-        \"\"\"
-        Execute all operations in the batch asynchronously
-        
-        Returns:
-            List[Any]: List of results corresponding to each operation
-        \"\"\"
-        if not self.operations:
-            return []
-        
-        url = f\"{self.client.base_url}/api/v1/bulk\"
-        body = []
-        
-        for op in self.operations:
-            operation_data = {
-                'path': op['path'],
-                'method': op['method'].upper()
-            }
-            if op.get('body'):
-                operation_data['body'] = op['body']
-            body.append(operation_data)
-        
-        headers = {
-            'Authorization': f'Bearer {self.client.token}',
-            'Content-Type': 'application/json'
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body, headers=headers) as response:
-                response.raise_for_status()
-                results = await response.json()
-                return [self.client._transform_response(result) for result in results]
-    
-    def _extract_method_info(self, method, args, kwargs) -> Dict[str, Any]:
-        \"\"\"
-        Extract method information from a bound method and its arguments
-        \"\"\"
-        # Find the method in the client resources
-        for resource_name in dir(self.client):
-            resource = getattr(self.client, resource_name)
-            if hasattr(resource, '__class__') and hasattr(resource.__class__, '__name__'):
-                if resource.__class__.__name__.endswith('Resource'):
-                    for method_name in dir(resource):
-                        if not method_name.startswith('_'):
-                            bound_method = getattr(resource, method_name)
-                            if bound_method == method:
-                                return self._build_operation_from_method(
-                                    resource_name, method_name, args, kwargs)
-        
-        raise ValueError('Method not found in client resources')
-    
-    def _build_operation_from_method(self, resource_name: str, method_name: str, 
-                                   args: tuple, kwargs: dict) -> Dict[str, Any]:
-        \"\"\"
-        Build operation descriptor from method name and arguments
-        \"\"\"
-        # This is a simplified approach - we simulate the method call
-        # to capture the HTTP request details
-        return self._simulate_method_call(resource_name, method_name, args, kwargs)
-    
-    def _simulate_method_call(self, resource_name: str, method_name: str, 
-                            args: tuple, kwargs: dict) -> Dict[str, Any]:
-        \"\"\"
-        Simulate a method call to extract the operation details
-        \"\"\"
-        # Import the mock library to patch requests/aiohttp
         try:
-            from unittest.mock import patch, MagicMock
-        except ImportError:
-            from mock import patch, MagicMock
-        
-        captured_operation = None
-        
-        def capture_request(method, url, **request_kwargs):
-            nonlocal captured_operation
-            from urllib.parse import urlparse
-            parsed_url = urlparse(url)
+            url = f\"{self.base_url}/api/v1/bulk\"
+            body = []
             
-            captured_operation = {
-                'path': parsed_url.path,
-                'method': method.lower(),
-                'body': request_kwargs.get('json')
+            for op in self._batch_operations:
+                operation_data = {
+                    'path': op['path'],
+                    'method': op['method'].upper()
+                }
+                if op.get('body'):
+                    operation_data['body'] = op['body']
+                body.append(operation_data)
+            
+            headers = {
+                'Authorization': f'Bearer {self.token}',
+                'Content-Type': 'application/json'
             }
             
-            # Return a mock response
-            mock_response = MagicMock()
-            mock_response.raise_for_status.return_value = None
-            mock_response.json.return_value = {}
-            mock_response.text.return_value = ''
-            return mock_response
-        
-        # Patch requests methods
-        with patch('requests.get', side_effect=lambda url, **kwargs: capture_request('GET', url, **kwargs)), \\
-             patch('requests.post', side_effect=lambda url, **kwargs: capture_request('POST', url, **kwargs)), \\
-             patch('requests.put', side_effect=lambda url, **kwargs: capture_request('PUT', url, **kwargs)), \\
-             patch('requests.patch', side_effect=lambda url, **kwargs: capture_request('PATCH', url, **kwargs)), \\
-             patch('requests.delete', side_effect=lambda url, **kwargs: capture_request('DELETE', url, **kwargs)):
+            response = requests.post(url, json=body, headers=headers)
+            response.raise_for_status()
             
-            # Get the resource and method
-            resource = getattr(self.client, resource_name)
-            method = getattr(resource, method_name)
+            results = response.json()
+            return [self._transform_response(result) for result in results]
+        finally:
+            self._is_batching = False
+            self._batch_operations = []
+    
+    async def submit_batch_async(self) -> List[Any]:
+        \"\"\"
+        Submit all queued batch operations as a single bulk request (asynchronous).
+        
+        Returns:
+            List[Any]: Array of results corresponding to each operation
+        \"\"\"
+        if not self._is_batching:
+            raise ValueError('No active batch. Call begin_batch() first.')
+        
+        if not self._batch_operations:
+            self._is_batching = False
+            return []
+        
+        try:
+            url = f\"{self.base_url}/api/v1/bulk\"
+            body = []
             
-            # Call the method to capture the operation
-            try:
-                method(*args, **kwargs)
-            except Exception:
-                # Ignore exceptions from the simulated call
-                pass
+            for op in self._batch_operations:
+                operation_data = {
+                    'path': op['path'],
+                    'method': op['method'].upper()
+                }
+                if op.get('body'):
+                    operation_data['body'] = op['body']
+                body.append(operation_data)
+            
+            headers = {
+                'Authorization': f'Bearer {self.token}',
+                'Content-Type': 'application/json'
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body, headers=headers) as response:
+                    response.raise_for_status()
+                    results = await response.json()
+                    return [self._transform_response(result) for result in results]
+        finally:
+            self._is_batching = False
+            self._batch_operations = []
+    
+    def abort_batch(self) -> None:
+        \"\"\"
+        Abort the current batch without executing any operations.
+        \"\"\"
+        self._is_batching = False
+        self._batch_operations = []
+    
+    def is_batch_mode(self) -> bool:
+        \"\"\"
+        Check if currently in batch mode.
         
-        if captured_operation is None:
-            raise ValueError(f'Could not capture operation for {resource_name}.{method_name}')
-        
-        return captured_operation
-
-
-")
+        Returns:
+            bool: True if batching is active
+        \"\"\"
+        return self._is_batching")
 
 (defn- generate-python-key-transformations
   "Generate Python key transformation methods"
@@ -654,14 +595,7 @@
             return transformed
         return obj
     
-    def batch(self) -> BatchBuilder:
-        \"\"\"
-        Create a new batch builder for executing multiple operations
-        
-        Returns:
-            BatchBuilder: New batch builder instance
-        \"\"\"
-        return BatchBuilder(self)")
+")
 
 (defn- generate-login-method
   "Generate login method that returns a new authenticated client"
@@ -723,7 +657,7 @@
         bundles (:bundles ast)
         
         ;; Generate batch builder class
-        batch-builder-class (generate-python-batch-builder-class)
+        batch-methods (generate-python-batch-methods)
         
         ;; Generate resource classes
         resource-classes (->> bundles
@@ -753,7 +687,6 @@
          "from typing import Any, Dict, List, Optional, Union, Callable\n"
          "\n"
          "\n"
-         batch-builder-class "\n\n"
          resource-classes "\n\n"
          "class PlaidClient:\n"
          "    \"\"\"\n"
@@ -765,16 +698,16 @@
          "    \n"
          "    Batch operations:\n"
          "        # Synchronous batch\n"
-         "        results = client.batch() \\\n"
-         "            .add(client.projects.create, name='Project 1') \\\n"
-         "            .add(client.projects.create, name='Project 2') \\\n"
-         "            .execute()\n"
+         "        client.begin_batch()\n"
+         "        client.projects.create(name='Project 1')  # Gets queued\n"
+         "        client.projects.create(name='Project 2')  # Gets queued\n"
+         "        results = client.submit_batch()  # Executes all as one bulk request\n"
          "        \n"
          "        # Asynchronous batch\n"
-         "        results = await client.batch() \\\n"
-         "            .add(client.projects.create, name='Project 1') \\\n"
-         "            .add(client.projects.create, name='Project 2') \\\n"
-         "            .execute_async()\n"
+         "        client.begin_batch()\n"
+         "        await client.projects.create_async(name='Project 1')  # Gets queued\n"
+         "        await client.projects.create_async(name='Project 2')  # Gets queued\n"
+         "        results = await client.submit_batch_async()  # Executes all as one bulk request\n"
          "    \n"
          "    Example:\n"
          "        # Authenticate\n"
@@ -798,10 +731,16 @@
          "        self.base_url = base_url.rstrip('/')\n"
          "        self.token = token\n"
          "        \n"
+         "        # Initialize batch state\n"
+         "        self._is_batching = False\n"
+         "        self._batch_operations = []\n"
+         "        \n"
          "        # Initialize resource objects\n"
          resource-init "\n"
          "    \n"
          key-transformations "\n"
+         "    \n"
+         batch-methods "\n"
          "    \n"
          login-methods "\n")))
 
