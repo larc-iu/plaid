@@ -6,6 +6,7 @@ import { LoginForm } from './components/auth/LoginForm';
 import { ProjectList } from './components/projects/ProjectList';
 import { DocumentList } from './components/documents/DocumentList';
 import { TextEditor } from './components/editor/TextEditor';
+import { AnnotationEditor } from './components/editor/AnnotationEditor';
 import './App.css';
 
 function App() {
@@ -34,12 +35,7 @@ function App() {
             {/* Text editor route */}
             <Route path="projects/:projectId/documents/:documentId/edit" element={<TextEditor />} />
             
-            <Route path="projects/:projectId/documents/:documentId/annotate" element={
-              <div style={{ textAlign: 'center', padding: '2rem' }}>
-                <h2>Annotation Editor</h2>
-                <p>Annotation interface will be implemented in Phase 4</p>
-              </div>
-            } />
+            <Route path="projects/:projectId/documents/:documentId/annotate" element={<AnnotationEditor />} />
           </Route>
           
           {/* Catch all - redirect to login */}
