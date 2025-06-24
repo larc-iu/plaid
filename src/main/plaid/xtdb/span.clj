@@ -99,7 +99,7 @@
       (throw (ex-info "Not all token IDs belong to the same document."
                       {:document-ids (map (partial get-doc-id-of-token db) tokens) :code 400})))))
 
-(defn- span-attr? 
+(defn- span-attr?
   "Check if an attribute key belongs to span namespace (including metadata attributes)."
   [k]
   (= "span" (namespace k)))
@@ -139,12 +139,12 @@
         attrs-with-metadata (clojure.core/merge attrs metadata-attrs)
         tx-ops (create* xt-map attrs-with-metadata)]
     (op/make-operation
-     {:type        :span/create
-      :project     project-id
-      :document    doc-id
-      :description (str "Create span with " (count tokens) " tokens in layer " layer
-                        (when metadata (str " and " (count metadata) " metadata keys")))
-      :tx-ops      tx-ops})))
+      {:type        :span/create
+       :project     project-id
+       :document    doc-id
+       :description (str "Create span with " (count tokens) " tokens in layer " layer
+                         (when metadata (str " and " (count metadata) " metadata keys")))
+       :tx-ops      tx-ops})))
 
 (defn create
   ([xt-map attrs user-id]
@@ -162,11 +162,11 @@
         span-attrs (filter (fn [[k v]] (span-attr? k)) m)
         updates (into {} span-attrs)]
     (op/make-operation
-     {:type        :span/update-attributes
-      :project     project-id
-      :document    doc-id
-      :description (str "Update attributes of span " eid)
-      :tx-ops      (pxc/merge* xt-map eid updates)})))
+      {:type        :span/update-attributes
+       :project     project-id
+       :document    doc-id
+       :description (str "Update attributes of span " eid)
+       :tx-ops      (pxc/merge* xt-map eid updates)})))
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m user-id]
@@ -195,11 +195,11 @@
         doc-id (when span (get-doc-id-of-token db (first (:span/tokens span))))
         tx-ops (delete* xt-map eid)]
     (op/make-operation
-     {:type        :span/delete
-      :project     project-id
-      :document    doc-id
-      :description (str "Delete span " eid " and its " (count (get-relation-ids db eid)) " relations")
-      :tx-ops      tx-ops})))
+      {:type        :span/delete
+       :project     project-id
+       :document    doc-id
+       :description (str "Delete span " eid " and its " (count (get-relation-ids db eid)) " relations")
+       :tx-ops      tx-ops})))
 
 (defn delete [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
@@ -226,11 +226,11 @@
         doc-id (get-doc-id-of-token db (first token-ids))
         tx-ops (set-tokens* xt-map eid token-ids)]
     (op/make-operation
-     {:type        :span/update-tokens
-      :project     project-id
-      :document    doc-id
-      :description (str "Update tokens of span " eid " to " (count token-ids) " tokens")
-      :tx-ops      tx-ops})))
+      {:type        :span/update-tokens
+       :project     project-id
+       :document    doc-id
+       :description (str "Update tokens of span " eid " to " (count token-ids) " tokens")
+       :tx-ops      tx-ops})))
 
 (defn set-tokens [xt-map eid token-ids user-id]
   (submit-operations! xt-map [(set-tokens-operation xt-map eid token-ids)] user-id))
@@ -256,13 +256,13 @@
         will-delete (and (= 1 (-> span :span/tokens count))
                          (= token-id (first (:span/tokens span))))]
     (op/make-operation
-     {:type        :span/remove-token
-      :project     project-id
-      :document    doc-id
-      :description (if will-delete
-                     (str "Remove token " token-id " from span " span-id " (deleting span)")
-                     (str "Remove token " token-id " from span " span-id))
-      :tx-ops      tx-ops})))
+      {:type        :span/remove-token
+       :project     project-id
+       :document    doc-id
+       :description (if will-delete
+                      (str "Remove token " token-id " from span " span-id " (deleting span)")
+                      (str "Remove token " token-id " from span " span-id))
+       :tx-ops      tx-ops})))
 
 (defn remove-token [xt-map span-id token-id user-id]
   (submit-operations! xt-map [(remove-token-operation xt-map span-id token-id)] user-id))
@@ -310,7 +310,7 @@
     ;; Validate all spans are for the same layer
     (when-not (= 1 (->> spans-attrs (map :span/layer) distinct count))
       (throw (ex-info "Spans must all belong to the same layer" {:code 400})))
-    
+
     ;; Validate all spans belong to the same document (via their tokens)
     (let [doc-ids (->> spans-attrs
                        (map :span/tokens)
@@ -319,7 +319,7 @@
                        distinct)]
       (when-not (= 1 (count doc-ids))
         (throw (ex-info "Not all spans belong to the same document" {:document-ids doc-ids :code 400}))))
-    
+
     ;; If validation passes, create transaction operations
     (vec
       (concat
@@ -333,7 +333,7 @@
               ;; Validate this span's attributes
               (validate-atomic-value! value)
               (check-tokens! db span token-records)
-              
+
               ;; Add to transaction operations
               (let [token-matches (mapv (fn [[id record]]
                                           [::xt/match id record])
@@ -347,7 +347,7 @@
 (defn bulk-create-operation
   "Build an operation for creating multiple spans"
   [xt-map spans-attrs]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         ;; Get project and document info from first span (assuming all in same project/doc)
         first-attrs (first spans-attrs)
         {:span/keys [layer tokens]} first-attrs
@@ -355,13 +355,13 @@
         doc-id (get-doc-id-of-token db (first tokens))
         ;; Process metadata for all spans
         spans-with-metadata (map (fn [attrs]
-                                   (let [metadata (get attrs :metadata)
-                                         span-attrs (dissoc attrs :metadata)
-                                         metadata-attrs (when metadata
-                                                          (metadata/transform-metadata-for-storage metadata "span"))]
-                                     (if metadata-attrs
-                                       (clojure.core/merge span-attrs metadata-attrs)
-                                       span-attrs)))
+                                   (if (:metadata attrs)
+                                     (let [metadata (get attrs :metadata)
+                                           span-attrs (dissoc attrs :metadata)
+                                           metadata-attrs (when metadata
+                                                            (metadata/transform-metadata-for-storage metadata "span"))]
+                                       (clojure.core/merge span-attrs metadata-attrs))
+                                     (dissoc attrs :metadata)))
                                  spans-attrs)
         tx-ops (bulk-create* xt-map spans-with-metadata)]
     (op/make-operation
@@ -392,12 +392,12 @@
     ;; Validate all spans belong to the same document
     (let [doc-ids (->> spans-attrs
                        (map :span/tokens)
-                       (map first)  
+                       (map first)
                        (map (partial get-doc-id-of-token db))
                        distinct)]
       (when-not (= 1 (count doc-ids))
         (throw (ex-info "Not all spans belong to the same document" {:document-ids doc-ids :code 400}))))
-    
+
     ;; Get all relations that reference any of these spans
     (let [relations-to-delete (when (seq eids)
                                 (->> (xt/q db '{:find  [?r]
@@ -440,6 +440,6 @@
        :tx-ops      tx-ops})))
 
 (defn bulk-delete
-  "Delete multiple spans in a single operation" 
+  "Delete multiple spans in a single operation"
   [xt-map eids user-id]
   (submit-operations! xt-map [(bulk-delete-operation xt-map eids)] user-id))
