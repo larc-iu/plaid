@@ -8,6 +8,7 @@ export const TextEditor = () => {
   const [document, setDocument] = useState(null);
   const [project, setProject] = useState(null);
   const [textContent, setTextContent] = useState('');
+  const [originalTokenizedText, setOriginalTokenizedText] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -38,6 +39,13 @@ export const TextEditor = () => {
       const text = textLayer?.text;
       if (text?.body) {
         setTextContent(text.body);
+        
+        // If we have tokens and no original tokenized text stored, use current text
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const tokens = tokenLayer?.tokens || [];
+        if (tokens.length > 0 && !originalTokenizedText) {
+          setOriginalTokenizedText(text.body);
+        }
       }
 
       setError('');
@@ -90,8 +98,8 @@ export const TextEditor = () => {
       
       setLastSaved(new Date());
       setError('');
-      // Refresh document to get updated data
-      await fetchData();
+      // Force a full page reload to ensure everything is in sync
+      window.location.reload();
     } catch (err) {
       setError('Failed to save text: ' + (err.message || 'Unknown error'));
       console.error('Error saving text:', err);
@@ -122,14 +130,13 @@ export const TextEditor = () => {
       setError('');
       const client = getClient();
       
-      // Clear existing tokens first using bulk delete
-      if (tokens.length > 0) {
-        const tokenIds = tokens.map(token => token.id);
-        const deleteResult = await client.tokens.bulkDelete(tokenIds);
-      }
+      // Helper function to check if two ranges overlap
+      const rangesOverlap = (begin1, end1, begin2, end2) => {
+        return begin1 < end2 && begin2 < end1;
+      };
       
-      // Simple whitespace tokenization
-      const tokenData = [];
+      // Generate proposed tokens from whitespace tokenization
+      const proposedTokens = [];
       let currentIndex = 0;
 
       // Split by whitespace but preserve positions
@@ -137,7 +144,7 @@ export const TextEditor = () => {
       
       for (const part of parts) {
         if (part.trim()) {
-          tokenData.push({
+          proposedTokens.push({
             tokenLayerId: tokenLayer.id,
             textId: text.id,
             begin: currentIndex,
@@ -147,13 +154,32 @@ export const TextEditor = () => {
         currentIndex += part.length;
       }
 
-      // Create new tokens using bulk create
-      if (tokenData.length > 0) {
-        await client.tokens.bulkCreate(tokenData);
+      // Filter out proposed tokens that overlap with existing tokens
+      const nonOverlappingTokens = proposedTokens.filter(proposed => {
+        return !tokens.some(existing => 
+          rangesOverlap(proposed.begin, proposed.end, existing.begin, existing.end)
+        );
+      });
+
+      const skippedCount = proposedTokens.length - nonOverlappingTokens.length;
+
+      // Create only non-overlapping tokens
+      if (nonOverlappingTokens.length > 0) {
+        await client.tokens.bulkCreate(nonOverlappingTokens);
       }
 
+      // Store the text that was tokenized
+      setOriginalTokenizedText(textContent);
+      
       // Refresh document to get updated tokens
       await fetchData();
+      
+      // Show feedback about the operation
+      if (skippedCount > 0) {
+        setError(`Created ${nonOverlappingTokens.length} tokens. Skipped ${skippedCount} tokens that would overlap with existing tokens.`);
+      } else if (nonOverlappingTokens.length === 0) {
+        setError('No new tokens created - all proposed tokens would overlap with existing tokens.');
+      }
       
     } catch (err) {
       setError('Failed to create tokens: ' + (err.message || 'Unknown error'));
@@ -180,6 +206,9 @@ export const TextEditor = () => {
         await client.tokens.bulkDelete(tokenIds);
       }
       
+      // Clear the original tokenized text
+      setOriginalTokenizedText('');
+      
       // Refresh document
       await fetchData();
       
@@ -188,6 +217,119 @@ export const TextEditor = () => {
       console.error('Error clearing tokens:', err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTokenUpdate = async (tokenId, newBegin, newEnd) => {
+    try {
+      const client = getClient();
+      console.log('Updating token:', tokenId, 'from', newBegin, 'to', newEnd);
+      await client.tokens.update(tokenId, newBegin, newEnd);
+      console.log('Token update successful');
+      
+      // Success - update the client-side state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument)); // Deep clone
+        
+        // Find and update the token in the document structure
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const tokens = tokenLayer?.tokens;
+        
+        if (tokens) {
+          const tokenIndex = tokens.findIndex(token => token.id === tokenId);
+          if (tokenIndex !== -1) {
+            tokens[tokenIndex] = {
+              ...tokens[tokenIndex],
+              begin: newBegin,
+              end: newEnd
+            };
+          }
+        }
+        
+        return updatedDocument;
+      });
+    } catch (error) {
+      // Error - refresh document
+      console.error('Token update failed, refreshing:', error);
+      await fetchData();
+      throw error;
+    }
+  };
+
+  const handleTokenDelete = async (tokenId) => {
+    try {
+      const client = getClient();
+      console.log('Deleting token:', tokenId);
+      await client.tokens.delete(tokenId);
+      console.log('Token deletion successful');
+      
+      // Success - update the client-side state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument)); // Deep clone
+        
+        // Find and remove the token from the document structure
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const tokens = tokenLayer?.tokens;
+        
+        if (tokens) {
+          const tokenIndex = tokens.findIndex(token => token.id === tokenId);
+          if (tokenIndex !== -1) {
+            tokens.splice(tokenIndex, 1);
+          }
+        }
+        
+        return updatedDocument;
+      });
+    } catch (error) {
+      // Error - refresh document
+      console.error('Token deletion failed, refreshing:', error);
+      await fetchData();
+      throw error;
+    }
+  };
+
+  const handleTokenCreate = async (begin, end) => {
+    try {
+      const client = getClient();
+      const { text, tokenLayer } = getLayerData();
+      
+      if (!text?.id || !tokenLayer?.id) {
+        throw new Error('Missing text or token layer');
+      }
+
+      console.log('Creating token:', begin, 'to', end);
+      const newToken = await client.tokens.create(tokenLayer.id, text.id, begin, end);
+      console.log('Token creation successful, response:', newToken);
+      
+      // Success - update the client-side state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument)); // Deep clone
+        
+        // Add the new token to the document structure
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayerDoc = textLayer?.tokenLayers?.[0];
+        const tokens = tokenLayerDoc?.tokens;
+        
+        if (tokens) {
+          // Ensure the token has the correct begin/end values
+          const tokenToAdd = {
+            ...newToken,
+            begin: begin,
+            end: end
+          };
+          console.log('Adding token to client state:', tokenToAdd);
+          tokens.push(tokenToAdd);
+        }
+        
+        return updatedDocument;
+      });
+    } catch (error) {
+      // Error - refresh document
+      console.error('Token creation failed, refreshing:', error);
+      await fetchData();
+      throw error;
     }
   };
 
@@ -204,6 +346,9 @@ export const TextEditor = () => {
   }
 
   const { tokens } = getLayerData();
+  
+  // Check if text is dirty (different from what was tokenized or saved)
+  const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
 
   return (
     <div>
@@ -264,8 +409,9 @@ This is a second sentence for testing."
             
             <button 
               onClick={handleTokenize}
-              disabled={saving || !textContent.trim()}
+              disabled={saving || !textContent.trim() || isTextDirty}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              title={isTextDirty ? "Please save text changes before tokenizing" : ""}
             >
               {saving ? 'Processing...' : 'Whitespace Tokenize'}
             </button>
@@ -290,7 +436,11 @@ This is a second sentence for testing."
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Token Visualization</h3>
           <TokenVisualizer 
             text={textContent}
+            originalText={originalTokenizedText}
             tokens={tokens}
+            onTokenUpdate={handleTokenUpdate}
+            onTokenDelete={handleTokenDelete}
+            onTokenCreate={handleTokenCreate}
           />
         </div>
       </div>
@@ -304,15 +454,6 @@ This is a second sentence for testing."
         </Link>
       </div>
       
-      <div className="mt-8 p-6 bg-blue-50 border-l-4 border-blue-400 rounded-md">
-        <h4 className="font-semibold text-blue-900 mb-2">Real Plaid Integration</h4>
-        <p className="text-blue-800 text-sm leading-relaxed">
-          This text editor now uses real Plaid APIs! Use "Save Text" to persist your changes 
-          to the Plaid database, then "Whitespace Tokenize" to create actual tokens with 
-          proper IDs and relationships. All changes are persisted and will be available 
-          when you return to this document.
-        </p>
-      </div>
     </div>
   );
 };
