@@ -15,6 +15,14 @@
       span-id (s/project-id db span-id)
       :else nil)))
 
+(defn bulk-get-project-id [{db :db params :params}]
+  (let [sl-id (or (-> params :body first :span-layer-id))
+        span-id (-> params :body first)]
+    (cond
+      sl-id (sl/project-id db sl-id)
+      span-id (s/project-id db span-id)
+      :else nil)))
+
 
 (def span-routes
   ["/spans"
@@ -44,8 +52,44 @@
                                  {:status 201 :body {:id (:extra result)}}
                                  {:status (or (:code result) 400) :body {:error (:error result)}})))}}]
 
+   ["/bulk" {:conflicting true
+             :post {:summary "Create multiple spans in a single operation."
+                    :openapi {:x-client-method "bulkCreate"}
+                    :middleware [[pra/wrap-writer-required bulk-get-project-id]]
+                    :parameters {:body [:sequential
+                                        [:map
+                                         [:span-layer-id :uuid]
+                                         [:tokens [:vector uuid?]]
+                                         [:value [:or string? number? boolean? nil?]]
+                                         [:metadata {:optional true} [:map-of string? any?]]]]}
+                    :handler (fn [{{spans :body} :parameters xtdb :xtdb user-id :user/id}]
+                               (let [spans-attrs (mapv (fn [span-data]
+                                                         (let [{:keys [span-layer-id tokens value metadata]} span-data
+                                                               attrs {:span/layer span-layer-id
+                                                                      :span/tokens tokens
+                                                                      :span/value value}]
+                                                           (if metadata
+                                                             (assoc attrs :metadata metadata)
+                                                             attrs)))
+                                                       spans)
+                                     result (s/bulk-create {:node xtdb} spans-attrs user-id)]
+                                 (if (:success result)
+                                   {:status 201 :body {:ids (:extra result)}}
+                                   {:status (or (:code result) 500) :body {:error (:error result)}})))}
+             :delete {:summary "Delete multiple spans in a single operation."
+                      :openapi {:x-client-method "bulkDelete"}
+                      :middleware [[pra/wrap-writer-required bulk-get-project-id]]
+                      :parameters {:body [:sequential :uuid]}
+                      :handler (fn [{{span-ids :body} :parameters xtdb :xtdb user-id :user/id}]
+                                 (let [{:keys [success code error]} (s/bulk-delete {:node xtdb} span-ids user-id)]
+                                   (if success
+                                     {:status 204}
+                                     {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+
    ;; Operations on a single span
-   ["/:span-id" {:parameters {:path [:map [:span-id :uuid]]}}
+   ["/:span-id" {:conflicting true
+                 :parameters {:path [:map [:span-id :uuid]]}}
+
     ["" {:get    {:summary    "Get a span by ID."
                   :middleware [[pra/wrap-reader-required get-project-id]]
                   :handler    (fn [{{{:keys [span-id]} :path} :parameters db :db}]

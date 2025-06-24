@@ -25,6 +25,8 @@ interface SpansBundle {
   get(spanId: string, asOf?: string): Promise<any>;
   delete(spanId: string): Promise<any>;
   update(spanId: string, value: any): Promise<any>;
+  bulkCreate(operations: any[]): Promise<any>;
+  bulkDelete(operations: any[]): Promise<any>;
   setMetadata(spanId: string, body: any): Promise<any>;
   deleteMetadata(spanId: string): Promise<any>;
 }

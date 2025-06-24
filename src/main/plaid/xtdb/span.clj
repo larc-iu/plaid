@@ -300,3 +300,146 @@
   (letfn [(project-id-fn [db eid] (project-id db eid))
           (document-id-fn [db span] (get-doc-id-of-token db (first (:span/tokens span))))]
     (metadata/delete-metadata xt-map eid user-id "span" project-id-fn document-id-fn)))
+
+(defn bulk-create*
+  "Create multiple spans in a single transaction"
+  [xt-map spans-attrs]
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
+        layer (-> spans-attrs first :span/layer)
+        layer-entity (pxc/entity db layer)]
+    ;; Validate all spans are for the same layer
+    (when-not (= 1 (->> spans-attrs (map :span/layer) distinct count))
+      (throw (ex-info "Spans must all belong to the same layer" {:code 400})))
+    
+    ;; Validate all spans belong to the same document (via their tokens)
+    (let [doc-ids (->> spans-attrs
+                       (map :span/tokens)
+                       (map first)
+                       (map (partial get-doc-id-of-token db))
+                       distinct)]
+      (when-not (= 1 (count doc-ids))
+        (throw (ex-info "Not all spans belong to the same document" {:document-ids doc-ids :code 400}))))
+    
+    ;; If validation passes, create transaction operations
+    (vec
+      (concat
+        [[::xt/match layer layer-entity]]
+        (reduce
+          (fn [tx-ops attrs]
+            (let [span-attrs (filter (fn [[k v]] (span-attr? k)) attrs)
+                  {:span/keys [id tokens value] :as span} (clojure.core/merge (pxc/new-record "span")
+                                                                              (into {} span-attrs))
+                  token-records (map #(pxc/entity db %) tokens)]
+              ;; Validate this span's attributes
+              (validate-atomic-value! value)
+              (check-tokens! db span token-records)
+              
+              ;; Add to transaction operations
+              (let [token-matches (mapv (fn [[id record]]
+                                          [::xt/match id record])
+                                        (map vector tokens token-records))]
+                (into tx-ops (concat [[::xt/match id nil]]
+                                     token-matches
+                                     [[::xt/put span]])))))
+          []
+          spans-attrs)))))
+
+(defn bulk-create-operation
+  "Build an operation for creating multiple spans"
+  [xt-map spans-attrs]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        ;; Get project and document info from first span (assuming all in same project/doc)
+        first-attrs (first spans-attrs)
+        {:span/keys [layer tokens]} first-attrs
+        project-id (project-id-from-layer db layer)
+        doc-id (get-doc-id-of-token db (first tokens))
+        ;; Process metadata for all spans
+        spans-with-metadata (map (fn [attrs]
+                                   (let [metadata (get attrs :metadata)
+                                         span-attrs (dissoc attrs :metadata)
+                                         metadata-attrs (when metadata
+                                                          (metadata/transform-metadata-for-storage metadata "span"))]
+                                     (if metadata-attrs
+                                       (clojure.core/merge span-attrs metadata-attrs)
+                                       span-attrs)))
+                                 spans-attrs)
+        tx-ops (bulk-create* xt-map spans-with-metadata)]
+    (op/make-operation
+      {:type        :span/bulk-create
+       :project     project-id
+       :document    doc-id
+       :description (str "Bulk create " (count spans-attrs) " spans in layer " layer)
+       :tx-ops      tx-ops})))
+
+(defn bulk-create
+  "Create multiple spans in a single operation"
+  [xt-map spans-attrs user-id]
+  (submit-operations-with-extras!
+    xt-map
+    [(bulk-create-operation xt-map spans-attrs)]
+    user-id
+    (fn [tx]
+      (vec (for [[op-type record] tx
+                 :when (and (= op-type ::xt/put)
+                            (:span/id record))]
+             (:span/id record))))))
+
+(defn bulk-delete*
+  "Delete multiple spans in a single transaction"
+  [xt-map eids]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        spans-attrs (mapv #(pxc/entity db %) eids)]
+    ;; Validate all spans belong to the same document
+    (let [doc-ids (->> spans-attrs
+                       (map :span/tokens)
+                       (map first)  
+                       (map (partial get-doc-id-of-token db))
+                       distinct)]
+      (when-not (= 1 (count doc-ids))
+        (throw (ex-info "Not all spans belong to the same document" {:document-ids doc-ids :code 400}))))
+    
+    ;; Get all relations that reference any of these spans
+    (let [relations-to-delete (when (seq eids)
+                                (->> (xt/q db '{:find  [?r]
+                                                :where [(or [?r :relation/source ?s]
+                                                            [?r :relation/target ?s])]
+                                                :in    [[?s ...]]}
+                                           eids)
+                                     (map first)
+                                     (distinct)
+                                     (map #(pxc/entity db %))))]
+      (vec
+        (concat
+          ;; Delete all relations first
+          (for [relation relations-to-delete
+                op [[::xt/match (:xt/id relation) relation]
+                    [::xt/delete (:xt/id relation)]]]
+            op)
+          ;; Then delete all spans
+          (for [eid eids
+                :let [span (pxc/entity db eid)]
+                :when span
+                op [[::xt/match eid span]
+                    [::xt/delete eid]]]
+            op))))))
+
+(defn bulk-delete-operation
+  "Build an operation for deleting multiple spans"
+  [xt-map eids]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        ;; Get project info from first span
+        first-span (pxc/entity db (first eids))
+        project-id (when first-span (project-id db (first eids)))
+        doc-id (when first-span (get-doc-id-of-token db (first (:span/tokens first-span))))
+        tx-ops (bulk-delete* xt-map eids)]
+    (op/make-operation
+      {:type        :span/bulk-delete
+       :project     project-id
+       :document    doc-id
+       :description (str "Bulk delete " (count eids) " spans")
+       :tx-ops      tx-ops})))
+
+(defn bulk-delete
+  "Delete multiple spans in a single operation" 
+  [xt-map eids user-id]
+  (submit-operations! xt-map [(bulk-delete-operation xt-map eids)] user-id))
