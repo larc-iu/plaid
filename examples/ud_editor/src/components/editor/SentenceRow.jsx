@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { DependencyTree } from './DependencyTree';
+import { useTokenAnnotations } from './hooks/useTokenAnnotations';
+import { useTokenPositions } from './hooks/useTokenPositions';
 import './editor.css';
 
-export const SentenceRow = ({ 
+export const SentenceRow = React.memo(({ 
   sentence, 
   document, 
   onAnnotationUpdate, 
@@ -13,84 +15,26 @@ export const SentenceRow = ({
   sentenceIndex = 0, 
   totalTokensBefore = 0 
 }) => {
-  // Refs to track token positions
-  const tokenRefs = useRef(new Map());
-  const sentenceGridRef = useRef(null);
-  const [tokenPositions, setTokenPositions] = useState([]);
+  const getTokenAnnotations = useTokenAnnotations(document);
 
-  // Helper function to get annotations for a token
-  const getTokenAnnotations = (tokenId) => {
-    const textLayer = document.textLayers?.[0];
-    const tokenLayer = textLayer?.tokenLayers?.[0];
-    const spanLayers = tokenLayer?.spanLayers || [];
-    
-    const annotations = {
-      lemma: null,
-      upos: null,
-      xpos: null,
-      features: [],
-      spanIds: {
-        lemma: null,
-        upos: null,
-        xpos: null,
-        features: []  // Array of {value, spanId} objects
-      }
-    };
-
-    // Find spans for each annotation type
-    spanLayers.forEach(layer => {
-      const spans = layer.spans || [];
-      
-      spans.forEach(span => {
-        const spanTokens = span.tokens || [span.begin];
-        
-        if (spanTokens.includes(tokenId)) {
-          switch (layer.name) {
-            case 'Lemma':
-              annotations.lemma = span.value;
-              annotations.spanIds.lemma = span.id;
-              break;
-            case 'UPOS':
-              annotations.upos = span.value;
-              annotations.spanIds.upos = span.id;
-              break;
-            case 'XPOS':
-              annotations.xpos = span.value;
-              annotations.spanIds.xpos = span.id;
-              break;
-            case 'Features':
-              // Features can have multiple spans per token
-              if (span.value) {
-                annotations.features.push(span.value);
-                annotations.spanIds.features.push({
-                  value: span.value,
-                  spanId: span.id
-                });
-              }
-              break;
-          }
-        }
-      });
-    });
-
-    return annotations;
-  };
 
   // Get text content for display
   const textContent = document.textLayers?.[0]?.text?.body || '';
 
-  // Process all token annotations once
-  const tokenData = sentence.tokens.map((token, index) => {
-    const tokenForm = textContent.substring(token.begin, token.end);
-    const annotations = getTokenAnnotations(token.id);
-    
-    return {
-      token,
-      tokenForm,
-      annotations,
-      tokenIndex: index + 1
-    };
-  });
+  // Process all token annotations once with memoization
+  const tokenData = useMemo(() => {
+    return sentence.tokens.map((token, index) => {
+      const tokenForm = textContent.substring(token.begin, token.end);
+      const annotations = getTokenAnnotations(token.id);
+      
+      return {
+        token,
+        tokenForm,
+        annotations,
+        tokenIndex: index + 1
+      };
+    });
+  }, [sentence.tokens, textContent, getTokenAnnotations]);
 
   // Calculate the maximum number of features across all tokens for row height
   const maxFeatures = Math.max(1, ...tokenData.map(data => data.annotations.features.length));
@@ -147,8 +91,8 @@ export const SentenceRow = ({
   // Make relations reactive to document changes
   const relations = useMemo(() => getRelationsForSentence(), [document, sentence]);
   
-  // Get lemma spans for the sentence
-  const getLemmaSpansForSentence = () => {
+  // Get lemma spans for the sentence with memoization
+  const lemmaSpans = useMemo(() => {
     const textLayer = document.textLayers?.[0];
     const tokenLayer = textLayer?.tokenLayers?.[0];
     const lemmaLayer = tokenLayer?.spanLayers?.find(layer => layer.name === 'Lemma');
@@ -160,68 +104,18 @@ export const SentenceRow = ({
       const spanTokens = span.tokens || [span.begin];
       return spanTokens.some(tokenId => sentenceTokenIds.has(tokenId));
     });
-  };
-  
-  const lemmaSpans = getLemmaSpansForSentence();
+  }, [document, sentence.tokens]);
 
-  // Function to measure actual token positions in the DOM
-  const measureTokenPositions = useCallback(() => {
-    if (!sentenceGridRef.current) return;
-
-    const gridRect = sentenceGridRef.current.getBoundingClientRect();
-    const positions = [];
-
-    tokenData.forEach((data, index) => {
-      const tokenRef = tokenRefs.current.get(data.token.id);
-      if (tokenRef) {
-        const tokenRect = tokenRef.getBoundingClientRect();
-        const centerX = tokenRect.left + tokenRect.width / 2 - gridRect.left;
-        const centerY = tokenRect.top + tokenRect.height / 2 - gridRect.top + 50; // Offset for SVG positioning
-        
-        // Find lemma span for this token
-        const matchingLemmaSpan = lemmaSpans.find(span => 
-          (span.tokens && span.tokens.includes(data.token.id)) || span.begin === data.token.id
-        );
-        
-        positions.push({
-          token: data.token,
-          x: centerX,
-          y: centerY, // Use actual Y position from token
-          width: tokenRect.width,
-          form: data.tokenForm,
-          lemmaSpanId: matchingLemmaSpan?.id,
-          index: index
-        });
-      }
-    });
-
-    setTokenPositions(positions);
-  }, []); // Remove dependencies to prevent infinite loop
-
-  // Update positions when layout changes
-  useEffect(() => {
-    // Use a timeout to ensure DOM is ready
-    const timeoutId = setTimeout(() => {
-      measureTokenPositions();
-    }, 0);
-    
-    // Add resize observer to update positions when layout changes
-    const resizeObserver = new ResizeObserver(() => {
-      measureTokenPositions();
-    });
-    
-    if (sentenceGridRef.current) {
-      resizeObserver.observe(sentenceGridRef.current);
-    }
-    
-    return () => {
-      clearTimeout(timeoutId);
-      resizeObserver.disconnect();
-    };
-  }, [sentence, document]); // Only depend on stable props
+  // Use the token positions hook
+  const { tokenPositions, sentenceGridRef, tokenRefs } = useTokenPositions(
+    sentence, 
+    document, 
+    tokenData, 
+    lemmaSpans
+  );
 
   // Editable cell component for annotation fields
-  const EditableCell = ({ value, tokenId, field, tokenForm, tabIndex }) => {
+  const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex }) => {
     const [tempValue, setTempValue] = useState(value || '');
     const cellRef = useRef(null);
 
@@ -313,10 +207,10 @@ export const SentenceRow = ({
         {displayValue}
       </div>
     );
-  };
+  });
 
   // Features cell component with hover-only delete buttons
-  const FeaturesCell = ({ features, spanIds, tokenId }) => {
+  const FeaturesCell = React.memo(({ features, spanIds, tokenId }) => {
     const [editingFeature, setEditingFeature] = useState(false);
     const [newFeature, setNewFeature] = useState('');
     const [isHovering, setIsHovering] = useState(false);
@@ -415,10 +309,10 @@ export const SentenceRow = ({
         ) : null}
       </div>
     );
-  };
+  });
 
   // Calculate tab indices for row-wise navigation across all sentences
-  const getTabIndex = (tokenIndex, field) => {
+  const getTabIndex = useCallback((tokenIndex, field) => {
     const fieldOrder = { lemma: 0, xpos: 1, upos: 2 };
     const tokensInSentence = tokenData.length;
     
@@ -430,10 +324,10 @@ export const SentenceRow = ({
     const positionInRow = tokenIndex;
     
     return sentenceBaseIndex + (rowIndex * tokensInSentence) + positionInRow + 1;
-  };
+  }, [tokenData.length, totalTokensBefore]);
 
   // Token Column component
-  const TokenColumn = ({ data, index }) => {
+  const TokenColumn = React.memo(({ data, index }) => {
     return (
       <div className="token-column">
         {/* Token form (baseline) */}
@@ -496,7 +390,7 @@ export const SentenceRow = ({
         </div>
       </div>
     );
-  };
+  });
 
   return (
     <div className="sentence-container">
@@ -554,4 +448,4 @@ export const SentenceRow = ({
       </div>
     </div>
   );
-};
+});
