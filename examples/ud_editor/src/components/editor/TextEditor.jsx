@@ -570,7 +570,7 @@ export const TextEditor = () => {
         <span className="mx-2">/</span>
         <Link to={`/projects/${projectId}/documents`} className="text-blue-600 hover:text-blue-800">{project?.name}</Link>
         <span className="mx-2">/</span>
-        <span className="text-gray-900">{document?.name}</span>
+        <Link to={`/projects/${projectId}/documents/${document?.id}/annotate`} className="text-blue-600 hover:text-blue-800">{document?.name}</Link>
       </nav>
 
       <div className="flex justify-between items-center mb-6">
