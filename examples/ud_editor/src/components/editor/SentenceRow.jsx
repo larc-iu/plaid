@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { DependencyTree } from './DependencyTree';
-import { useTokenAnnotations } from './hooks/useTokenAnnotations';
 import { useTokenPositions } from './hooks/useTokenPositions';
 import './editor.css';
 
 export const SentenceRow = React.memo(({ 
-  sentence, 
-  document, 
+  sentenceData, 
   onAnnotationUpdate, 
   onFeatureDelete,
   onRelationCreate,
@@ -15,101 +13,31 @@ export const SentenceRow = React.memo(({
   sentenceIndex = 0, 
   totalTokensBefore = 0 
 }) => {
-  const getTokenAnnotations = useTokenAnnotations(document);
 
 
-  // Get text content for display
-  const textContent = document.textLayers?.[0]?.text?.body || '';
-
-  // Process all token annotations once with memoization
-  const tokenData = useMemo(() => {
-    return sentence.tokens.map((token, index) => {
-      const tokenForm = textContent.substring(token.begin, token.end);
-      const annotations = getTokenAnnotations(token.id);
-      
-      return {
-        token,
-        tokenForm,
-        annotations,
-        tokenIndex: index + 1
-      };
-    });
-  }, [sentence.tokens, textContent, getTokenAnnotations]);
+  // Token data is already pre-processed in sentenceData
+  const tokenData = sentenceData.tokens;
 
   // Calculate the maximum number of features across all tokens for row height
-  const maxFeatures = Math.max(1, ...tokenData.map(data => data.annotations.features.length));
+  const maxFeatures = Math.max(1, ...tokenData.map(data => data.feats.length));
 
-  // Get relation data for this sentence
-  const getRelationsForSentence = () => {
-    const textLayer = document.textLayers?.[0];
-    const tokenLayer = textLayer?.tokenLayers?.[0];
-    const lemmaLayer = tokenLayer?.spanLayers?.find(layer => layer.name === 'Lemma');
-    
-    // Get relation layer
-    const relationLayer = lemmaLayer?.relationLayers?.[0];
-    
-    // Get lemma span IDs for tokens in this sentence
-    const sentenceTokenIds = new Set(sentence.tokens.map(t => t.id));
-    const sentenceLemmaSpans = (lemmaLayer?.spans || []).filter(span => {
-      const spanTokens = span.tokens || [span.begin];
-      return spanTokens.some(tokenId => sentenceTokenIds.has(tokenId));
-    });
-    
-    const sentenceLemmaSpanIds = new Set(sentenceLemmaSpans.map(s => s.id));
-    
-    // Start with regular relations, but convert self-pointing relations to ROOT relations
-    const allRelations = relationLayer?.relations ? relationLayer.relations.filter(rel => 
-      sentenceLemmaSpanIds.has(rel.source)
-    ) : [];
-    
-    const relations = [];
-    allRelations.forEach(rel => {
-      // Pass all relations as-is, including self-pointing ones
-      // DependencyTree will handle displaying self-pointing relations as ROOT relations
-      relations.push(rel);
-    });
-    
-    // Sanity check: Log warning if any targets have multiple incoming relations
-    const targetCounts = new Map();
-    relations.forEach(rel => {
-      const target = rel.target;
-      if (!targetCounts.has(target)) {
-        targetCounts.set(target, []);
-      }
-      targetCounts.get(target).push(rel);
-    });
-    
-    targetCounts.forEach((rels, target) => {
-      if (rels.length > 1) {
-        console.warn(`Multiple incoming relations found for target "${target}":`, rels);
-      }
-    });
-    
-    return relations;
-  };
-
-  // Make relations reactive to document changes
-  const relations = useMemo(() => getRelationsForSentence(), [document, sentence]);
+  // Relations are already pre-processed in sentenceData
+  const relations = sentenceData.relations;
   
-  // Get lemma spans for the sentence with memoization
-  const lemmaSpans = useMemo(() => {
-    const textLayer = document.textLayers?.[0];
-    const tokenLayer = textLayer?.tokenLayers?.[0];
-    const lemmaLayer = tokenLayer?.spanLayers?.find(layer => layer.name === 'Lemma');
-    
-    if (!lemmaLayer?.spans) return [];
-    
-    const sentenceTokenIds = new Set(sentence.tokens.map(t => t.id));
-    return lemmaLayer.spans.filter(span => {
-      const spanTokens = span.tokens || [span.begin];
-      return spanTokens.some(tokenId => sentenceTokenIds.has(tokenId));
-    });
-  }, [document, sentence.tokens]);
+  // Lemma spans are already pre-processed in sentenceData
+  const lemmaSpans = sentenceData.lemmaSpans;
+
+  // Create a text content object that can handle token extraction for DependencyTree
+  const textContentProvider = {
+    substring: (begin, end) => {
+      // Find the token that matches these begin/end positions
+      const matchingToken = tokenData.find(t => t.token.begin === begin && t.token.end === end);
+      return matchingToken ? matchingToken.tokenForm : '';
+    }
+  };
 
   // Use the token positions hook
   const { tokenPositions, sentenceGridRef, tokenRefs } = useTokenPositions(
-    sentence, 
-    document, 
     tokenData, 
     lemmaSpans
   );
@@ -347,7 +275,7 @@ export const SentenceRow = React.memo(({
         {/* LEMMA */}
         <div className="annotation-cell">
           <EditableCell
-            value={data.annotations.lemma}
+            value={data.lemma?.value}
             tokenId={data.token.id}
             field="lemma"
             tokenForm={data.tokenForm}
@@ -358,7 +286,7 @@ export const SentenceRow = React.memo(({
         {/* XPOS */}
         <div className="annotation-cell">
           <EditableCell
-            value={data.annotations.xpos}
+            value={data.xpos?.value}
             tokenId={data.token.id}
             field="xpos"
             tokenForm={data.tokenForm}
@@ -369,7 +297,7 @@ export const SentenceRow = React.memo(({
         {/* UPOS */}
         <div className="annotation-cell">
           <EditableCell
-            value={data.annotations.upos}
+            value={data.upos?.value}
             tokenId={data.token.id}
             field="upos"
             tokenForm={data.tokenForm}
@@ -383,8 +311,10 @@ export const SentenceRow = React.memo(({
           style={{ minHeight: `${Math.max(30, maxFeatures * 16 + 20)}px` }}
         >
           <FeaturesCell
-            features={data.annotations.features}
-            spanIds={data.annotations.spanIds}
+            features={data.feats.map(feat => feat.value)}
+            spanIds={{
+              features: data.spanIds.features
+            }}
             tokenId={data.token.id}
           />
         </div>
@@ -396,13 +326,13 @@ export const SentenceRow = React.memo(({
     <div className="sentence-container">
       {/* Dependency tree visualization */}
       <DependencyTree
-        tokens={sentence.tokens}
+        tokens={sentenceData.tokens.map(t => t.token)}
         relations={relations}
         lemmaSpans={lemmaSpans}
         onRelationCreate={onRelationCreate}
         onRelationUpdate={onRelationUpdate}
         onRelationDelete={onRelationDelete}
-        textContent={textContent}
+        textContent={textContentProvider}
         tokenPositions={tokenPositions}
       />
       
@@ -448,4 +378,7 @@ export const SentenceRow = React.memo(({
       </div>
     </div>
   );
+}, (prevProps, nextProps) => {
+    console.log(prevProps.sentenceData)
+  return JSON.stringify(prevProps.sentenceData) === JSON.stringify(nextProps.sentenceData);
 });
