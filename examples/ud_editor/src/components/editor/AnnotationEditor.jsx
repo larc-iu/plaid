@@ -355,27 +355,33 @@ export const AnnotationEditor = () => {
         }
       }
       
+      
       let relation = null;
       
-      // For ROOT relations, we'll use a special handling
-      if (targetSpanId === 'ROOT') {
-        // Create a relation with special ROOT target handling
-        // We'll store HEAD=0 in a separate Head span layer for CoNLL-U compatibility
-        const headLayer = layerInfo.textLayer?.tokenLayers?.[0]?.spanLayers?.find(l => l.name === 'Head');
-        if (headLayer && sourceSpanId) {
-          // Find the token ID from the lemma span
-          const lemmaSpan = layerInfo.lemmaLayer?.spans?.find(s => s.id === sourceSpanId);
-          const tokenId = lemmaSpan?.tokens?.[0] || lemmaSpan?.begin;
-          if (tokenId) {
-            await client.spans.create(headLayer.id, [tokenId], '0');
+      // For ROOT relations (self-pointing), we'll use a special handling
+      if (sourceSpanId === targetSpanId) {
+        // First, delete any existing incoming relations to the target span
+        const targetIncomingRelations = existingRelations.filter(rel => rel.target === targetSpanId);
+        for (const existingRel of targetIncomingRelations) {
+          try {
+            await client.relations.delete(existingRel.id);
+          } catch (error) {
+            console.warn('Failed to delete existing incoming relation to target:', error);
           }
         }
         
-        // Create a fake relation object for ROOT for display purposes
+        // Create a self-pointing relation (source = target) to represent ROOT
+        const apiResponse = await client.relations.create(
+          layerInfo.relationLayer.id,
+          targetSpanId,
+          targetSpanId,
+          deprel || 'root'
+        );
+        
         relation = {
-          id: `root-${sourceSpanId}-${Date.now()}`,
-          source: sourceSpanId,
-          target: 'ROOT',
+          id: apiResponse.id || apiResponse,
+          source: targetSpanId,
+          target: targetSpanId,
           value: deprel || 'root'
         };
       } else {
@@ -418,10 +424,28 @@ export const AnnotationEditor = () => {
             lemmaLayer.relationLayers[0].relations = [];
           }
           
-          // Remove any existing incoming relations to the target in local state
-          lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
-            rel => rel.target !== targetSpanId
-          );
+          // Remove any existing incoming relations in local state
+          if (sourceSpanId === targetSpanId) {
+            // For ROOT relations, remove any existing incoming relations to the target
+            lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
+              rel => rel.target !== targetSpanId
+            );
+            
+            // Also remove any existing self-pointing relations (other ROOT relations)
+            lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
+              rel => !(rel.source === targetSpanId && rel.target === targetSpanId)
+            );
+          } else {
+            // For regular relations, remove any existing incoming relations to the target
+            lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
+              rel => rel.target !== targetSpanId
+            );
+            
+            // Also remove any existing ROOT relations (self-pointing) to the target
+            lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
+              rel => !(rel.source === targetSpanId && rel.target === targetSpanId)
+            );
+          }
           
           // Add the new relation
           lemmaLayer.relationLayers[0].relations.push(relation);
@@ -478,8 +502,13 @@ export const AnnotationEditor = () => {
   const handleRelationDelete = async (relationId) => {
     try {
       const client = getClient();
+      const layerInfo = getLayerInfo();
       
-      // Delete the relation
+      // First check if this is a ROOT relation by finding the actual relation
+      const allRelations = layerInfo.relationLayer?.relations || [];
+      const relationToDelete = allRelations.find(rel => rel.id === relationId);
+      
+      // Delete the relation (both ROOT and regular relations are just relations)
       await client.relations.delete(relationId);
       
       // Optimistically update local state
@@ -494,6 +523,7 @@ export const AnnotationEditor = () => {
             r => r.id !== relationId
           );
         }
+        
         
         return updatedDocument;
       });
@@ -548,7 +578,7 @@ export const AnnotationEditor = () => {
         const totalTokensBefore = sentences
           .slice(0, index)
           .reduce((total, prevSentence) => total + prevSentence.tokens.length, 0);
-        
+
         return (
           <SentenceRow
             key={sentence.id}

@@ -7,7 +7,8 @@ export const DependencyTree = ({
   onRelationCreate,
   onRelationUpdate,
   onRelationDelete,
-  textContent 
+  textContent,
+  tokenPositions = [] 
 }) => {
   const [selectedSource, setSelectedSource] = useState(null);
   const [hoveredToken, setHoveredToken] = useState(null);
@@ -18,37 +19,34 @@ export const DependencyTree = ({
   const [dragSourceId, setDragSourceId] = useState(null);
   const svgRef = useRef(null);
 
-  // Constants for layout
+  // Constants for layout (back to original working version)
   const TOKEN_SPACING = 80;
   const TREE_HEIGHT = 250; // Increased height to prevent clipping
   const PADDING = 20;
   const TOKEN_Y = TREE_HEIGHT - 30; // Tokens at bottom
   const ROOT_Y = 25; // ROOT bar at top
 
-  // Get token form (text)
-  const getTokenForm = (token) => {
-    if (token.id === 'ROOT') return 'ROOT';
-    return textContent.substring(token.begin, token.end);
-  };
-
-  // Calculate token positions
-  const tokenPositions = tokens.map((token, index) => {
-    const tokenForm = getTokenForm(token);
-    
-    // Find lemma span for this token
-    const matchingLemmaSpan = lemmaSpans.find(span => 
-      (span.tokens && span.tokens.includes(token.id)) || span.begin === token.id
-    );
-    
-    return {
-      token,
-      x: PADDING + index * TOKEN_SPACING + TOKEN_SPACING / 2,
-      y: TOKEN_Y,
-      form: tokenForm,
-      lemmaSpanId: matchingLemmaSpan?.id,
-      index: index
-    };
-  });
+  // Use passed token positions for X coordinates, but keep original Y logic
+  const adjustedTokenPositions = tokenPositions.length > 0 
+    ? tokenPositions.map((pos, index) => ({
+        ...pos,
+        y: TOKEN_Y // Use original TOKEN_Y for consistent arc drawing
+      }))
+    : tokens.map((token, index) => {
+        const tokenForm = textContent.substring(token.begin, token.end);
+        const matchingLemmaSpan = lemmaSpans.find(span => 
+          (span.tokens && span.tokens.includes(token.id)) || span.begin === token.id
+        );
+        
+        return {
+          token,
+          x: PADDING + index * TOKEN_SPACING + TOKEN_SPACING / 2,
+          y: TOKEN_Y,
+          form: tokenForm,
+          lemmaSpanId: matchingLemmaSpan?.id,
+          index: index
+        };
+      });
 
   // Use a modified logistic function to compute how high an arc should go
   const getMaxHeight = (src, dest) => {
@@ -62,7 +60,7 @@ export const DependencyTree = ({
     return Math.max(15, Math.min(calculatedHeight, maxAllowedHeight * 0.8));
   };
 
-  // Generate SVG path for dependency arc
+  // Generate SVG path for dependency arc (restored original logic)
   const computeEdge = (sourcePos, targetPos, isToRoot = false, isFromRoot = false) => {
     const x = sourcePos.x;
     const y = isFromRoot ? sourcePos.y : TOKEN_Y - 10;
@@ -130,14 +128,15 @@ export const DependencyTree = ({
       
       // Handle drag FROM ROOT to token
       if (sourceId === 'ROOT' && targetId) {
+        // Look for existing ROOT relation (self-pointing relation)
         const existingRelation = relations.find(rel => 
-          rel.source === targetId && rel.target === 'ROOT'
+          rel.source === targetId && rel.target === targetId
         );
         
         if (existingRelation) {
           setEditingRelation(existingRelation);
         } else {
-          onRelationCreate(targetId, 'ROOT', 'root');
+          onRelationCreate(targetId, targetId, 'root'); // Self-pointing relation
         }
       }
       // Handle drag FROM token to token
@@ -186,14 +185,15 @@ export const DependencyTree = ({
     if (dragOrigin && dragSourceId && dragSourceId !== 'ROOT') {
       const sourceId = dragSourceId;
       
+      // Look for existing ROOT relation (self-pointing relation)
       const existingRelation = relations.find(rel => 
-        rel.source === sourceId && rel.target === 'ROOT'
+        rel.source === sourceId && rel.target === sourceId
       );
       
       if (existingRelation) {
         setEditingRelation(existingRelation);
       } else {
-        onRelationCreate(sourceId, 'ROOT', 'root');
+        onRelationCreate(sourceId, sourceId, 'root'); // Self-pointing relation
       }
     }
     
@@ -247,14 +247,15 @@ export const DependencyTree = ({
     if (selectedSource && selectedSource.lemmaSpanId !== 'ROOT') {
       const sourceId = selectedSource.lemmaSpanId;
       
+      // Look for existing ROOT relation (self-pointing relation)
       const existingRelation = relations.find(rel => 
-        rel.source === sourceId && rel.target === 'ROOT'
+        rel.source === sourceId && rel.target === sourceId
       );
       
       if (existingRelation) {
         setEditingRelation(existingRelation);
       } else {
-        onRelationCreate(sourceId, 'ROOT', 'root');
+        onRelationCreate(sourceId, sourceId, 'root'); // Self-pointing relation
       }
       
       setSelectedSource(null);
@@ -281,18 +282,21 @@ export const DependencyTree = ({
 
   // Render dependency arc
   const renderArc = (relation) => {
-    const sourcePos = tokenPositions.find(p => p.lemmaSpanId === relation.source);
-    const targetPos = relation.target === 'ROOT' 
-      ? { x: sourcePos?.x || 0, y: ROOT_Y, index: -1 }
-      : tokenPositions.find(p => p.lemmaSpanId === relation.target);
+    // Check if this is a self-pointing relation (ROOT relation)
+    const isSelfPointing = relation.source === relation.target;
     
-    if (!sourcePos || (!targetPos && relation.target !== 'ROOT')) {
+    const sourcePos = adjustedTokenPositions.find(p => p.lemmaSpanId === relation.source);
+    const targetPos = isSelfPointing
+      ? { x: sourcePos?.x || 0, y: ROOT_Y, index: -1 }
+      : adjustedTokenPositions.find(p => p.lemmaSpanId === relation.target);
+    
+    if (!sourcePos || (!targetPos && !isSelfPointing)) {
       return null;
     }
     
     const isSelected = editingRelation?.id === relation.id;
     const isHovered = hoveredRelation === relation.id;
-    const isToRoot = relation.target === 'ROOT';
+    const isToRoot = isSelfPointing;
     
     const pathData = computeEdge(sourcePos, targetPos, isToRoot);
     const pathId = `arc-${relation.id}`;
@@ -440,7 +444,7 @@ export const DependencyTree = ({
       originY = dragOrigin.y;
     } else {
       // Handle dragging FROM token
-      const sourcePos = tokenPositions.find(p => p.lemmaSpanId === dragSourceId);
+      const sourcePos = adjustedTokenPositions.find(p => p.lemmaSpanId === dragSourceId);
       if (!sourcePos) return null;
       originX = sourcePos.x;
       originY = TOKEN_Y - 10;
@@ -489,23 +493,13 @@ export const DependencyTree = ({
     );
   };
 
-  const minSvgWidth = PADDING * 2 + tokens.length * TOKEN_SPACING;
+  // Calculate SVG width based on actual token positions
+  const minSvgWidth = adjustedTokenPositions.length > 0 
+    ? Math.max(...adjustedTokenPositions.map(p => p.x)) + 50 
+    : 300;
 
   return (
     <div className="dependency-tree-container">
-      {/* Instructions */}
-      {relations.length === 0 && (
-        <div className="tree-instruction-box">
-          Click on a token to select it as the source, then click on another token or the ROOT bar to create a dependency relation. Alternatively, drag from a source token to a target token.
-        </div>
-      )}
-      
-      {selectedSource && (
-        <div className="tree-source-selected-box">
-          Source selected: "{selectedSource.form}". Click on a target token or ROOT to create a relation. Press Escape to cancel.
-        </div>
-      )}
-      
       <svg
         ref={svgRef}
         width="100%"
@@ -515,12 +509,12 @@ export const DependencyTree = ({
         onMouseMove={handleSvgMouseMove}
         onMouseUp={handleSvgMouseUp}
       >
-        {/* ROOT bar - extends from top to ROOT_Y */}
+        {/* ROOT bar - positioned above the arcs */}
         <rect
           x={0}
-          y={0}
+          y={ROOT_Y}
           width="100%"
-          height={ROOT_Y + 5}
+          height="20"
           fill={hoveredToken?.lemmaSpanId === 'ROOT' ? '#e5e7eb' : '#fafafa'}
           className={selectedSource || dragOrigin ? 'tree-root-rect' : 'tree-root-rect--default'}
           onClick={() => handleRootClick()}
@@ -533,49 +527,29 @@ export const DependencyTree = ({
         {/* Render existing relations */}
         {relations.map((relation, index) => renderArc(relation, index))}
         
-        {/* Render temporary arc */}
-        {renderTempArc()}
-        
         {/* Render drag arc */}
         {renderDragArc()}
         
-        {/* Render token texts */}
-        {tokenPositions.map((position) => {
+        {/* Invisible token click areas */}
+        {adjustedTokenPositions.map((position) => {
           const isSource = selectedSource?.lemmaSpanId === position.lemmaSpanId;
           const isHovered = hoveredToken?.lemmaSpanId === position.lemmaSpanId;
           const isDragSource = dragSourceId === position.lemmaSpanId;
           
           return (
-            <g
+            <circle
               key={position.token.id}
-              className={`tree-token-group ${dragOrigin ? 'tree-token-group--drag' : 'tree-token-group--grab'}`}
+              cx={position.x}
+              cy={position.y}
+              r="15"
+              fill="transparent"
+              className={`tree-token-area ${dragOrigin ? 'tree-token-area--drag' : 'tree-token-area--grab'}`}
               onClick={() => handleTokenClick(position)}
               onMouseDown={(e) => handleTokenMouseDown(e, position)}
               onMouseUp={(e) => handleTokenMouseUp(e, position)}
               onMouseEnter={() => setHoveredToken(position)}
               onMouseLeave={() => setHoveredToken(null)}
-            >
-              <text
-                x={position.x}
-                y={position.y}
-                className={`tree-token-text ${
-                  isDragSource ? 'tree-token-text--drag-source' : 
-                  isSource ? 'tree-token-text--selected' : 
-                  isHovered ? 'tree-token-text--hovered' : 
-                  'tree-token-text--normal'
-                }`}
-              >
-                {position.form}
-              </text>
-              {/* Token index below */}
-              <text
-                x={position.x}
-                y={position.y + 15}
-                className="tree-token-index"
-              >
-                {position.index + 1}
-              </text>
-            </g>
+            />
           );
         })}
       </svg>
