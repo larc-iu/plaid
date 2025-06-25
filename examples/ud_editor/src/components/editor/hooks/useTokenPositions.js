@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-export const useTokenPositions = (sentence, document, tokenData, lemmaSpans) => {
+export const useTokenPositions = (tokenData, lemmaSpans) => {
   const [tokenPositions, setTokenPositions] = useState([]);
   const sentenceGridRef = useRef(null);
   const tokenRefs = useRef(new Map());
