@@ -21,7 +21,7 @@ export const DependencyTree = ({
 
   // Constants for layout (back to original working version)
   const TOKEN_SPACING = 80;
-  const TREE_HEIGHT = 250; // Increased height to prevent clipping
+  const TREE_HEIGHT = 300;
   const PADDING = 20;
   const TOKEN_Y = TREE_HEIGHT - 30; // Tokens at bottom
   const ROOT_Y = 25; // ROOT bar at top
@@ -51,7 +51,7 @@ export const DependencyTree = ({
   // Use a modified logistic function to compute how high an arc should go
   const getMaxHeight = (src, dest) => {
     const diff = Math.abs(dest - src);
-    const expTerm = -0.5 * diff;
+    const expTerm = -0.2 * Math.pow(diff, 0.8);
     const denom = 1 + Math.exp(expTerm);
     const raw = 1 / denom;
     // Cap the maximum height to prevent clipping and ensure reasonable arcs
@@ -536,12 +536,17 @@ export const DependencyTree = ({
           const isHovered = hoveredToken?.lemmaSpanId === position.lemmaSpanId;
           const isDragSource = dragSourceId === position.lemmaSpanId;
           
+          // Use token width if available, otherwise default to 60px
+          const tokenWidth = position.width || 60;
+          const tokenHeight = 30;
+          
           return (
-            <circle
+            <rect
               key={position.token.id}
-              cx={position.x}
-              cy={position.y}
-              r="15"
+              x={position.x - tokenWidth / 2}
+              y={position.y - tokenHeight / 2 + 5}
+              width={tokenWidth}
+              height={tokenHeight}
               fill="transparent"
               className={`tree-token-area ${dragOrigin ? 'tree-token-area--drag' : 'tree-token-area--grab'}`}
               onClick={() => handleTokenClick(position)}

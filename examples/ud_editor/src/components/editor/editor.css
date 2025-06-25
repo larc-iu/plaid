@@ -10,7 +10,7 @@
 
 .sentence-grid {
   display: flex;
-  padding-top: 150px; /* Moderate padding to make room for dependency tree */
+  padding-top: 215px; /* Moderate padding to make room for dependency tree */
 }
 
 .labels-column {

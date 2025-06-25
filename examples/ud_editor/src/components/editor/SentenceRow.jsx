@@ -187,6 +187,7 @@ export const SentenceRow = ({
           token: data.token,
           x: centerX,
           y: centerY, // Use actual Y position from token
+          width: tokenRect.width,
           form: data.tokenForm,
           lemmaSpanId: matchingLemmaSpan?.id,
           index: index
