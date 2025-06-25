@@ -1,7 +1,18 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { DependencyTree } from './DependencyTree';
 import './editor.css';
 
-export const SentenceRow = ({ sentence, document, onAnnotationUpdate, onFeatureDelete, sentenceIndex = 0, totalTokensBefore = 0 }) => {
+export const SentenceRow = ({ 
+  sentence, 
+  document, 
+  onAnnotationUpdate, 
+  onFeatureDelete,
+  onRelationCreate,
+  onRelationUpdate,
+  onRelationDelete,
+  sentenceIndex = 0, 
+  totalTokensBefore = 0 
+}) => {
   // Helper function to get annotations for a token
   const getTokenAnnotations = (tokenId) => {
     const textLayer = document.textLayers?.[0];
@@ -78,6 +89,54 @@ export const SentenceRow = ({ sentence, document, onAnnotationUpdate, onFeatureD
 
   // Calculate the maximum number of features across all tokens for row height
   const maxFeatures = Math.max(1, ...tokenData.map(data => data.annotations.features.length));
+
+  // Get relation data for this sentence
+  const getRelationsForSentence = () => {
+    const textLayer = document.textLayers?.[0];
+    const tokenLayer = textLayer?.tokenLayers?.[0];
+    const lemmaLayer = tokenLayer?.spanLayers?.find(layer => layer.name === 'Lemma');
+    
+    // Get relation layer
+    const relationLayer = lemmaLayer?.relationLayers?.[0];
+    
+    if (!relationLayer?.relations) {
+      return [];
+    }
+    
+    // Get lemma span IDs for tokens in this sentence
+    const sentenceTokenIds = new Set(sentence.tokens.map(t => t.id));
+    const sentenceLemmaSpans = (lemmaLayer?.spans || []).filter(span => {
+      const spanTokens = span.tokens || [span.begin];
+      return spanTokens.some(tokenId => sentenceTokenIds.has(tokenId));
+    });
+    
+    const sentenceLemmaSpanIds = new Set(sentenceLemmaSpans.map(s => s.id));
+    
+    // Filter relations where source is in this sentence
+    return relationLayer.relations.filter(rel => 
+      sentenceLemmaSpanIds.has(rel.source)
+    );
+  };
+
+  // Make relations reactive to document changes
+  const relations = useMemo(() => getRelationsForSentence(), [document, sentence]);
+  
+  // Get lemma spans for the sentence
+  const getLemmaSpansForSentence = () => {
+    const textLayer = document.textLayers?.[0];
+    const tokenLayer = textLayer?.tokenLayers?.[0];
+    const lemmaLayer = tokenLayer?.spanLayers?.find(layer => layer.name === 'Lemma');
+    
+    if (!lemmaLayer?.spans) return [];
+    
+    const sentenceTokenIds = new Set(sentence.tokens.map(t => t.id));
+    return lemmaLayer.spans.filter(span => {
+      const spanTokens = span.tokens || [span.begin];
+      return spanTokens.some(tokenId => sentenceTokenIds.has(tokenId));
+    });
+  };
+  
+  const lemmaSpans = getLemmaSpansForSentence();
 
   // Editable cell component for annotation fields
   const EditableCell = ({ value, tokenId, field, tokenForm, tabIndex }) => {
@@ -350,6 +409,17 @@ export const SentenceRow = ({ sentence, document, onAnnotationUpdate, onFeatureD
 
   return (
     <div className="sentence-container">
+      {/* Dependency tree visualization */}
+      <DependencyTree
+        tokens={sentence.tokens}
+        relations={relations}
+        lemmaSpans={lemmaSpans}
+        onRelationCreate={onRelationCreate}
+        onRelationUpdate={onRelationUpdate}
+        onRelationDelete={onRelationDelete}
+        textContent={textContent}
+      />
+      
       {/* Main container with labels and columns */}
       <div className="sentence-grid">
         {/* Labels column */}

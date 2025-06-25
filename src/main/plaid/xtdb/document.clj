@@ -38,7 +38,7 @@
   (let [tokl-ids (:text-layer/token-layers (pxc/entity db id))
         text-entity (pxc/find-entity db [[:text/document parent-id]
                                          [:text/layer id]])
-        text (when text-entity (text/get db (:text/id text-entity)))
+        text (when text-entity (dissoc (text/get db (:text/id text-entity)) :text/layer))
         token-layers (mapv #(get-doc-info db doc-id id [:token-layer/id %]) tokl-ids)]
     (-> (select-keys (pxc/entity db id) [:text-layer/id :text-layer/name :config])
         (assoc :text-layer/token-layers token-layers)
@@ -56,7 +56,7 @@
                              [parent-id doc-id id])
                        (mapv first))
         tokens (->> token-ids
-                    (mapv #(token/get db %))
+                    (mapv #(dissoc (token/get db %) :token/layer))
                     tokl/sort-token-records)]
     (-> (select-keys (pxc/entity db id) [:token-layer/id :token-layer/name :config])
         (assoc :token-layer/tokens tokens)
@@ -74,7 +74,7 @@
                              :in    [[?tokl ?doc ?sl]]}
                            [parent-id doc-id id])
                       (mapv first))
-        spans (mapv #(s/get db %) span-ids)]
+        spans (mapv #(dissoc (s/get db %) :span/layer) span-ids)]
     (-> (select-keys (pxc/entity db id) [:span-layer/id :span-layer/name :config])
         (assoc :span-layer/spans spans)
         (assoc :span-layer/relation-layers (mapv #(get-doc-info db doc-id id [:relation-layer/id %]) rl-ids)))))
@@ -91,7 +91,7 @@
                                   :in    [[?sl ?doc ?rl]]}
                                 [parent-id doc-id id])
                           (mapv first))
-        relations (mapv #(r/get db %) relation-ids)]
+        relations (mapv #(dissoc (r/get db %) :relation/layer) relation-ids)]
     (-> (select-keys (pxc/entity db id) [:relation-layer/id :relation-layer/name :config])
         (assoc :relation-layer/relations relations))))
 

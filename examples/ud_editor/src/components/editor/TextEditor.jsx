@@ -188,7 +188,30 @@ export const TextEditor = () => {
 
       // Create only non-overlapping tokens
       if (nonOverlappingTokens.length > 0) {
-        await client.tokens.bulkCreate(nonOverlappingTokens);
+        const tokenResult = await client.tokens.bulkCreate(nonOverlappingTokens);
+        
+        // Create corresponding lemma spans for the new tokens
+        const { lemmaLayer } = getLayerData();
+        if (lemmaLayer && tokenResult?.ids) {
+          console.log(`Creating lemma spans for ${tokenResult.ids.length} new tokens`);
+          
+          const lemmaOperations = tokenResult.ids.map((tokenId, index) => {
+            const tokenData = nonOverlappingTokens[index];
+            return {
+              spanLayerId: lemmaLayer.id,
+              tokens: [tokenId],
+              value: textContent.substring(tokenData.begin, tokenData.end) // Use token text as default lemma
+            };
+          });
+          
+          try {
+            await client.spans.bulkCreate(lemmaOperations);
+            console.log(`Successfully created ${lemmaOperations.length} lemma spans`);
+          } catch (lemmaError) {
+            console.error('Failed to create lemma spans:', lemmaError);
+            // Don't fail the whole operation if lemma creation fails
+          }
+        }
       }
 
       // Store the text that was tokenized
@@ -326,6 +349,19 @@ export const TextEditor = () => {
       const newToken = await client.tokens.create(tokenLayer.id, text.id, begin, end);
       console.log('Token creation successful, response:', newToken);
       
+      // Create corresponding lemma span for the new token
+      const { lemmaLayer } = getLayerData();
+      if (lemmaLayer && newToken?.id) {
+        try {
+          const tokenText = textContent.substring(begin, end);
+          await client.spans.create(lemmaLayer.id, [newToken.id], tokenText);
+          console.log(`Created lemma span for token: "${tokenText}"`);
+        } catch (lemmaError) {
+          console.error('Failed to create lemma span:', lemmaError);
+          // Don't fail the whole operation if lemma creation fails
+        }
+      }
+      
       // Success - update the client-side state
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument)); // Deep clone
@@ -357,17 +393,20 @@ export const TextEditor = () => {
   };
 
   // Helper function to delete relations that cross sentence boundaries
-  const deleteInvalidRelations = async () => {
+  const deleteInvalidRelations = async (updatedSentenceSpans = null) => {
     const client = getClient();
     const { tokens, sentenceSpans, lemmaSpans, relations } = getLayerData();
     
     if (!relations || relations.length === 0) return [];
     
+    // Use provided sentence spans or fall back to current ones
+    const currentSentenceSpans = updatedSentenceSpans || sentenceSpans;
+    
     // Build a map of token ID to sentence number
     const tokenToSentence = new Map();
     
     // Sort sentence spans by their starting token position
-    const sentenceStartTokenIds = sentenceSpans
+    const sentenceStartTokenIds = currentSentenceSpans
       .map(span => span.tokens?.[0] || span.begin)
       .filter(id => id != null);
     
@@ -467,7 +506,12 @@ export const TextEditor = () => {
         );
         
         // Delete any relations that now cross sentence boundaries
-        const deletedRelationIds = await deleteInvalidRelations();
+        // Create updated sentence spans array that includes the new span
+        const updatedSentenceSpans = [...sentenceSpans, {
+          ...newSpan,
+          tokens: [token.id]
+        }];
+        const deletedRelationIds = await deleteInvalidRelations(updatedSentenceSpans);
         
         // Update client state
         setDocument(prevDocument => {
@@ -508,7 +552,9 @@ export const TextEditor = () => {
         await client.spans.delete(existingSpan.id);
         
         // Delete any relations that now cross sentence boundaries after removing this boundary
-        const deletedRelationIds = await deleteInvalidRelations();
+        // Create updated sentence spans array that excludes the deleted span
+        const updatedSentenceSpans = sentenceSpans.filter(span => span.id !== existingSpan.id);
+        const deletedRelationIds = await deleteInvalidRelations(updatedSentenceSpans);
         
         // Update client state
         setDocument(prevDocument => {
