@@ -238,12 +238,11 @@
 (defn remove-token*
   [xt-map span-id token-id]
   (let [{:keys [db node] :as xt-map} (pxc/ensure-db xt-map)
-        span (pxc/entity db span-id)
-        base-txs (pxc/remove-join* xt-map :span/id span-id :span/tokens :token/id token-id)]
+        span (pxc/entity db span-id)]
     (if (and (= 1 (-> span :span/tokens count))
              (= token-id (first (:span/tokens span))))
-      (into base-txs (delete* xt-map span-id))
-      base-txs)))
+      (delete* xt-map span-id)
+      (pxc/remove-join* xt-map :span/id span-id :span/tokens :token/id token-id))))
 
 (defn remove-token-operation
   "Build an operation for removing a token from a span"
