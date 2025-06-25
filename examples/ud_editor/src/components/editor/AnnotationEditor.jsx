@@ -420,7 +420,7 @@ export const AnnotationEditor = () => {
             {project?.name || 'Loading...'}
           </Link>
           <span className="mx-2 text-gray-400">/</span>
-          <span className="text-gray-700">{document?.name || 'Loading...'}</span>
+          <Link to={`/projects/${projectId}/documents/${document?.id}/edit`} className="text-blue-600 hover:text-blue-800">{document?.name || 'Loading...'}</Link>
         </nav>
         
         <h1 className="text-2xl font-bold text-gray-900">{document?.name || 'Loading...'}</h1>
