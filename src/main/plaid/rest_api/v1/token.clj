@@ -75,7 +75,7 @@
                                                                                :token/end end}
                                                                               (some? precedence) (assoc :token/precedence precedence))]
                                                             (if metadata
-                                                              (clojure.core/merge attrs metadata)
+                                                              (assoc attrs :metadata metadata)
                                                               attrs)))
                                                         tokens)
                                      result (tok/bulk-create {:node xtdb} tokens-attrs user-id)]

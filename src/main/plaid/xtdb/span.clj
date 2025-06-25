@@ -306,7 +306,16 @@
   [xt-map spans-attrs]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         layer (-> spans-attrs first :span/layer)
-        layer-entity (pxc/entity db layer)]
+        layer-entity (pxc/entity db layer)
+        spans-attrs (mapv (fn [attrs]
+                            (if (:metadata attrs)
+                              (let [metadata (:metadata attrs)
+                                    span-attrs (dissoc attrs :metadata)
+                                    metadata-attrs (when metadata
+                                                     (metadata/transform-metadata-for-storage metadata "span"))]
+                                (clojure.core/merge span-attrs metadata-attrs))
+                              (dissoc attrs :metadata)))
+                          spans-attrs)]
     ;; Validate all spans are for the same layer
     (when-not (= 1 (->> spans-attrs (map :span/layer) distinct count))
       (throw (ex-info "Spans must all belong to the same layer" {:code 400})))
@@ -353,17 +362,7 @@
         {:span/keys [layer tokens]} first-attrs
         project-id (project-id-from-layer db layer)
         doc-id (get-doc-id-of-token db (first tokens))
-        ;; Process metadata for all spans
-        spans-with-metadata (map (fn [attrs]
-                                   (if (:metadata attrs)
-                                     (let [metadata (get attrs :metadata)
-                                           span-attrs (dissoc attrs :metadata)
-                                           metadata-attrs (when metadata
-                                                            (metadata/transform-metadata-for-storage metadata "span"))]
-                                       (clojure.core/merge span-attrs metadata-attrs))
-                                     (dissoc attrs :metadata)))
-                                 spans-attrs)
-        tx-ops (bulk-create* xt-map spans-with-metadata)]
+        tx-ops (bulk-create* xt-map spans-attrs)]
     (op/make-operation
       {:type        :span/bulk-create
        :project     project-id
