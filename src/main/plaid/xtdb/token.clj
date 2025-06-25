@@ -285,7 +285,13 @@
         layer (-> tokens-attrs first :token/layer)
         layer-entity (pxc/entity db layer)
         text (-> tokens-attrs first :token/text)
-        text-entity (pxc/entity db text)]
+        text-entity (pxc/entity db text)
+        tokens-attrs (for [attrs tokens-attrs]
+                       (if-let [metadata (:metadata attrs)]
+                         (-> attrs
+                             (dissoc :metadata)
+                             (clojure.core/merge (metadata/transform-metadata-for-storage metadata "token")))
+                         (dissoc attrs :metadata)))]
     (when-not (= 1 (->> tokens-attrs (map :token/text) distinct count))
       (throw (ex-info "Tokens must all belong to the same text" {:code 400})))
     (when-not (= 1 (->> tokens-attrs (map :token/layer) distinct count))

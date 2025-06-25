@@ -75,7 +75,8 @@
                                      result (s/bulk-create {:node xtdb} spans-attrs user-id)]
                                  (if (:success result)
                                    {:status 201 :body {:ids (:extra result)}}
-                                   {:status (or (:code result) 500) :body {:error (:error result)}})))}
+                                   {:status (or (:code result) 500)
+                                    :body   {:error (:error result)}})))}
              :delete {:summary "Delete multiple spans in a single operation."
                       :openapi {:x-client-method "bulkDelete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]]
