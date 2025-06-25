@@ -532,10 +532,12 @@ export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = []
             }}
           >
             {displayText}
+            {/*
             <span className="absolute -top-2 -right-2 text-xs bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center">
               {tokenIdx + 1}
             </span>
-          
+            */}
+
             {/* Tooltip */}
             {hoveredToken && hoveredToken.id === token.id && !editingToken && (
               <div 

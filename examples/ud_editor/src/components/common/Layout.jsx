@@ -1,14 +1,18 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const Layout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
+
+  // Check if we're on the annotation editor route
+  const isAnnotationEditor = location.pathname.includes('/annotate');
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -30,7 +34,7 @@ export const Layout = () => {
           </div>
         </div>
       </header>
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={isAnnotationEditor ? "flex-1" : "flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8"}>
         <Outlet />
       </main>
     </div>

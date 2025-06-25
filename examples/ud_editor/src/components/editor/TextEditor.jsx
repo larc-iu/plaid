@@ -571,8 +571,6 @@ export const TextEditor = () => {
         <Link to={`/projects/${projectId}/documents`} className="text-blue-600 hover:text-blue-800">{project?.name}</Link>
         <span className="mx-2">/</span>
         <span className="text-gray-900">{document?.name}</span>
-        <span className="mx-2">/</span>
-        <span className="text-gray-900">Text Editor</span>
       </nav>
 
       <div className="flex justify-between items-center mb-6">

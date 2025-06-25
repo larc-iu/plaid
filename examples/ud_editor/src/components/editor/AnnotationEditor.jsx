@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { SentenceRow } from './SentenceRow';
 
 export const AnnotationEditor = () => {
   const { projectId, documentId } = useParams();
   const [document, setDocument] = useState(null);
+  const [project, setProject] = useState(null);
   const [sentences, setSentences] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -22,8 +23,12 @@ export const AnnotationEditor = () => {
         return;
       }
 
-      // Get document with all layer data
-      const documentData = await client.documents.get(documentId, true);
+      // Get project and document with all layer data
+      const [projectData, documentData] = await Promise.all([
+        client.projects.get(projectId),
+        client.documents.get(documentId, true)
+      ]);
+      setProject(projectData);
       setDocument(documentData);
       setError('');
     } catch (err) {
@@ -406,9 +411,24 @@ export const AnnotationEditor = () => {
 
   return (
     <div style={{ margin: 0, padding: 0, width: '100%', minHeight: '100vh' }}>
+      {/* Breadcrumbs and title section */}
+      <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #e5e7eb' }}>
+        <nav className="flex items-center text-sm text-gray-500 mb-4">
+          <Link to="/projects" className="text-blue-600 hover:text-blue-800">Projects</Link>
+          <span className="mx-2 text-gray-400">/</span>
+          <Link to={`/projects/${projectId}/documents`} className="text-blue-600 hover:text-blue-800">
+            {project?.name || 'Loading...'}
+          </Link>
+          <span className="mx-2 text-gray-400">/</span>
+          <span className="text-gray-700">{document?.name || 'Loading...'}</span>
+        </nav>
+        
+        <h1 className="text-2xl font-bold text-gray-900">{document?.name || 'Loading...'}</h1>
+      </div>
+
       {/* Error display */}
       {error && (
-        <div style={{ color: 'red', marginBottom: '1rem', padding: '0 10px' }}>
+        <div style={{ color: 'red', marginBottom: '1rem', padding: '0 1.5rem' }}>
           {error}
         </div>
       )}
