@@ -379,6 +379,5 @@ export const SentenceRow = React.memo(({
     </div>
   );
 }, (prevProps, nextProps) => {
-    console.log(prevProps.sentenceData)
   return JSON.stringify(prevProps.sentenceData) === JSON.stringify(nextProps.sentenceData);
 });
