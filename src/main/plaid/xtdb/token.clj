@@ -349,10 +349,16 @@
     (when-not (:token/id (pxc/entity db eid))
       (throw (ex-info (pxc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
 
-    (into
-      (reduce into (map #(s/remove-token* xt-map % eid) spans))
-      [[::xt/match eid (pxc/entity db eid)]
-       [::xt/delete eid]])))
+    (vec
+      (concat
+        (apply concat
+               (for [span-id spans
+                     :let [span (s/get db span-id)]]
+                 (if (= 1 (count (:span/tokens span)))
+                   (s/delete* xt-map span-id)
+                   (s/remove-token* xt-map span-id eid))))
+        [[::xt/match eid (pxc/entity db eid)]
+         [::xt/delete eid]]))))
 
 (defn delete-operation
   "Build an operation for deleting a token"
