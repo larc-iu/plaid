@@ -35,6 +35,7 @@ function App() {
             {/* Text editor route */}
             <Route path="projects/:projectId/documents/:documentId/edit" element={<TextEditor />} />
             
+            {/* Annotation editor route */}
             <Route path="projects/:projectId/documents/:documentId/annotate" element={<AnnotationEditor />} />
           </Route>
           
