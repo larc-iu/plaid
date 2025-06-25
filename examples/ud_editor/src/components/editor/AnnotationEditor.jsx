@@ -10,7 +10,6 @@ export const AnnotationEditor = () => {
   const [sentences, setSentences] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [creatingLemmas, setCreatingLemmas] = useState(false);
   const { getClient } = useAuth();
 
   // Fetch initial data
@@ -52,78 +51,9 @@ export const AnnotationEditor = () => {
     if (document) {
       const processedSentences = processSentences(document);
       setSentences(processedSentences);
-      
-      // Check for tokens without lemma spans and create them
-      // This will trigger a re-render when complete
-      createMissingLemmaSpans();
     }
   }, [document]);
 
-  // Create lemma spans for tokens that don't have them
-  const createMissingLemmaSpans = async () => {
-    try {
-      const client = getClient();
-      if (!client || !document) return;
-
-      const layerInfo = getLayerInfo();
-      const lemmaLayer = layerInfo.lemmaLayer;
-      
-      if (!lemmaLayer) {
-        console.warn('Lemma layer not found, cannot create missing lemma spans');
-        return;
-      }
-
-      // Get all tokens
-      const textLayer = document.textLayers?.[0];
-      const tokenLayer = textLayer?.tokenLayers?.[0];
-      const tokens = tokenLayer?.tokens || [];
-      
-      if (tokens.length === 0) return;
-
-      // Find existing lemma spans
-      const existingLemmaSpans = lemmaLayer.spans || [];
-      const tokensWithLemmas = new Set();
-      
-      existingLemmaSpans.forEach(span => {
-        if (span.tokens && span.tokens.length > 0) {
-          span.tokens.forEach(tokenId => tokensWithLemmas.add(tokenId));
-        } else if (span.begin) {
-          tokensWithLemmas.add(span.begin);
-        }
-      });
-
-      // Find tokens without lemma spans
-      const tokensWithoutLemmas = tokens.filter(token => !tokensWithLemmas.has(token.id));
-      
-      if (tokensWithoutLemmas.length === 0) return;
-
-      console.log(`Creating lemma spans for ${tokensWithoutLemmas.length} tokens without lemmas`);
-
-      // Get text content to extract token forms
-      const textContent = textLayer?.text?.body || '';
-      
-      // Create bulk operations for missing lemma spans
-      const lemmaOperations = tokensWithoutLemmas.map(token => ({
-        spanLayerId: lemmaLayer.id,
-        tokens: [token.id],
-        value: textContent.substring(token.begin, token.end) // Use token form as default lemma
-      }));
-
-      // Bulk create the lemma spans
-      const result = await client.spans.bulkCreate(lemmaOperations);
-      
-      if (result && result.ids) {
-        console.log(`Successfully created ${result.ids.length} lemma spans`);
-        
-        // Refresh the document to get the updated data
-        await fetchData();
-      }
-      
-    } catch (error) {
-      console.error('Failed to create missing lemma spans:', error);
-      setError(`Failed to create missing lemma spans: ${error.message}`);
-    }
-  };
 
   // Helper function to process sentences from document data
   const processSentences = (documentData) => {
@@ -200,11 +130,15 @@ export const AnnotationEditor = () => {
     const xposLayer = spanLayers.find(layer => layer.name === 'XPOS');
     const featuresLayer = spanLayers.find(layer => layer.name === 'Features');
     
+    // Get relation layer (attached to lemma layer)
+    const relationLayer = lemmaLayer?.relationLayers?.[0];
+    
     return {
       lemmaLayer,
       uposLayer,
       xposLayer,
       featuresLayer,
+      relationLayer,
       textLayer,
       tokenLayer
     };
@@ -397,6 +331,181 @@ export const AnnotationEditor = () => {
     }
   };
 
+  // Handle relation creation
+  const handleRelationCreate = async (sourceSpanId, targetSpanId, deprel) => {
+    try {
+      const client = getClient();
+      const layerInfo = getLayerInfo();
+      
+      if (!layerInfo.relationLayer) {
+        setError('Relation layer not found. Please ensure the project is properly configured.');
+        return;
+      }
+      
+      // First, find and delete any existing incoming relations to the target
+      const existingRelations = layerInfo.relationLayer.relations || [];
+      const incomingRelations = existingRelations.filter(rel => rel.target === targetSpanId);
+      
+      // Delete existing incoming relations
+      for (const existingRel of incomingRelations) {
+        try {
+          await client.relations.delete(existingRel.id);
+        } catch (error) {
+          console.warn('Failed to delete existing relation:', error);
+        }
+      }
+      
+      let relation = null;
+      
+      // For ROOT relations, we'll use a special handling
+      if (targetSpanId === 'ROOT') {
+        // Create a relation with special ROOT target handling
+        // We'll store HEAD=0 in a separate Head span layer for CoNLL-U compatibility
+        const headLayer = layerInfo.textLayer?.tokenLayers?.[0]?.spanLayers?.find(l => l.name === 'Head');
+        if (headLayer && sourceSpanId) {
+          // Find the token ID from the lemma span
+          const lemmaSpan = layerInfo.lemmaLayer?.spans?.find(s => s.id === sourceSpanId);
+          const tokenId = lemmaSpan?.tokens?.[0] || lemmaSpan?.begin;
+          if (tokenId) {
+            await client.spans.create(headLayer.id, [tokenId], '0');
+          }
+        }
+        
+        // Create a fake relation object for ROOT for display purposes
+        relation = {
+          id: `root-${sourceSpanId}-${Date.now()}`,
+          source: sourceSpanId,
+          target: 'ROOT',
+          value: deprel || 'root'
+        };
+      } else {
+        // Create the relation - API returns only ID, so construct full object
+        const apiResponse = await client.relations.create(
+          layerInfo.relationLayer.id,
+          sourceSpanId,
+          targetSpanId,
+          deprel || 'dep'
+        );
+        
+        relation = {
+          id: apiResponse.id || apiResponse,
+          source: sourceSpanId,
+          target: targetSpanId,
+          value: deprel || 'dep'
+        };
+      }
+      
+      // Optimistically update local state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const lemmaLayer = tokenLayer?.spanLayers?.find(l => l.name === 'Lemma');
+        
+        if (lemmaLayer) {
+          // Ensure relation layer structure exists
+          if (!lemmaLayer.relationLayers) {
+            lemmaLayer.relationLayers = [];
+          }
+          if (!lemmaLayer.relationLayers[0]) {
+            lemmaLayer.relationLayers[0] = {
+              id: layerInfo.relationLayer.id,
+              name: 'Relation',
+              relations: []
+            };
+          }
+          if (!lemmaLayer.relationLayers[0].relations) {
+            lemmaLayer.relationLayers[0].relations = [];
+          }
+          
+          // Remove any existing incoming relations to the target in local state
+          lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
+            rel => rel.target !== targetSpanId
+          );
+          
+          // Add the new relation
+          lemmaLayer.relationLayers[0].relations.push(relation);
+        }
+        
+        return updatedDocument;
+      });
+      
+      setError('');
+    } catch (error) {
+      console.error('Failed to create relation:', error);
+      setError(`Failed to create relation: ${error.message}`);
+      await fetchData();
+    }
+  };
+
+  // Handle relation update
+  const handleRelationUpdate = async (relationId, deprel) => {
+    try {
+      const client = getClient();
+      
+      // Update the relation value (DEPREL)
+      const updatedRelation = await client.relations.update(relationId, deprel);
+      
+      // Optimistically update local state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const lemmaLayer = tokenLayer?.spanLayers?.find(l => l.name === 'Lemma');
+        
+        if (lemmaLayer && lemmaLayer.relationLayers?.[0]?.relations) {
+          const relationIndex = lemmaLayer.relationLayers[0].relations.findIndex(r => r.id === relationId);
+          if (relationIndex !== -1) {
+            lemmaLayer.relationLayers[0].relations[relationIndex] = {
+              ...lemmaLayer.relationLayers[0].relations[relationIndex],
+              value: deprel
+            };
+          }
+        }
+        
+        return updatedDocument;
+      });
+      
+      setError('');
+    } catch (error) {
+      console.error('Failed to update relation:', error);
+      setError(`Failed to update relation: ${error.message}`);
+      await fetchData();
+    }
+  };
+
+  // Handle relation deletion
+  const handleRelationDelete = async (relationId) => {
+    try {
+      const client = getClient();
+      
+      // Delete the relation
+      await client.relations.delete(relationId);
+      
+      // Optimistically update local state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const lemmaLayer = tokenLayer?.spanLayers?.find(l => l.name === 'Lemma');
+        
+        if (lemmaLayer && lemmaLayer.relationLayers?.[0]?.relations) {
+          lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
+            r => r.id !== relationId
+          );
+        }
+        
+        return updatedDocument;
+      });
+      
+      setError('');
+    } catch (error) {
+      console.error('Failed to delete relation:', error);
+      setError(`Failed to delete relation: ${error.message}`);
+      await fetchData();
+    }
+  };
+
   if (loading) {
     return <div>Loading document...</div>;
   }
@@ -447,6 +556,9 @@ export const AnnotationEditor = () => {
             document={document}
             onAnnotationUpdate={handleAnnotationUpdate}
             onFeatureDelete={handleFeatureDelete}
+            onRelationCreate={handleRelationCreate}
+            onRelationUpdate={handleRelationUpdate}
+            onRelationDelete={handleRelationDelete}
             sentenceIndex={index}
             totalTokensBefore={totalTokensBefore}
           />

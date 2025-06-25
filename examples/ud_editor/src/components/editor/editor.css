@@ -173,3 +173,140 @@
   opacity: 1;
   transition: opacity 0.2s;
 }
+
+/* Dependency Tree Styles */
+.dependency-tree-container {
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.tree-svg {
+  display: block;
+  background-color: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.tree-instruction-box {
+  padding: 8px 12px;
+  background-color: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.tree-source-selected-box {
+  padding: 8px 12px;
+  background-color: #dbeafe;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #1d4ed8;
+}
+
+.tree-root-rect {
+  cursor: pointer;
+}
+
+.tree-root-rect--default {
+  cursor: default;
+}
+
+.tree-root-text {
+  font-size: 12px;
+  fill: #666;
+  font-weight: bold;
+  text-anchor: middle;
+}
+
+.tree-token-text {
+  font-size: 14px;
+  font-family: monospace;
+  text-anchor: middle;
+}
+
+.tree-token-text--drag-source {
+  fill: #dc2626;
+  font-weight: bold;
+}
+
+.tree-token-text--selected {
+  fill: #2563eb;
+  font-weight: bold;
+}
+
+.tree-token-text--hovered {
+  fill: #666;
+}
+
+.tree-token-text--normal {
+  fill: #111;
+}
+
+.tree-token-index {
+  font-size: 10px;
+  fill: #999;
+  text-anchor: middle;
+}
+
+.tree-token-group {
+  user-select: none;
+}
+
+.tree-token-group--drag {
+  cursor: crosshair;
+}
+
+.tree-token-group--grab {
+  cursor: grab;
+}
+
+.tree-arc-path {
+  fill: none;
+  cursor: pointer;
+}
+
+.tree-arc-arrow {
+  cursor: pointer;
+}
+
+.tree-deprel-edit {
+  font-size: 11px;
+  color: #2563eb;
+  text-align: center;
+  font-family: sans-serif;
+  background: white;
+  border: 1px solid #2563eb;
+  border-radius: 2px;
+  padding: 1px 4px;
+  outline: none;
+  min-width: 40px;
+}
+
+.tree-deprel-text {
+  font-size: 11px;
+  text-anchor: middle;
+  cursor: pointer;
+  font-family: sans-serif;
+}
+
+.tree-drag-arc {
+  fill: none;
+  stroke: #000;
+  stroke-width: 2;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.tree-temp-arc {
+  fill: none;
+  stroke: #93c5fd;
+  stroke-width: 2;
+  stroke-dasharray: 5,5;
+  pointer-events: none;
+}
+
