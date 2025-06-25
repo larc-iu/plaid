@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { DependencyTree } from './DependencyTree';
 import './editor.css';
 
@@ -13,6 +13,11 @@ export const SentenceRow = ({
   sentenceIndex = 0, 
   totalTokensBefore = 0 
 }) => {
+  // Refs to track token positions
+  const tokenRefs = useRef(new Map());
+  const sentenceGridRef = useRef(null);
+  const [tokenPositions, setTokenPositions] = useState([]);
+
   // Helper function to get annotations for a token
   const getTokenAnnotations = (tokenId) => {
     const textLayer = document.textLayers?.[0];
@@ -99,10 +104,6 @@ export const SentenceRow = ({
     // Get relation layer
     const relationLayer = lemmaLayer?.relationLayers?.[0];
     
-    if (!relationLayer?.relations) {
-      return [];
-    }
-    
     // Get lemma span IDs for tokens in this sentence
     const sentenceTokenIds = new Set(sentence.tokens.map(t => t.id));
     const sentenceLemmaSpans = (lemmaLayer?.spans || []).filter(span => {
@@ -112,10 +113,35 @@ export const SentenceRow = ({
     
     const sentenceLemmaSpanIds = new Set(sentenceLemmaSpans.map(s => s.id));
     
-    // Filter relations where source is in this sentence
-    return relationLayer.relations.filter(rel => 
+    // Start with regular relations, but convert self-pointing relations to ROOT relations
+    const allRelations = relationLayer?.relations ? relationLayer.relations.filter(rel => 
       sentenceLemmaSpanIds.has(rel.source)
-    );
+    ) : [];
+    
+    const relations = [];
+    allRelations.forEach(rel => {
+      // Pass all relations as-is, including self-pointing ones
+      // DependencyTree will handle displaying self-pointing relations as ROOT relations
+      relations.push(rel);
+    });
+    
+    // Sanity check: Log warning if any targets have multiple incoming relations
+    const targetCounts = new Map();
+    relations.forEach(rel => {
+      const target = rel.target;
+      if (!targetCounts.has(target)) {
+        targetCounts.set(target, []);
+      }
+      targetCounts.get(target).push(rel);
+    });
+    
+    targetCounts.forEach((rels, target) => {
+      if (rels.length > 1) {
+        console.warn(`Multiple incoming relations found for target "${target}":`, rels);
+      }
+    });
+    
+    return relations;
   };
 
   // Make relations reactive to document changes
@@ -137,6 +163,61 @@ export const SentenceRow = ({
   };
   
   const lemmaSpans = getLemmaSpansForSentence();
+
+  // Function to measure actual token positions in the DOM
+  const measureTokenPositions = useCallback(() => {
+    if (!sentenceGridRef.current) return;
+
+    const gridRect = sentenceGridRef.current.getBoundingClientRect();
+    const positions = [];
+
+    tokenData.forEach((data, index) => {
+      const tokenRef = tokenRefs.current.get(data.token.id);
+      if (tokenRef) {
+        const tokenRect = tokenRef.getBoundingClientRect();
+        const centerX = tokenRect.left + tokenRect.width / 2 - gridRect.left;
+        const centerY = tokenRect.top + tokenRect.height / 2 - gridRect.top + 50; // Offset for SVG positioning
+        
+        // Find lemma span for this token
+        const matchingLemmaSpan = lemmaSpans.find(span => 
+          (span.tokens && span.tokens.includes(data.token.id)) || span.begin === data.token.id
+        );
+        
+        positions.push({
+          token: data.token,
+          x: centerX,
+          y: centerY, // Use actual Y position from token
+          form: data.tokenForm,
+          lemmaSpanId: matchingLemmaSpan?.id,
+          index: index
+        });
+      }
+    });
+
+    setTokenPositions(positions);
+  }, []); // Remove dependencies to prevent infinite loop
+
+  // Update positions when layout changes
+  useEffect(() => {
+    // Use a timeout to ensure DOM is ready
+    const timeoutId = setTimeout(() => {
+      measureTokenPositions();
+    }, 0);
+    
+    // Add resize observer to update positions when layout changes
+    const resizeObserver = new ResizeObserver(() => {
+      measureTokenPositions();
+    });
+    
+    if (sentenceGridRef.current) {
+      resizeObserver.observe(sentenceGridRef.current);
+    }
+    
+    return () => {
+      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+    };
+  }, [sentence, document]); // Only depend on stable props
 
   // Editable cell component for annotation fields
   const EditableCell = ({ value, tokenId, field, tokenForm, tabIndex }) => {
@@ -355,7 +436,16 @@ export const SentenceRow = ({
     return (
       <div className="token-column">
         {/* Token form (baseline) */}
-        <div className="token-form">
+        <div 
+          className="token-form"
+          ref={(el) => {
+            if (el) {
+              tokenRefs.current.set(data.token.id, el);
+            } else {
+              tokenRefs.current.delete(data.token.id);
+            }
+          }}
+        >
           {data.tokenForm}
         </div>
 
@@ -418,10 +508,11 @@ export const SentenceRow = ({
         onRelationUpdate={onRelationUpdate}
         onRelationDelete={onRelationDelete}
         textContent={textContent}
+        tokenPositions={tokenPositions}
       />
       
       {/* Main container with labels and columns */}
-      <div className="sentence-grid">
+      <div className="sentence-grid" ref={sentenceGridRef}>
         {/* Labels column */}
         <div className="labels-column">
           {/* Empty space for token form row */}

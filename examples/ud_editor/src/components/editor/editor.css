@@ -3,11 +3,14 @@
 /* Main containers */
 .sentence-container {
   margin: 20px;
+  margin-top: 56px;
   width: 100%;
+  position: relative; /* Enable absolute positioning for children */
 }
 
 .sentence-grid {
   display: flex;
+  padding-top: 150px; /* Moderate padding to make room for dependency tree */
 }
 
 .labels-column {
@@ -176,16 +179,20 @@
 
 /* Dependency Tree Styles */
 .dependency-tree-container {
-  margin-bottom: 20px;
+  position: absolute;
+  top: -50px; /* Position just above the sentence grid */
+  left: 0;
   width: 100%;
+  z-index: 10; /* Ensure it appears above the sentence grid */
+  pointer-events: none; /* Allow clicks to pass through to text below */
 }
 
 .tree-svg {
   display: block;
-  background-color: #fafafa;
-  border: 1px solid #e5e7eb;
+  background-color: transparent; /* Make background transparent */
+  border: none; /* Remove border for overlay */
   border-radius: 4px;
-  margin-bottom: 10px;
+  pointer-events: auto; /* Re-enable pointer events for SVG interactions */
 }
 
 .tree-instruction-box {
@@ -196,6 +203,7 @@
   margin-bottom: 8px;
   font-size: 12px;
   color: #6b7280;
+  pointer-events: auto; /* Enable interaction with instruction box */
 }
 
 .tree-source-selected-box {
@@ -206,6 +214,7 @@
   margin-bottom: 8px;
   font-size: 12px;
   color: #1d4ed8;
+  pointer-events: auto; /* Enable interaction with selected box */
 }
 
 .tree-root-rect {
@@ -262,6 +271,18 @@
 }
 
 .tree-token-group--grab {
+  cursor: grab;
+}
+
+.tree-token-area {
+  user-select: none;
+}
+
+.tree-token-area--drag {
+  cursor: crosshair;
+}
+
+.tree-token-area--grab {
   cursor: grab;
 }
 
