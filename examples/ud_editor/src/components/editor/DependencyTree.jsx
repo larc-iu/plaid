@@ -14,10 +14,12 @@ export const DependencyTree = ({
   const [hoveredToken, setHoveredToken] = useState(null);
   const [editingRelation, setEditingRelation] = useState(null);
   const [hoveredRelation, setHoveredRelation] = useState(null);
+  const [focusedRelation, setFocusedRelation] = useState(null);
   const [dragOrigin, setDragOrigin] = useState(null);
   const [dragCurrent, setDragCurrent] = useState(null);
   const [dragSourceId, setDragSourceId] = useState(null);
   const svgRef = useRef(null);
+  const labelRefs = useRef(new Map());
 
   // Constants for layout (back to original working version)
   const TOKEN_SPACING = 80;
@@ -262,21 +264,85 @@ export const DependencyTree = ({
     }
   };
 
-  // Handle escape key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setSelectedSource(null);
-        setEditingRelation(null);
-        setDragOrigin(null);
-        setDragCurrent(null);
-        setDragSourceId(null);
+  // Sort relations by label X position for logical tab order
+  const sortedRelations = [...relations].sort((a, b) => {
+    // Calculate label positions for both relations
+    const getLabelX = (relation) => {
+      const isSelfPointing = relation.source === relation.target;
+      const sourcePos = adjustedTokenPositions.find(p => p.lemmaSpanId === relation.source);
+      
+      if (isSelfPointing) {
+        // ROOT relation - label is centered above the source token
+        return sourcePos?.x || 0;
+      } else {
+        // Regular relation - label is at midpoint between source and target
+        const targetPos = adjustedTokenPositions.find(p => p.lemmaSpanId === relation.target);
+        return ((sourcePos?.x || 0) + (targetPos?.x || 0)) / 2;
       }
     };
     
+    return getLabelX(a) - getLabelX(b);
+  });
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e) => {
+    // Handle initial focus with Ctrl+D (for Dependency labels)
+    if (e.key === 'd' && e.ctrlKey && !focusedRelation && !editingRelation) {
+      e.preventDefault();
+      focusFirstRelation();
+      return;
+    }
+    
+    // Handle Tab navigation for dependency labels
+    if (e.key === 'Tab' && focusedRelation) {
+      e.preventDefault();
+      const currentIndex = sortedRelations.findIndex(r => r.id === focusedRelation);
+      
+      if (e.shiftKey) {
+        // Shift+Tab: Previous relation
+        const prevIndex = currentIndex > 0 ? currentIndex - 1 : sortedRelations.length - 1;
+        if (sortedRelations[prevIndex]) {
+          setFocusedRelation(sortedRelations[prevIndex].id);
+          const labelElement = labelRefs.current.get(sortedRelations[prevIndex].id);
+          labelElement?.focus();
+        }
+      } else {
+        // Tab: Next relation
+        const nextIndex = currentIndex < sortedRelations.length - 1 ? currentIndex + 1 : 0;
+        if (sortedRelations[nextIndex]) {
+          setFocusedRelation(sortedRelations[nextIndex].id);
+          const labelElement = labelRefs.current.get(sortedRelations[nextIndex].id);
+          labelElement?.focus();
+        }
+      }
+      return;
+    }
+    
+    // Handle Escape key
+    if (e.key === 'Escape') {
+      setSelectedSource(null);
+      setEditingRelation(null);
+      setFocusedRelation(null);
+      setDragOrigin(null);
+      setDragCurrent(null);
+      setDragSourceId(null);
+    }
+  };
+
+  useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [focusedRelation, editingRelation, sortedRelations, relations]);
+
+  // Helper function to focus first relation for keyboard navigation
+  const focusFirstRelation = () => {
+    if (sortedRelations.length > 0 && !focusedRelation) {
+      const firstRelation = sortedRelations[0];
+      setFocusedRelation(firstRelation.id);
+      const labelElement = labelRefs.current.get(firstRelation.id);
+      labelElement?.focus();
+    }
+  };
 
   // Render dependency arc
   const renderArc = (relation) => {
@@ -294,6 +360,7 @@ export const DependencyTree = ({
     
     const isSelected = editingRelation?.id === relation.id;
     const isHovered = hoveredRelation === relation.id;
+    const isFocused = focusedRelation === relation.id;
     const isToRoot = isSelfPointing;
     
     const pathData = computeEdge(sourcePos, targetPos, isToRoot);
@@ -315,8 +382,8 @@ export const DependencyTree = ({
       labelX = midX;
     }
     
-    const color = isSelected || isHovered ? '#2563eb' : '#666';
-    const strokeWidth = isSelected || isHovered ? 2 : 1;
+    const color = isSelected || isHovered || isFocused ? '#2563eb' : '#666';
+    const strokeWidth = isSelected || isHovered || isFocused ? 2 : 1;
     
     return (
       <g key={relation.id}>
@@ -363,6 +430,25 @@ export const DependencyTree = ({
                   onRelationUpdate(relation.id, newValue);
                 }
                 setEditingRelation(null);
+                
+                // Only restore focus if the user isn't focusing on something else
+                // Check if the related target has a tabIndex (indicating it's an EditableCell or other focusable element)
+                const relatedTarget = e.relatedTarget;
+                const isMovingToEditableCell = relatedTarget && relatedTarget.getAttribute && relatedTarget.getAttribute('tabIndex') !== null && relatedTarget.getAttribute('tabIndex') !== '-1';
+                
+                if (!isMovingToEditableCell) {
+                  // Restore focus to the label after editing
+                  setTimeout(() => {
+                    const labelElement = labelRefs.current.get(relation.id);
+                    if (labelElement) {
+                      labelElement.focus();
+                      setFocusedRelation(relation.id);
+                    }
+                  }, 0);
+                } else {
+                  // Clear focus state when moving to another element
+                  setFocusedRelation(null);
+                }
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -371,10 +457,48 @@ export const DependencyTree = ({
                 } else if (e.key === 'Escape') {
                   e.target.textContent = relation.value || 'dep';
                   setEditingRelation(null);
+                  setFocusedRelation(null);
                 } else if (e.key === 'Delete' && e.shiftKey) {
                   e.preventDefault();
                   onRelationDelete(relation.id);
                   setEditingRelation(null);
+                  setFocusedRelation(null);
+                } else if (e.key === 'Tab') {
+                  // Handle tab navigation during editing
+                  e.preventDefault();
+                  const newValue = e.target.textContent.trim();
+                  const currentValue = relation.value || 'dep';
+                  
+                  // Save changes if different
+                  if (newValue && newValue !== currentValue) {
+                    onRelationUpdate(relation.id, newValue);
+                  }
+                  
+                  // Navigate to next/previous relation
+                  setEditingRelation(null);
+                  const currentIndex = sortedRelations.findIndex(r => r.id === relation.id);
+                  
+                  if (e.shiftKey) {
+                    // Shift+Tab: Previous relation
+                    const prevIndex = currentIndex > 0 ? currentIndex - 1 : sortedRelations.length - 1;
+                    if (sortedRelations[prevIndex]) {
+                      setTimeout(() => {
+                        setFocusedRelation(sortedRelations[prevIndex].id);
+                        const labelElement = labelRefs.current.get(sortedRelations[prevIndex].id);
+                        labelElement?.focus();
+                      }, 0);
+                    }
+                  } else {
+                    // Tab: Next relation
+                    const nextIndex = currentIndex < sortedRelations.length - 1 ? currentIndex + 1 : 0;
+                    if (sortedRelations[nextIndex]) {
+                      setTimeout(() => {
+                        setFocusedRelation(sortedRelations[nextIndex].id);
+                        const labelElement = labelRefs.current.get(sortedRelations[nextIndex].id);
+                        labelElement?.focus();
+                      }, 0);
+                    }
+                  }
                 }
               }}
               autoFocus
@@ -396,11 +520,30 @@ export const DependencyTree = ({
             x={labelX}
             y={labelY}
             fill={color}
-            className="tree-deprel-text"
+            className={`tree-deprel-text ${isFocused ? 'tree-deprel-text--focused' : ''}`}
+            tabIndex="-1"
             onMouseEnter={() => setHoveredRelation(relation.id)}
             onMouseLeave={() => setHoveredRelation(null)}
+            onFocus={() => {
+              setFocusedRelation(relation.id);
+              setEditingRelation(relation);
+            }}
+            onBlur={() => {
+              // Only clear focus if we're not editing
+              if (!editingRelation) {
+                setFocusedRelation(null);
+              }
+            }}
             onClick={() => {
               setEditingRelation(relation);
+              setFocusedRelation(relation.id);
+            }}
+            ref={(el) => {
+              if (el) {
+                labelRefs.current.set(relation.id, el);
+              } else {
+                labelRefs.current.delete(relation.id);
+              }
             }}
           >
             {relation.value || 'dep'}
