@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Thu Jun 26 10:46:49 EDT 2025
+Generated on: Thu Jun 26 16:51:13 EDT 2025
 """
 
 import requests
@@ -5410,17 +5410,17 @@ class LoginResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def create(self, username: str, password: str) -> Any:
+    def create(self, user_id: str, password: str) -> Any:
         """
-        Authenticate with a username and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
+        Authenticate with a user_id and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
 
         Args:
-            username: Required body parameter
+            user_id: Required body parameter
             password: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/login"
         body_dict = {
-            'username': username,
+            'user-id': user_id,
             'password': password
         }
         # Filter out None values
@@ -5448,17 +5448,17 @@ class LoginResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def create_async(self, username: str, password: str) -> Any:
+    async def create_async(self, user_id: str, password: str) -> Any:
         """
-        Authenticate with a username and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
+        Authenticate with a user_id and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
 
         Args:
-            username: Required body parameter
+            user_id: Required body parameter
             password: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/login"
         body_dict = {
-            'username': username,
+            'user-id': user_id,
             'password': password
         }
         # Filter out None values
