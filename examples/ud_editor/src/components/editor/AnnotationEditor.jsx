@@ -119,7 +119,7 @@ export const AnnotationEditor = () => {
           <div className="text-center text-gray-600 py-8">Document not found</div>
         )}
 
-        {!loading && activeDocument && sentences.length === 0 && (
+        {!loading && activeDocument && processedSentences.length === 0 && (
           <div className="p-6">
             {/* Breadcrumbs and title section */}
             <div style={{ padding: '1rem 1.5rem' }}>
@@ -193,7 +193,7 @@ export const AnnotationEditor = () => {
           </div>
         )}
 
-        {!loading && activeDocument && sentences.length > 0 && (
+        {!loading && activeDocument && processedSentences.length > 0 && (
           <>
             {/* Breadcrumbs and title section */}
             <div style={{ padding: '1rem 1.5rem' }}>
