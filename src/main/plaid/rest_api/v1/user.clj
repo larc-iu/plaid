@@ -63,7 +63,7 @@
                                   :body {:error error}}))
 
                              ;; Non-admin can only modify self (username and/or password)
-                             (and is-self? (nil? is-admin))
+                             (and is-self? (not is-admin))
                              (let [{:keys [success code error]} (user/merge {:node xtdb}
                                                                             id
                                                                             {:password password
