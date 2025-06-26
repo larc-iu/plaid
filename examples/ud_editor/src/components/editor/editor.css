@@ -29,6 +29,7 @@
   margin-right: 8px;
   white-space: nowrap;
   flex: 0 0 auto;
+  min-width: 0; /* Allow column to shrink */
 }
 
 /* Label styles */
@@ -77,7 +78,6 @@
 
 /* Editable content */
 .editable-field {
-  width: 100%;
   padding: 2px 4px;
   font-size: 12px;
   border: 1px solid transparent;
@@ -87,6 +87,14 @@
   text-align: center;
   outline: none;
   white-space: nowrap;
+  background-color: transparent;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.editable-field:focus {
+  border-color: #3b82f6;
+  background-color: #fff;
 }
 
 .editable-field--empty {

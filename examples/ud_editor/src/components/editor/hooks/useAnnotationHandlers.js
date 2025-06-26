@@ -4,7 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext.jsx';
 export const useAnnotationHandlers = (document, setDocument, setError, layerInfo, refreshData) => {
   const { getClient } = useAuth();
 
-  const handleAnnotationUpdate = useCallback(async (tokenId, field, value, skipOptimisticUpdate = false) => {
+  const handleAnnotationUpdate = useCallback(async (tokenId, field, value) => {
     try {
       const client = getClient();
       if (!client) return;
@@ -43,9 +43,8 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
         
         spanResult = await client.spans.create(targetLayer.id, [tokenId], value);
         
-        // Only update local state if not skipping optimistic updates (to preserve focus)
-        if (!skipOptimisticUpdate) {
-          setDocument(prevDocument => {
+        // Update local state
+        setDocument(prevDocument => {
           const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
           const textLayer = updatedDocument.textLayers?.[0];
           const tokenLayer = textLayer?.tokenLayers?.[0];
@@ -64,8 +63,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
           }
           
           return updatedDocument;
-          });
-        }
+        });
         
       } else {
         // For other fields (lemma, upos, xpos), find existing span or create new one
@@ -80,9 +78,8 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
           // Update existing span
           spanResult = await client.spans.update(existingSpan.id, value);
           
-          // Only update local state if not skipping optimistic updates (to preserve focus)
-          if (!skipOptimisticUpdate) {
-            setDocument(prevDocument => {
+          // Update local state
+          setDocument(prevDocument => {
             const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
             const textLayer = updatedDocument.textLayers?.[0];
             const tokenLayer = textLayer?.tokenLayers?.[0];
@@ -98,16 +95,14 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
             });
             
             return updatedDocument;
-            });
-          }
+          });
           
         } else if (targetLayer) {
           // Create new span
           spanResult = await client.spans.create(targetLayer.id, [tokenId], value);
           
-          // Only update local state if not skipping optimistic updates (to preserve focus)
-          if (!skipOptimisticUpdate) {
-            setDocument(prevDocument => {
+          // Update local state
+          setDocument(prevDocument => {
             const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
             const textLayer = updatedDocument.textLayers?.[0];
             const tokenLayer = textLayer?.tokenLayers?.[0];
@@ -126,8 +121,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
             }
             
             return updatedDocument;
-            });
-          }
+          });
           
         } else {
           console.warn(`Layer for ${field} not found, cannot create annotation`);
