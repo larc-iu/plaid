@@ -126,7 +126,7 @@ interface TokensBundle {
 
 declare class PlaidClient {
   constructor(baseUrl: string, token: string);
-  static login(baseUrl: string, username: string, password: string): Promise<PlaidClient>;
+  static login(baseUrl: string, userId: string, password: string): Promise<PlaidClient>;
   relations: RelationsBundle;
   spanLayers: SpanLayersBundle;
   spans: SpansBundle;

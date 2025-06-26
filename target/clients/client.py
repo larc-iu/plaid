@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Thu Jun 26 16:51:13 EDT 2025
+Generated on: Thu Jun 26 17:07:54 EDT 2025
 """
 
 import requests
@@ -6737,7 +6737,7 @@ class PlaidClient:
     
     Example:
         # Authenticate
-        client = PlaidClient.login('http://localhost:8085', 'username', 'password')
+        client = PlaidClient.login('http://localhost:8085', 'user_id', 'password')
         
         # Create a project
         project = client.projects.create(name='My Project')
@@ -6932,13 +6932,13 @@ class PlaidClient:
         return self._is_batching
     
     @classmethod
-    def login(cls, base_url: str, username: str, password: str) -> 'PlaidClient':
+    def login(cls, base_url: str, user_id: str, password: str) -> 'PlaidClient':
         """
         Authenticate and return a new client instance with token
         
         Args:
             base_url: The base URL for the API
-            username: Username for authentication
+            user_id: User ID for authentication
             password: Password for authentication
             
         Returns:
@@ -6947,7 +6947,7 @@ class PlaidClient:
         temp_client = cls(base_url, '')
         response = requests.post(
             f"{base_url}/api/v1/login",
-            json={'username': username, 'password': password},
+            json={'user-id': user_id, 'password': password},
             headers={'Content-Type': 'application/json'}
         )
         response.raise_for_status()
@@ -6955,13 +6955,13 @@ class PlaidClient:
         return cls(base_url, token)
     
     @classmethod
-    async def login_async(cls, base_url: str, username: str, password: str) -> 'PlaidClient':
+    async def login_async(cls, base_url: str, user_id: str, password: str) -> 'PlaidClient':
         """
         Authenticate asynchronously and return a new client instance with token
         
         Args:
             base_url: The base URL for the API
-            username: Username for authentication
+            user_id: User ID for authentication
             password: Password for authentication
             
         Returns:
@@ -6970,7 +6970,7 @@ class PlaidClient:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{base_url}/api/v1/login",
-                json={'username': username, 'password': password},
+                json={'user-id': user_id, 'password': password},
                 headers={'Content-Type': 'application/json'}
             ) as response:
                 response.raise_for_status()

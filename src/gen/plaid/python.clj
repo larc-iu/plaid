@@ -601,13 +601,13 @@
   "Generate login method that returns a new authenticated client"
   []
   "    @classmethod
-    def login(cls, base_url: str, username: str, password: str) -> 'PlaidClient':
+    def login(cls, base_url: str, user_id: str, password: str) -> 'PlaidClient':
         \"\"\"
         Authenticate and return a new client instance with token
         
         Args:
             base_url: The base URL for the API
-            username: Username for authentication
+            user_id: User ID for authentication
             password: Password for authentication
             
         Returns:
@@ -616,7 +616,7 @@
         temp_client = cls(base_url, '')
         response = requests.post(
             f\"{base_url}/api/v1/login\",
-            json={'username': username, 'password': password},
+            json={'user-id': user_id, 'password': password},
             headers={'Content-Type': 'application/json'}
         )
         response.raise_for_status()
@@ -624,13 +624,13 @@
         return cls(base_url, token)
     
     @classmethod
-    async def login_async(cls, base_url: str, username: str, password: str) -> 'PlaidClient':
+    async def login_async(cls, base_url: str, user_id: str, password: str) -> 'PlaidClient':
         \"\"\"
         Authenticate asynchronously and return a new client instance with token
         
         Args:
             base_url: The base URL for the API
-            username: Username for authentication
+            user_id: User ID for authentication
             password: Password for authentication
             
         Returns:
@@ -639,7 +639,7 @@
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f\"{base_url}/api/v1/login\",
-                json={'username': username, 'password': password},
+                json={'user-id': user_id, 'password': password},
                 headers={'Content-Type': 'application/json'}
             ) as response:
                 response.raise_for_status()
@@ -711,7 +711,7 @@
          "    \n"
          "    Example:\n"
          "        # Authenticate\n"
-         "        client = PlaidClient.login('http://localhost:8085', 'username', 'password')\n"
+         "        client = PlaidClient.login('http://localhost:8085', 'user_id', 'password')\n"
          "        \n"
          "        # Create a project\n"
          "        project = client.projects.create(name='My Project')\n"
