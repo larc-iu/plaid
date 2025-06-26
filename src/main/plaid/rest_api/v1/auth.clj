@@ -9,12 +9,12 @@
 
 (def authentication-routes
   ["/login"
-   {:post {:summary    (str "Authenticate with a username and password and get a JWT token. The token should be included "
+   {:post {:summary    (str "Authenticate with a <body>user-id</body> and <body>password</body> and get a JWT token. The token should be included "
                             "in request headers under \"Authorization: Bearer ...\" in order to prove successful "
                             "authentication to the server.")
-           :parameters {:body {:username string? :password string?}}
-           :handler    (fn [{{{:keys [username password]} :body} :parameters xtdb :xtdb secret-key :secret-key}]
-                         (if-let [{:user/keys [id password-changes password-hash]} (user/get-internal xtdb username)]
+           :parameters {:body {:user-id string? :password string?}}
+           :handler    (fn [{{{:keys [user-id password]} :body} :parameters xtdb :xtdb secret-key :secret-key}]
+                         (if-let [{:user/keys [id password-changes password-hash]} (user/get-internal xtdb user-id)]
                            (if (hashers/check password password-hash)
                              (let [token (jwt/sign {:user/id id :version password-changes} secret-key)]
                                {:status 200
