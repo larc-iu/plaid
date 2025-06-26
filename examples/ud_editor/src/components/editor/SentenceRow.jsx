@@ -3,6 +3,273 @@ import { DependencyTree } from './DependencyTree';
 import { useTokenPositions } from './hooks/useTokenPositions';
 import './editor.css';
 
+// Editable cell component for annotation fields
+const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, columnWidth, onUpdate }) => {
+  const [localValue, setLocalValue] = useState(value || '');
+  const [isEditing, setIsEditing] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setLocalValue(value || '');
+    }
+  }, [value, isEditing]);
+
+  const handleChange = (e) => {
+    setLocalValue(e.target.value);
+  };
+
+  const handleBlur = (e) => {
+    console.log('handleBlur triggered', { 
+      field, 
+      relatedTarget: e.relatedTarget,
+      relatedTargetTabIndex: e.relatedTarget?.getAttribute('tabIndex')
+    });
+    
+    setIsEditing(false);
+    const newValue = localValue.trim();
+    
+    if (newValue !== (value || '')) {
+      onUpdate(tokenId, field, newValue || null).catch(error => {
+        console.error(`Failed to update ${field}:`, error);
+        // Revert to original value on error
+        setLocalValue(value || '');
+      });
+    } else {
+      // Revert to original if unchanged
+      setLocalValue(value || '');
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      inputRef.current?.blur();
+    } else if (e.key === 'Escape') {
+      // Revert to original value
+      setLocalValue(value || '');
+      setIsEditing(false);
+      inputRef.current?.blur();
+    }
+  };
+
+  const handleFocus = () => {
+    setIsEditing(true);
+    // Select all text when focused
+    setTimeout(() => {
+      inputRef.current?.select();
+    }, 0);
+  };
+
+  const displayValue = localValue || (field === 'lemma' && !value ? tokenForm : '');
+  const hasContent = displayValue && displayValue.trim() !== '';
+  
+  return (
+    <input
+      ref={inputRef}
+      id={tabIndex}
+      type="text"
+      value={displayValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      onFocus={handleFocus}
+      className={`editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}`}
+      style={{ width: columnWidth ? `${columnWidth}px` : 'auto' }}
+      title={`Edit ${field}`}
+      tabIndex={tabIndex}
+    />
+  );
+});
+
+// Features cell component with hover-only delete buttons
+const FeaturesCell = React.memo(({ features, spanIds, tokenId, onAnnotationUpdate, onFeatureDelete }) => {
+  const [editingFeature, setEditingFeature] = useState(false);
+  const [newFeature, setNewFeature] = useState('');
+  const [isHovering, setIsHovering] = useState(false);
+  const [hoveredFeatureIndex, setHoveredFeatureIndex] = useState(null);
+
+  const handleAddFeature = async () => {
+    if (!newFeature.trim()) return;
+    
+    // Validate format (key=value)
+    if (!newFeature.includes('=')) {
+      alert('Features must be in the format "key=value"');
+      return;
+    }
+
+    try {
+      await onAnnotationUpdate(tokenId, 'features', newFeature.trim());
+      setNewFeature('');
+      setEditingFeature(false);
+    } catch (error) {
+      console.error('Failed to add feature:', error);
+    }
+  };
+
+  const handleRemoveFeature = async (featureIndex) => {
+    const featureSpanInfo = spanIds?.features[featureIndex];
+    if (!featureSpanInfo) {
+      console.error('No span ID found for feature at index', featureIndex);
+      return;
+    }
+
+    try {
+      await onFeatureDelete(featureSpanInfo.spanId);
+    } catch (error) {
+      console.error('Failed to remove feature:', error);
+    }
+  };
+
+  return (
+    <div 
+      className="features-container"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      {features.map((feature, index) => (
+        <div
+          key={`${tokenId}-feat-${index}`}
+          className={`feature-tag ${hoveredFeatureIndex === index ? 'feature-tag--hovered' : 'feature-tag--normal'}`}
+          onMouseEnter={() => setHoveredFeatureIndex(index)}
+          onMouseLeave={() => setHoveredFeatureIndex(null)}
+        >
+          <span className="feature-text">{feature}</span>
+          <button
+            onClick={() => handleRemoveFeature(index)}
+            className={`feature-delete-btn ${hoveredFeatureIndex === index ? 'feature-delete-btn--visible' : 'feature-delete-btn--hidden'}`}
+            title="Remove feature"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      
+      {editingFeature ? (
+        <div className="feature-input-container">
+          <input
+            type="text"
+            value={newFeature}
+            onChange={(e) => setNewFeature(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddFeature();
+              } else if (e.key === 'Escape') {
+                setNewFeature('');
+                setEditingFeature(false);
+              }
+            }}
+            onBlur={() => {
+              if (newFeature.trim()) {
+                handleAddFeature();
+              } else {
+                setEditingFeature(false);
+              }
+            }}
+            placeholder="key=value"
+            className="feature-input"
+            autoFocus
+          />
+        </div>
+      ) : isHovering ? (
+        <button
+          onClick={() => setEditingFeature(true)}
+          className="feature-add-btn"
+        >
+          +
+        </button>
+      ) : null}
+    </div>
+  );
+});
+
+// Token Column component
+const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnotationUpdate, onFeatureDelete, maxFeatures, tokenRefs }) => {
+  return (
+    <div className="token-column" style={{ width: `${columnWidth}px` }}>
+      {/* Token form (baseline) */}
+      <div 
+        className="token-form"
+        ref={(el) => {
+          if (el) {
+            tokenRefs.current.set(data.token.id, el);
+          } else {
+            tokenRefs.current.delete(data.token.id);
+          }
+        }}
+      >
+        {data.tokenForm}
+      </div>
+
+      {/* LEMMA */}
+      <div className="annotation-cell">
+        <EditableCell
+          value={data.lemma?.value}
+          tokenId={data.token.id}
+          field="lemma"
+          tokenForm={data.tokenForm}
+          tabIndex={getTabIndex(index, 'lemma')}
+          columnWidth={columnWidth}
+          onUpdate={onAnnotationUpdate}
+        />
+      </div>
+
+      {/* XPOS */}
+      <div className="annotation-cell">
+        <EditableCell
+          value={data.xpos?.value}
+          tokenId={data.token.id}
+          field="xpos"
+          tokenForm={data.tokenForm}
+          tabIndex={getTabIndex(index, 'xpos')}
+          columnWidth={columnWidth}
+          onUpdate={onAnnotationUpdate}
+        />
+      </div>
+
+      {/* UPOS */}
+      <div className="annotation-cell">
+        <EditableCell
+          value={data.upos?.value}
+          tokenId={data.token.id}
+          field="upos"
+          tokenForm={data.tokenForm}
+          tabIndex={getTabIndex(index, 'upos')}
+          columnWidth={columnWidth}
+          onUpdate={onAnnotationUpdate}
+        />
+      </div>
+
+      {/* FEATS */}
+      <div 
+        className="features-cell"
+        style={{ minHeight: `${Math.max(30, maxFeatures * 16 + 20)}px` }}
+      >
+        <FeaturesCell
+          features={data.feats.map(feat => feat.value)}
+          spanIds={{
+            features: data.spanIds.features
+          }}
+          tokenId={data.token.id}
+          onAnnotationUpdate={onAnnotationUpdate}
+          onFeatureDelete={onFeatureDelete}
+        />
+      </div>
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.data === nextProps.data &&
+    prevProps.index === nextProps.index &&
+    prevProps.columnWidth === nextProps.columnWidth &&
+    prevProps.maxFeatures === nextProps.maxFeatures &&
+    prevProps.onAnnotationUpdate === nextProps.onAnnotationUpdate &&
+    prevProps.onFeatureDelete === nextProps.onFeatureDelete &&
+    prevProps.getTabIndex === nextProps.getTabIndex
+  );
+});
+
 export const SentenceRow = React.memo(({ 
   sentenceData, 
   onAnnotationUpdate, 
@@ -61,179 +328,6 @@ export const SentenceRow = React.memo(({
     lemmaSpans
   );
 
-  // Editable cell component for annotation fields
-  const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, columnWidth, onUpdate }) => {
-    const [localValue, setLocalValue] = useState(value || '');
-    const [isEditing, setIsEditing] = useState(false);
-    const inputRef = useRef(null);
-
-    useEffect(() => {
-      if (!isEditing) {
-        setLocalValue(value || '');
-      }
-    }, [value, isEditing]);
-
-    const handleChange = (e) => {
-      setLocalValue(e.target.value);
-    };
-
-    const handleBlur = () => {
-      setIsEditing(false);
-      const newValue = localValue.trim();
-      
-      if (newValue !== (value || '')) {
-        onUpdate(tokenId, field, newValue || null).catch(error => {
-          console.error(`Failed to update ${field}:`, error);
-          // Revert to original value on error
-          setLocalValue(value || '');
-        });
-      } else {
-        // Revert to original if unchanged
-        setLocalValue(value || '');
-      }
-    };
-
-    const handleKeyDown = (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        inputRef.current?.blur();
-      } else if (e.key === 'Escape') {
-        // Revert to original value
-        setLocalValue(value || '');
-        setIsEditing(false);
-        inputRef.current?.blur();
-      }
-    };
-
-    const handleFocus = () => {
-      setIsEditing(true);
-      // Select all text when focused
-      setTimeout(() => {
-        inputRef.current?.select();
-      }, 0);
-    };
-
-    const displayValue = localValue || (field === 'lemma' && !value ? tokenForm : '');
-    const hasContent = displayValue && displayValue.trim() !== '';
-    
-    return (
-      <input
-        ref={inputRef}
-        type="text"
-        value={displayValue}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        onFocus={handleFocus}
-        className={`editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}`}
-        style={{ width: columnWidth ? `${columnWidth}px` : 'auto' }}
-        title={`Edit ${field}`}
-        tabIndex={tabIndex}
-      />
-    );
-  });
-
-  // Features cell component with hover-only delete buttons
-  const FeaturesCell = React.memo(({ features, spanIds, tokenId }) => {
-    const [editingFeature, setEditingFeature] = useState(false);
-    const [newFeature, setNewFeature] = useState('');
-    const [isHovering, setIsHovering] = useState(false);
-    const [hoveredFeatureIndex, setHoveredFeatureIndex] = useState(null);
-
-    const handleAddFeature = async () => {
-      if (!newFeature.trim()) return;
-      
-      // Validate format (key=value)
-      if (!newFeature.includes('=')) {
-        alert('Features must be in the format "key=value"');
-        return;
-      }
-
-      try {
-        await onAnnotationUpdate(tokenId, 'features', newFeature.trim());
-        setNewFeature('');
-        setEditingFeature(false);
-      } catch (error) {
-        console.error('Failed to add feature:', error);
-      }
-    };
-
-    const handleRemoveFeature = async (featureIndex) => {
-      const featureSpanInfo = spanIds?.features[featureIndex];
-      if (!featureSpanInfo) {
-        console.error('No span ID found for feature at index', featureIndex);
-        return;
-      }
-
-      try {
-        await onFeatureDelete(featureSpanInfo.spanId);
-      } catch (error) {
-        console.error('Failed to remove feature:', error);
-      }
-    };
-
-    return (
-      <div 
-        className="features-container"
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
-      >
-        {features.map((feature, index) => (
-          <div
-            key={index}
-            className={`feature-tag ${hoveredFeatureIndex === index ? 'feature-tag--hovered' : 'feature-tag--normal'}`}
-            onMouseEnter={() => setHoveredFeatureIndex(index)}
-            onMouseLeave={() => setHoveredFeatureIndex(null)}
-          >
-            <span className="feature-text">{feature}</span>
-            <button
-              onClick={() => handleRemoveFeature(index)}
-              className={`feature-delete-btn ${hoveredFeatureIndex === index ? 'feature-delete-btn--visible' : 'feature-delete-btn--hidden'}`}
-              title="Remove feature"
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        
-        {editingFeature ? (
-          <div className="feature-input-container">
-            <input
-              type="text"
-              value={newFeature}
-              onChange={(e) => setNewFeature(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddFeature();
-                } else if (e.key === 'Escape') {
-                  setNewFeature('');
-                  setEditingFeature(false);
-                }
-              }}
-              onBlur={() => {
-                if (newFeature.trim()) {
-                  handleAddFeature();
-                } else {
-                  setEditingFeature(false);
-                }
-              }}
-              placeholder="key=value"
-              className="feature-input"
-              autoFocus
-            />
-          </div>
-        ) : isHovering ? (
-          <button
-            onClick={() => setEditingFeature(true)}
-            className="feature-add-btn"
-          >
-            +
-          </button>
-        ) : null}
-      </div>
-    );
-  });
 
   // Calculate tab indices for row-wise navigation across all sentences
   const getTabIndex = useCallback((tokenIndex, field) => {
@@ -250,79 +344,6 @@ export const SentenceRow = React.memo(({
     return sentenceBaseIndex + (rowIndex * tokensInSentence) + positionInRow + 1;
   }, [tokenData.length, totalTokensBefore]);
 
-  // Token Column component
-  const TokenColumn = React.memo(({ data, index, columnWidth }) => {
-    return (
-      <div className="token-column" style={{ width: `${columnWidth}px` }}>
-        {/* Token form (baseline) */}
-        <div 
-          className="token-form"
-          ref={(el) => {
-            if (el) {
-              tokenRefs.current.set(data.token.id, el);
-            } else {
-              tokenRefs.current.delete(data.token.id);
-            }
-          }}
-        >
-          {data.tokenForm}
-        </div>
-
-        {/* LEMMA */}
-        <div className="annotation-cell">
-          <EditableCell
-            value={data.lemma?.value}
-            tokenId={data.token.id}
-            field="lemma"
-            tokenForm={data.tokenForm}
-            tabIndex={getTabIndex(index, 'lemma')}
-            columnWidth={columnWidth}
-            onUpdate={onAnnotationUpdate}
-          />
-        </div>
-
-        {/* XPOS */}
-        <div className="annotation-cell">
-          <EditableCell
-            value={data.xpos?.value}
-            tokenId={data.token.id}
-            field="xpos"
-            tokenForm={data.tokenForm}
-            tabIndex={getTabIndex(index, 'xpos')}
-            columnWidth={columnWidth}
-            onUpdate={onAnnotationUpdate}
-          />
-        </div>
-
-        {/* UPOS */}
-        <div className="annotation-cell">
-          <EditableCell
-            value={data.upos?.value}
-            tokenId={data.token.id}
-            field="upos"
-            tokenForm={data.tokenForm}
-            tabIndex={getTabIndex(index, 'upos')}
-            columnWidth={columnWidth}
-            onUpdate={onAnnotationUpdate}
-          />
-        </div>
-
-        {/* FEATS */}
-        <div 
-          className="features-cell"
-          style={{ minHeight: `${Math.max(30, maxFeatures * 16 + 20)}px` }}
-        >
-          <FeaturesCell
-            features={data.feats.map(feat => feat.value)}
-            spanIds={{
-              features: data.spanIds.features
-            }}
-            tokenId={data.token.id}
-          />
-        </div>
-      </div>
-    );
-  });
 
   return (
     <div className="sentence-container">
@@ -375,7 +396,17 @@ export const SentenceRow = React.memo(({
 
         {/* Token columns */}
         {tokenData.map((data, index) => (
-          <TokenColumn key={data.token.id} data={data} index={index} columnWidth={columnWidths[index]} />
+          <TokenColumn 
+            key={data.token.id} 
+            data={data} 
+            index={index} 
+            columnWidth={columnWidths[index]}
+            getTabIndex={getTabIndex}
+            onAnnotationUpdate={onAnnotationUpdate}
+            onFeatureDelete={onFeatureDelete}
+            maxFeatures={maxFeatures}
+            tokenRefs={tokenRefs}
+          />
         ))}
       </div>
     </div>
