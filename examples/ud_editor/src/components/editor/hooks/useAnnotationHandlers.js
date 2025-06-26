@@ -77,7 +77,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
         if (existingSpan) {
           // Update existing span
           spanResult = await client.spans.update(existingSpan.id, value);
-          
+
           // Update local state
           setDocument(prevDocument => {
             const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
@@ -136,7 +136,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to update ${field}: ${error.message}`);
       await refreshData();
     }
-  }, [getClient, layerInfo, setDocument, setError, refreshData]);
+  }, [layerInfo]);
 
   const handleFeatureDelete = useCallback(async (spanId) => {
     try {
@@ -167,7 +167,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to delete feature: ${error.message}`);
       await refreshData();
     }
-  }, [getClient, setDocument, setError, refreshData]);
+  }, [layerInfo]);
 
   const handleRelationCreate = useCallback(async (sourceSpanId, targetSpanId, deprel) => {
     try {
@@ -264,7 +264,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to create relation: ${error.message}`);
       await refreshData();
     }
-  }, [getClient, layerInfo, setDocument, setError, refreshData]);
+  }, [layerInfo]);
 
   const handleRelationUpdate = useCallback(async (relationId, deprel) => {
     try {
@@ -295,7 +295,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to update relation: ${error.message}`);
       await refreshData();
     }
-  }, [getClient, setDocument, setError, refreshData]);
+  }, [layerInfo]);
 
   const handleRelationDelete = useCallback(async (relationId) => {
     try {
@@ -325,7 +325,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to delete relation: ${error.message}`);
       await refreshData();
     }
-  }, [getClient, setDocument, setError, refreshData]);
+  }, [layerInfo]);
 
   return {
     handleAnnotationUpdate,
