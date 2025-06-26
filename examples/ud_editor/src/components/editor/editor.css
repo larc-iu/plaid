@@ -321,6 +321,12 @@
   text-anchor: middle;
   cursor: pointer;
   font-family: sans-serif;
+  outline: none;
+}
+
+.tree-deprel-text--focused {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .tree-drag-arc {
