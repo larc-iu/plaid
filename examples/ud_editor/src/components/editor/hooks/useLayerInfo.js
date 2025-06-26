@@ -12,6 +12,7 @@ export const useLayerInfo = (document) => {
     const uposLayer = spanLayers.find(layer => layer.name === 'UPOS');
     const xposLayer = spanLayers.find(layer => layer.name === 'XPOS');
     const featuresLayer = spanLayers.find(layer => layer.name === 'Features');
+    const mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
     
     // Get relation layer (attached to lemma layer)
     const relationLayer = lemmaLayer?.relationLayers?.[0];
@@ -21,6 +22,7 @@ export const useLayerInfo = (document) => {
       uposLayer,
       xposLayer,
       featuresLayer,
+      mwtLayer,
       relationLayer,
       textLayer,
       tokenLayer

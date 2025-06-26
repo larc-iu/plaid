@@ -1,4 +1,4 @@
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const Layout = () => {
@@ -22,7 +22,12 @@ export const Layout = () => {
             <h1 className="text-xl font-semibold text-gray-900">UD Editor</h1>
             {user && (
               <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-600">👤 {user.username}</span>
+                <Link 
+                  to="/profile"
+                  className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
+                >
+                  👤 {user.username}
+                </Link>
                 <button 
                   onClick={handleLogout} 
                   className="text-sm text-gray-700 hover:text-gray-900 px-3 py-1.5 rounded-md hover:bg-gray-100 transition-colors"

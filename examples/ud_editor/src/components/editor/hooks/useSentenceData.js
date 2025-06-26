@@ -20,6 +20,7 @@ export const useSentenceData = (document) => {
     const xposLayer = spanLayers.find(layer => layer.name === 'XPOS');
     const featuresLayer = spanLayers.find(layer => layer.name === 'Features');
     const sentenceLayer = spanLayers.find(layer => layer.name === 'Sentence');
+    const mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
     
     // Get relation layer
     const relationLayer = lemmaLayer?.relationLayers?.[0];
@@ -66,11 +67,13 @@ export const useSentenceData = (document) => {
         upos: null,
         xpos: null,
         feats: [],
+        mwt: null,
         spanIds: {
           lemma: null,
           upos: null,
           xpos: null,
-          features: []
+          features: [],
+          mwt: null
         }
       };
 
@@ -79,7 +82,8 @@ export const useSentenceData = (document) => {
         { layer: lemmaLayer, type: 'lemma' },
         { layer: uposLayer, type: 'upos' },  
         { layer: xposLayer, type: 'xpos' },
-        { layer: featuresLayer, type: 'feats' }
+        { layer: featuresLayer, type: 'feats' },
+        { layer: mwtLayer, type: 'mwt' }
       ].forEach(({ layer, type }) => {
         if (!layer?.spans) return;
         
@@ -139,6 +143,17 @@ export const useSentenceData = (document) => {
       });
     };
 
+    // Helper function to get MWT spans for a sentence
+    const getMwtSpansForSentence = (sentenceTokens) => {
+      if (!mwtLayer?.spans) return [];
+      
+      const sentenceTokenIds = new Set(sentenceTokens.map(t => t.id));
+      return mwtLayer.spans.filter(span => {
+        const spanTokens = span.tokens || [span.begin];
+        return spanTokens.some(tokenId => sentenceTokenIds.has(tokenId));
+      });
+    };
+
     // Process each sentence into the final data structure
     return tokenSentences.map((sentenceTokens, index) => {
       const processedTokens = sentenceTokens.map((token, tokenIndex) => {
@@ -152,6 +167,7 @@ export const useSentenceData = (document) => {
           upos: annotations.upos,
           xpos: annotations.xpos,
           feats: annotations.feats,
+          mwt: annotations.mwt,
           spanIds: annotations.spanIds,
           tokenIndex: tokenIndex + 1
         };
@@ -164,7 +180,8 @@ export const useSentenceData = (document) => {
         ).join(' '),
         tokens: processedTokens,
         relations: getRelationsForSentence(sentenceTokens),
-        lemmaSpans: getLemmaSpansForSentence(sentenceTokens)
+        lemmaSpans: getLemmaSpansForSentence(sentenceTokens),
+        mwtSpans: getMwtSpansForSentence(sentenceTokens)
       };
     });
   }, [document]);

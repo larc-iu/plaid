@@ -120,14 +120,14 @@
   gap: 4px;
   font-size: 10px;
   border-radius: 2px;
-  padding: 1px 3px;
-  margin-bottom: 2px;
+  /*padding: 1px 3px;
+  margin-bottom: 2px;*/
   transition: background-color 0.2s, border-color 0.2s;
 }
 
 .feature-tag--normal {
-  background-color: #F3E8FF;
-  border: 1px solid #D8B4FE;
+  background-color: transparent;
+  border: 1px solid transparent;
 }
 
 .feature-tag--hovered {
@@ -137,7 +137,8 @@
 
 .feature-text {
   flex: 1;
-  font-family: monospace;
+  font-family: sans-serif;
+  text-align: center;
 }
 
 .feature-delete-btn {
@@ -343,5 +344,140 @@
   stroke-width: 2;
   stroke-dasharray: 5,5;
   pointer-events: none;
+}
+
+/* Multi-Word Token (MWT) Styles */
+
+/* Token selection for MWT creation */
+.token-form--selectable {
+  user-select: none;
+  transition: background-color 0.2s, border-color 0.2s;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.token-form--selectable:hover {
+  background-color: #e0f2fe;
+  border-color: #0284c7;
+}
+
+.token-form--selected {
+  background-color: #3b82f6;
+  color: white;
+  border-color: #1d4ed8;
+  position: relative;
+}
+
+.token-selection-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 8px;
+  color: #10b981;
+  background: white;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+/* MWT controls */
+.mwt-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  background-color: #f0f9ff;
+  border: 1px solid #0284c7;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.mwt-selection-count {
+  color: #0369a1;
+  font-weight: 500;
+}
+
+.mwt-create-btn {
+  background-color: #0284c7;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.mwt-create-btn:hover {
+  background-color: #0369a1;
+}
+
+.mwt-clear-btn {
+  background-color: #6b7280;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.mwt-clear-btn:hover {
+  background-color: #4b5563;
+}
+
+/* MWT cell and span display */
+.mwt-cell {
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.mwt-span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 10px;
+  font-family: monospace;
+  transition: background-color 0.2s;
+}
+
+.mwt-span:hover {
+  background-color: #fde68a;
+}
+
+.mwt-form {
+  font-weight: 500;
+  color: #92400e;
+}
+
+.mwt-delete-btn {
+  color: #dc2626;
+  background: none;
+  border: none;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+}
+
+.mwt-delete-btn:hover {
+  background-color: #fecaca;
 }
 

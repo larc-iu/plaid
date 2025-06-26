@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 
-export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = [], onTokenUpdate, onTokenDelete, onTokenCreate, onSentenceToggle }) => {
+export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = [], mwtSpans = [], onTokenUpdate, onTokenDelete, onTokenCreate, onSentenceToggle, onMwtCreate, onMwtDelete }) => {
   const [hoveredToken, setHoveredToken] = useState(null);
   const [editingToken, setEditingToken] = useState(null);
   const [editBegin, setEditBegin] = useState('');
@@ -8,6 +8,12 @@ export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = []
   const hoverTimeoutRef = useRef(null);
   const closeTimeoutRef = useRef(null);
   const textContainerRef = useRef(null);
+
+  // MWT drag state
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartToken, setDragStartToken] = useState(null);
+  const [dragOverTokens, setDragOverTokens] = useState(new Set());
+  const [suppressTextSelection, setSuppressTextSelection] = useState(false);
 
   // Check if text is dirty (different from what was tokenized)
   const isTextDirty = originalText && text !== originalText;
@@ -198,7 +204,124 @@ export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = []
     }
   };
 
+  // MWT drag handlers
+  const handleTokenMouseDown = (token, event) => {
+    // Only allow MWT creation when text is not dirty
+    if (isTextDirty) return;
+    
+    // Only start drag on left mouse button
+    if (event.button !== 0) return;
+    
+    console.log('Starting MWT drag on token:', token.id);
+    setIsDragging(true);
+    setDragStartToken(token);
+    setDragOverTokens(new Set([token.id]));
+    setSuppressTextSelection(true);
+    
+    // Prevent text selection during drag
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Also prevent selection at the document level
+    document.onselectstart = () => false;
+    document.ondragstart = () => false;
+  };
+
+  const handleTokenMouseEnterDrag = (token) => {
+    if (!isDragging || !dragStartToken) return;
+    
+    // Find all tokens between start token and current token
+    const sortedTokens = [...tokens].sort((a, b) => a.begin - b.begin);
+    const startIndex = sortedTokens.findIndex(t => t.id === dragStartToken.id);
+    const currentIndex = sortedTokens.findIndex(t => t.id === token.id);
+    
+    if (startIndex === -1 || currentIndex === -1) return;
+    
+    const minIndex = Math.min(startIndex, currentIndex);
+    const maxIndex = Math.max(startIndex, currentIndex);
+    
+    // Check if tokens are contiguous (no intervening tokens)
+    const tokensInRange = sortedTokens.slice(minIndex, maxIndex + 1);
+    
+    let isContiguous = true;
+    for (let i = 1; i < tokensInRange.length; i++) {
+      const tokenA = tokensInRange[i-1];
+      const tokenB = tokensInRange[i];
+      
+      // Check if any other token exists between tokenA and tokenB
+      const hasInterveningToken = sortedTokens.some(t => {
+        // Skip tokens that are part of our range
+        if (tokensInRange.includes(t)) return false;
+        
+        // Check if this token starts after tokenA ends and before tokenB begins
+        return t.begin >= tokenA.end && t.begin < tokenB.begin;
+      });
+      
+      if (hasInterveningToken) {
+        isContiguous = false;
+        break;
+      }
+    }
+    
+    if (isContiguous) {
+      const draggedTokenIds = new Set(tokensInRange.map(t => t.id));
+      setDragOverTokens(draggedTokenIds);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!isDragging) return;
+    
+    setIsDragging(false);
+    
+    // Restore normal selection behavior
+    document.onselectstart = null;
+    document.ondragstart = null;
+    
+    // Clear any text selection that might have occurred during drag
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+    }
+    
+    // If we have multiple tokens selected, create MWT directly
+    if (dragOverTokens.size >= 2) {
+      const sortedTokens = [...tokens].sort((a, b) => a.begin - b.begin);
+      const selectedTokensList = sortedTokens.filter(t => dragOverTokens.has(t.id));
+      const tokenIds = selectedTokensList.map(t => t.id);
+      
+      // Create MWT with null value
+      if (onMwtCreate) {
+        onMwtCreate(tokenIds, null);
+      }
+    }
+    
+    // Reset drag state
+    setDragStartToken(null);
+    setDragOverTokens(new Set());
+    
+    // Re-enable text selection after a short delay to avoid immediate triggering
+    setTimeout(() => {
+      setSuppressTextSelection(false);
+    }, 100);
+  };
+
+
+  // Add global mouse up listener for drag operations
+  useEffect(() => {
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mouseup', handleMouseUp);
+      // Clean up selection prevention if component unmounts during drag
+      document.onselectstart = null;
+      document.ondragstart = null;
+    };
+  }, [isDragging, dragOverTokens, tokens, onMwtCreate]);
+
   const handleTextSelection = () => {
+    // Don't create tokens if we're in the middle of MWT drag operations
+    if (isDragging || suppressTextSelection) return;
+    
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
 
@@ -496,6 +619,20 @@ export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = []
       }).filter(id => id != null)
     );
 
+    // Create a map of token ID to MWT info
+    const tokenToMwt = new Map();
+    mwtSpans.forEach(mwtSpan => {
+      if (mwtSpan.tokens && mwtSpan.tokens.length > 0) {
+        mwtSpan.tokens.forEach(tokenId => {
+          tokenToMwt.set(tokenId, {
+            surfaceForm: mwtSpan.value,
+            spanId: mwtSpan.id,
+            allTokens: mwtSpan.tokens
+          });
+        });
+      }
+    });
+
     // Group tokens by sentences
     const sentences = [];
     let currentSentence = [];
@@ -538,175 +675,390 @@ export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = []
       const sentenceElements = [];
       let lastEnd = sentenceIdx === 0 ? 0 : sentences[sentenceIdx - 1].tokens[sentences[sentenceIdx - 1].tokens.length - 1].end;
 
+      // Group tokens by MWT or individual tokens
+      const tokenGroups = [];
+      let currentGroup = null;
+      
       sentence.tokens.forEach((token, tokenIdx) => {
-        // Check if this token starts a sentence
-        const isStartOfSentence = sentenceStartTokenIds.has(token.id);
+        const mwtInfo = tokenToMwt.get(token.id);
+        
+        if (mwtInfo) {
+          // Check if this is the start of a new MWT or continuation of current MWT
+          if (!currentGroup || currentGroup.type !== 'mwt' || currentGroup.spanId !== mwtInfo.spanId) {
+            // Start new MWT group
+            currentGroup = {
+              type: 'mwt',
+              spanId: mwtInfo.spanId,
+              tokens: [token],
+              startIndex: tokenIdx
+            };
+            tokenGroups.push(currentGroup);
+          } else {
+            // Continue current MWT group
+            currentGroup.tokens.push(token);
+          }
+        } else {
+          // Individual token
+          tokenGroups.push({
+            type: 'individual',
+            tokens: [token],
+            startIndex: tokenIdx
+          });
+          currentGroup = null;
+        }
+      });
 
-        // Add any text before this token (spaces, punctuation, etc.)
-        if (token.begin > lastEnd) {
-          const betweenText = text.slice(lastEnd, token.begin);
+      // Render token groups
+      tokenGroups.forEach((group, groupIdx) => {
+        // Handle text before the first token in this group
+        const firstToken = group.tokens[0];
+        if (firstToken.begin > lastEnd) {
+          const betweenText = text.slice(lastEnd, firstToken.begin);
           sentenceElements.push(
-            <span key={`between-${sentenceIdx}-${tokenIdx}`} className="text-gray-400">
+            <span key={`between-${sentenceIdx}-${groupIdx}`} className="text-gray-400">
               {betweenText}
             </span>
           );
         }
 
-        // Add the token itself
-        const tokenText = text.slice(token.begin, token.end);
-        const isZeroWidth = token.begin === token.end;
-        const displayText = isZeroWidth ? '∅' : tokenText;
-        
-        sentenceElements.push(
-          <span 
-            key={`token-${token.id}`}
-            className={`relative inline-block px-1 py-0.5 mx-0.5 bg-blue-100 border rounded cursor-pointer hover:bg-blue-200 transition-colors whitespace-pre ${
-              isStartOfSentence ? 'border-green-500 border-2' : 'border-blue-300'
-            }`}
-            onMouseEnter={() => handleTokenMouseEnter(token)}
-            onMouseLeave={handleTokenMouseLeave}
-            onClick={async () => {
-              // Don't do anything if text is dirty
-              if (isTextDirty) return;
-              
-              // Toggle sentence marking
-              if (onSentenceToggle) {
-                try {
-                  await onSentenceToggle(token.id, !isStartOfSentence);
-                  // Clear hover state after click
-                  setHoveredToken(null);
-                  if (hoverTimeoutRef.current) {
-                    clearTimeout(hoverTimeoutRef.current);
+        if (group.type === 'mwt') {
+          // Render MWT group with rectangle
+          const mwtTokenElements = group.tokens.map((token, tokenIdx) => {
+            const tokenText = text.slice(token.begin, token.end);
+            const isZeroWidth = token.begin === token.end;
+            const displayText = isZeroWidth ? '∅' : tokenText;
+            const isStartOfSentence = sentenceStartTokenIds.has(token.id);
+            const isFirstToken = tokenIdx === 0;
+            const isLastToken = tokenIdx === group.tokens.length - 1;
+            
+            return (
+              <span 
+                key={`token-${token.id}`}
+                className={`relative inline-block px-1 py-0.5 border bg-orange-100 border-orange-400 hover:bg-orange-200 cursor-pointer transition-colors whitespace-pre ${
+                  isStartOfSentence ? 'border-green-500 border-2' : ''
+                } ${
+                  dragOverTokens.has(token.id) ? 'bg-yellow-200 border-yellow-400' : ''
+                } ${
+                  isFirstToken ? 'rounded-l -mr-px' : isLastToken ? 'rounded-r -ml-px' : '-mx-px'
+                }`}
+                onMouseEnter={(e) => {
+                  handleTokenMouseEnter(token);
+                  handleTokenMouseEnterDrag(token);
+                }}
+                onMouseLeave={handleTokenMouseLeave}
+                onMouseDown={(e) => handleTokenMouseDown(token, e)}
+                onClick={async () => {
+                  if (isTextDirty || isDragging) return;
+                  if (onSentenceToggle) {
+                    try {
+                      await onSentenceToggle(token.id, !isStartOfSentence);
+                      setHoveredToken(null);
+                      if (hoverTimeoutRef.current) {
+                        clearTimeout(hoverTimeoutRef.current);
+                      }
+                      if (closeTimeoutRef.current) {
+                        clearTimeout(closeTimeoutRef.current);
+                      }
+                    } catch (error) {
+                      console.error('Failed to toggle sentence marker:', error);
+                    }
                   }
-                  if (closeTimeoutRef.current) {
-                    clearTimeout(closeTimeoutRef.current);
-                  }
-                } catch (error) {
-                  console.error('Failed to toggle sentence marker:', error);
-                }
-              }
-            }}
-          >
-            {displayText}
-            {/*
-            <span className="absolute -top-2 -right-2 text-xs bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center">
-              {tokenIdx + 1}
-            </span>
-            */}
-
-            {/* Tooltip */}
-            {hoveredToken && hoveredToken.id === token.id && !editingToken && (
-              <div 
-                className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-10 bg-gray-800 text-white text-sm px-3 py-2 rounded shadow-lg whitespace-nowrap min-w-48"
-                onMouseEnter={handleTooltipMouseEnter}
-                onMouseLeave={handleTooltipMouseLeave}
+                }}
               >
-                <div className="mb-2">
-                  <div className="font-semibold">Token {token.id}</div>
-                  <div className="text-gray-300">Range: [{token.begin}-{token.end}]</div>
-                  <div className="text-gray-300">Text: "{tokenText}"</div>
-                </div>
+                {displayText}
                 
-                {/* Sentence marking toggle */}
-                {onSentenceToggle && (
-                  <div className="mb-2 pb-2 border-b border-gray-600">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isStartOfSentence}
-                        onChange={async (e) => {
-                          try {
-                            await onSentenceToggle(token.id, e.target.checked);
-                            // Close the tooltip after successful toggle
-                            setHoveredToken(null);
-                            // Clear any pending timeouts
-                            if (hoverTimeoutRef.current) {
-                              clearTimeout(hoverTimeoutRef.current);
-                            }
-                            if (closeTimeoutRef.current) {
-                              clearTimeout(closeTimeoutRef.current);
-                            }
-                          } catch (error) {
-                            console.error('Failed to toggle sentence marker:', error);
-                          }
-                        }}
-                        className="rounded border-gray-400 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-gray-300 text-xs">Start of sentence</span>
-                    </label>
+                {/* Token tooltip and edit modal */}
+                {hoveredToken && hoveredToken.id === token.id && !editingToken && (
+                  <div 
+                    className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-10 bg-gray-800 text-white text-sm px-3 py-2 rounded shadow-lg whitespace-nowrap min-w-48"
+                    onMouseEnter={handleTooltipMouseEnter}
+                    onMouseLeave={handleTooltipMouseLeave}
+                  >
+                    <div className="mb-2">
+                      <div className="font-semibold">Token {token.id}</div>
+                      <div className="text-gray-300">Range: [{token.begin}-{token.end}]</div>
+                      <div className="text-gray-300">Text: "{tokenText}"</div>
+                      <div className="text-orange-300 mt-1">Part of MWT</div>
+                    </div>
+                    
+                    {onSentenceToggle && (
+                      <div className="mb-2 pb-2 border-b border-gray-600">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isStartOfSentence}
+                            onChange={async (e) => {
+                              try {
+                                await onSentenceToggle(token.id, e.target.checked);
+                                setHoveredToken(null);
+                                if (hoverTimeoutRef.current) {
+                                  clearTimeout(hoverTimeoutRef.current);
+                                }
+                                if (closeTimeoutRef.current) {
+                                  clearTimeout(closeTimeoutRef.current);
+                                }
+                              } catch (error) {
+                                console.error('Failed to toggle sentence marker:', error);
+                              }
+                            }}
+                            className="rounded border-gray-400 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-gray-300 text-xs">Start of sentence</span>
+                        </label>
+                      </div>
+                    )}
+                    
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleEditClick(token)}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded transition-colors"
+                      >
+                        Edit Range
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteClick(token)}
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 )}
+
+                {editingToken && editingToken.id === token.id && (
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-10 bg-white border border-gray-300 shadow-lg rounded-lg p-4 min-w-64">
+                    <div className="mb-3">
+                      <div className="font-semibold text-gray-900 mb-1">Edit Token Range</div>
+                      <div className="text-sm text-gray-600">Token: "{text.slice(editingToken.begin, editingToken.end)}"</div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Begin</label>
+                        <input
+                          type="number"
+                          value={editBegin}
+                          onChange={(e) => setEditBegin(e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          min="0"
+                          max={text.length}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">End</label>
+                        <input
+                          type="number"
+                          value={editEnd}
+                          onChange={(e) => setEditEnd(e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          min="1"
+                          max={text.length}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={validateAndSave}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded transition-colors"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={handleEditCancel}
+                        className="flex-1 bg-gray-600 hover:bg-gray-700 text-white text-xs px-3 py-1 rounded transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </span>
+            );
+          });
+
+          // Add MWT group with rectangle
+          sentenceElements.push(
+            <span key={`mwt-group-${sentenceIdx}-${groupIdx}`} className="relative inline-block ml-0.5 mr-0.5">
+              {mwtTokenElements}
+              <div
+                className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 hover:bg-orange-600 transition-colors rounded"
+                style={{ bottom: '-2px', zIndex: 20, height: '4px', cursor: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'3,6 5,6 21,6\'></polyline><path d=\'m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2\'></path><line x1=\'10\' y1=\'11\' x2=\'10\' y2=\'17\'></line><line x1=\'14\' y1=\'11\' x2=\'14\' y2=\'17\'></line></svg>") 12 12, pointer' }}
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (onMwtDelete) {
+                    try {
+                      await onMwtDelete(group.spanId);
+                    } catch (error) {
+                      console.error('Failed to delete MWT:', error);
+                    }
+                  }
+                }}
+                title="Click to delete MWT"
+              />
+            </span>
+          );
+        } else {
+          // Render individual token
+          const token = group.tokens[0];
+          const tokenText = text.slice(token.begin, token.end);
+          const isZeroWidth = token.begin === token.end;
+          const displayText = isZeroWidth ? '∅' : tokenText;
+          const isStartOfSentence = sentenceStartTokenIds.has(token.id);
+          
+          sentenceElements.push(
+            <span 
+              key={`token-${token.id}`}
+              className={`relative inline-block px-1 py-0.5 border bg-blue-100 border-blue-300 hover:bg-blue-200 rounded mx-0.5 cursor-pointer transition-colors whitespace-pre ${
+                isStartOfSentence ? 'border-green-500 border-2' : ''
+              } ${
+                dragOverTokens.has(token.id) ? 'bg-yellow-200 border-yellow-400' : ''
+              }`}
+              onMouseEnter={(e) => {
+                handleTokenMouseEnter(token);
+                handleTokenMouseEnterDrag(token);
+              }}
+              onMouseLeave={handleTokenMouseLeave}
+              onMouseDown={(e) => handleTokenMouseDown(token, e)}
+              onClick={async () => {
+                // Don't do anything if text is dirty or if we're dragging
+                if (isTextDirty || isDragging) return;
                 
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleEditClick(token)}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded transition-colors"
-                  >
-                    Edit Range
-                  </button>
-                  <button 
-                    onClick={() => handleDeleteClick(token)}
-                    className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            )}
+                // Toggle sentence marking
+                if (onSentenceToggle) {
+                  try {
+                    await onSentenceToggle(token.id, !isStartOfSentence);
+                    // Clear hover state after click
+                    setHoveredToken(null);
+                    if (hoverTimeoutRef.current) {
+                      clearTimeout(hoverTimeoutRef.current);
+                    }
+                    if (closeTimeoutRef.current) {
+                      clearTimeout(closeTimeoutRef.current);
+                    }
+                  } catch (error) {
+                    console.error('Failed to toggle sentence marker:', error);
+                  }
+                }
+              }}
+            >
+              {displayText}
 
-          {/* Edit Modal */}
-          {editingToken && editingToken.id === token.id && (
-            <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-10 bg-white border border-gray-300 shadow-lg rounded-lg p-4 min-w-64">
-              <div className="mb-3">
-                <div className="font-semibold text-gray-900 mb-1">Edit Token Range</div>
-                <div className="text-sm text-gray-600">Token: "{text.slice(editingToken.begin, editingToken.end)}"</div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Begin</label>
-                  <input
-                    type="number"
-                    value={editBegin}
-                    onChange={(e) => setEditBegin(e.target.value)}
-                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    min="0"
-                    max={text.length}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">End</label>
-                  <input
-                    type="number"
-                    value={editEnd}
-                    onChange={(e) => setEditEnd(e.target.value)}
-                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    min="1"
-                    max={text.length}
-                  />
-                </div>
-              </div>
-              
-              <div className="flex gap-2">
-                <button
-                  onClick={validateAndSave}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded transition-colors"
+              {/* Tooltip */}
+              {hoveredToken && hoveredToken.id === token.id && !editingToken && (
+                <div 
+                  className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-10 bg-gray-800 text-white text-sm px-3 py-2 rounded shadow-lg whitespace-nowrap min-w-48"
+                  onMouseEnter={handleTooltipMouseEnter}
+                  onMouseLeave={handleTooltipMouseLeave}
                 >
-                  Save
-                </button>
-                <button
-                  onClick={handleEditCancel}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white text-xs px-3 py-1 rounded transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-          </span>
-        );
+                  <div className="mb-2">
+                    <div className="font-semibold">Token {token.id}</div>
+                    <div className="text-gray-300">Range: [{token.begin}-{token.end}]</div>
+                    <div className="text-gray-300">Text: "{tokenText}"</div>
+                  </div>
+                  
+                  {/* Sentence marking toggle */}
+                  {onSentenceToggle && (
+                    <div className="mb-2 pb-2 border-b border-gray-600">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isStartOfSentence}
+                          onChange={async (e) => {
+                            try {
+                              await onSentenceToggle(token.id, e.target.checked);
+                              // Close the tooltip after successful toggle
+                              setHoveredToken(null);
+                              // Clear any pending timeouts
+                              if (hoverTimeoutRef.current) {
+                                clearTimeout(hoverTimeoutRef.current);
+                              }
+                              if (closeTimeoutRef.current) {
+                                clearTimeout(closeTimeoutRef.current);
+                              }
+                            } catch (error) {
+                              console.error('Failed to toggle sentence marker:', error);
+                            }
+                          }}
+                          className="rounded border-gray-400 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-gray-300 text-xs">Start of sentence</span>
+                      </label>
+                    </div>
+                  )}
+                  
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleEditClick(token)}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded transition-colors"
+                    >
+                      Edit Range
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteClick(token)}
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
 
-        lastEnd = token.end;
+              {/* Edit Modal */}
+              {editingToken && editingToken.id === token.id && (
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-10 bg-white border border-gray-300 shadow-lg rounded-lg p-4 min-w-64">
+                  <div className="mb-3">
+                    <div className="font-semibold text-gray-900 mb-1">Edit Token Range</div>
+                    <div className="text-sm text-gray-600">Token: "{text.slice(editingToken.begin, editingToken.end)}"</div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Begin</label>
+                      <input
+                        type="number"
+                        value={editBegin}
+                        onChange={(e) => setEditBegin(e.target.value)}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0"
+                        max={text.length}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">End</label>
+                      <input
+                        type="number"
+                        value={editEnd}
+                        onChange={(e) => setEditEnd(e.target.value)}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="1"
+                        max={text.length}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={validateAndSave}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={handleEditCancel}
+                      className="flex-1 bg-gray-600 hover:bg-gray-700 text-white text-xs px-3 py-1 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </span>
+          );
+        }
+
+        lastEnd = group.tokens[group.tokens.length - 1].end;
       });
 
       // Add any remaining text after the last token in this sentence
@@ -721,7 +1073,7 @@ export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = []
       }
 
       return (
-        <div key={`sentence-${sentenceIdx}`} className="mb-2">
+        <div key={`sentence-${sentenceIdx}`} className="mb-2 relative">
           {sentenceElements}
         </div>
       );
@@ -729,12 +1081,19 @@ export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = []
   };
 
   return (
-    <div 
-      ref={textContainerRef}
-      className="p-4 bg-white rounded border border-gray-200 font-mono text-sm leading-relaxed select-text"
-      onMouseUp={handleTextSelection}
-    >
-      {renderTokenizedText()}
+    <div>
+      <div 
+        ref={textContainerRef}
+        className="p-4 bg-white rounded border border-gray-200 font-mono text-sm leading-relaxed select-text"
+        onMouseUp={(e) => {
+          // Only handle text selection if we're not doing MWT operations
+          if (!isDragging && !suppressTextSelection) {
+            handleTextSelection();
+          }
+        }}
+      >
+        {renderTokenizedText()}
+      </div>
     </div>
   );
 };
