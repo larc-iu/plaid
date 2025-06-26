@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const UserProfile = () => {
-  const { user, getClient } = useAuth();
+  const { user, getClient, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     username: user?.username || '',
@@ -53,8 +53,8 @@ export const UserProfile = () => {
         }
       }
 
-      // Use the user ID from the JWT token
-      if (!user.userId) {
+      // Use the user ID from the user object
+      if (!user.id) {
         setError('Could not get current user ID');
         setLoading(false);
         return;
@@ -79,7 +79,21 @@ export const UserProfile = () => {
         return;
       }
 
-      await client.users.update(user.userId, updateData.password, updateData.username);
+      // Call users.update with correct parameter order: (id, password, username, isAdmin)
+      console.log('Updating user with:', {
+        userId: user.id,
+        password: updateData.password ? '[HIDDEN]' : undefined,
+        username: updateData.username || undefined
+      });
+      
+      await client.users.update(
+        user.id, 
+        updateData.password || undefined,
+        updateData.username || undefined,
+        undefined // isAdmin - we don't change this here
+      );
+      
+      console.log('User update successful');
 
       setSuccess('Profile updated successfully!');
       setIsEditing(false);
@@ -92,13 +106,20 @@ export const UserProfile = () => {
         confirmPassword: ''
       }));
 
-      // If username changed, we might need to update the auth context
+      // If username changed, update localStorage, auth context, and local state
       if (updateData.username) {
-        // Force page reload to get fresh auth state
-        window.location.reload();
+        localStorage.setItem('username', updateData.username);
+        // Update the auth context with the new username
+        updateUser({ username: updateData.username });
+        // Update form data to reflect the new username
+        setFormData(prev => ({
+          ...prev,
+          username: updateData.username
+        }));
       }
       
     } catch (err) {
+      console.error('Failed to update user profile:', err);
       setError(err.message || 'Failed to update profile');
     } finally {
       setLoading(false);

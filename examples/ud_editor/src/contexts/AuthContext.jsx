@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       const result = await authService.login(username, password);
-      setUser({ userId: username });
+      setUser(result.user);
       return { success: true };
     } catch (error) {
       return { 
@@ -42,10 +42,17 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const updateUser = (updates) => {
+    if (user) {
+      setUser(prev => ({ ...prev, ...updates }));
+    }
+  };
+
   const value = {
     user,
     login,
     logout,
+    updateUser,
     isAuthenticated: !!user,
     loading,
     getClient: () => {

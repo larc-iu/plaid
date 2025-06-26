@@ -41,14 +41,31 @@ export const authService = {
       // Use PlaidClient's static login method
       client = await PlaidClient.login(BASE_URL, username, password);
       
-      // Extract token from the client (we'll need to store it)
+      // Extract token from the client
       const token = client.token;
+      
+      // Extract user ID from JWT token
+      const userId = getUserIdFromToken(token);
+      if (!userId) {
+        throw new Error('Could not extract user ID from token');
+      }
+      
+      // Fetch complete user profile from server
+      const userProfile = await client.users.get(userId);
       
       // Store token and user info
       localStorage.setItem('token', token);
-      localStorage.setItem('username', username);
+      localStorage.setItem('userId', userId);
+      localStorage.setItem('username', userProfile.username);
       
-      return { success: true, username };
+      return { 
+        success: true, 
+        user: {
+          id: userId,
+          username: userProfile.username,
+          isAdmin: userProfile['is-admin'] || false
+        }
+      };
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -58,17 +75,24 @@ export const authService = {
   logout() {
     client = null;
     localStorage.removeItem('token');
+    localStorage.removeItem('userId');
     localStorage.removeItem('username');
     window.location.href = '/login';
   },
 
   getCurrentUser() {
     const username = localStorage.getItem('username');
+    const userId = localStorage.getItem('userId');
     const token = localStorage.getItem('token');
-    if (!username || !token) return null;
     
-    const userId = getUserIdFromToken(token);
-    return { username, userId };
+    if (!username || !userId || !token) return null;
+    
+    return { 
+      id: userId,
+      username: username,
+      // Note: isAdmin status would need to be fetched from server if needed
+      // For now, we'll rely on server-side permission checks
+    };
   },
 
   getToken() {
