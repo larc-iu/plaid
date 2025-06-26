@@ -809,7 +809,7 @@
          "      headers: {\n"
          "        'Content-Type': 'application/json'\n"
          "      },\n"
-         "      body: JSON.stringify({ userId, password })\n"
+         "      body: JSON.stringify({ \"user-id\": userId, password })\n"
          "    });\n"
          "    \n"
          "    if (!response.ok) {\n"

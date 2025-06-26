@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Thu Jun 26 17:07:52 EDT 2025
+ * Generated on: Thu Jun 26 17:09:06 EDT 2025
  */
 
 class PlaidClient {
@@ -5185,7 +5185,7 @@ precedence: ordering value for the token relative to other tokens with the same 
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ userId, password })
+      body: JSON.stringify({ "user-id": userId, password })
     });
     
     if (!response.ok) {
