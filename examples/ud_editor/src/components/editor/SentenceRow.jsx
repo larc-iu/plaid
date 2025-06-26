@@ -14,9 +14,28 @@ export const SentenceRow = React.memo(({
   totalTokensBefore = 0 
 }) => {
 
-
   // Token data is already pre-processed in sentenceData
   const tokenData = sentenceData.tokens;
+
+  // Calculate column widths based on max content width
+  const columnWidths = useMemo(() => {
+    const widths = tokenData.map(data => {
+      const charWidth = 8; // Approximate width per character
+      const padding = 16; // Account for padding
+      const minWidth = 40; // Minimum width
+      
+      // Calculate width for each field
+      const tokenFormWidth = (data.tokenForm.length * charWidth) + padding;
+      const lemmaWidth = ((data.lemma?.value || data.tokenForm).length * charWidth) + padding;
+      const xposWidth = ((data.xpos?.value || '').length * charWidth) + padding;
+      const uposWidth = ((data.upos?.value || '').length * charWidth) + padding;
+      
+      // Return max width for this column
+      return Math.max(minWidth, tokenFormWidth, lemmaWidth, xposWidth, uposWidth);
+    });
+    
+    return widths;
+  }, [tokenData]);
 
   // Calculate the maximum number of features across all tokens for row height
   const maxFeatures = Math.max(1, ...tokenData.map(data => data.feats.length));
@@ -43,97 +62,74 @@ export const SentenceRow = React.memo(({
   );
 
   // Editable cell component for annotation fields
-  const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex }) => {
-    const [tempValue, setTempValue] = useState(value || '');
-    const cellRef = useRef(null);
+  const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, columnWidth, onUpdate }) => {
+    const [localValue, setLocalValue] = useState(value || '');
+    const [isEditing, setIsEditing] = useState(false);
+    const inputRef = useRef(null);
 
     useEffect(() => {
-      setTempValue(value || '');
-    }, [value]);
+      if (!isEditing) {
+        setLocalValue(value || '');
+      }
+    }, [value, isEditing]);
 
-    const handleBlur = (e) => {
-      const newValue = cellRef.current?.textContent || '';
+    const handleChange = (e) => {
+      setLocalValue(e.target.value);
+    };
+
+    const handleBlur = () => {
+      setIsEditing(false);
+      const newValue = localValue.trim();
+      
       if (newValue !== (value || '')) {
-        // Check if user is navigating to another editable field
-        const isNavigatingToEditableField = e.relatedTarget && 
-          (e.relatedTarget.contentEditable === 'true' || e.relatedTarget.contentEditable === true);
-        
-        // Skip optimistic updates if navigating between fields to preserve focus
-        const skipOptimistic = isNavigatingToEditableField;
-        
-        // Delay the update to allow focus transfer to complete
-        setTimeout(() => {
-          onAnnotationUpdate(tokenId, field, newValue || null, skipOptimistic).catch(error => {
-            console.error(`Failed to update ${field}:`, error);
-            // Revert to original value on error
-            if (cellRef.current) {
-              cellRef.current.textContent = value || '';
-            }
-          });
-        }, 0);
+        onUpdate(tokenId, field, newValue || null).catch(error => {
+          console.error(`Failed to update ${field}:`, error);
+          // Revert to original value on error
+          setLocalValue(value || '');
+        });
+      } else {
+        // Revert to original if unchanged
+        setLocalValue(value || '');
       }
     };
 
     const handleKeyDown = (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        cellRef.current?.blur();
+        inputRef.current?.blur();
       } else if (e.key === 'Escape') {
         // Revert to original value
-        if (cellRef.current) {
-          cellRef.current.textContent = value || '';
-        }
-        cellRef.current?.blur();
+        setLocalValue(value || '');
+        setIsEditing(false);
+        inputRef.current?.blur();
       }
     };
 
     const handleFocus = () => {
+      setIsEditing(true);
       // Select all text when focused
-      try {
-        const range = window.document.createRange();
-        const selection = window.getSelection();
-        if (cellRef.current && range && selection) {
-          range.selectNodeContents(cellRef.current);
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
-      } catch (error) {
-        console.warn('Could not select text on focus:', error);
-      }
+      setTimeout(() => {
+        inputRef.current?.select();
+      }, 0);
     };
 
-    const displayValue = value || (field === 'lemma' ? tokenForm : '');
-    
-    // Get current content from the DOM if available, otherwise use displayValue
-    const getCurrentContent = () => {
-      return cellRef.current?.textContent || displayValue;
-    };
-
-    // Determine styling based on current content, not just server value
-    const currentContent = getCurrentContent();
-    const hasContent = currentContent && currentContent.trim() !== '';
+    const displayValue = localValue || (field === 'lemma' && !value ? tokenForm : '');
+    const hasContent = displayValue && displayValue.trim() !== '';
     
     return (
-      <div
-        ref={cellRef}
-        contentEditable
-        suppressContentEditableWarning
+      <input
+        ref={inputRef}
+        type="text"
+        value={displayValue}
+        onChange={handleChange}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         onFocus={handleFocus}
-        onInput={() => {
-          // Force re-render to update styling when user types
-          const content = cellRef.current?.textContent || '';
-          if (content !== tempValue) {
-            setTempValue(content);
-          }
-        }}
         className={`editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}`}
+        style={{ width: columnWidth ? `${columnWidth}px` : 'auto' }}
         title={`Edit ${field}`}
         tabIndex={tabIndex}
-      >
-        {displayValue}
-      </div>
+      />
     );
   });
 
@@ -255,9 +251,9 @@ export const SentenceRow = React.memo(({
   }, [tokenData.length, totalTokensBefore]);
 
   // Token Column component
-  const TokenColumn = React.memo(({ data, index }) => {
+  const TokenColumn = React.memo(({ data, index, columnWidth }) => {
     return (
-      <div className="token-column">
+      <div className="token-column" style={{ width: `${columnWidth}px` }}>
         {/* Token form (baseline) */}
         <div 
           className="token-form"
@@ -280,6 +276,8 @@ export const SentenceRow = React.memo(({
             field="lemma"
             tokenForm={data.tokenForm}
             tabIndex={getTabIndex(index, 'lemma')}
+            columnWidth={columnWidth}
+            onUpdate={onAnnotationUpdate}
           />
         </div>
 
@@ -291,6 +289,8 @@ export const SentenceRow = React.memo(({
             field="xpos"
             tokenForm={data.tokenForm}
             tabIndex={getTabIndex(index, 'xpos')}
+            columnWidth={columnWidth}
+            onUpdate={onAnnotationUpdate}
           />
         </div>
 
@@ -302,6 +302,8 @@ export const SentenceRow = React.memo(({
             field="upos"
             tokenForm={data.tokenForm}
             tabIndex={getTabIndex(index, 'upos')}
+            columnWidth={columnWidth}
+            onUpdate={onAnnotationUpdate}
           />
         </div>
 
@@ -373,7 +375,7 @@ export const SentenceRow = React.memo(({
 
         {/* Token columns */}
         {tokenData.map((data, index) => (
-          <TokenColumn key={data.token.id} data={data} index={index} />
+          <TokenColumn key={data.token.id} data={data} index={index} columnWidth={columnWidths[index]} />
         ))}
       </div>
     </div>
