@@ -18,6 +18,7 @@ export const DependencyTree = ({
   const [dragOrigin, setDragOrigin] = useState(null);
   const [dragCurrent, setDragCurrent] = useState(null);
   const [dragSourceId, setDragSourceId] = useState(null);
+  const [positionsInitialized, setPositionsInitialized] = useState(false);
   const svgRef = useRef(null);
   const labelRefs = useRef(new Map());
 
@@ -334,6 +335,19 @@ export const DependencyTree = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [focusedRelation, editingRelation, sortedRelations, relations]);
 
+  // Track when token positions are initialized
+  useEffect(() => {
+    if (tokenPositions.length > 0 && tokens.length > 0) {
+      // Delay to ensure positions are accurate after DOM measurement
+      const timeoutId = setTimeout(() => {
+        setPositionsInitialized(true);
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    } else {
+      setPositionsInitialized(false);
+    }
+  }, [tokenPositions, tokens]);
+
   // Helper function to focus first relation for keyboard navigation
   const focusFirstRelation = () => {
     if (sortedRelations.length > 0 && !focusedRelation) {
@@ -647,11 +661,11 @@ export const DependencyTree = ({
           onMouseLeave={() => setHoveredToken(null)}
         />
         
-        {/* Render existing relations */}
-        {relations.map((relation, index) => renderArc(relation, index))}
+        {/* Render existing relations - only when positions are initialized */}
+        {positionsInitialized && relations.map((relation, index) => renderArc(relation, index))}
         
-        {/* Render drag arc */}
-        {renderDragArc()}
+        {/* Render drag arc - only when positions are initialized */}
+        {positionsInitialized && renderDragArc()}
         
         {/* Invisible token click areas */}
         {adjustedTokenPositions.map((position) => {
