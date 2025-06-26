@@ -96,7 +96,7 @@ interface TextLayersBundle {
 }
 
 interface LoginBundle {
-  create(username: string, password: string): Promise<any>;
+  create(userId: string, password: string): Promise<any>;
 }
 
 interface BulkBundle {

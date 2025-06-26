@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Thu Jun 26 10:46:47 EDT 2025
+ * Generated on: Thu Jun 26 16:51:11 EDT 2025
  */
 
 class PlaidClient {
@@ -487,8 +487,8 @@ name: update a document's name.
     };
     this.login = {
       /**
-       * Authenticate with a username and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
- * @param {string} username - Required. Username
+       * Authenticate with a userId and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
+ * @param {string} userId - Required. Userid
  * @param {string} password - Required. Password
        */
       create: this._loginCreate.bind(this)
@@ -4327,12 +4327,12 @@ name: update a document's name.
   }
 
   /**
-   * Authenticate with a username and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
+   * Authenticate with a userId and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
    */
-  async _loginCreate(username, password) {
+  async _loginCreate(userId, password) {
     const url = `${this.baseUrl}/api/v1/login`;
     const bodyObj = {
-      "username": username,
+      "user-id": userId,
       "password": password
     };
     // Filter out undefined optional parameters
