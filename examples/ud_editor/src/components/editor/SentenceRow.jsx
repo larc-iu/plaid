@@ -20,12 +20,6 @@ const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, c
   };
 
   const handleBlur = (e) => {
-    console.log('handleBlur triggered', { 
-      field, 
-      relatedTarget: e.relatedTarget,
-      relatedTargetTabIndex: e.relatedTarget?.getAttribute('tabIndex')
-    });
-    
     setIsEditing(false);
     const newValue = localValue.trim();
     
