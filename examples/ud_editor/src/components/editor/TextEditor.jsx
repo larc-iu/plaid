@@ -15,7 +15,7 @@ export const TextEditor = () => {
   const [lastSaved, setLastSaved] = useState(null);
   const { getClient } = useAuth();
 
-  // Fetch initial data
+  // Fetch initial data (with loading screen)
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -58,6 +58,49 @@ export const TextEditor = () => {
       console.error('Error fetching data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Refresh data without loading screen (for updates after operations)
+  const refreshData = async () => {
+    try {
+      const client = getClient();
+      if (!client) {
+        window.location.href = '/login';
+        return;
+      }
+
+      // Get project and document with all layer data
+      const [projectData, documentData] = await Promise.all([
+        client.projects.get(projectId),
+        client.documents.get(documentId, true) // This includes all layer data!
+      ]);
+
+      setProject(projectData);
+      setDocument(documentData);
+
+      // Extract text content from the document structure
+      const textLayer = documentData.textLayers?.[0];
+      const text = textLayer?.text;
+      if (text?.body) {
+        setTextContent(text.body);
+        
+        // If we have tokens and no original tokenized text stored, use current text
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const tokens = tokenLayer?.tokens || [];
+        if (tokens.length > 0 && !originalTokenizedText) {
+          setOriginalTokenizedText(text.body);
+        }
+      }
+
+      setError('');
+    } catch (err) {
+      if (err.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      setError('Failed to load document: ' + (err.message || 'Unknown error'));
+      console.error('Error fetching data:', err);
     }
   };
 
@@ -121,8 +164,10 @@ export const TextEditor = () => {
       
       setLastSaved(new Date());
       setError('');
-      // Force a full page reload to ensure everything is in sync
-      window.location.reload();
+      // Update the original tokenized text since we've saved the current content
+      setOriginalTokenizedText(textContent);
+      // Refresh the document data to ensure everything is in sync
+      await refreshData();
     } catch (err) {
       setError('Failed to save text: ' + (err.message || 'Unknown error'));
       console.error('Error saving text:', err);
@@ -133,6 +178,10 @@ export const TextEditor = () => {
 
   const handleTextChange = (e) => {
     setTextContent(e.target.value);
+    // Clear the "saved" message as soon as text becomes dirty
+    if (lastSaved) {
+      setLastSaved(null);
+    }
   };
 
   const handleTokenize = async () => {
@@ -218,7 +267,7 @@ export const TextEditor = () => {
       setOriginalTokenizedText(textContent);
       
       // Refresh document to get updated tokens
-      await fetchData();
+      await refreshData();
       
       // Show feedback about the operation
       if (skippedCount > 0) {
@@ -256,7 +305,7 @@ export const TextEditor = () => {
       setOriginalTokenizedText('');
       
       // Refresh document
-      await fetchData();
+      await refreshData();
       
     } catch (err) {
       setError('Failed to clear tokens: ' + (err.message || 'Unknown error'));
@@ -619,26 +668,11 @@ export const TextEditor = () => {
         <Link to={`/projects/${projectId}/documents/${document?.id}/annotate`} className="text-blue-600 hover:text-blue-800">{document?.name}</Link>
       </nav>
 
-      <div className="flex justify-between items-center mb-6">
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Text Editor: {document?.name}</h2>
-        <div className="text-sm">
-          {saving && <span className="text-blue-600 italic">Processing...</span>}
-          {!saving && lastSaved && (
-            <span className="text-green-600">
-              Saved: {lastSaved.toLocaleTimeString()}
-            </span>
-          )}
-          {!saving && !lastSaved && textContent && isTextDirty && (
-            <span className="text-yellow-600 italic">Unsaved changes</span>
-          )}
-        </div>
       </div>
 
-      {error && (
-        <div className="rounded-md bg-red-50 p-4 mb-4">
-          <p className="text-sm text-red-800">{error}</p>
-        </div>
-      )}
+
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         <div>
@@ -686,6 +720,18 @@ This is a second sentence for testing."
             <div className="ml-auto text-sm font-medium text-gray-600">
               {tokens.length} token{tokens.length !== 1 ? 's' : ''}
             </div>
+          </div>
+          
+          <div className="mt-2 text-sm">
+            {saving && <span className="text-blue-600 italic">Processing...</span>}
+            {!saving && lastSaved && (
+              <span className="text-green-600">
+                Saved: {lastSaved.toLocaleTimeString()}
+              </span>
+            )}
+            {!saving && !lastSaved && textContent && isTextDirty && (
+              <span className="text-yellow-600 italic">Unsaved changes</span>
+            )}
           </div>
         </div>
 

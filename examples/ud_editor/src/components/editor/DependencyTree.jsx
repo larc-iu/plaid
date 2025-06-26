@@ -523,10 +523,10 @@ export const DependencyTree = ({
           return (
             <rect
               key={position.token.id}
-              x={position.x - tokenWidth / 2}
-              y={position.y - tokenHeight / 2 + 5}
-              width={tokenWidth}
-              height={tokenHeight}
+              x={position.x - (tokenWidth * 0.6)}
+              y={position.y - (tokenHeight * 0.6) + 10}
+              width={tokenWidth * 1.2}
+              height={tokenHeight * 1.2}
               fill="transparent"
               className={`tree-token-area ${dragOrigin ? 'tree-token-area--drag' : 'tree-token-area--grab'}`}
               onClick={() => handleTokenClick(position)}

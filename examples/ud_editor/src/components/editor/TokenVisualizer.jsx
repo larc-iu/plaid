@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = [], onTokenUpdate, onTokenDelete, onTokenCreate, onSentenceToggle }) => {
   const [hoveredToken, setHoveredToken] = useState(null);
@@ -11,6 +11,62 @@ export const TokenVisualizer = ({ text, originalText, tokens, sentenceSpans = []
 
   // Check if text is dirty (different from what was tokenized)
   const isTextDirty = originalText && text !== originalText;
+
+  // Handle keyboard shortcuts for token adjustment
+  const handleKeyDown = async (event) => {
+    // Only process keys when a token is hovered and not editing
+    if (!hoveredToken || editingToken || isTextDirty) return;
+
+    const { key } = event;
+    let newBegin = hoveredToken.begin;
+    let newEnd = hoveredToken.end;
+
+    switch (key) {
+      case 's': // subtract 1 from token's begin
+        newBegin = hoveredToken.begin - 1;
+        break;
+      case 'S': // add 1 to token's begin
+        newBegin = hoveredToken.begin + 1;
+        break;
+      case 'd': // add 1 to token's end
+        newEnd = hoveredToken.end + 1;
+        break;
+      case 'D': // subtract 1 from token's end
+        newEnd = hoveredToken.end - 1;
+        break;
+      default:
+        return; // Not a key we handle
+    }
+
+    // Validate the new bounds
+    if (newBegin < 0 || newEnd > text.length || newBegin > newEnd) {
+      return; // Invalid bounds, do nothing
+    }
+
+    // If bounds are valid and different, update the token
+    if (newBegin !== hoveredToken.begin || newEnd !== hoveredToken.end) {
+      event.preventDefault(); // Prevent default behavior
+      try {
+        await onTokenUpdate(hoveredToken.id, newBegin, newEnd);
+        // Update the hovered token state to reflect the change
+        setHoveredToken({
+          ...hoveredToken,
+          begin: newBegin,
+          end: newEnd
+        });
+      } catch (error) {
+        console.error('Token update failed:', error);
+      }
+    }
+  };
+
+  // Add keyboard event listener
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [hoveredToken, editingToken, isTextDirty, text, onTokenUpdate]);
 
   const handleTokenMouseEnter = (token) => {
     // Don't show tooltip if text is dirty
