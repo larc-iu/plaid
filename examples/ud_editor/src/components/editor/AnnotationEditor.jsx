@@ -5,6 +5,7 @@ import { useDocumentData } from './hooks/useDocumentData';
 import { useLayerInfo } from './hooks/useLayerInfo';
 import { useAnnotationHandlers } from './hooks/useAnnotationHandlers';
 import { useSentenceData } from './hooks/useSentenceData';
+import { DocumentTabs } from './DocumentTabs';
 
 export const AnnotationEditor = () => {
   const { projectId, documentId } = useParams();
@@ -36,7 +37,7 @@ export const AnnotationEditor = () => {
   }, [processedSentences]);
 
   if (loading) {
-    return <div>Loading document...</div>;
+    return <div className="text-center text-gray-600 py-8">Loading document...</div>;
   }
 
   if (!document) {
@@ -50,18 +51,13 @@ export const AnnotationEditor = () => {
   return (
     <div style={{ margin: 0, padding: 0, width: '100%', minHeight: '100vh' }}>
       {/* Breadcrumbs and title section */}
-      <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-        <nav className="flex items-center text-sm text-gray-500 mb-4">
-          <Link to="/projects" className="text-blue-600 hover:text-blue-800">Projects</Link>
-          <span className="mx-2 text-gray-400">/</span>
-          <Link to={`/projects/${projectId}/documents`} className="text-blue-600 hover:text-blue-800">
-            {project?.name || 'Loading...'}
-          </Link>
-          <span className="mx-2 text-gray-400">/</span>
-          <Link to={`/projects/${projectId}/documents/${document?.id}/edit`} className="text-blue-600 hover:text-blue-800">{document?.name || 'Loading...'}</Link>
-        </nav>
-        
-        <h1 className="text-2xl font-bold text-gray-900">{document?.name || 'Loading...'}</h1>
+      <div style={{ padding: '1rem 1.5rem' }}>
+        <DocumentTabs 
+          projectId={projectId}
+          documentId={documentId}
+          project={project}
+          document={document}
+        />
       </div>
 
       {/* Error display */}
