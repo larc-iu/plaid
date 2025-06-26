@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
+import { ImportModal } from './ImportModal';
 
 export const DocumentList = () => {
   const { projectId } = useParams();
@@ -10,6 +11,7 @@ export const DocumentList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const { getClient } = useAuth();
 
   const fetchProjectAndDocuments = async () => {
@@ -62,6 +64,11 @@ export const DocumentList = () => {
     fetchProjectAndDocuments(); // Refresh the list
   };
 
+  const handleImportSuccess = () => {
+    setShowImportModal(false);
+    fetchProjectAndDocuments(); // Refresh the list
+  };
+
   if (loading) {
     return <div className="text-center text-gray-600 py-8">Loading documents...</div>;
   }
@@ -84,12 +91,20 @@ export const DocumentList = () => {
 
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Documents in {project.name}</h2>
-        <button 
-          className="px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors text-sm font-medium"
-          onClick={() => setShowCreateForm(true)}
-        >
-          + New Document
-        </button>
+        <div className="flex gap-3">
+          <button 
+            className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
+            onClick={() => setShowImportModal(true)}
+          >
+            Import
+          </button>
+          <button 
+            className="px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors text-sm font-medium"
+            onClick={() => setShowCreateForm(true)}
+          >
+            + New Document
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -106,6 +121,14 @@ export const DocumentList = () => {
         />
       )}
 
+      {showImportModal && (
+        <ImportModal 
+          projectId={projectId}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={handleImportSuccess}
+        />
+      )}
+
       {documents.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500">No documents yet. Create your first document to start annotating!</p>
@@ -113,7 +136,7 @@ export const DocumentList = () => {
       ) : (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <ul className="divide-y divide-gray-200">
-            {documents.map(document => (
+            {documents.sort((d1, d2) => d1.name < d2.name ? -1 : d1.name > d2.name ? 1 : 0).map(document => (
               <li key={document.id} className="hover:bg-gray-50 transition-colors">
                 <div className="px-4 py-4 sm:px-6">
                   <div className="flex items-center justify-between">

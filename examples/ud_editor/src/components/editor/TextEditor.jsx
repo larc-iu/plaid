@@ -128,6 +128,10 @@ export const TextEditor = () => {
     const relationLayer = lemmaLayer?.relationLayers?.[0];
     const relations = relationLayer?.relations || [];
     
+    // Find the MWT span layer
+    const mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
+    const mwtSpans = mwtLayer?.spans || [];
+    
     return { 
       textLayer, 
       text, 
@@ -138,7 +142,9 @@ export const TextEditor = () => {
       lemmaLayer,
       lemmaSpans,
       relationLayer,
-      relations
+      relations,
+      mwtLayer,
+      mwtSpans
     };
   };
 
@@ -357,6 +363,42 @@ export const TextEditor = () => {
     try {
       const client = getClient();
       console.log('Deleting token:', tokenId);
+      
+      // MWT maintenance: Delete any MWT spans that include this token
+      // and would become invalid (single token) after this deletion
+      const textLayer = document.textLayers?.[0];
+      const tokenLayer = textLayer?.tokenLayers?.[0];
+      const spanLayers = tokenLayer?.spanLayers || [];
+      const mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
+      
+      if (mwtLayer?.spans) {
+        const mwtsToDelete = [];
+        
+        for (const mwtSpan of mwtLayer.spans) {
+          const spanTokens = mwtSpan.tokens || [];
+          
+          // Check if this MWT includes the token being deleted
+          if (spanTokens.includes(tokenId)) {
+            // Check if this MWT would become invalid (only one token left)
+            const remainingTokens = spanTokens.filter(id => id !== tokenId);
+            if (remainingTokens.length <= 1) {
+              mwtsToDelete.push(mwtSpan);
+            }
+          }
+        }
+        
+        // Delete invalid MWT spans before deleting the token
+        for (const mwtSpan of mwtsToDelete) {
+          try {
+            console.log('Deleting MWT span due to token deletion:', mwtSpan.id);
+            await client.spans.delete(mwtSpan.id);
+          } catch (mwtError) {
+            console.warn('Failed to delete MWT span:', mwtSpan.id, mwtError);
+            // Continue with token deletion even if MWT deletion fails
+          }
+        }
+      }
+      
       await client.tokens.delete(tokenId);
       console.log('Token deletion successful');
       
@@ -642,6 +684,125 @@ export const TextEditor = () => {
     }
   };
 
+  const handleMwtCreate = async (tokenIds, surfaceForm) => {
+    try {
+      const client = getClient();
+      const { tokenLayer } = getLayerData();
+      
+      if (!tokenLayer?.id) {
+        throw new Error('No token layer found');
+      }
+
+      // Check for overlapping MWTs
+      const { mwtSpans } = getLayerData();
+      const overlappingTokens = [];
+      
+      for (const tokenId of tokenIds) {
+        const existingMwt = mwtSpans.find(span => 
+          span.tokens && span.tokens.includes(tokenId)
+        );
+        if (existingMwt) {
+          overlappingTokens.push(tokenId);
+        }
+      }
+      
+      if (overlappingTokens.length > 0) {
+        // Silently fail - don't create overlapping MWTs
+        return;
+      }
+
+      // Find or create the MWT span layer
+      const spanLayers = tokenLayer.spanLayers || [];
+      let mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
+      
+      if (!mwtLayer) {
+        // Create MWT layer if it doesn't exist
+        console.log('Creating Multi-word Tokens span layer');
+        mwtLayer = await client.spanLayers.create(
+          tokenLayer.id,
+          'Multi-word Tokens',
+          { description: 'Multi-word token spans for CoNLL-U format' }
+        );
+      }
+
+      console.log('Creating MWT span with tokens:', tokenIds, 'surface form:', surfaceForm);
+      const newMwtSpan = await client.spans.create(
+        mwtLayer.id,
+        tokenIds,
+        surfaceForm  // This will be null, which is what we want
+      );
+      
+      console.log('MWT span created successfully:', newMwtSpan);
+      
+      // Update client state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayerDoc = textLayer?.tokenLayers?.[0];
+        const spanLayersDoc = tokenLayerDoc?.spanLayers || [];
+        
+        // Find or add the MWT layer
+        let mwtLayerDoc = spanLayersDoc.find(layer => layer.name === 'Multi-word Tokens');
+        if (!mwtLayerDoc) {
+          mwtLayerDoc = {
+            ...mwtLayer,
+            spans: []
+          };
+          spanLayersDoc.push(mwtLayerDoc);
+          tokenLayerDoc.spanLayers = spanLayersDoc;
+        }
+        
+        // Add the new MWT span
+        if (!mwtLayerDoc.spans) {
+          mwtLayerDoc.spans = [];
+        }
+        mwtLayerDoc.spans.push({
+          ...newMwtSpan,
+          tokens: tokenIds,
+          value: surfaceForm  // This will be null
+        });
+        
+        return updatedDocument;
+      });
+      
+    } catch (error) {
+      console.error('MWT creation failed, refreshing:', error);
+      await fetchData();
+      throw error;
+    }
+  };
+
+  const handleMwtDelete = async (spanId) => {
+    try {
+      const client = getClient();
+      console.log('Deleting MWT span:', spanId);
+      
+      await client.spans.delete(spanId);
+      console.log('MWT span deleted successfully');
+      
+      // Update client state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayerDoc = textLayer?.tokenLayers?.[0];
+        const spanLayersDoc = tokenLayerDoc?.spanLayers || [];
+        const mwtLayerDoc = spanLayersDoc.find(layer => layer.name === 'Multi-word Tokens');
+        
+        if (mwtLayerDoc && mwtLayerDoc.spans) {
+          // Remove the deleted span
+          mwtLayerDoc.spans = mwtLayerDoc.spans.filter(span => span.id !== spanId);
+        }
+        
+        return updatedDocument;
+      });
+      
+    } catch (error) {
+      console.error('MWT deletion failed, refreshing:', error);
+      await fetchData();
+      throw error;
+    }
+  };
+
   if (loading) {
     return <div className="text-center text-gray-600 py-8">Loading document...</div>;
   }
@@ -654,7 +815,7 @@ export const TextEditor = () => {
     );
   }
 
-  const { tokens, sentenceSpans } = getLayerData();
+  const { tokens, sentenceSpans, mwtSpans } = getLayerData();
   
   // Check if text is dirty (different from what was tokenized or saved)
   const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
@@ -738,10 +899,13 @@ This is a second sentence for testing."
             originalText={originalTokenizedText}
             tokens={tokens}
             sentenceSpans={sentenceSpans}
+            mwtSpans={mwtSpans}
             onTokenUpdate={handleTokenUpdate}
             onTokenDelete={handleTokenDelete}
             onTokenCreate={handleTokenCreate}
             onSentenceToggle={handleSentenceToggle}
+            onMwtCreate={handleMwtCreate}
+            onMwtDelete={handleMwtDelete}
           />
         </div>
       </div>

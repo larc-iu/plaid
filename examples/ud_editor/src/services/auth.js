@@ -7,6 +7,34 @@ const BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
 let client = null;
 
+// JWT parsing utility
+function parseJwtPayload(token) {
+  try {
+    // JWT tokens have 3 parts separated by dots: header.payload.signature
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      throw new Error('Invalid JWT token format');
+    }
+    
+    // Decode the payload (second part)
+    const payload = parts[1];
+    // Add padding if needed for base64 decoding
+    const paddedPayload = payload + '='.repeat((4 - payload.length % 4) % 4);
+    const decodedPayload = atob(paddedPayload);
+    
+    return JSON.parse(decodedPayload);
+  } catch (error) {
+    console.error('Failed to parse JWT payload:', error);
+    return null;
+  }
+}
+
+// Extract user ID from JWT token
+function getUserIdFromToken(token) {
+  const payload = parseJwtPayload(token);
+  return payload?.['user/id'] || null;  // Note: Clojure namespaced keyword becomes "user/id"
+}
+
 export const authService = {
   async login(username, password) {
     try {
@@ -36,7 +64,11 @@ export const authService = {
 
   getCurrentUser() {
     const username = localStorage.getItem('username');
-    return username ? { username } : null;
+    const token = localStorage.getItem('token');
+    if (!username || !token) return null;
+    
+    const userId = getUserIdFromToken(token);
+    return { username, userId };
   },
 
   getToken() {

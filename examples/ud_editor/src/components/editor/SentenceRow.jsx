@@ -77,7 +77,7 @@ const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, c
 });
 
 // Features cell component with hover-only delete buttons
-const FeaturesCell = React.memo(({ features, spanIds, tokenId, onAnnotationUpdate, onFeatureDelete }) => {
+const FeaturesCell = React.memo(({ features, spanIds, tokenId, columnWidth, onAnnotationUpdate, onFeatureDelete }) => {
   const [editingFeature, setEditingFeature] = useState(false);
   const [newFeature, setNewFeature] = useState('');
   const [isHovering, setIsHovering] = useState(false);
@@ -118,6 +118,7 @@ const FeaturesCell = React.memo(({ features, spanIds, tokenId, onAnnotationUpdat
   return (
     <div 
       className="features-container"
+      style={{ width: columnWidth ? `${columnWidth}px` : 'auto' }}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
@@ -246,6 +247,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
             features: data.spanIds.features
           }}
           tokenId={data.token.id}
+          columnWidth={columnWidth}
           onAnnotationUpdate={onAnnotationUpdate}
           onFeatureDelete={onFeatureDelete}
         />
@@ -291,8 +293,14 @@ export const SentenceRow = React.memo(({
       const xposWidth = ((data.xpos?.value || '').length * charWidth) + padding;
       const uposWidth = ((data.upos?.value || '').length * charWidth) + padding;
       
+      // Calculate width needed for features (find longest feature)
+      const longestFeature = data.feats.reduce((longest, feat) => {
+        return feat.value && feat.value.length > longest.length ? feat.value : longest;
+      }, '');
+      const featuresWidth = longestFeature ? (longestFeature.length * charWidth) + padding : minWidth;
+      
       // Return max width for this column
-      return Math.max(minWidth, tokenFormWidth, lemmaWidth, xposWidth, uposWidth);
+      return Math.max(minWidth, tokenFormWidth, lemmaWidth, xposWidth, uposWidth, featuresWidth);
     });
     
     return widths;
@@ -337,7 +345,6 @@ export const SentenceRow = React.memo(({
     
     return sentenceBaseIndex + (rowIndex * tokensInSentence) + positionInRow + 1;
   }, [tokenData.length, totalTokensBefore]);
-
 
   return (
     <div className="sentence-container">

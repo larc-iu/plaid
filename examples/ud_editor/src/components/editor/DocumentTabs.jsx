@@ -2,7 +2,10 @@ import { Link, useLocation } from 'react-router-dom';
 
 export const DocumentTabs = ({ projectId, documentId, project, document }) => {
   const location = useLocation();
-  const isEditMode = location.pathname.includes('/edit');
+  const currentPath = location.pathname;
+  const isEditMode = currentPath.includes('/edit');
+  const isAnnotateMode = currentPath.includes('/annotate');
+  const isExportMode = currentPath.includes('/export');
   
   return (
     <div>
@@ -33,12 +36,22 @@ export const DocumentTabs = ({ projectId, documentId, project, document }) => {
             <Link
               to={`/projects/${projectId}/documents/${documentId}/annotate`}
               className={`whitespace-nowrap py-2 px-1 text-sm font-medium border-b-2 transition-colors ${
-                !isEditMode
+                isAnnotateMode
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               Annotate
+            </Link>
+            <Link
+              to={`/projects/${projectId}/documents/${documentId}/export`}
+              className={`whitespace-nowrap py-2 px-1 text-sm font-medium border-b-2 transition-colors ${
+                isExportMode
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Export
             </Link>
           </nav>
         </div>

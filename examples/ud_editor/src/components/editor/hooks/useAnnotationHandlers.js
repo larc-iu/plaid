@@ -327,11 +327,131 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
     }
   }, [layerInfo]);
 
+  const handleMwtCreate = useCallback(async (tokenIds, form) => {
+    try {
+      const client = getClient();
+      if (!client) return;
+      
+      if (!layerInfo.mwtLayer) {
+        console.warn('MWT layer not found, cannot create multi-word token');
+        return;
+      }
+      
+      if (!tokenIds || tokenIds.length < 2) {
+        throw new Error('Multi-word token requires at least 2 tokens');
+      }
+      
+      // Validate tokens are contiguous (optional check for good UX)
+      const sortedTokenIds = [...tokenIds].sort((a, b) => a.localeCompare(b));
+      
+      const spanResult = await client.spans.create(layerInfo.mwtLayer.id, tokenIds, form);
+      
+      // Update local state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const spanLayers = tokenLayer?.spanLayers || [];
+        
+        const mwtLayerDoc = spanLayers.find(layer => layer.id === layerInfo.mwtLayer.id);
+        if (mwtLayerDoc) {
+          if (!mwtLayerDoc.spans) {
+            mwtLayerDoc.spans = [];
+          }
+          mwtLayerDoc.spans.push({
+            ...spanResult,
+            tokens: tokenIds,
+            value: form
+          });
+        }
+        
+        return updatedDocument;
+      });
+      
+      setError('');
+      
+    } catch (error) {
+      console.error('Failed to create MWT:', error);
+      setError(`Failed to create multi-word token: ${error.message}`);
+      await refreshData();
+    }
+  }, [layerInfo]);
+
+  const handleMwtUpdate = useCallback(async (spanId, form) => {
+    try {
+      const client = getClient();
+      if (!client) return;
+      
+      await client.spans.update(spanId, form);
+      
+      // Update local state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const spanLayers = tokenLayer?.spanLayers || [];
+        
+        spanLayers.forEach(layer => {
+          if (layer.name === 'Multi-word Tokens' && layer.spans) {
+            const spanIndex = layer.spans.findIndex(span => span.id === spanId);
+            if (spanIndex !== -1) {
+              layer.spans[spanIndex].value = form;
+            }
+          }
+        });
+        
+        return updatedDocument;
+      });
+      
+      setError('');
+      
+    } catch (error) {
+      console.error('Failed to update MWT:', error);
+      setError(`Failed to update multi-word token: ${error.message}`);
+      await refreshData();
+    }
+  }, [layerInfo]);
+
+  const handleMwtDelete = useCallback(async (spanId) => {
+    try {
+      const client = getClient();
+      if (!client) return;
+      
+      await client.spans.delete(spanId);
+      
+      // Update local state
+      setDocument(prevDocument => {
+        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+        const textLayer = updatedDocument.textLayers?.[0];
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const spanLayers = tokenLayer?.spanLayers || [];
+        
+        spanLayers.forEach(layer => {
+          if (layer.name === 'Multi-word Tokens' && layer.spans) {
+            layer.spans = layer.spans.filter(span => span.id !== spanId);
+          }
+        });
+        
+        return updatedDocument;
+      });
+      
+      setError('');
+      
+    } catch (error) {
+      console.error('Failed to delete MWT:', error);
+      setError(`Failed to delete multi-word token: ${error.message}`);
+      await refreshData();
+    }
+  }, [layerInfo]);
+
   return {
     handleAnnotationUpdate,
     handleFeatureDelete,
     handleRelationCreate,
     handleRelationUpdate,
-    handleRelationDelete
+    handleRelationDelete,
+    handleMwtCreate,
+    handleMwtUpdate,
+    handleMwtDelete
   };
 };
