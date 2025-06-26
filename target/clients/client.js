@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Thu Jun 26 16:51:11 EDT 2025
+ * Generated on: Thu Jun 26 17:07:52 EDT 2025
  */
 
 class PlaidClient {
@@ -5175,17 +5175,17 @@ precedence: ordering value for the token relative to other tokens with the same 
   /**
    * Authenticate and return a new client instance with token
    * @param {string} baseUrl - The base URL for the API
-   * @param {string} username - Username for authentication
+   * @param {string} userId - User ID for authentication
    * @param {string} password - Password for authentication
    * @returns {Promise<PlaidClient>} - Authenticated client instance
    */
-  static async login(baseUrl, username, password) {
+  static async login(baseUrl, userId, password) {
     const response = await fetch(`${baseUrl}/api/v1/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ userId, password })
     });
     
     if (!response.ok) {
