@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { TokenVisualizer } from './TokenVisualizer';
+import { DocumentTabs } from './DocumentTabs';
 
 export const TextEditor = () => {
   const { projectId, documentId } = useParams();
@@ -660,17 +661,12 @@ export const TextEditor = () => {
 
   return (
     <div>
-      <nav className="flex items-center text-sm text-gray-500 mb-6">
-        <Link to="/projects" className="text-blue-600 hover:text-blue-800">Projects</Link>
-        <span className="mx-2">/</span>
-        <Link to={`/projects/${projectId}/documents`} className="text-blue-600 hover:text-blue-800">{project?.name}</Link>
-        <span className="mx-2">/</span>
-        <Link to={`/projects/${projectId}/documents/${document?.id}/annotate`} className="text-blue-600 hover:text-blue-800">{document?.name}</Link>
-      </nav>
-
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Text Editor: {document?.name}</h2>
-      </div>
+      <DocumentTabs 
+        projectId={projectId}
+        documentId={documentId}
+        project={project}
+        document={document}
+      />
 
 
 
@@ -750,14 +746,7 @@ This is a second sentence for testing."
         </div>
       </div>
 
-      <div className="text-center py-8 border-t border-gray-200">
-        <Link 
-          to={`/projects/${projectId}/documents/${documentId}/annotate`}
-          className="inline-block px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-medium"
-        >
-          Continue to Annotation →
-        </Link>
-      </div>
+
       
     </div>
   );
