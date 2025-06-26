@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 
-export const DependencyTree = ({ 
+export const DependencyTree = ({
   tokens, 
   relations, 
   lemmaSpans,
@@ -278,8 +278,6 @@ export const DependencyTree = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-
-
   // Render dependency arc
   const renderArc = (relation) => {
     // Check if this is a self-pointing relation (ROOT relation)
@@ -409,24 +407,6 @@ export const DependencyTree = ({
           </text>
         )}
       </g>
-    );
-  };
-
-  // Render temporary arc during selection
-  const renderTempArc = () => {
-    if (!selectedSource || !hoveredToken || selectedSource.lemmaSpanId === hoveredToken.lemmaSpanId) {
-      return null;
-    }
-    
-    const isToRoot = hoveredToken.lemmaSpanId === 'ROOT';
-    const targetPos = isToRoot ? { x: selectedSource.x, y: ROOT_Y, index: -1 } : hoveredToken;
-    const pathData = computeEdge(selectedSource, targetPos, isToRoot);
-    
-    return (
-      <path
-        d={pathData}
-        className="tree-temp-arc"
-      />
     );
   };
 
