@@ -75,7 +75,7 @@
 
     (testing "Login succeeds with correct credentials"
       (let [req (-> (admin-request :post "/api/v1/login")
-                    (mock/json-body {:username "test@example.com" :password "test123"}))
+                    (mock/json-body {:user-id "test@example.com" :password "test123"}))
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 200))
@@ -83,7 +83,7 @@
 
     (testing "Login fails with incorrect password"
       (let [req (-> (admin-request :post "/api/v1/login")
-                    (mock/json-body {:username "test@example.com" :password "wrong-password"}))
+                    (mock/json-body {:user-id "test@example.com" :password "wrong-password"}))
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 401))
@@ -91,7 +91,7 @@
 
     (testing "Login fails with non-existent user"
       (let [req (-> (admin-request :post "/api/v1/login")
-                    (mock/json-body {:username "nonexistent@example.com" :password "test123"}))
+                    (mock/json-body {:user-id "nonexistent@example.com" :password "test123"}))
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 401))
