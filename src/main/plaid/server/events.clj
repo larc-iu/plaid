@@ -185,7 +185,7 @@
     (async/go-loop []
       (when-let [event (async/<! ch)]
         (log/debug "Event distributor received event:" event)
-        (let [affected-projects (:audit/projects event)
+        (let [affected-projects (:event/projects event)
               client-count (reduce + (map #(count (get-project-clients %)) affected-projects))]
           (when (> client-count 0)
             (log/debug "Distributing to" client-count "clients across projects" affected-projects))
@@ -230,6 +230,7 @@
 
       :else
       (let [event {:event/type      :audit-log
+                   :event/projects  (:audit/projects audit-entry)
                    :audit/id        (:audit/id audit-entry)
                    :audit/projects  (:audit/projects audit-entry)
                    :audit/documents (:audit/documents audit-entry)
@@ -278,13 +279,12 @@
       :else
       (let [message-id (java.util.UUID/randomUUID)
             event {:event/type      :message
+                   :event/projects  #{project-id}
                    :message/id      message-id
                    :message/project project-id
                    :message/user    user-id
                    :message/time    (java.util.Date.)
-                   :message/data    message-data
-                   ;; Include in audit/projects for routing compatibility
-                   :audit/projects  #{project-id}}]
+                   :message/data    message-data}]
         (log/debug "Message event data:" event)
         (let [put-result (async/put! event-bus event)]
           (if put-result
