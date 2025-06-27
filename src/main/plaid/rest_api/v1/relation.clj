@@ -15,6 +15,14 @@
       relation-id (r/project-id db relation-id)
       :else nil)))
 
+(defn bulk-get-project-id [{db :db params :params}]
+  (let [rl-id (or (-> params :body first :layer-id))
+        relation-id (-> params :body first)]
+    (cond
+      rl-id (rl/project-id db rl-id)
+      relation-id (r/project-id db relation-id)
+      :else nil)))
+
 (def relation-routes
   ["/relations"
 
@@ -45,9 +53,53 @@
                                  {:status 201 :body {:id (:extra result)}}
                                  {:status (or (:code result) 400) :body {:error (:error result)}})))}}]
 
+   ["/bulk" {:conflicting true
+             :post {:summary (str "Create multiple relations in a single operation. Provide an array of objects whose keys"
+                                  "are:\n"
+                                  "<body>relation-layer-id</body>, the relation's layer\n"
+                                  "<body>source</body>, the span id of the relation's source\n"
+                                  "<body>target</body>, the span id of the relation's target\n"
+                                  "<body>value</body>, the relation's value\n"
+                                  "<body>metadata</body>, an optional map of metadata")
+                    :openapi {:x-client-method "bulk-create"}
+                    :middleware [[pra/wrap-writer-required bulk-get-project-id]]
+                    :parameters {:body [:sequential
+                                        [:map
+                                         [:relation-layer-id :uuid]
+                                         [:source :uuid]
+                                         [:target :uuid]
+                                         [:value any?]
+                                         [:metadata {:optional true} [:map-of string? any?]]]]}
+                    :handler (fn [{{relations :body} :parameters xtdb :xtdb user-id :user/id}]
+                               (let [relations-attrs (mapv (fn [relation-data]
+                                                             (let [{:keys [layer-id source-id target-id value metadata]} relation-data
+                                                                   attrs {:relation/layer layer-id
+                                                                          :relation/source source-id
+                                                                          :relation/target target-id
+                                                                          :relation/value value}]
+                                                               (if metadata
+                                                                 (assoc attrs :metadata metadata)
+                                                                 attrs)))
+                                                           relations)
+                                     result (r/bulk-create {:node xtdb} relations-attrs user-id)]
+                                 (if (:success result)
+                                   {:status 201 :body {:ids (:extra result)}}
+                                   {:status (or (:code result) 500)
+                                    :body   {:error (:error result)}})))}
+             :delete {:summary "Delete multiple relations in a single operation. Provide an array of IDs."
+                      :openapi {:x-client-method "bulk-delete"}
+                      :middleware [[pra/wrap-writer-required bulk-get-project-id]]
+                      :parameters {:body [:sequential :uuid]}
+                      :handler (fn [{{relation-ids :body} :parameters xtdb :xtdb user-id :user/id}]
+                                 (let [{:keys [success code error]} (r/bulk-delete {:node xtdb} relation-ids user-id)]
+                                   (if success
+                                     {:status 204}
+                                     {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+
    ;; Get, update, delete by ID
    ["/:relation-id"
-    {:parameters {:path [:map [:relation-id :uuid]]}}
+    {:conflicting true
+     :parameters {:path [:map [:relation-id :uuid]]}}
     ["" {:get    {:summary    "Get a relation by ID."
                   :middleware [[pra/wrap-reader-required get-project-id]]
                   :handler    (fn [{{{:keys [relation-id]} :path} :parameters db :db}]

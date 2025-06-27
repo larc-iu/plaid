@@ -53,7 +53,12 @@
                                  {:status (or (:code result) 400) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
-             :post {:summary "Create multiple spans in a single operation."
+             :post {:summary (str "Create multiple spans in a single operation. Provide an array of objects whose keys"
+                                  "are:\n"
+                                  "<body>span-layer-id</body>, the span's layer\n"
+                                  "<body>tokens</body>, the IDs of the span's constituent tokens\n"
+                                  "<body>value</body>, the relation's value\n"
+                                  "<body>metadata</body>, an optional map of metadata")
                     :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]]
                     :parameters {:body [:sequential
@@ -77,7 +82,7 @@
                                    {:status 201 :body {:ids (:extra result)}}
                                    {:status (or (:code result) 500)
                                     :body   {:error (:error result)}})))}
-             :delete {:summary "Delete multiple spans in a single operation."
+             :delete {:summary "Delete multiple spans in a single operation. Provide an array of IDs."
                       :openapi {:x-client-method "bulkDelete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]]
                       :parameters {:body [:sequential :uuid]}
