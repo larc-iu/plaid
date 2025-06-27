@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Thu Jun 26 23:09:25 EDT 2025
+Generated on: Fri Jun 27 10:18:26 EDT 2025
 """
 
 import requests
@@ -4300,14 +4300,14 @@ class ProjectsResource:
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def listen(self, id: str, on_event: Callable[[str, Dict[str, Any]], None], timeout: int = 30) -> Dict[str, Any]:
+    def listen(self, id: str, on_event: Callable[[str, Dict[str, Any]], None]) -> Dict[str, Any]:
         """
         Listen to audit log events and messages for a project via Server-Sent Events (with heartbeat confirmation protocol)
         
         Args:
             id: The UUID of the project to listen to
-            on_event: Callback function that receives (event_type: str, data: dict)
-            timeout: Maximum time to listen in seconds (None for infinite)
+            on_event: Callback function that receives (event_type: str, data: dict). 
+                     Heartbeat events are automatically filtered out.
             
         Returns:
             Dict[str, Any]: Summary of the listening session
@@ -4362,9 +4362,6 @@ class ProjectsResource:
                 event_type = None
                 
                 for line in response.iter_lines(decode_unicode=True, chunk_size=None):
-                    if timeout and (time.time() - start_time) > timeout:
-                        break
-                        
                     if line and line.strip():
                         if line.startswith('event: '):
                             event_type = line[7:].strip()

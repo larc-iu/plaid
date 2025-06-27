@@ -44,61 +44,61 @@
 (defn- generate-python-method-params
   "Generate Python method parameters using ordered params from AST"
   [operation]
-  (let [{:keys [path-params required-body-params optional-body-params 
+  (let [{:keys [path-params required-body-params optional-body-params
                 regular-query-params as-of-param]} (:ordered-params operation)
         {:keys [is-config?]} (:special-endpoints operation)
         http-method (:http-method operation)
-        
+
         ;; Path parameters are always required
         path-param-strs (map (fn [param]
-                              (str (kebab->snake param) ": str"))
-                            path-params)
-        
+                               (str (kebab->snake param) ": str"))
+                             path-params)
+
         ;; Config value parameter for config PUT endpoints
         config-param-strs (when (and is-config? (= http-method :put))
-                           ["config_value: Any"])
-        
+                            ["config_value: Any"])
+
         ;; Body parameters (skip if config endpoint)
         body-param-strs (when-not (and is-config? (= http-method :put))
-                         (concat
-                          (map (fn [{:keys [name original-name type]}]
-                                 (let [param-name (transform-key-name-python name)
-                                       py-type (case type
-                                                "string" "str"
-                                                "integer" "int"
-                                                "boolean" "bool"
-                                                "array" "List[Any]"
-                                                "Any")]
-                                   (str param-name ": " py-type)))
-                               required-body-params)
-                          (map (fn [{:keys [name original-name type]}]
-                                 (let [param-name (transform-key-name-python name)
-                                       py-type (case type
-                                                "string" "str"
-                                                "integer" "int"
-                                                "boolean" "bool"
-                                                "array" "List[Any]"
-                                                "Any")]
-                                   (str param-name ": " py-type " = None")))
-                               optional-body-params)))
-        
+                          (concat
+                           (map (fn [{:keys [name original-name type]}]
+                                  (let [param-name (transform-key-name-python name)
+                                        py-type (case type
+                                                  "string" "str"
+                                                  "integer" "int"
+                                                  "boolean" "bool"
+                                                  "array" "List[Any]"
+                                                  "Any")]
+                                    (str param-name ": " py-type)))
+                                required-body-params)
+                           (map (fn [{:keys [name original-name type]}]
+                                  (let [param-name (transform-key-name-python name)
+                                        py-type (case type
+                                                  "string" "str"
+                                                  "integer" "int"
+                                                  "boolean" "bool"
+                                                  "array" "List[Any]"
+                                                  "Any")]
+                                    (str param-name ": " py-type " = None")))
+                                optional-body-params)))
+
         ;; Query parameters
         query-param-strs (map (fn [param]
-                               (let [param-name (transform-key-name-python (:name param))
-                                     py-type (openapi-type-to-python (:schema param))
-                                     optional-marker (if (:required? param) "" " = None")]
-                                 (str param-name ": " py-type optional-marker)))
-                             regular-query-params)
-        
+                                (let [param-name (transform-key-name-python (:name param))
+                                      py-type (openapi-type-to-python (:schema param))
+                                      optional-marker (if (:required? param) "" " = None")]
+                                  (str param-name ": " py-type optional-marker)))
+                              regular-query-params)
+
         ;; asOf parameter (only for GET requests)
         as-of-param-strs (when (and as-of-param (= http-method :get))
-                          [(str (transform-key-name-python (:name as-of-param)) ": " 
-                                (openapi-type-to-python (:schema as-of-param)) " = None")])
-        
+                           [(str (transform-key-name-python (:name as-of-param)) ": "
+                                 (openapi-type-to-python (:schema as-of-param)) " = None")])
+
         ;; Combine all parameters
-        all-params (concat path-param-strs config-param-strs body-param-strs 
-                          query-param-strs as-of-param-strs)]
-    
+        all-params (concat path-param-strs config-param-strs body-param-strs
+                           query-param-strs as-of-param-strs)]
+
     (str/join ", " (filter some? all-params))))
 
 (defn- generate-python-url-construction
@@ -107,33 +107,33 @@
   (let [{:keys [path path-params ordered-params]} operation
         {:keys [regular-query-params as-of-param]} ordered-params
         all-query-params (concat regular-query-params (when as-of-param [as-of-param]))
-        
+
         ;; Build URL with path parameters
         url-construction (if (empty? path-params)
-                          (str "url = f\"{self.client.base_url}" path "\"")
-                          (let [py-path (reduce (fn [p param]
-                                                (str/replace p (str "{" param "}") 
-                                                           (str "{" (kebab->snake param) "}")))
-                                              path
-                                              path-params)]
-                            (str "url = f\"{self.client.base_url}" py-path "\"")))
-        
+                           (str "url = f\"{self.client.base_url}" path "\"")
+                           (let [py-path (reduce (fn [p param]
+                                                   (str/replace p (str "{" param "}")
+                                                                (str "{" (kebab->snake param) "}")))
+                                                 path
+                                                 path-params)]
+                             (str "url = f\"{self.client.base_url}" py-path "\"")))
+
         ;; Generate query parameter construction
         query-construction (when (seq all-query-params)
-                            (let [query-checks (map (fn [param]
-                                                     (let [param-name (transform-key-name-python (:name param))
-                                                           original-name (:name param)]
-                                                       (str "        if " param-name " is not None:\n"
-                                                            "            params['" original-name "'] = " param-name)))
-                                                   all-query-params)]
-                              (str "\n        params = {}\n"
-                                   (str/join "\n" query-checks) "\n"
-                                   "        if params:\n"
-                                   "            from urllib.parse import urlencode\n"
-                                   "            # Convert boolean values to lowercase strings\n"
-                                   "            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}\n"
-                                   "            url += '?' + urlencode(params)")))]
-    
+                             (let [query-checks (map (fn [param]
+                                                       (let [param-name (transform-key-name-python (:name param))
+                                                             original-name (:name param)]
+                                                         (str "        if " param-name " is not None:\n"
+                                                              "            params['" original-name "'] = " param-name)))
+                                                     all-query-params)]
+                               (str "\n        params = {}\n"
+                                    (str/join "\n" query-checks) "\n"
+                                    "        if params:\n"
+                                    "            from urllib.parse import urlencode\n"
+                                    "            # Convert boolean values to lowercase strings\n"
+                                    "            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}\n"
+                                    "            url += '?' + urlencode(params)")))]
+
     (str url-construction query-construction)))
 
 (defn- generate-python-body-construction
@@ -146,26 +146,26 @@
     (cond
       (and is-config? (= http-method :put))
       "        body_data = config_value"
-      
+
       ;; Special case: single array parameter that represents the entire body
       (and (= (count body-params) 1)
            (= (:type (first body-params)) "array")
            (= (:original-name (first body-params)) "body"))
       (let [param-name (transform-key-name-python (:name (first body-params)))]
         (str "        body_data = " param-name))
-      
+
       (seq body-params)
       (let [body-dict-items (map (fn [{:keys [name original-name]}]
-                                  (let [param-name (transform-key-name-python name)]
-                                    (str "            '" original-name "': " param-name)))
-                                body-params)]
+                                   (let [param-name (transform-key-name-python name)]
+                                     (str "            '" original-name "': " param-name)))
+                                 body-params)]
         (str "        body_dict = {\n"
              (str/join ",\n" body-dict-items) "\n"
              "        }\n"
              "        # Filter out None values\n"
              "        body_dict = {k: v for k, v in body_dict.items() if v is not None}\n"
              "        body_data = self.client._transform_request(body_dict)"))
-      
+
       :else nil)))
 
 (defn- generate-python-sse-listen-method
@@ -173,17 +173,17 @@
   [operation]
   (let [{:keys [bundle-name method-name path path-params summary]} operation
         ;; Extract project ID from path parameters
-        project-id-param (first path-params)  ; Should be "id" for /projects/{id}/listen
+        project-id-param (first path-params) ; Should be "id" for /projects/{id}/listen
         transformed-method-name (common/transform-method-name method-name :snake_case)]
-    
-    (str "    def " transformed-method-name "(self, " (kebab->snake project-id-param) ": str, on_event: Callable[[str, Dict[str, Any]], None], timeout: int = 30) -> Dict[str, Any]:\n"
+
+    (str "    def " transformed-method-name "(self, " (kebab->snake project-id-param) ": str, on_event: Callable[[str, Dict[str, Any]], None]) -> Dict[str, Any]:\n"
          "        \"\"\"\n"
          "        " (transform-parameter-references (or summary "")) " (with heartbeat confirmation protocol)\n"
          "        \n"
          "        Args:\n"
          "            " (kebab->snake project-id-param) ": The UUID of the project to listen to\n"
-         "            on_event: Callback function that receives (event_type: str, data: dict)\n"
-         "            timeout: Maximum time to listen in seconds (None for infinite)\n"
+         "            on_event: Callback function that receives (event_type: str, data: dict). \n"
+         "                     Heartbeat events are automatically filtered out.\n"
          "            \n"
          "        Returns:\n"
          "            Dict[str, Any]: Summary of the listening session\n"
@@ -238,9 +238,6 @@
          "                event_type = None\n"
          "                \n"
          "                for line in response.iter_lines(decode_unicode=True, chunk_size=None):\n"
-         "                    if timeout and (time.time() - start_time) > timeout:\n"
-         "                        break\n"
-         "                        \n"
          "                    if line and line.strip():\n"
          "                        if line.startswith('event: '):\n"
          "                            event_type = line[7:].strip()\n"
@@ -308,70 +305,70 @@
   (let [{:keys [bundle-name method-name path http-method summary ordered-params special-endpoints]} operation
         {:keys [required-body-params optional-body-params]} ordered-params
         {:keys [is-login? is-config?]} special-endpoints
-        has-body? (or (seq required-body-params) 
-                     (seq optional-body-params)
-                     (and is-config? (= http-method :put)))
-        
+        has-body? (or (seq required-body-params)
+                      (seq optional-body-params)
+                      (and is-config? (= http-method :put)))
+
         ;; Method naming (transform method-name if it comes from x-client-method)
         transformed-method-name (common/transform-method-name method-name :snake_case)
         py-method-name (str transformed-method-name (when-not sync? "_async"))
-        
+
         ;; Parameters
         method-params (generate-python-method-params operation)
         full-params (if (empty? method-params) "self" (str "self, " method-params))
-        
+
         ;; URL construction
         url-construction (generate-python-url-construction operation)
-        
+
         ;; Body construction
         body-construction (generate-python-body-construction operation)
-        
+
         ;; Headers
         auth-header (if is-login?
-                     ""
-                     "        headers['Authorization'] = f'Bearer {self.client.token}'\n")
-        
+                      ""
+                      "        headers['Authorization'] = f'Bearer {self.client.token}'\n")
+
         ;; HTTP method setup
         method-call (if sync? "requests" "aiohttp.ClientSession")
-        
+
         async-def (if sync? "def" "async def")
         await-keyword (if sync? "" "await ")
         response-json (if sync? "response.json()" "await response.json()")
         response-text (if sync? "response.text()" "await response.text()")]
-    
+
     (str "    " async-def " " py-method-name "(" full-params ") -> Any:\n"
          "        \"\"\"\n"
          "        " (transform-parameter-references (or summary "")) "\n"
          (when (not (empty? method-params))
            (str "\n"
                 "        Args:\n"
-                (str/join "\n" 
-                  (concat
+                (str/join "\n"
+                          (concat
                     ;; Path parameters
-                    (map (fn [param]
-                           (str "            " (kebab->snake param) ": Path parameter"))
-                         (:path-params operation))
+                           (map (fn [param]
+                                  (str "            " (kebab->snake param) ": Path parameter"))
+                                (:path-params operation))
                     ;; Config value parameter
-                    (when (and is-config? (= http-method :put))
-                      ["            config_value: Configuration value to set"])
+                           (when (and is-config? (= http-method :put))
+                             ["            config_value: Configuration value to set"])
                     ;; Body parameters (unless config endpoint)
-                    (when-not (and is-config? (= http-method :put))
-                      (concat
-                       (map (fn [{:keys [name original-name]}]
-                              (let [param-name (transform-key-name-python name)]
-                                (str "            " param-name ": Required body parameter")))
-                            required-body-params)
-                       (map (fn [{:keys [name original-name]}]
-                              (let [param-name (transform-key-name-python name)]
-                                (str "            " param-name ": Optional body parameter")))
-                            optional-body-params)))
+                           (when-not (and is-config? (= http-method :put))
+                             (concat
+                              (map (fn [{:keys [name original-name]}]
+                                     (let [param-name (transform-key-name-python name)]
+                                       (str "            " param-name ": Required body parameter")))
+                                   required-body-params)
+                              (map (fn [{:keys [name original-name]}]
+                                     (let [param-name (transform-key-name-python name)]
+                                       (str "            " param-name ": Optional body parameter")))
+                                   optional-body-params)))
                     ;; Query parameters
-                    (let [{:keys [regular-query-params as-of-param]} ordered-params
-                          all-query-params (concat regular-query-params (when as-of-param [as-of-param]))]
-                      (map (fn [param]
-                             (str "            " (transform-key-name-python (:name param)) ": " 
-                                  (if (:required? param) "Required" "Optional") " query parameter"))
-                           all-query-params))))
+                           (let [{:keys [regular-query-params as-of-param]} ordered-params
+                                 all-query-params (concat regular-query-params (when as-of-param [as-of-param]))]
+                             (map (fn [param]
+                                    (str "            " (transform-key-name-python (:name param)) ": "
+                                         (if (:required? param) "Required" "Optional") " query parameter"))
+                                  all-query-params))))
                 "\n"))
          "        \"\"\"\n"
          "        " url-construction "\n"
@@ -419,13 +416,13 @@
   (let [class-name (str (kebab->pascal bundle-name) "Resource")
         methods (mapcat (fn [op]
                          ;; Check if this is an SSE listen method
-                         (if (= (:method-name op) "listen")
+                          (if (= (:method-name op) "listen")
                            ;; Generate only the SSE method for listen endpoints
-                           [(generate-python-sse-listen-method op)]
+                            [(generate-python-sse-listen-method op)]
                            ;; Generate sync and async methods for regular endpoints
-                           [(generate-python-method op true)
-                            (generate-python-method op false)]))
-                       operations)]
+                            [(generate-python-method op true)
+                             (generate-python-method op false)]))
+                        operations)]
     (str "class " class-name ":\n"
          "    \"\"\"\n"
          "    Resource class for " bundle-name " operations\n"
@@ -655,27 +652,27 @@
         version (:version info)
         description (:description info)
         bundles (:bundles ast)
-        
+
         ;; Generate batch builder class
         batch-methods (generate-python-batch-methods)
-        
+
         ;; Generate resource classes
         resource-classes (->> bundles
-                             (map (fn [[bundle-name operations]]
-                                    (generate-python-resource-class bundle-name operations)))
-                             (str/join "\n\n"))
-        
+                              (map (fn [[bundle-name operations]]
+                                     (generate-python-resource-class bundle-name operations)))
+                              (str/join "\n\n"))
+
         ;; Generate resource initialization
         resource-init (->> bundles
-                          (map (fn [[bundle-name _]]
-                                 (let [snake-name (kebab->snake bundle-name)
-                                       class-name (str (kebab->pascal bundle-name) "Resource")]
-                                   (str "        self." snake-name " = " class-name "(self)"))))
-                          (str/join "\n"))
-        
+                           (map (fn [[bundle-name _]]
+                                  (let [snake-name (kebab->snake bundle-name)
+                                        class-name (str (kebab->pascal bundle-name) "Resource")]
+                                    (str "        self." snake-name " = " class-name "(self)"))))
+                           (str/join "\n"))
+
         key-transformations (generate-python-key-transformations)
         login-methods (generate-login-method)]
-    
+
     (str "\"\"\"\n"
          title " - " description "\n"
          "Version: " version "\n"
@@ -750,6 +747,6 @@
   (let [py-client (generate-python-client ast)]
     (spit output-file py-client)
     (println (str "✅ Python client generated successfully: " output-file))
-    (println (str "📊 Generated " 
-                  (count (:bundles ast)) 
+    (println (str "📊 Generated "
+                  (count (:bundles ast))
                   " resource classes with sync and async methods"))))
