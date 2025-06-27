@@ -102,7 +102,7 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
           const position = sentencePositions[tokIdx];
           tokenOperations.push({
             tokenLayerId: tokenLayer.id,
-            textId: textId,
+            text: textId,
             begin: position.begin,
             end: position.end
           });
@@ -129,30 +129,42 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
         tokenIdMap.push(sentenceTokenIds);
       }
 
-      // Step 7: Create all spans in batch operations
-      client.beginBatch();
+      // Step 7: Create spans by layer using bulkCreate for each layer
+      const allCreatedSpans = [];
+      const lemmaSpanIds = [];
       
-      // Track the order of span creation for mapping results
-      const spanOperations = [];
+      // Initialize lemma span tracking
+      for (let sentIdx = 0; sentIdx < parsedData.sentences.length; sentIdx++) {
+        lemmaSpanIds.push([]);
+        for (let tokIdx = 0; tokIdx < parsedData.sentences[sentIdx].tokens.length; tokIdx++) {
+          lemmaSpanIds[sentIdx].push(null);
+        }
+      }
 
       // Create sentence boundaries
       if (sentenceLayer) {
+        const sentenceSpans = [];
         for (let sentIdx = 0; sentIdx < tokenIdMap.length; sentIdx++) {
           const firstTokenId = tokenIdMap[sentIdx][0];
           const metadata = parsedData.sentences[sentIdx].metadata;
           
-          client.spans.create(
-            sentenceLayer.id,
-            [firstTokenId],
-            null,
-            Object.keys(metadata).length > 0 ? metadata : undefined
-          );
-          spanOperations.push({ type: 'sentence', sentenceIndex: sentIdx });
+          sentenceSpans.push({
+            spanLayerId: sentenceLayer.id,
+            tokens: [firstTokenId],
+            value: null,
+            metadata: Object.keys(metadata).length > 0 ? metadata : undefined
+          });
+        }
+        
+        if (sentenceSpans.length > 0) {
+          const result = await client.spans.bulkCreate(sentenceSpans);
+          console.log(`Created ${sentenceSpans.length} sentence spans`);
         }
       }
 
       // Create multi-word token spans
       if (mwtLayer) {
+        const mwtSpans = [];
         for (let sentIdx = 0; sentIdx < parsedData.sentences.length; sentIdx++) {
           const sentence = parsedData.sentences[sentIdx];
           const sentenceTokenIds = tokenIdMap[sentIdx];
@@ -170,25 +182,27 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
                 mwtTokenIds.push(sentenceTokenIds[i]);
               }
               
-              client.spans.create(
-                mwtLayer.id,
-                mwtTokenIds,
-                null, // MWT span values are always null - form is computed from tokens
-                mwt.misc ? { misc: mwt.misc } : undefined
-              );
-              spanOperations.push({ 
-                type: 'mwt', 
-                sentenceIndex: sentIdx, 
-                start: mwt.start,
-                end: mwt.end
+              mwtSpans.push({
+                spanLayerId: mwtLayer.id,
+                tokens: mwtTokenIds,
+                value: null, // MWT span values are always null - form is computed from tokens
+                metadata: mwt.misc ? { misc: mwt.misc } : undefined
               });
             }
           }
+        }
+        
+        if (mwtSpans.length > 0) {
+          const result = await client.spans.bulkCreate(mwtSpans);
+          console.log(`Created ${mwtSpans.length} multi-word token spans`);
         }
       }
 
       // Create lemma spans
       if (lemmaLayer) {
+        const lemmaSpans = [];
+        const lemmaOperations = [];
+        
         for (let sentIdx = 0; sentIdx < parsedData.sentences.length; sentIdx++) {
           const sentence = parsedData.sentences[sentIdx];
           const sentenceTokenIds = tokenIdMap[sentIdx];
@@ -196,24 +210,32 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
           for (let tokIdx = 0; tokIdx < sentence.tokens.length; tokIdx++) {
             const token = sentence.tokens[tokIdx];
             if (token.lemma) {
-              client.spans.create(
-                lemmaLayer.id,
-                [sentenceTokenIds[tokIdx]],
-                token.lemma
-              );
-              spanOperations.push({ 
-                type: 'lemma', 
-                sentenceIndex: sentIdx, 
-                tokenIndex: tokIdx,
-                token: token
+              lemmaSpans.push({
+                spanLayerId: lemmaLayer.id,
+                tokens: [sentenceTokenIds[tokIdx]],
+                value: token.lemma
               });
+              lemmaOperations.push({ sentenceIndex: sentIdx, tokenIndex: tokIdx });
             }
+          }
+        }
+        
+        if (lemmaSpans.length > 0) {
+          const result = await client.spans.bulkCreate(lemmaSpans);
+          const createdLemmaIds = result.ids || [];
+          console.log(`Created ${lemmaSpans.length} lemma spans`);
+          
+          // Map lemma span IDs for dependency relations
+          for (let i = 0; i < lemmaOperations.length; i++) {
+            const operation = lemmaOperations[i];
+            lemmaSpanIds[operation.sentenceIndex][operation.tokenIndex] = createdLemmaIds[i];
           }
         }
       }
 
       // Create UPOS spans
       if (uposLayer) {
+        const uposSpans = [];
         for (let sentIdx = 0; sentIdx < parsedData.sentences.length; sentIdx++) {
           const sentence = parsedData.sentences[sentIdx];
           const sentenceTokenIds = tokenIdMap[sentIdx];
@@ -221,19 +243,24 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
           for (let tokIdx = 0; tokIdx < sentence.tokens.length; tokIdx++) {
             const token = sentence.tokens[tokIdx];
             if (token.upos) {
-              client.spans.create(
-                uposLayer.id,
-                [sentenceTokenIds[tokIdx]],
-                token.upos
-              );
-              spanOperations.push({ type: 'upos', sentenceIndex: sentIdx, tokenIndex: tokIdx });
+              uposSpans.push({
+                spanLayerId: uposLayer.id,
+                tokens: [sentenceTokenIds[tokIdx]],
+                value: token.upos
+              });
             }
           }
+        }
+        
+        if (uposSpans.length > 0) {
+          const result = await client.spans.bulkCreate(uposSpans);
+          console.log(`Created ${uposSpans.length} UPOS spans`);
         }
       }
 
       // Create XPOS spans
       if (xposLayer) {
+        const xposSpans = [];
         for (let sentIdx = 0; sentIdx < parsedData.sentences.length; sentIdx++) {
           const sentence = parsedData.sentences[sentIdx];
           const sentenceTokenIds = tokenIdMap[sentIdx];
@@ -241,19 +268,24 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
           for (let tokIdx = 0; tokIdx < sentence.tokens.length; tokIdx++) {
             const token = sentence.tokens[tokIdx];
             if (token.xpos) {
-              client.spans.create(
-                xposLayer.id,
-                [sentenceTokenIds[tokIdx]],
-                token.xpos
-              );
-              spanOperations.push({ type: 'xpos', sentenceIndex: sentIdx, tokenIndex: tokIdx });
+              xposSpans.push({
+                spanLayerId: xposLayer.id,
+                tokens: [sentenceTokenIds[tokIdx]],
+                value: token.xpos
+              });
             }
           }
+        }
+        
+        if (xposSpans.length > 0) {
+          const result = await client.spans.bulkCreate(xposSpans);
+          console.log(`Created ${xposSpans.length} XPOS spans`);
         }
       }
 
       // Create Features spans (one per feature)
       if (featuresLayer) {
+        const featureSpans = [];
         for (let sentIdx = 0; sentIdx < parsedData.sentences.length; sentIdx++) {
           const sentence = parsedData.sentences[sentIdx];
           const sentenceTokenIds = tokenIdMap[sentIdx];
@@ -261,49 +293,22 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
           for (let tokIdx = 0; tokIdx < sentence.tokens.length; tokIdx++) {
             const token = sentence.tokens[tokIdx];
             for (const feat of token.feats) {
-              client.spans.create(
-                featuresLayer.id,
-                [sentenceTokenIds[tokIdx]],
-                feat
-              );
-              spanOperations.push({ type: 'feature', sentenceIndex: sentIdx, tokenIndex: tokIdx });
+              featureSpans.push({
+                spanLayerId: featuresLayer.id,
+                tokens: [sentenceTokenIds[tokIdx]],
+                value: feat
+              });
             }
           }
         }
-      }
-
-      // Submit all span creations
-      const batchResults = await client.submitBatch();
-      console.log('Span batch results:', batchResults);
-      
-      // Check for batch failures
-      for (let i = 0; i < batchResults.length; i++) {
-        const result = batchResults[i];
-        if (!result || !result.body || !result.body.id) {
-          throw new Error(`Span creation failed for operation ${i}: ${JSON.stringify(result)}`);
-        }
-      }
-      
-      // Extract lemma span IDs for dependency relations
-      const lemmaSpanIds = [];
-      for (let sentIdx = 0; sentIdx < parsedData.sentences.length; sentIdx++) {
-        lemmaSpanIds.push([]);
-        for (let tokIdx = 0; tokIdx < parsedData.sentences[sentIdx].tokens.length; tokIdx++) {
-          lemmaSpanIds[sentIdx].push(null);
-        }
-      }
-      
-      // Map batch results to lemma spans
-      for (let i = 0; i < spanOperations.length; i++) {
-        const operation = spanOperations[i];
-        const result = batchResults[i];
         
-        if (operation.type === 'lemma') {
-          lemmaSpanIds[operation.sentenceIndex][operation.tokenIndex] = result.body.id;
+        if (featureSpans.length > 0) {
+          const result = await client.spans.bulkCreate(featureSpans);
+          console.log(`Created ${featureSpans.length} feature spans`);
         }
       }
 
-      // Step 8: Create dependency relations in a second batch
+      // Step 8: Create dependency relations using bulkCreate
       if (lemmaLayer && lemmaSpanIds.length > 0) {
         const relationLayer = lemmaLayer.relationLayers?.[0];
         
@@ -311,7 +316,6 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
           console.log('Creating dependency relations with layer:', relationLayer.id);
           console.log('Lemma span IDs:', lemmaSpanIds);
           
-          client.beginBatch();
           const relationOperations = [];
           
           for (let sentIdx = 0; sentIdx < parsedData.sentences.length; sentIdx++) {
@@ -326,16 +330,11 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
                 if (token.head === 0) {
                   // Root edge: create self-referencing relation
                   console.log(`Creating root relation: ${targetLemmaId} -> ${targetLemmaId} (${token.deprel})`);
-                  client.relations.create(
-                    relationLayer.id,
-                    targetLemmaId,
-                    targetLemmaId,
-                    token.deprel
-                  );
                   relationOperations.push({
+                    relationLayerId: relationLayer.id,
                     source: targetLemmaId,
                     target: targetLemmaId,
-                    label: token.deprel
+                    value: token.deprel
                   });
                 } else if (token.head > 0) {
                   // Regular edge: head is 1-based, convert to 0-based index
@@ -344,16 +343,11 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
                     const sourceLemmaId = sentenceLemmaIds[headIdx];
                     if (sourceLemmaId) {
                       console.log(`Creating relation: ${sourceLemmaId} -> ${targetLemmaId} (${token.deprel})`);
-                      client.relations.create(
-                        relationLayer.id,
-                        sourceLemmaId,
-                        targetLemmaId,
-                        token.deprel
-                      );
                       relationOperations.push({
+                        relationLayerId: relationLayer.id,
                         source: sourceLemmaId,
                         target: targetLemmaId,
-                        label: token.deprel
+                        value: token.deprel
                       });
                     }
                   }
@@ -363,17 +357,9 @@ export const ImportModal = ({ projectId, onClose, onSuccess }) => {
           }
           
           if (relationOperations.length > 0) {
-            const relationResults = await client.submitBatch();
+            const relationResult = await client.relations.bulkCreate(relationOperations);
             console.log(`Created ${relationOperations.length} dependency relations`);
-            console.log('Relation batch results:', relationResults);
-            
-            // Check for relation batch failures
-            for (let i = 0; i < relationResults.length; i++) {
-              const result = relationResults[i];
-              if (!result || !result.body || !result.body.id) {
-                throw new Error(`Relation creation failed for operation ${i}: ${JSON.stringify(result)}`);
-              }
-            }
+            console.log('Relation bulk create result:', relationResult);
           } else {
             console.log('No dependency relations to create');
           }
