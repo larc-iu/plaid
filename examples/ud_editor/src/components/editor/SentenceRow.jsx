@@ -4,7 +4,7 @@ import { useTokenPositions } from './hooks/useTokenPositions';
 import './editor.css';
 
 // Editable cell component for annotation fields
-const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, columnWidth, onUpdate }) => {
+const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, columnWidth, onUpdate, isReadOnly }) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   const inputRef = useRef(null);
@@ -55,7 +55,7 @@ const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, c
     }, 0);
   };
 
-  const displayValue = localValue || (field === 'lemma' && !value ? tokenForm : '');
+  const displayValue = localValue || (field === 'lemma' && !value && !isReadOnly ? tokenForm : '');
   const hasContent = displayValue && displayValue.trim() !== '';
   
   return (
@@ -180,7 +180,7 @@ const FeaturesCell = React.memo(({ features, spanIds, tokenId, columnWidth, onAn
 });
 
 // Token Column component
-const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnotationUpdate, onFeatureDelete, maxFeatures, tokenRefs }) => {
+const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnotationUpdate, onFeatureDelete, maxFeatures, tokenRefs, isReadOnly }) => {
   return (
     <div className="token-column" style={{ width: `${columnWidth}px` }}>
       {/* Token form (baseline) */}
@@ -207,6 +207,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
           tabIndex={getTabIndex(index, 'lemma')}
           columnWidth={columnWidth}
           onUpdate={onAnnotationUpdate}
+          isReadOnly={isReadOnly}
         />
       </div>
 
@@ -220,6 +221,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
           tabIndex={getTabIndex(index, 'xpos')}
           columnWidth={columnWidth}
           onUpdate={onAnnotationUpdate}
+          isReadOnly={isReadOnly}
         />
       </div>
 
@@ -233,6 +235,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
           tabIndex={getTabIndex(index, 'upos')}
           columnWidth={columnWidth}
           onUpdate={onAnnotationUpdate}
+          isReadOnly={isReadOnly}
         />
       </div>
 
@@ -262,7 +265,8 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
     prevProps.maxFeatures === nextProps.maxFeatures &&
     prevProps.onAnnotationUpdate === nextProps.onAnnotationUpdate &&
     prevProps.onFeatureDelete === nextProps.onFeatureDelete &&
-    prevProps.getTabIndex === nextProps.getTabIndex
+    prevProps.getTabIndex === nextProps.getTabIndex &&
+    prevProps.isReadOnly === nextProps.isReadOnly
   );
 });
 
@@ -330,6 +334,9 @@ export const SentenceRow = React.memo(({
     lemmaSpans
   );
 
+
+  // Detect if we're in read-only mode (historical state)
+  const isReadOnly = onAnnotationUpdate === null;
 
   // Calculate tab indices for row-wise navigation across all sentences
   const getTabIndex = useCallback((tokenIndex, field) => {
@@ -407,6 +414,7 @@ export const SentenceRow = React.memo(({
             onFeatureDelete={onFeatureDelete}
             maxFeatures={maxFeatures}
             tokenRefs={tokenRefs}
+            isReadOnly={isReadOnly}
           />
         ))}
       </div>
