@@ -5,7 +5,7 @@
             [plaid.xtdb.span :as s]
             [plaid.xtdb.metadata :as metadata]
             [taoensso.timbre :as log])
-  (:refer-clojure :exclude [get merge]))
+  (:refer-clojure :exclude [get merge format]))
 
 (def attr-keys [:token/id
                 :token/text

@@ -5,7 +5,7 @@
             [plaid.xtdb.relation :as r]
             [plaid.xtdb.metadata :as metadata]
             [clojure.string :as str])
-  (:refer-clojure :exclude [get merge]))
+  (:refer-clojure :exclude [get merge format]))
 
 (def core-attr-keys [:span/id
                      :span/tokens
