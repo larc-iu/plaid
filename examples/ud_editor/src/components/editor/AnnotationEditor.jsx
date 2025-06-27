@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { SentenceRow } from './SentenceRow';
+import { VirtualSentenceRow } from './VirtualSentenceRow';
 import { useDocumentData } from './hooks/useDocumentData';
 import { useLayerInfo } from './hooks/useLayerInfo';
 import { useAnnotationHandlers } from './hooks/useAnnotationHandlers';
@@ -272,7 +273,7 @@ export const AnnotationEditor = () => {
                 .reduce((total, prevSentence) => total + prevSentence.tokens.length, 0);
 
               return (
-                <SentenceRow
+                <VirtualSentenceRow
                   key={sentenceData.id}
                   sentenceData={sentenceData}
                   onAnnotationUpdate={viewingHistoricalState ? null : handleAnnotationUpdate}
@@ -282,7 +283,7 @@ export const AnnotationEditor = () => {
                   onRelationDelete={viewingHistoricalState ? null : handleRelationDelete}
                   sentenceIndex={index}
                   totalTokensBefore={totalTokensBefore}
-                  readOnly={viewingHistoricalState}
+                  estimatedHeight={250} // Estimated height for placeholder
                 />
               );
             })}
