@@ -80,12 +80,6 @@ export const UserProfile = () => {
       }
 
       // Call users.update with correct parameter order: (id, password, username, isAdmin)
-      console.log('Updating user with:', {
-        userId: user.id,
-        password: updateData.password ? '[HIDDEN]' : undefined,
-        username: updateData.username || undefined
-      });
-      
       await client.users.update(
         user.id, 
         updateData.password || undefined,
@@ -93,7 +87,8 @@ export const UserProfile = () => {
         undefined // isAdmin - we don't change this here
       );
       
-      console.log('User update successful');
+      // Fetch updated user data from server to get complete profile including isAdmin
+      const updatedUserData = await client.users.get(user.id);
 
       setSuccess('Profile updated successfully!');
       setIsEditing(false);
@@ -106,20 +101,24 @@ export const UserProfile = () => {
         confirmPassword: ''
       }));
 
-      // If username changed, update localStorage, auth context, and local state
-      if (updateData.username) {
-        localStorage.setItem('username', updateData.username);
-        // Update the auth context with the new username
-        updateUser({ username: updateData.username });
-        // Update form data to reflect the new username
-        setFormData(prev => ({
-          ...prev,
-          username: updateData.username
-        }));
-      }
+      // Update localStorage and auth context with complete user data
+      localStorage.setItem('username', updatedUserData.username);
+      // Note: PlaidClient transforms is-admin to isAdmin
+      localStorage.setItem('isAdmin', (updatedUserData.isAdmin || false).toString());
+      
+      // Update the auth context with complete user data
+      updateUser({ 
+        username: updatedUserData.username,
+        isAdmin: updatedUserData.isAdmin || false
+      });
+      
+      // Update form data to reflect the new username
+      setFormData(prev => ({
+        ...prev,
+        username: updatedUserData.username
+      }));
       
     } catch (err) {
-      console.error('Failed to update user profile:', err);
       setError(err.message || 'Failed to update profile');
     } finally {
       setLoading(false);

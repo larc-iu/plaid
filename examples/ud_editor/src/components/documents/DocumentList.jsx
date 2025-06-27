@@ -12,7 +12,7 @@ export const DocumentList = () => {
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-  const { getClient } = useAuth();
+  const { user, getClient } = useAuth();
 
   const fetchProjectAndDocuments = async () => {
     try {
@@ -69,6 +69,12 @@ export const DocumentList = () => {
     fetchProjectAndDocuments(); // Refresh the list
   };
 
+  // Check if user can manage this project (admin or maintainer)
+  const canManageProject = () => {
+    if (!user || !project) return false;
+    return user.isAdmin || project.maintainers?.includes(user.id);
+  };
+
   if (loading) {
     return <div className="text-center text-gray-600 py-8">Loading documents...</div>;
   }
@@ -92,6 +98,14 @@ export const DocumentList = () => {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Documents in {project.name}</h2>
         <div className="flex gap-3">
+          {canManageProject() && (
+            <Link
+              to={`/projects/${projectId}/management`}
+              className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm font-medium"
+            >
+              Project Management
+            </Link>
+          )}
           <button 
             className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
             onClick={() => setShowImportModal(true)}

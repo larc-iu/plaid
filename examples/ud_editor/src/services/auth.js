@@ -57,13 +57,15 @@ export const authService = {
       localStorage.setItem('token', token);
       localStorage.setItem('userId', userId);
       localStorage.setItem('username', userProfile.username);
+      // Note: PlaidClient transforms is-admin to isAdmin
+      localStorage.setItem('isAdmin', (userProfile.isAdmin || false).toString());
       
       return { 
         success: true, 
         user: {
           id: userId,
           username: userProfile.username,
-          isAdmin: userProfile['is-admin'] || false
+          isAdmin: userProfile.isAdmin || false
         }
       };
     } catch (error) {
@@ -77,6 +79,7 @@ export const authService = {
     localStorage.removeItem('token');
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
+    localStorage.removeItem('isAdmin');
     window.location.href = '/login';
   },
 
@@ -84,14 +87,14 @@ export const authService = {
     const username = localStorage.getItem('username');
     const userId = localStorage.getItem('userId');
     const token = localStorage.getItem('token');
+    const isAdmin = localStorage.getItem('isAdmin') === 'true';
     
     if (!username || !userId || !token) return null;
     
     return { 
       id: userId,
       username: username,
-      // Note: isAdmin status would need to be fetched from server if needed
-      // For now, we'll rely on server-side permission checks
+      isAdmin: isAdmin
     };
   },
 
