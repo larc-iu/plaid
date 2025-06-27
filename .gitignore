@@ -36,3 +36,4 @@ Gemfile.lock
 .lsp
 .clj-kondo
 __pycache__/
+.token
