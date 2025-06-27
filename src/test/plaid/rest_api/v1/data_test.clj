@@ -1443,9 +1443,9 @@
         _ (assert-created tkl2-res)]
 
     (testing "Bulk create tokens - success case"
-      (let [tokens [{:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5}
-                    {:token-layer-id tkl1 :text-id text1-id :begin 6 :end 11}
-                    {:token-layer-id tkl1 :text-id text1-id :begin 12 :end 16}]
+      (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5}
+                    {:token-layer-id tkl1 :text text1-id :begin 6 :end 11}
+                    {:token-layer-id tkl1 :text text1-id :begin 12 :end 16}]
             res (bulk-create-tokens admin-request tokens)]
         (assert-created res)
         (is (= 3 (count (-> res :body :ids))))
@@ -1453,8 +1453,8 @@
         (bulk-delete-tokens admin-request (-> res :body :ids))))
 
     (testing "Bulk create tokens with metadata"
-      (let [tokens [{:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5 :metadata {"pos" "NOUN"}}
-                    {:token-layer-id tkl1 :text-id text1-id :begin 6 :end 11 :metadata {"pos" "VERB"}}]
+      (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5 :metadata {"pos" "NOUN"}}
+                    {:token-layer-id tkl1 :text text1-id :begin 6 :end 11 :metadata {"pos" "VERB"}}]
             res (bulk-create-tokens admin-request tokens)]
         (assert-created res)
         (is (= 2 (count (-> res :body :ids))))
@@ -1467,8 +1467,8 @@
         (bulk-delete-tokens admin-request (-> res :body :ids))))
 
     (testing "Bulk create tokens with precedence"
-      (let [tokens [{:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5 :precedence 1}
-                    {:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5 :precedence 2}]
+      (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5 :precedence 1}
+                    {:token-layer-id tkl1 :text text1-id :begin 0 :end 5 :precedence 2}]
             res (bulk-create-tokens admin-request tokens)]
         (assert-created res)
         (is (= 2 (count (-> res :body :ids))))
@@ -1476,35 +1476,35 @@
         (bulk-delete-tokens admin-request (-> res :body :ids))))
 
     (testing "Bulk create tokens - cross-document failure"
-      (let [tokens [{:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5}
-                    {:token-layer-id tkl1 :text-id text2-id :begin 0 :end 7}]
+      (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5}
+                    {:token-layer-id tkl1 :text text2-id :begin 0 :end 7}]
             res (bulk-create-tokens admin-request tokens)]
         ;; Should fail because tokens span multiple documents
         (assert-status 400 res)))
 
     (testing "Bulk create tokens - cross-layer failure"
-      (let [tokens [{:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5}
-                    {:token-layer-id tkl2 :text-id text1-id :begin 6 :end 11}]
+      (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5}
+                    {:token-layer-id tkl2 :text text1-id :begin 6 :end 11}]
             res (bulk-create-tokens admin-request tokens)]
         ;; Should fail because tokens span multiple layers
         (assert-status 400 res)))
 
     (testing "Bulk create tokens - invalid extents"
-      (let [tokens [{:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5}
-                    {:token-layer-id tkl1 :text-id text1-id :begin 10 :end 5}] ; invalid: begin > end
+      (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5}
+                    {:token-layer-id tkl1 :text text1-id :begin 10 :end 5}] ; invalid: begin > end
             res (bulk-create-tokens admin-request tokens)]
         (assert-status 400 res)))
 
     (testing "Bulk create tokens - out of bounds"
-      (let [tokens [{:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5}
-                    {:token-layer-id tkl1 :text-id text1-id :begin 0 :end 100}] ; out of bounds
+      (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5}
+                    {:token-layer-id tkl1 :text text1-id :begin 0 :end 100}] ; out of bounds
             res (bulk-create-tokens admin-request tokens)]
         (assert-status 400 res)))
 
     (testing "Bulk delete tokens - success case"
       ;; First create some tokens
-      (let [tokens [{:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5}
-                    {:token-layer-id tkl1 :text-id text1-id :begin 6 :end 11}]
+      (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5}
+                    {:token-layer-id tkl1 :text text1-id :begin 6 :end 11}]
             create-res (bulk-create-tokens admin-request tokens)
             _ (assert-created create-res)
             token-ids (-> create-res :body :ids)
@@ -1516,8 +1516,8 @@
 
     (testing "Bulk delete tokens - partial failure with spans"
       ;; Create tokens and spans, then try to delete tokens with spans
-      (let [tokens [{:token-layer-id tkl1 :text-id text1-id :begin 0 :end 5}
-                    {:token-layer-id tkl1 :text-id text1-id :begin 6 :end 11}]
+      (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5}
+                    {:token-layer-id tkl1 :text text1-id :begin 6 :end 11}]
             create-res (bulk-create-tokens admin-request tokens)
             _ (assert-created create-res)
             token-ids (-> create-res :body :ids)

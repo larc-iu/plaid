@@ -48,7 +48,7 @@
   (let [_ (pxu/create {:node xtdb-node} "admin@example.com" true "password")
         req (rest-handler (-> (mock/request :post "/api/v1/login")
                               (mock/header "accept" "application/edn")
-                              (mock/json-body {:username "admin@example.com"
+                              (mock/json-body {:user-id "admin@example.com"
                                                :password "password"})))]
     (with-redefs [admin-token (-> req :body slurp read-string :token)]
       (f))))
@@ -60,11 +60,11 @@
         ;; Get tokens for test users
         user1-req (rest-handler (-> (mock/request :post "/api/v1/login")
                                     (mock/header "accept" "application/edn")
-                                    (mock/json-body {:username "user1@example.com"
+                                    (mock/json-body {:user-id "user1@example.com"
                                                      :password "password1"})))
         user2-req (rest-handler (-> (mock/request :post "/api/v1/login")
                                     (mock/header "accept" "application/edn")
-                                    (mock/json-body {:username "user2@example.com"
+                                    (mock/json-body {:user-id "user2@example.com"
                                                      :password "password2"})))]
     (with-redefs [user1-token (-> user1-req :body slurp read-string :token)
                   user2-token (-> user2-req :body slurp read-string :token)]
