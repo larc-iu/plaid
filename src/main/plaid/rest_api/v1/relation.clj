@@ -72,10 +72,10 @@
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{relations :body} :parameters xtdb :xtdb user-id :user/id}]
                                (let [relations-attrs (mapv (fn [relation-data]
-                                                             (let [{:keys [layer-id source-id target-id value metadata]} relation-data
-                                                                   attrs {:relation/layer layer-id
-                                                                          :relation/source source-id
-                                                                          :relation/target target-id
+                                                             (let [{:keys [relation-layer-id source target value metadata]} relation-data
+                                                                   attrs {:relation/layer relation-layer-id
+                                                                          :relation/source source
+                                                                          :relation/target target
                                                                           :relation/value value}]
                                                                (if metadata
                                                                  (assoc attrs :metadata metadata)
