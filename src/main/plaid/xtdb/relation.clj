@@ -14,12 +14,15 @@
                      :relation/value])
 
 ;; Queries ------------------------------------------------------------------------
+(defn format [raw-record]
+  (let [core-attrs (select-keys raw-record [:relation/id :relation/layer :relation/source :relation/target :relation/value])]
+    (metadata/add-metadata-to-response core-attrs raw-record "relation")))
+
 (defn get
   "Get a relation by ID, formatted for external consumption (API responses)."
   [db-like id]
   (when-let [relation-entity (pxc/find-entity (pxc/->db db-like) {:relation/id id})]
-    (let [core-attrs (select-keys relation-entity [:relation/id :relation/layer :relation/source :relation/target :relation/value])]
-      (metadata/add-metadata-to-response core-attrs relation-entity "relation"))))
+    (format relation-entity)))
 
 (defn project-id [db-like id]
   (-> (xt/q (pxc/->db db-like)

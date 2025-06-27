@@ -15,12 +15,15 @@
                 :token/precedence])
 
 ;; Queries ------------------------------------------------------------------------
+(defn format [raw-record]
+  (let [core-attrs (select-keys raw-record [:token/id :token/text :token/begin :token/end :token/layer :token/precedence])]
+    (metadata/add-metadata-to-response core-attrs raw-record "token")))
+
 (defn get
   "Get a token by ID, formatted for external consumption (API responses)."
   [db-like id]
   (when-let [token-entity (pxc/find-entity (pxc/->db db-like) {:token/id id})]
-    (let [core-attrs (select-keys token-entity [:token/id :token/text :token/begin :token/end :token/layer :token/precedence])]
-      (metadata/add-metadata-to-response core-attrs token-entity "token"))))
+    (format token-entity)))
 
 (defn project-id [db-like id]
   (-> (xt/q (pxc/->db db-like)

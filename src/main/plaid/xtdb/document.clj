@@ -46,17 +46,17 @@
 
 (defmethod get-doc-info :token-layer/id [db doc-id parent-id [key id]]
   (let [sl-ids (:token-layer/span-layers (pxc/entity db id))
-        token-ids (->> (xt/q db
-                             '{:find  [?tok]
-                               :where [[?tok :token/text ?txt]
-                                       [?tok :token/layer ?tokl]
-                                       [?txt :text/layer ?txtl]
-                                       [?txt :text/document ?doc]]
-                               :in    [[?txtl ?doc ?tokl]]}
-                             [parent-id doc-id id])
-                       (mapv first))
-        tokens (->> token-ids
-                    (mapv #(dissoc (token/get db %) :token/layer))
+        tokens (->> (xt/q db
+                          '{:find  [(pull ?tok [*])]
+                            :where [[?tok :token/text ?txt]
+                                    [?tok :token/layer ?tokl]
+                                    [?txt :text/layer ?txtl]
+                                    [?txt :text/document ?doc]]
+                            :in    [[?txtl ?doc ?tokl]]}
+                          [parent-id doc-id id])
+                    (mapv first)
+                    token/format
+                    (map #(dissoc % :token/layer))
                     tokl/sort-token-records)]
     (-> (select-keys (pxc/entity db id) [:token-layer/id :token-layer/name :config])
         (assoc :token-layer/tokens tokens)
@@ -64,34 +64,36 @@
 
 (defmethod get-doc-info :span-layer/id [db doc-id parent-id [key id]]
   (let [rl-ids (:span-layer/relation-layers (pxc/entity db id))
-        span-ids (->> (xt/q db
-                           '{:find  [?s]
-                             :where [[?s :span/tokens ?tok]
-                                     [?s :span/layer ?sl]
-                                     [?tok :token/layer ?tokl]
-                                     [?tok :token/text ?txt]
-                                     [?txt :text/document ?doc]]
-                             :in    [[?tokl ?doc ?sl]]}
-                           [parent-id doc-id id])
-                      (mapv first))
-        spans (mapv #(dissoc (s/get db %) :span/layer) span-ids)]
+        spans (->> (xt/q db
+                         '{:find  [(pull ?s [*])]
+                           :where [[?s :span/tokens ?tok]
+                                   [?s :span/layer ?sl]
+                                   [?tok :token/layer ?tokl]
+                                   [?tok :token/text ?txt]
+                                   [?txt :text/document ?doc]]
+                           :in    [[?tokl ?doc ?sl]]}
+                         [parent-id doc-id id])
+                   (mapv first)
+                   s/format
+                   (map #(dissoc % :span/layer)))]
     (-> (select-keys (pxc/entity db id) [:span-layer/id :span-layer/name :config])
         (assoc :span-layer/spans spans)
         (assoc :span-layer/relation-layers (mapv #(get-doc-info db doc-id id [:relation-layer/id %]) rl-ids)))))
 
 (defmethod get-doc-info :relation-layer/id [db doc-id parent-id [key id]]
-  (let [relation-ids (->> (xt/q db
-                                '{:find  [?r]
-                                  :where [[?r :relation/source ?s]
-                                          [?r :relation/layer ?rl]
-                                          [?s :span/layer ?sl]
-                                          [?s :span/tokens ?tok]
-                                          [?tok :token/text ?txt]
-                                          [?txt :text/document ?doc]]
-                                  :in    [[?sl ?doc ?rl]]}
-                                [parent-id doc-id id])
-                          (mapv first))
-        relations (mapv #(dissoc (r/get db %) :relation/layer) relation-ids)]
+  (let [relations (->> (xt/q db
+                             '{:find  [(pull ?r [*])]
+                               :where [[?r :relation/source ?s]
+                                       [?r :relation/layer ?rl]
+                                       [?s :span/layer ?sl]
+                                       [?s :span/tokens ?tok]
+                                       [?tok :token/text ?txt]
+                                       [?txt :text/document ?doc]]
+                               :in    [[?sl ?doc ?rl]]}
+                             [parent-id doc-id id])
+                       (mapv first)
+                       r/format
+                       (map #(dissoc % :relation/layer)))]
     (-> (select-keys (pxc/entity db id) [:relation-layer/id :relation-layer/name :config])
         (assoc :relation-layer/relations relations))))
 
