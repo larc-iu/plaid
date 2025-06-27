@@ -137,7 +137,7 @@
         
         ;; Handle array schemas at the top level
         (= schema-type "array")
-        [{:name "operations"
+        [{:name "body"
           :original-name "body"
           :required? true
           :type "array"}]

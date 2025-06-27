@@ -25,8 +25,8 @@ interface SpansBundle {
   get(spanId: string, asOf?: string): Promise<any>;
   delete(spanId: string): Promise<any>;
   update(spanId: string, value: any): Promise<any>;
-  bulkCreate(operations: any[]): Promise<any>;
-  bulkDelete(operations: any[]): Promise<any>;
+  bulkCreate(body: any[]): Promise<any>;
+  bulkDelete(body: any[]): Promise<any>;
   setMetadata(spanId: string, body: any): Promise<any>;
   deleteMetadata(spanId: string): Promise<any>;
 }
@@ -100,7 +100,7 @@ interface LoginBundle {
 }
 
 interface BulkBundle {
-  submit(operations: any[]): Promise<any>;
+  submit(body: any[]): Promise<any>;
 }
 
 interface RelationLayersBundle {
@@ -118,8 +118,8 @@ interface TokensBundle {
   get(tokenId: string, asOf?: string): Promise<any>;
   delete(tokenId: string): Promise<any>;
   update(tokenId: string, begin?: number, end?: number, precedence?: number): Promise<any>;
-  bulkCreate(operations: any[]): Promise<any>;
-  bulkDelete(operations: any[]): Promise<any>;
+  bulkCreate(body: any[]): Promise<any>;
+  bulkDelete(body: any[]): Promise<any>;
   setMetadata(tokenId: string, body: any): Promise<any>;
   deleteMetadata(tokenId: string): Promise<any>;
 }
