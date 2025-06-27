@@ -1,5 +1,6 @@
 (ns plaid.xtdb.project
-  (:require [xtdb.api :as xt]
+  (:require [plaid.xtdb.user :as user]
+            [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.text-layer :as txtl])
@@ -47,10 +48,9 @@
   [db-like id]
   (:project/maintainers (pxc/entity (pxc/->db db-like) id)))
 
-(defn get-all
+(defn get-all-ids
   [db-like]
-  (->> (pxc/find-entities (pxc/->db db-like) {:project/id '_})
-       (mapv #(dissoc % :xt/id))))
+  (->> (pxc/find-entities (pxc/->db db-like) {:project/id '_})))
 
 (defn get-accessible-ids [db-like user-id]
   (let [db (pxc/->db db-like)]
@@ -63,8 +63,11 @@
 
 (defn get-accessible
   [db-like user-id]
-  (->> (get-accessible-ids db-like user-id)
-       (mapv #(get db-like %))))
+  (if (user/admin? (user/get db-like user-id))
+    (->> (get-all-ids db-like)
+         (mapv #(get db-like %)))
+    (->> (get-accessible-ids db-like user-id)
+         (mapv #(get db-like %)))))
 
 (defn get-by-name
   [db-like name]
