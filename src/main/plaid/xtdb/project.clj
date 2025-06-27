@@ -50,7 +50,7 @@
 
 (defn get-all-ids
   [db-like]
-  (->> (pxc/find-entities (pxc/->db db-like) {:project/id '_})))
+  (->> (pxc/find-entity-ids (pxc/->db db-like) {:project/id '_})))
 
 (defn get-accessible-ids [db-like user-id]
   (let [db (pxc/->db db-like)]
