@@ -42,7 +42,7 @@
         token-layers (mapv #(get-doc-info db doc-id id [:token-layer/id %]) tokl-ids)]
     (-> (select-keys (pxc/entity db id) [:text-layer/id :text-layer/name :config])
         (assoc :text-layer/token-layers token-layers)
-        (cond-> (some? text) (assoc :text-layer/text text)))))
+        (assoc :text-layer/text text))))
 
 (defmethod get-doc-info :token-layer/id [db doc-id parent-id [key id]]
   (let [sl-ids (:token-layer/span-layers (pxc/entity db id))
