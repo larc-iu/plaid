@@ -56,21 +56,21 @@
 
    ["/bulk" {:conflicting true
              :post {:summary "Create multiple tokens in a single operation."
-                    :openapi {:x-client-method "bulkCreate"}
+                    :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]]
                     :parameters {:body [:sequential
                                         [:map
                                          [:token-layer-id :uuid]
-                                         [:text-id :uuid]
+                                         [:text :uuid]
                                          [:begin int?]
                                          [:end int?]
                                          [:precedence {:optional true} int?]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{tokens :body} :parameters xtdb :xtdb user-id :user/id}]
                                (let [tokens-attrs (mapv (fn [token-data]
-                                                          (let [{:keys [token-layer-id text-id begin end precedence metadata]} token-data
+                                                          (let [{:keys [token-layer-id text begin end precedence metadata]} token-data
                                                                 attrs (cond-> {:token/layer token-layer-id
-                                                                               :token/text text-id
+                                                                               :token/text text
                                                                                :token/begin begin
                                                                                :token/end end}
                                                                               (some? precedence) (assoc :token/precedence precedence))]
