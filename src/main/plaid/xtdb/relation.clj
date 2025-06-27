@@ -71,6 +71,7 @@
   (let [{:keys [db node] :as xt-map} (pxc/ensure-db xt-map)
         relation-attrs (filter (fn [[k v]] (relation-attr? k)) attrs)
         {:relation/keys [id layer source target] :as r} (clojure.core/merge (pxc/new-record "relation")
+                                                                            {:relation/-document (get-doc-id-of-span db (:relation/source attrs))}
                                                                             (into {} relation-attrs))
         source-record (pxc/entity db source)
         target-record (pxc/entity db target)]
@@ -330,6 +331,7 @@
           (fn [tx-ops attrs]
             (let [relation-attrs (filter (fn [[k v]] (relation-attr? k)) attrs)
                   {:relation/keys [id layer source target] :as relation} (clojure.core/merge (pxc/new-record "relation")
+                                                                                             {:relation/-document (get-doc-id-of-span db (:relation/source attrs))}
                                                                                              (into {} relation-attrs))
                   source-record (pxc/entity db source)
                   target-record (pxc/entity db target)]

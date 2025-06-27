@@ -146,6 +146,7 @@
   (let [{:keys [db node] :as xt-map} (pxc/ensure-db xt-map)
         token-attrs (filter (fn [[k v]] (token-attr? k)) attrs)
         {:token/keys [text layer] :as token} (clojure.core/merge (pxc/new-record "token")
+                                                                 {:token/-document (get-doc-id-of-text db (:token/text attrs))}
                                                                  (into {} token-attrs))]
     (schema-check! db token)
     [[::xt/match layer (pxc/entity db layer)]
@@ -307,7 +308,9 @@
         (reduce
           (fn [tx-ops attrs]
             (let [token-attrs (filter (fn [[k v]] (token-attr? k)) attrs)
-                  {:token/keys [id] :as token} (clojure.core/merge (pxc/new-record "token") (into {} token-attrs))
+                  {:token/keys [id] :as token} (clojure.core/merge (pxc/new-record "token")
+                                                                   {:token/-document (get-doc-id-of-text db (:token/text attrs))}
+                                                                   (into {} token-attrs))
                   _ (schema-check! db token (not (empty? tx-ops)))]
               (into tx-ops [[::xt/match id nil]
                             [::xt/put token]])))

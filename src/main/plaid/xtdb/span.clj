@@ -112,6 +112,7 @@
   (let [{:keys [db node] :as xt-map} (pxc/ensure-db xt-map)
         span-attrs (filter (fn [[k v]] (span-attr? k)) attrs)
         {:span/keys [id tokens layer value] :as span} (clojure.core/merge (pxc/new-record "span")
+                                                                          {:span/-document (get-doc-id-of-token db (-> attrs :span/tokens first))}
                                                                           (into {} span-attrs))
         token-records (map #(pxc/entity db %) tokens)]
     (validate-atomic-value! value)
@@ -339,6 +340,7 @@
           (fn [tx-ops attrs]
             (let [span-attrs (filter (fn [[k v]] (span-attr? k)) attrs)
                   {:span/keys [id tokens value] :as span} (clojure.core/merge (pxc/new-record "span")
+                                                                              {:span/-document (get-doc-id-of-token db (-> attrs :span/tokens first))}
                                                                               (into {} span-attrs))
                   token-records (map #(pxc/entity db %) tokens)]
               ;; Validate this span's attributes
