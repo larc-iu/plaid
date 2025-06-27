@@ -44,7 +44,12 @@ export const AuthProvider = ({ children }) => {
 
   const updateUser = (updates) => {
     if (user) {
-      setUser(prev => ({ ...prev, ...updates }));
+      const updatedUser = { ...user, ...updates };
+      setUser(updatedUser);
+      // Also update localStorage if isAdmin changes
+      if ('isAdmin' in updates) {
+        localStorage.setItem('isAdmin', (updates.isAdmin || false).toString());
+      }
     }
   };
 

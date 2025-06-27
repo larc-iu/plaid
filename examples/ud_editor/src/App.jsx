@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { UserProfile } from './components/auth/UserProfile';
 import { ProjectList } from './components/projects/ProjectList';
+import { ProjectManagement } from './components/projects/ProjectManagement';
 import { DocumentList } from './components/documents/DocumentList';
 import { TextEditor } from './components/editor/TextEditor';
 import { AnnotationEditor } from './components/editor/AnnotationEditor';
@@ -36,6 +37,9 @@ function App() {
             
             {/* Documents page */}
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
+            
+            {/* Project management page */}
+            <Route path="projects/:projectId/management" element={<ProjectManagement />} />
             
             {/* Text editor route */}
             <Route path="projects/:projectId/documents/:documentId/edit" element={<TextEditor />} />
