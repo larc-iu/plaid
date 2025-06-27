@@ -291,3 +291,155 @@
   (letfn [(project-id-fn [db eid] (project-id db eid))
           (document-id-fn [db relation] (get-doc-id-of-span db (:relation/source relation)))]
     (metadata/delete-metadata xt-map eid user-id "relation" project-id-fn document-id-fn)))
+
+(defn bulk-create*
+  "Create multiple relations in a single transaction"
+  [xt-map relations-attrs]
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
+        layer (-> relations-attrs first :relation/layer)
+        layer-entity (pxc/entity db layer)
+        relations-attrs (mapv (fn [attrs]
+                               (if (:metadata attrs)
+                                 (let [metadata (:metadata attrs)
+                                       relation-attrs (dissoc attrs :metadata)
+                                       metadata-attrs (when metadata
+                                                        (metadata/transform-metadata-for-storage metadata "relation"))]
+                                   (clojure.core/merge relation-attrs metadata-attrs))
+                                 (dissoc attrs :metadata)))
+                             relations-attrs)]
+    ;; Validate all relations are for the same layer
+    (when-not (= 1 (->> relations-attrs (map :relation/layer) distinct count))
+      (throw (ex-info "Relations must all belong to the same layer" {:code 400})))
+
+    ;; Validate all relations belong to the same document (via their spans)
+    (let [doc-ids (->> relations-attrs
+                       (map :relation/source)
+                       (map (partial get-doc-id-of-span db))
+                       distinct)]
+      (when-not (= 1 (count doc-ids))
+        (throw (ex-info "Not all relations belong to the same document" {:document-ids doc-ids :code 400}))))
+
+    ;; If validation passes, create transaction operations
+    (vec
+      (concat
+        [[::xt/match layer layer-entity]]
+        (reduce
+          (fn [tx-ops attrs]
+            (let [relation-attrs (filter (fn [[k v]] (relation-attr? k)) attrs)
+                  {:relation/keys [id layer source target] :as relation} (clojure.core/merge (pxc/new-record "relation")
+                                                                                             (into {} relation-attrs))
+                  source-record (pxc/entity db source)
+                  target-record (pxc/entity db target)]
+              ;; Validate this relation's attributes (same validation as single create)
+              (cond
+                ;; ID is not already taken?
+                (some? (pxc/entity db id))
+                (throw (ex-info (pxc/err-msg-already-exists "Relation" id) {:id id :code 409}))
+
+                ;; Source span exists?
+                (not (:span/id source-record))
+                (throw (ex-info (str "Source span " source " does not exist") {:id source :code 400}))
+
+                ;; Target span exists?
+                (not (:span/id target-record))
+                (throw (ex-info (str "Target span " target " does not exist") {:id target :code 400}))
+
+                ;; Source and target spans in same layer?
+                (not= (:span/layer source-record) (:span/layer target-record))
+                (throw (ex-info "Source and target relations must be contained in a single span layer."
+                                {:source-layer (:span/layer source-record)
+                                 :target-layer (:span/layer target-record)
+                                 :code         400}))
+
+                ;; Relation layer linked to span layer?
+                (not ((set (:span-layer/relation-layers (pxc/entity db (:span/layer source-record)))) layer))
+                (throw (ex-info (str "Relation layer " layer " is not connected to span layer " (:span/layer source-record))
+                                {:relation-layer layer :span-layer (:span/layer source-record) :code 400}))
+
+                ;; Source and target spans in same doc?
+                (not= (get-doc-id-of-span db source) (get-doc-id-of-span db target))
+                (throw (ex-info "Source and target relations must be in a single document."
+                                {:source-document (get-doc-id-of-span db source)
+                                 :target-document (get-doc-id-of-span db target)
+                                 :code            400}))
+
+                :else
+                (into tx-ops [[::xt/match id nil]
+                              [::xt/match source source-record]
+                              [::xt/match target target-record]
+                              [::xt/put relation]]))))
+          []
+          relations-attrs)))))
+
+(defn bulk-create-operation
+  "Build an operation for creating multiple relations"
+  [xt-map relations-attrs]
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
+        ;; Get project and document info from first relation (assuming all in same project/doc)
+        first-attrs (first relations-attrs)
+        {:relation/keys [layer source]} first-attrs
+        project-id (project-id-from-layer db layer)
+        doc-id (get-doc-id-of-span db source)
+        tx-ops (bulk-create* xt-map relations-attrs)]
+    (op/make-operation
+      {:type        :relation/bulk-create
+       :project     project-id
+       :document    doc-id
+       :description (str "Bulk create " (count relations-attrs) " relations in layer " layer)
+       :tx-ops      tx-ops})))
+
+(defn bulk-create
+  "Create multiple relations in a single operation"
+  [xt-map relations-attrs user-id]
+  (submit-operations-with-extras!
+    xt-map
+    [(bulk-create-operation xt-map relations-attrs)]
+    user-id
+    (fn [tx]
+      (vec (for [[op-type record] tx
+                 :when (and (= op-type ::xt/put)
+                            (:relation/id record))]
+             (:relation/id record))))))
+
+(defn bulk-delete*
+  "Delete multiple relations in a single transaction"
+  [xt-map eids]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        relations-attrs (mapv #(pxc/entity db %) eids)]
+    ;; Validate all relations belong to the same document
+    (let [doc-ids (->> relations-attrs
+                       (map :relation/source)
+                       (map (partial get-doc-id-of-span db))
+                       distinct)]
+      (when-not (= 1 (count doc-ids))
+        (throw (ex-info "Not all relations belong to the same document" {:document-ids doc-ids :code 400}))))
+
+    ;; Delete all relations
+    (vec
+      (for [eid eids
+            :let [relation (pxc/entity db eid)]
+            :when relation
+            op [[::xt/match eid relation]
+                [::xt/delete eid]]]
+        op))))
+
+(defn bulk-delete-operation
+  "Build an operation for deleting multiple relations"
+  [xt-map eids]
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
+        ;; Get project info from first relation
+        first-relation (pxc/entity db (first eids))
+        project-id (when first-relation (project-id db (first eids)))
+        doc-id (when first-relation (get-doc-id-of-span db (:relation/source first-relation)))
+        tx-ops (bulk-delete* xt-map eids)]
+    (op/make-operation
+      {:type        :relation/bulk-delete
+       :project     project-id
+       :document    doc-id
+       :description (str "Bulk delete " (count eids) " relations")
+       :tx-ops      tx-ops})))
+
+(defn bulk-delete
+  "Delete multiple relations in a single operation"
+  [xt-map eids user-id]
+  (submit-operations! xt-map [(bulk-delete-operation xt-map eids)] user-id))

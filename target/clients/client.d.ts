@@ -7,6 +7,8 @@ interface RelationsBundle {
   update(relationId: string, value: any): Promise<any>;
   setSource(relationId: string, spanId: string): Promise<any>;
   create(layerId: string, sourceId: string, targetId: string, value: any, metadata?: any): Promise<any>;
+  bulkCreate(body: any[]): Promise<any>;
+  bulkDelete(body: any[]): Promise<any>;
 }
 
 interface SpanLayersBundle {

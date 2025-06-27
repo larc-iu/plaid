@@ -55,7 +55,14 @@
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
-             :post {:summary "Create multiple tokens in a single operation."
+             :post {:summary (str "Create multiple tokens in a single operation. Provide an array of objects whose keys"
+                                  "are:\n"
+                                  "<body>token-layer-id</body>, the token's layer\n"
+                                  "<body>text</body>, the ID of the token's text\n"
+                                  "<body>begin</body>, the character index at which the token begins (inclusive)\n"
+                                  "<body>end</body>, the character index at which the token ends (exclusive)\n"
+                                  "<body>precedence</body>, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same <body>begin</body>\n"
+                                  "<body>metadata</body>, an optional map of metadata")
                     :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]]
                     :parameters {:body [:sequential
@@ -82,7 +89,7 @@
                                  (if (:success result)
                                    {:status 201 :body {:ids (:extra result)}}
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
-             :delete {:summary "Delete multiple tokens in a single operation."
+             :delete {:summary "Delete multiple tokens in a single operation. Provide an array of IDs."
                       :openapi {:x-client-method "bulkDelete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]]
                       :parameters {:body [:sequential :uuid]}

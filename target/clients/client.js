@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Thu Jun 26 22:54:03 EDT 2025
+ * Generated on: Thu Jun 26 23:09:24 EDT 2025
  */
 
 class PlaidClient {
@@ -73,7 +73,22 @@ targetId: the target span this relation goes to
  * @param {any} value - Required. Value
  * @param {any} [metadata] - Optional. Metadata
        */
-      create: this._relationsCreate.bind(this)
+      create: this._relationsCreate.bind(this),
+      /**
+       * Create multiple relations in a single operation. Provide an array of objects whose keysare:
+relationLayerId, the relation's layer
+source, the span id of the relation's source
+target, the span id of the relation's target
+value, the relation's value
+metadata, an optional map of metadata
+ * @param {Array} body - Required. Body
+       */
+      bulkCreate: this._relationsBulkCreate.bind(this),
+      /**
+       * Delete multiple relations in a single operation. Provide an array of IDs.
+ * @param {Array} body - Required. Body
+       */
+      bulkDelete: this._relationsBulkDelete.bind(this)
     };
     this.spanLayers = {
       /**
@@ -159,12 +174,16 @@ metadata: optional key-value pairs for additional annotation data.
        */
       update: this._spansUpdate.bind(this),
       /**
-       * Create multiple spans in a single operation.
+       * Create multiple spans in a single operation. Provide an array of objects whose keysare:
+spanLayerId, the span's layer
+tokens, the IDs of the span's constituent tokens
+value, the relation's value
+metadata, an optional map of metadata
  * @param {Array} body - Required. Body
        */
       bulkCreate: this._spansBulkCreate.bind(this),
       /**
-       * Delete multiple spans in a single operation.
+       * Delete multiple spans in a single operation. Provide an array of IDs.
  * @param {Array} body - Required. Body
        */
       bulkDelete: this._spansBulkDelete.bind(this),
@@ -587,12 +606,18 @@ precedence: ordering value for the token relative to other tokens with the same 
        */
       update: this._tokensUpdate.bind(this),
       /**
-       * Create multiple tokens in a single operation.
+       * Create multiple tokens in a single operation. Provide an array of objects whose keysare:
+tokenLayerId, the token's layer
+text, the ID of the token's text
+begin, the character index at which the token begins (inclusive)
+end, the character index at which the token ends (exclusive)
+precedence, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same begin
+metadata, an optional map of metadata
  * @param {Array} body - Required. Body
        */
       bulkCreate: this._tokensBulkCreate.bind(this),
       /**
-       * Delete multiple tokens in a single operation.
+       * Delete multiple tokens in a single operation. Provide an array of IDs.
  * @param {Array} body - Required. Body
        */
       bulkDelete: this._tokensBulkDelete.bind(this),
@@ -1133,6 +1158,105 @@ targetId: the target span this relation goes to
       error.statusText = response.statusText;
       error.url = url;
       error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Create multiple relations in a single operation. Provide an array of objects whose keysare:
+relationLayerId, the relation's layer
+source, the span id of the relation's source
+target, the span id of the relation's target
+value, the relation's value
+metadata, an optional map of metadata
+   */
+  async _relationsBulkCreate(body) {
+    const url = `${this.baseUrl}/api/v1/relations/bulk`;
+    const requestBody = this._transformRequest(body);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Delete multiple relations in a single operation. Provide an array of IDs.
+   */
+  async _relationsBulkDelete(body) {
+    const url = `${this.baseUrl}/api/v1/relations/bulk`;
+    const requestBody = this._transformRequest(body);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
@@ -1746,7 +1870,11 @@ metadata: optional key-value pairs for additional annotation data.
   }
 
   /**
-   * Create multiple spans in a single operation.
+   * Create multiple spans in a single operation. Provide an array of objects whose keysare:
+spanLayerId, the span's layer
+tokens, the IDs of the span's constituent tokens
+value, the relation's value
+metadata, an optional map of metadata
    */
   async _spansBulkCreate(body) {
     const url = `${this.baseUrl}/api/v1/spans/bulk`;
@@ -1793,7 +1921,7 @@ metadata: optional key-value pairs for additional annotation data.
   }
 
   /**
-   * Delete multiple spans in a single operation.
+   * Delete multiple spans in a single operation. Provide an array of IDs.
    */
   async _spansBulkDelete(body) {
     const url = `${this.baseUrl}/api/v1/spans/bulk`;
@@ -4983,7 +5111,13 @@ precedence: ordering value for the token relative to other tokens with the same 
   }
 
   /**
-   * Create multiple tokens in a single operation.
+   * Create multiple tokens in a single operation. Provide an array of objects whose keysare:
+tokenLayerId, the token's layer
+text, the ID of the token's text
+begin, the character index at which the token begins (inclusive)
+end, the character index at which the token ends (exclusive)
+precedence, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same begin
+metadata, an optional map of metadata
    */
   async _tokensBulkCreate(body) {
     const url = `${this.baseUrl}/api/v1/tokens/bulk`;
@@ -5030,7 +5164,7 @@ precedence: ordering value for the token relative to other tokens with the same 
   }
 
   /**
-   * Delete multiple tokens in a single operation.
+   * Delete multiple tokens in a single operation. Provide an array of IDs.
    */
   async _tokensBulkDelete(body) {
     const url = `${this.baseUrl}/api/v1/tokens/bulk`;

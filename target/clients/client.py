@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Thu Jun 26 22:54:05 EDT 2025
+Generated on: Thu Jun 26 23:09:25 EDT 2025
 """
 
 import requests
@@ -627,6 +627,148 @@ target_id: the target span this relation goes to
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def bulk_create(self, body: List[Any]) -> Any:
+        """
+        Create multiple relations in a single operation. Provide an array of objects whose keysare:
+relation_layer_id, the relation's layer
+source, the span id of the relation's source
+target, the span id of the relation's target
+value, the relation's value
+metadata, an optional map of metadata
+
+        Args:
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/relations/bulk"
+        body_data = body
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def bulk_create_async(self, body: List[Any]) -> Any:
+        """
+        Create multiple relations in a single operation. Provide an array of objects whose keysare:
+relation_layer_id, the relation's layer
+source, the span id of the relation's source
+target, the span id of the relation's target
+value, the relation's value
+metadata, an optional map of metadata
+
+        Args:
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/relations/bulk"
+        body_data = body
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text()
+
+    def bulk_delete(self, body: List[Any]) -> Any:
+        """
+        Delete multiple relations in a single operation. Provide an array of IDs.
+
+        Args:
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/relations/bulk"
+        body_data = body
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text()
+
+    async def bulk_delete_async(self, body: List[Any]) -> Any:
+        """
+        Delete multiple relations in a single operation. Provide an array of IDs.
+
+        Args:
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/relations/bulk"
+        body_data = body
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
                 content_type = response.headers.get('content-type', '').lower()
@@ -1567,7 +1709,11 @@ metadata: optional key-value pairs for additional annotation data.
 
     def bulk_create(self, body: List[Any]) -> Any:
         """
-        Create multiple spans in a single operation.
+        Create multiple spans in a single operation. Provide an array of objects whose keysare:
+span_layer_id, the span's layer
+tokens, the IDs of the span's constituent tokens
+value, the relation's value
+metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
@@ -1599,7 +1745,11 @@ metadata: optional key-value pairs for additional annotation data.
 
     async def bulk_create_async(self, body: List[Any]) -> Any:
         """
-        Create multiple spans in a single operation.
+        Create multiple spans in a single operation. Provide an array of objects whose keysare:
+span_layer_id, the span's layer
+tokens, the IDs of the span's constituent tokens
+value, the relation's value
+metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
@@ -1633,7 +1783,7 @@ metadata: optional key-value pairs for additional annotation data.
 
     def bulk_delete(self, body: List[Any]) -> Any:
         """
-        Delete multiple spans in a single operation.
+        Delete multiple spans in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
@@ -1665,7 +1815,7 @@ metadata: optional key-value pairs for additional annotation data.
 
     async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
-        Delete multiple spans in a single operation.
+        Delete multiple spans in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
@@ -6443,7 +6593,13 @@ precedence: ordering value for the token relative to other tokens with the same 
 
     def bulk_create(self, body: List[Any]) -> Any:
         """
-        Create multiple tokens in a single operation.
+        Create multiple tokens in a single operation. Provide an array of objects whose keysare:
+token_layer_id, the token's layer
+text, the ID of the token's text
+begin, the character index at which the token begins (inclusive)
+end, the character index at which the token ends (exclusive)
+precedence, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same begin
+metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
@@ -6475,7 +6631,13 @@ precedence: ordering value for the token relative to other tokens with the same 
 
     async def bulk_create_async(self, body: List[Any]) -> Any:
         """
-        Create multiple tokens in a single operation.
+        Create multiple tokens in a single operation. Provide an array of objects whose keysare:
+token_layer_id, the token's layer
+text, the ID of the token's text
+begin, the character index at which the token begins (inclusive)
+end, the character index at which the token ends (exclusive)
+precedence, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same begin
+metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
@@ -6509,7 +6671,7 @@ precedence: ordering value for the token relative to other tokens with the same 
 
     def bulk_delete(self, body: List[Any]) -> Any:
         """
-        Delete multiple tokens in a single operation.
+        Delete multiple tokens in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
@@ -6541,7 +6703,7 @@ precedence: ordering value for the token relative to other tokens with the same 
 
     async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
-        Delete multiple tokens in a single operation.
+        Delete multiple tokens in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
