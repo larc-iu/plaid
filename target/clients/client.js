@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Thu Jun 26 17:09:06 EDT 2025
+ * Generated on: Thu Jun 26 22:54:03 EDT 2025
  */
 
 class PlaidClient {
@@ -160,12 +160,12 @@ metadata: optional key-value pairs for additional annotation data.
       update: this._spansUpdate.bind(this),
       /**
        * Create multiple spans in a single operation.
- * @param {Array} operations - Required. Operations
+ * @param {Array} body - Required. Body
        */
       bulkCreate: this._spansBulkCreate.bind(this),
       /**
        * Delete multiple spans in a single operation.
- * @param {Array} operations - Required. Operations
+ * @param {Array} body - Required. Body
        */
       bulkDelete: this._spansBulkDelete.bind(this),
       /**
@@ -496,7 +496,7 @@ name: update a document's name.
     this.bulk = {
       /**
        * Execute multiple API operations in a single request.
- * @param {Array} operations - Required. Operations
+ * @param {Array} body - Required. Body
        */
       submit: this._bulkSubmit.bind(this)
     };
@@ -588,12 +588,12 @@ precedence: ordering value for the token relative to other tokens with the same 
       update: this._tokensUpdate.bind(this),
       /**
        * Create multiple tokens in a single operation.
- * @param {Array} operations - Required. Operations
+ * @param {Array} body - Required. Body
        */
       bulkCreate: this._tokensBulkCreate.bind(this),
       /**
        * Delete multiple tokens in a single operation.
- * @param {Array} operations - Required. Operations
+ * @param {Array} body - Required. Body
        */
       bulkDelete: this._tokensBulkDelete.bind(this),
       /**
@@ -1748,9 +1748,9 @@ metadata: optional key-value pairs for additional annotation data.
   /**
    * Create multiple spans in a single operation.
    */
-  async _spansBulkCreate(operations) {
+  async _spansBulkCreate(body) {
     const url = `${this.baseUrl}/api/v1/spans/bulk`;
-    const requestBody = this._transformRequest(operations);
+    const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1795,9 +1795,9 @@ metadata: optional key-value pairs for additional annotation data.
   /**
    * Delete multiple spans in a single operation.
    */
-  async _spansBulkDelete(operations) {
+  async _spansBulkDelete(body) {
     const url = `${this.baseUrl}/api/v1/spans/bulk`;
-    const requestBody = this._transformRequest(operations);
+    const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4381,9 +4381,9 @@ name: update a document's name.
   /**
    * Execute multiple API operations in a single request.
    */
-  async _bulkSubmit(operations) {
+  async _bulkSubmit(body) {
     const url = `${this.baseUrl}/api/v1/bulk`;
-    const requestBody = this._transformRequest(operations);
+    const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4985,9 +4985,9 @@ precedence: ordering value for the token relative to other tokens with the same 
   /**
    * Create multiple tokens in a single operation.
    */
-  async _tokensBulkCreate(operations) {
+  async _tokensBulkCreate(body) {
     const url = `${this.baseUrl}/api/v1/tokens/bulk`;
-    const requestBody = this._transformRequest(operations);
+    const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5032,9 +5032,9 @@ precedence: ordering value for the token relative to other tokens with the same 
   /**
    * Delete multiple tokens in a single operation.
    */
-  async _tokensBulkDelete(operations) {
+  async _tokensBulkDelete(body) {
     const url = `${this.baseUrl}/api/v1/tokens/bulk`;
-    const requestBody = this._transformRequest(operations);
+    const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {

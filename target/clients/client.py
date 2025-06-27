@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Thu Jun 26 17:09:07 EDT 2025
+Generated on: Thu Jun 26 22:54:05 EDT 2025
 """
 
 import requests
@@ -1565,15 +1565,15 @@ metadata: optional key-value pairs for additional annotation data.
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def bulk_create(self, operations: List[Any]) -> Any:
+    def bulk_create(self, body: List[Any]) -> Any:
         """
         Create multiple spans in a single operation.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1597,15 +1597,15 @@ metadata: optional key-value pairs for additional annotation data.
             return self.client._transform_response(data)
         return response.text()
 
-    async def bulk_create_async(self, operations: List[Any]) -> Any:
+    async def bulk_create_async(self, body: List[Any]) -> Any:
         """
         Create multiple spans in a single operation.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1631,15 +1631,15 @@ metadata: optional key-value pairs for additional annotation data.
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def bulk_delete(self, operations: List[Any]) -> Any:
+    def bulk_delete(self, body: List[Any]) -> Any:
         """
         Delete multiple spans in a single operation.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1663,15 +1663,15 @@ metadata: optional key-value pairs for additional annotation data.
             return self.client._transform_response(data)
         return response.text()
 
-    async def bulk_delete_async(self, operations: List[Any]) -> Any:
+    async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
         Delete multiple spans in a single operation.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -5497,15 +5497,15 @@ class BulkResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def submit(self, operations: List[Any]) -> Any:
+    def submit(self, body: List[Any]) -> Any:
         """
         Execute multiple API operations in a single request.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -5529,15 +5529,15 @@ class BulkResource:
             return self.client._transform_response(data)
         return response.text()
 
-    async def submit_async(self, operations: List[Any]) -> Any:
+    async def submit_async(self, body: List[Any]) -> Any:
         """
         Execute multiple API operations in a single request.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6441,15 +6441,15 @@ precedence: ordering value for the token relative to other tokens with the same 
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def bulk_create(self, operations: List[Any]) -> Any:
+    def bulk_create(self, body: List[Any]) -> Any:
         """
         Create multiple tokens in a single operation.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6473,15 +6473,15 @@ precedence: ordering value for the token relative to other tokens with the same 
             return self.client._transform_response(data)
         return response.text()
 
-    async def bulk_create_async(self, operations: List[Any]) -> Any:
+    async def bulk_create_async(self, body: List[Any]) -> Any:
         """
         Create multiple tokens in a single operation.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6507,15 +6507,15 @@ precedence: ordering value for the token relative to other tokens with the same 
                     return self.client._transform_response(data)
                 return await response.text()
 
-    def bulk_delete(self, operations: List[Any]) -> Any:
+    def bulk_delete(self, body: List[Any]) -> Any:
         """
         Delete multiple tokens in a single operation.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6539,15 +6539,15 @@ precedence: ordering value for the token relative to other tokens with the same 
             return self.client._transform_response(data)
         return response.text()
 
-    async def bulk_delete_async(self, operations: List[Any]) -> Any:
+    async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
         Delete multiple tokens in a single operation.
 
         Args:
-            operations: Required body parameter
+            body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        body_data = operations
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
