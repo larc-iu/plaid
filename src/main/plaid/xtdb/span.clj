@@ -13,12 +13,15 @@
                      :span/layer])
 
 ;; Queries ------------------------------------------------------------------------
+(defn format [raw-record]
+  (let [core-attrs (select-keys raw-record [:span/id :span/value :span/tokens])]
+    (metadata/add-metadata-to-response core-attrs raw-record "span")))
+
 (defn get
   "Get a span by ID, formatted for external consumption (API responses)."
   [db-like id]
   (when-let [span-entity (pxc/find-entity (pxc/->db db-like) {:span/id id})]
-    (let [core-attrs (select-keys span-entity [:span/id :span/value :span/tokens])]
-      (metadata/add-metadata-to-response core-attrs span-entity "span"))))
+    (format span-entity)))
 
 (defn project-id [db-like id]
   (-> (xt/q (pxc/->db db-like)
