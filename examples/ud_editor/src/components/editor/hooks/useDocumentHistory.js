@@ -7,6 +7,7 @@ export const useDocumentHistory = (documentId) => {
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [error, setError] = useState('');
+  const [hasLoadedAudit, setHasLoadedAudit] = useState(false);
   const { getClient } = useAuth();
 
   // Fetch audit log entries
@@ -23,6 +24,7 @@ export const useDocumentHistory = (documentId) => {
 
       const auditData = await client.documents.audit(documentId);
       setAuditEntries(auditData || []);
+      setHasLoadedAudit(true);
       setError('');
     } catch (err) {
       if (err.status === 401) {
@@ -71,20 +73,15 @@ export const useDocumentHistory = (documentId) => {
     setError('');
   }, []);
 
-  useEffect(() => {
-    if (documentId) {
-      fetchAuditLog();
-    }
-  }, [fetchAuditLog]);
-
   return {
     auditEntries,
     historicalDocument,
     loadingAudit,
     loadingHistorical,
     error,
+    hasLoadedAudit,
     fetchHistoricalDocument,
     clearHistoricalDocument,
-    refreshAuditLog: fetchAuditLog
+    fetchAuditLog
   };
 };

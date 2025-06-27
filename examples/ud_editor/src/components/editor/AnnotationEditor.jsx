@@ -35,8 +35,10 @@ export const AnnotationEditor = () => {
     loadingAudit,
     loadingHistorical,
     error: historyError,
+    hasLoadedAudit,
     fetchHistoricalDocument,
-    clearHistoricalDocument
+    clearHistoricalDocument,
+    fetchAuditLog
   } = useDocumentHistory(documentId);
   
   // Use historical document if viewing historical state, otherwise use current document
@@ -56,6 +58,10 @@ export const AnnotationEditor = () => {
   // History drawer handlers
   const handleOpenHistory = () => {
     setIsHistoryDrawerOpen(true);
+    // Fetch audit log only when drawer is first opened
+    if (!hasLoadedAudit) {
+      fetchAuditLog();
+    }
   };
 
   const handleCloseHistory = () => {
