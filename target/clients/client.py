@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Fri Jun 27 10:18:26 EDT 2025
+Generated on: Fri Jun 27 10:43:43 EDT 2025
 """
 
 import requests
