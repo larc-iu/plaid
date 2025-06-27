@@ -96,11 +96,15 @@
                               :persistAuthorization true}})}]]])
 
 (defn rest-handler [xtdb secret-key]
-  (let [handler (ring/ring-handler
+  (let [;; Create custom muuntaja instance that preserves fractional seconds
+        muuntaja-instance (m/create
+                            (-> m/default-options
+                                (assoc-in [:formats "application/json" :opts :date-format] "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")))
+        handler (ring/ring-handler
                   (ring/router
                     [(routes)]
                     {:data {:coercion   coercion
-                            :muuntaja   m/instance
+                            :muuntaja   muuntaja-instance
                             :swagger    {:id ::api}
                             :middleware [#_exception/exception-middleware ;; CLAUDE: DO NOT UNCOMMENT THIS
                                          parameters/parameters-middleware
