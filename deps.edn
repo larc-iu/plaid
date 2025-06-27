@@ -29,6 +29,7 @@
            http-kit/http-kit                   {:mvn/version "2.9.0-beta1"}
            ring/ring-core                      {:mvn/version "1.14.1"}
            ring/ring-defaults                  {:mvn/version "0.6.0"}
+           ring-cors/ring-cors                 {:mvn/version "0.1.13"}
            metosin/ring-http-response          {:mvn/version "0.9.5"}
 
            ;; xtdb

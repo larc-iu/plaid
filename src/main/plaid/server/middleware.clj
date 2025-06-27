@@ -1,6 +1,9 @@
 (ns plaid.server.middleware
   (:require [mount.core :as mount]
             [ring.middleware.defaults :refer [wrap-defaults]]
+            [ring.middleware.cors :refer [wrap-cors]]
+            [ring.util.response :as response]
+            [ring.util.mime-type :as mime]
             [xtdb-inspector.core :refer [inspector-handler]]
             [plaid.server.config :refer [config]]
             [plaid.server.xtdb :refer [xtdb-node]]
@@ -48,10 +51,38 @@
         (handler request)
         (ring-handler request)))))
 
+(defn wrap-static-resources
+  "Serves static files from a filesystem directory"
+  [handler]
+  (let [resources-path (or (-> config :plaid.server/static-resources-path)
+                           "resources")]
+    (fn [{:keys [uri request-method] :as request}]
+      (if (and (= :get request-method)
+               (not (str/starts-with? uri "/api/"))
+               (not (str/starts-with? uri "/_")))
+        (let [file (io/file resources-path (subs uri 1))]
+          (if (and (.exists file) 
+                   (.isFile file)
+                   ;; Security: ensure the file is within our resources directory
+                   (str/starts-with? (.getCanonicalPath file) 
+                                     (.getCanonicalPath (io/file resources-path))))
+            (-> (response/file-response (.getPath file))
+                (response/content-type (mime/ext-mime-type (.getName file))))
+            (handler request)))
+        (handler request)))))
+
 (mount/defstate middleware
   :start
-  (let [defaults-config (:ring.middleware/defaults-config config)]
+  (let [defaults-config (:ring.middleware/defaults-config config)
+        cors-config (or (:plaid.server/cors-config config)
+                         {:access-control-allow-origin ["*"]
+                          :access-control-allow-methods [:get :put :post :delete :options]
+                          :access-control-allow-headers ["Authorization" "Content-Type"]})]
     (-> (fn [_] {:status 404 :body "Not Found"})
         (wrap-rest-routes xtdb-node)
+        wrap-static-resources
         wrap-xtdb-inspector
-        (wrap-defaults defaults-config))))
+        (wrap-defaults defaults-config)
+        (wrap-cors :access-control-allow-origin (:access-control-allow-origin cors-config)
+                   :access-control-allow-methods (:access-control-allow-methods cors-config)
+                   :access-control-allow-headers (:access-control-allow-headers cors-config)))))
