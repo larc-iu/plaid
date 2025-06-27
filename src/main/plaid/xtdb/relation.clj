@@ -5,7 +5,7 @@
             [plaid.xtdb.relation-layer :as rl]
             [plaid.xtdb.metadata :as metadata]
             [clojure.string :as str])
-  (:refer-clojure :exclude [get merge]))
+  (:refer-clojure :exclude [get merge format]))
 
 (def core-attr-keys [:relation/id
                      :relation/layer
