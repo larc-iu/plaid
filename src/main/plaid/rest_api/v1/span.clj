@@ -54,7 +54,7 @@
 
    ["/bulk" {:conflicting true
              :post {:summary "Create multiple spans in a single operation."
-                    :openapi {:x-client-method "bulkCreate"}
+                    :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]]
                     :parameters {:body [:sequential
                                         [:map
