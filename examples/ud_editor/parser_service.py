@@ -123,10 +123,8 @@ def parse_document(client, document_id, text_content):
             print(f"Bulk deleting {len(token_ids)} existing tokens")
             client.tokens.bulk_delete(token_ids)
         
-        # Verify the text content matches what we're about to parse
-        if text_content != text_content_from_db:
-            print(f"Warning: Text content mismatch. Using text from database.")
-            text_content = text_content_from_db
+        # Use the actual database text content for token positioning
+        text_content = text_content_from_db
         
         # Get span layers for annotations
         span_layers = token_layer.get('span_layers', [])
@@ -137,37 +135,33 @@ def parse_document(client, document_id, text_content):
         sentence_layer = next((layer for layer in span_layers if layer['name'] == 'Sentence'), None)
         mwt_layer = next((layer for layer in span_layers if layer['name'] == 'Multi-word Tokens'), None)
         
-        # Calculate token positions
+        # Calculate token positions using the actual text content
         token_positions = []
-        global_pos = 0
-        sentences_text = reconstructed_text.split('\n')
+        current_pos = 0
         
         for sent_idx, sentence in enumerate(parsed_data['sentences']):
-            sentence_text = sentences_text[sent_idx] if sent_idx < len(sentences_text) else ''
             sentence_positions = []
             
-            search_pos = 0
             for token in sentence['tokens']:
                 token_form = token['form']
-                token_start = sentence_text.find(token_form, search_pos)
+                
+                # Find the token in the remaining text
+                token_start = text_content.find(token_form, current_pos)
                 
                 if token_start == -1:
-                    # Fallback positioning
-                    before_tokens = ' '.join([t['form'] for t in sentence['tokens'][:sentence['tokens'].index(token)]])
-                    token_begin = global_pos + (len(before_tokens) + 1 if before_tokens else 0)
-                    token_end = token_begin + len(token_form)
+                    # If we can't find the token, skip ahead by token length as fallback
+                    print(f"Warning: Could not find token '{token_form}' in text at position {current_pos}")
+                    token_begin = current_pos
+                    token_end = current_pos + len(token_form)
+                    current_pos = token_end
                 else:
-                    token_begin = global_pos + token_start
-                    token_end = token_begin + len(token_form)
-                    search_pos = token_start + len(token_form)
+                    token_begin = token_start
+                    token_end = token_start + len(token_form)
+                    current_pos = token_end
                 
                 sentence_positions.append({'begin': token_begin, 'end': token_end})
             
             token_positions.append(sentence_positions)
-            global_pos += len(sentence_text)
-            
-            if sent_idx < len(parsed_data['sentences']) - 1:
-                global_pos += 1  # Add newline
         
         # Create tokens in bulk
         token_operations = []
