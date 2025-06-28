@@ -251,6 +251,6 @@
                                    :body   {:error "Failed to publish message"}}))}}]]
 
   ;; Config endpoints
-  [\"/:id\"
+  ["/:id"
    {:middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]}
    (layer-config-routes :id)])
