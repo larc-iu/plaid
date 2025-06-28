@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.document
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.metadata :as metadata]
             [reitit.coercion.malli]
             [plaid.xtdb.document :as doc]))
 
@@ -18,11 +19,12 @@
                :middleware [[pra/wrap-writer-required get-project-id]]
                :parameters {:body [:map
                                    [:project-id :uuid]
-                                   [:name :string]]}
-               :handler    (fn [{{{:keys [project-id name]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                                   [:name :string]
+                                   [:metadata {:optional true} [:map-of string? any?]]]}
+               :handler    (fn [{{{:keys [project-id name metadata]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [attrs {:document/project project-id
                                           :document/name    name}
-                                   result (doc/create {:node xtdb} attrs user-id)]
+                                   result (doc/create {:node xtdb} attrs user-id metadata)]
                                (if (:success result)
                                  {:status 201
                                   :body   {:id (:extra result)}}
@@ -63,4 +65,7 @@
                                   (if success
                                     {:status 204}
                                     {:status (or code 500)
-                                     :body   {:error (or error "Internal server error")}})))}}]]])
+                                     :body   {:error (or error "Internal server error")}})))}}]
+
+    ;; Metadata operations
+    (metadata/metadata-routes "document" :document-id get-project-id doc/get doc/set-metadata doc/delete-metadata)]])

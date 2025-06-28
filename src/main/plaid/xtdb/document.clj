@@ -6,7 +6,8 @@
             [plaid.xtdb.token :as token]
             [plaid.xtdb.token-layer :as tokl]
             [plaid.xtdb.span :as s]
-            [plaid.xtdb.relation :as r])
+            [plaid.xtdb.relation :as r]
+            [plaid.xtdb.metadata :as metadata])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:document/id
@@ -19,7 +20,8 @@
   "Get a document by ID, formatted for external consumption (API responses)."
   [db-like id]
   (when-let [document-entity (pxc/find-entity (pxc/->db db-like) {:document/id id})]
-    (select-keys document-entity attr-keys)))
+    (let [core-attrs (select-keys document-entity attr-keys)]
+      (metadata/add-metadata-to-response core-attrs document-entity "document"))))
 
 (defn project-id [db-like id]
   (:document/project (pxc/entity (pxc/->db db-like) id)))
@@ -119,10 +121,16 @@
                    eid)))
 
 ;; Mutations ----------------------------------------------------------------------
+(defn- document-attr? 
+  "Check if an attribute key belongs to document namespace (including metadata attributes)."
+  [k]
+  (= "document" (namespace k)))
+
 (defn create* [xt-map attrs]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
+        document-attrs (filter (fn [[k v]] (document-attr? k)) attrs)
         {:document/keys [id project name] :as record} (clojure.core/merge (pxc/new-record "document")
-                                                                          (select-keys attrs attr-keys))
+                                                                          (into {} document-attrs))
         tx [[::xt/match project (pxc/entity db project)]
             [::xt/match id nil]
             [::xt/put record]]]
@@ -138,20 +146,27 @@
       tx)))
 
 (defn create-operation
-  "Build an operation for creating a document"
-  [xt-map attrs]
+  "Build an operation for creating a document with optional metadata"
+  [xt-map attrs metadata]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:document/keys [project name]} attrs
-        tx-ops (create* xt-map attrs)]
+        ;; Expand metadata into document attributes
+        metadata-attrs (metadata/transform-metadata-for-storage metadata "document")
+        attrs-with-metadata (clojure.core/merge attrs metadata-attrs)
+        tx-ops (create* xt-map attrs-with-metadata)]
     (op/make-operation
      {:type        :document/create
       :project     project
       :document    (-> tx-ops last last :xt/id)
-      :description (str "Create document \"" name "\" in project " project)
+      :description (str "Create document \"" name "\" in project " project
+                        (when metadata (str " with " (count metadata) " metadata keys")))
       :tx-ops      tx-ops})))
 
-(defn create [xt-map attrs user-id]
-  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+(defn create
+  ([xt-map attrs user-id]
+   (create xt-map attrs user-id nil))
+  ([xt-map attrs user-id metadata]
+   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn merge-operation
   "Build an operation for updating a document"
@@ -202,4 +217,14 @@
 
 (defn delete [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
+
+(defn set-metadata [xt-map eid metadata user-id]
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db document] eid)]
+    (metadata/set-metadata xt-map eid metadata user-id "document" project-id-fn document-id-fn)))
+
+(defn delete-metadata [xt-map eid user-id]
+  (letfn [(project-id-fn [db eid] (project-id db eid))
+          (document-id-fn [db document] eid)]
+    (metadata/delete-metadata xt-map eid user-id "document" project-id-fn document-id-fn)))
 
