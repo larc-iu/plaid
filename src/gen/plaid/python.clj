@@ -152,7 +152,7 @@
            (= (:type (first body-params)) "array")
            (= (:original-name (first body-params)) "body"))
       (let [param-name (transform-key-name-python (:name (first body-params)))]
-        (str "        body_data = " param-name))
+        (str "        body_data = self.client._transform_request(" param-name ")"))
 
       (seq body-params)
       (let [body-dict-items (map (fn [{:keys [name original-name]}]

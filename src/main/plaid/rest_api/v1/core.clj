@@ -8,6 +8,7 @@
             [reitit.ring.middleware.parameters :as parameters]
             [reitit.ring.middleware.exception :as exception]
             [reitit.ring.middleware.multipart :as multipart]
+            [reitit.ring.coercion :as rrc]
             [muuntaja.core :as m]
             [malli.util :as mu]
             [plaid.rest-api.v1.middleware :as prm]
@@ -107,6 +108,7 @@
                             :muuntaja   muuntaja-instance
                             :swagger    {:id ::api}
                             :middleware [#_exception/exception-middleware ;; CLAUDE: DO NOT UNCOMMENT THIS
+                                         rrc/coerce-exceptions-middleware
                                          parameters/parameters-middleware
                                          muuntaja/format-negotiate-middleware
                                          muuntaja/format-response-middleware

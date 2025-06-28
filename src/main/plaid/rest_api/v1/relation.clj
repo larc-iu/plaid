@@ -16,7 +16,7 @@
       :else nil)))
 
 (defn bulk-get-project-id [{db :db params :params}]
-  (let [rl-id (or (-> params :body first :layer-id))
+  (let [rl-id (or (-> params :body first :relation-layer-id))
         relation-id (-> params :body first)]
     (cond
       rl-id (rl/project-id db rl-id)

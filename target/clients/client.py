@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Sat Jun 28 16:52:27 EDT 2025
+Generated on: Sat Jun 28 18:39:30 EDT 2025
 """
 
 import requests
@@ -648,7 +648,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -685,7 +685,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -719,7 +719,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -751,7 +751,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1719,7 +1719,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1755,7 +1755,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1789,7 +1789,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1821,7 +1821,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -5659,7 +5659,7 @@ class BulkResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -5691,7 +5691,7 @@ class BulkResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6609,7 +6609,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6647,7 +6647,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6681,7 +6681,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6713,7 +6713,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        body_data = body
+        body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
