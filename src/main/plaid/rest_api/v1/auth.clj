@@ -115,10 +115,10 @@
     (throw (ex-info "Bad key" {:key key})))
   (fn [{xtdb :xtdb :as request}]
     (let [user-id (->user-id request)
-          id (get-project-id request)
+          id (get-project-id {:params (:parameters request)
+                              :db (or (:db request) (xt/db xtdb))})
           admin? (user/admin? (user/get xtdb user-id))
           project (prj/get xtdb id)]
-      (mapv #(seq ((-> project % set) user-id)) (key levels))
       (if-not (or admin? (some #(seq ((-> project % set) user-id)) (key levels)))
         {:status 403
          :body   {:error (str "User " user-id " lacks sufficient privileges to " (key verb) " project " id)}}
