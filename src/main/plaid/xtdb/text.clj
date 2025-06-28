@@ -104,22 +104,7 @@
       tx)))
 
 (defn create-operation
-  "Build an operation for creating a text"
-  [xt-map attrs]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        {:text/keys [layer document]} attrs
-        project-id (project-id-from-layer db layer)
-        doc-id document
-        tx-ops (create* xt-map attrs)]
-    (op/make-operation
-     {:type        :text/create
-      :project     project-id
-      :document    doc-id
-      :description (str "Create text in layer " layer " for document " document)
-      :tx-ops      tx-ops})))
-
-(defn create-operation-with-metadata
-  "Build an operation for creating a text with metadata"
+  "Build an operation for creating a text with optional metadata"
   [xt-map attrs metadata]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         {:text/keys [layer document]} attrs
@@ -141,7 +126,7 @@
   ([xt-map attrs user-id]
    (create xt-map attrs user-id nil))
   ([xt-map attrs user-id metadata]
-   (submit-operations-with-extras! xt-map [(create-operation-with-metadata xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
+   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn update-body*
   "Change the textual content (:text/body) of a text item in a way that will also update tokens
