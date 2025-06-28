@@ -91,14 +91,14 @@
    (api-call user-request-fn {:method :post
                               :path   "/api/v1/tokens"
                               :body   {:token-layer-id token-layer-id
-                                       :text-id        text-id
+                                       :text           text-id
                                        :begin          begin
                                        :end            end}}))
   ([user-request-fn token-layer-id text-id begin end precedence]
    (api-call user-request-fn {:method :post
                               :path   "/api/v1/tokens"
                               :body   (cond-> {:token-layer-id token-layer-id
-                                               :text-id        text-id
+                                               :text           text-id
                                                :begin          begin
                                                :end            end}
                                               (some? precedence) (assoc :precedence precedence))}))
@@ -106,7 +106,7 @@
    (api-call user-request-fn {:method :post
                               :path   "/api/v1/tokens"
                               :body   (cond-> {:token-layer-id token-layer-id
-                                               :text-id        text-id
+                                               :text           text-id
                                                :begin          begin
                                                :end            end}
                                               (some? precedence) (assoc :precedence precedence)
@@ -665,7 +665,7 @@
                    (api-call admin-request {:method :post
                                             :path   "/api/v1/tokens"
                                             :body   {:token-layer-id tkl
-                                                     :text-id        text-id
+                                                     :text           text-id
                                                      :begin          "0"
                                                      :end            "5"}}))))
 
@@ -682,7 +682,7 @@
                    (api-call admin-request {:method :post
                                             :path   "/api/v1/tokens"
                                             :body   {:token-layer-id tkl
-                                                     :text-id        text-id
+                                                     :text           text-id
                                                      :begin          0
                                                      :end            5
                                                      :precedence     "high"}}))))

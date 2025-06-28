@@ -31,21 +31,21 @@
                              "tokens with lower <body>precedence</body> occurring earlier."
                              "\n"
                              "\n<body>token-layer-id</body>: the layer in which to insert this token."
-                             "\n<body>text-id</body>: the text in which this token is found."
-                             "\n<body>begin</body>: the inclusive character-based offset at which this token begins in the body of the text specified by <body>text-id</body>"
-                             "\n<body>end</body>: the exclusive character-based offset at which this token ends in the body of the text specified by <body>text-id</body>"
+                             "\n<body>text</body>: the text in which this token is found."
+                             "\n<body>begin</body>: the inclusive character-based offset at which this token begins in the body of the text specified by <body>text</body>"
+                             "\n<body>end</body>: the exclusive character-based offset at which this token ends in the body of the text specified by <body>text</body>"
                              "\n<body>precedence</body>: used for tokens with the same <body>begin</body> value in order to indicate their preferred linear order.")
                :middleware [[pra/wrap-writer-required get-project-id]]
                :parameters {:body [:map
                                    [:token-layer-id :uuid]
-                                   [:text-id :uuid]
+                                   [:text :uuid]
                                    [:begin int?]
                                    [:end int?]
                                    [:precedence {:optional true} int?]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [token-layer-id text-id begin end precedence metadata]} :body} :parameters xtdb :xtdb user-id :user/id}]
+               :handler (fn [{{{:keys [token-layer-id text begin end precedence metadata]} :body} :parameters xtdb :xtdb user-id :user/id}]
                           (let [attrs (cond-> {:token/layer token-layer-id
-                                               :token/text text-id
+                                               :token/text text
                                                :token/begin begin
                                                :token/end end}
                                         (some? precedence) (assoc :token/precedence precedence))
