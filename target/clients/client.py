@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Sat Jun 28 08:07:36 EDT 2025
+Generated on: Sat Jun 28 16:52:27 EDT 2025
 """
 
 import requests
@@ -53,7 +53,7 @@ class RelationsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_metadata_async(self, relation_id: str, body: Any) -> Any:
         """
@@ -93,7 +93,7 @@ class RelationsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete_metadata(self, relation_id: str) -> Any:
         """
@@ -123,7 +123,7 @@ class RelationsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_metadata_async(self, relation_id: str) -> Any:
         """
@@ -155,7 +155,7 @@ class RelationsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def set_target(self, relation_id: str, span_id: str) -> Any:
         """
@@ -193,7 +193,7 @@ class RelationsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_target_async(self, relation_id: str, span_id: str) -> Any:
         """
@@ -233,7 +233,7 @@ class RelationsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, relation_id: str, as_of: str = None) -> Any:
         """
@@ -272,7 +272,7 @@ class RelationsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, relation_id: str, as_of: str = None) -> Any:
         """
@@ -313,7 +313,7 @@ class RelationsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, relation_id: str) -> Any:
         """
@@ -343,7 +343,7 @@ class RelationsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, relation_id: str) -> Any:
         """
@@ -375,7 +375,7 @@ class RelationsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, relation_id: str, value: Any) -> Any:
         """
@@ -413,7 +413,7 @@ class RelationsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, relation_id: str, value: Any) -> Any:
         """
@@ -453,7 +453,7 @@ class RelationsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def set_source(self, relation_id: str, span_id: str) -> Any:
         """
@@ -491,7 +491,7 @@ class RelationsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_source_async(self, relation_id: str, span_id: str) -> Any:
         """
@@ -531,7 +531,7 @@ class RelationsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
         """
@@ -581,7 +581,7 @@ target_id: the target span this relation goes to
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
         """
@@ -633,7 +633,7 @@ target_id: the target span this relation goes to
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def bulk_create(self, body: List[Any]) -> Any:
         """
@@ -670,7 +670,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def bulk_create_async(self, body: List[Any]) -> Any:
         """
@@ -709,7 +709,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def bulk_delete(self, body: List[Any]) -> Any:
         """
@@ -741,7 +741,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
@@ -775,7 +775,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class SpanLayersResource:
@@ -819,7 +819,7 @@ class SpanLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_config_async(self, span_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -856,7 +856,7 @@ class SpanLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete_config(self, span_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -888,7 +888,7 @@ class SpanLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_config_async(self, span_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -922,7 +922,7 @@ class SpanLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, span_layer_id: str, as_of: str = None) -> Any:
         """
@@ -961,7 +961,7 @@ class SpanLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, span_layer_id: str, as_of: str = None) -> Any:
         """
@@ -1002,7 +1002,7 @@ class SpanLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, span_layer_id: str) -> Any:
         """
@@ -1032,7 +1032,7 @@ class SpanLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, span_layer_id: str) -> Any:
         """
@@ -1064,7 +1064,7 @@ class SpanLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, span_layer_id: str, name: str) -> Any:
         """
@@ -1102,7 +1102,7 @@ class SpanLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, span_layer_id: str, name: str) -> Any:
         """
@@ -1142,7 +1142,7 @@ class SpanLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, token_layer_id: str, name: str) -> Any:
         """
@@ -1181,7 +1181,7 @@ class SpanLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, token_layer_id: str, name: str) -> Any:
         """
@@ -1222,7 +1222,7 @@ class SpanLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def shift(self, span_layer_id: str, direction: str) -> Any:
         """
@@ -1260,7 +1260,7 @@ class SpanLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def shift_async(self, span_layer_id: str, direction: str) -> Any:
         """
@@ -1300,7 +1300,7 @@ class SpanLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class SpansResource:
@@ -1347,7 +1347,7 @@ class SpansResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_tokens_async(self, span_id: str, tokens: List[Any]) -> Any:
         """
@@ -1387,7 +1387,7 @@ class SpansResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
         """
@@ -1435,7 +1435,7 @@ metadata: optional key-value pairs for additional annotation data.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
         """
@@ -1485,7 +1485,7 @@ metadata: optional key-value pairs for additional annotation data.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, span_id: str, as_of: str = None) -> Any:
         """
@@ -1524,7 +1524,7 @@ metadata: optional key-value pairs for additional annotation data.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, span_id: str, as_of: str = None) -> Any:
         """
@@ -1565,7 +1565,7 @@ metadata: optional key-value pairs for additional annotation data.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, span_id: str) -> Any:
         """
@@ -1595,7 +1595,7 @@ metadata: optional key-value pairs for additional annotation data.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, span_id: str) -> Any:
         """
@@ -1627,7 +1627,7 @@ metadata: optional key-value pairs for additional annotation data.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, span_id: str, value: Any) -> Any:
         """
@@ -1665,7 +1665,7 @@ metadata: optional key-value pairs for additional annotation data.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, span_id: str, value: Any) -> Any:
         """
@@ -1705,7 +1705,7 @@ metadata: optional key-value pairs for additional annotation data.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def bulk_create(self, body: List[Any]) -> Any:
         """
@@ -1741,7 +1741,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def bulk_create_async(self, body: List[Any]) -> Any:
         """
@@ -1779,7 +1779,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def bulk_delete(self, body: List[Any]) -> Any:
         """
@@ -1811,7 +1811,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
@@ -1845,7 +1845,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def set_metadata(self, span_id: str, body: Any) -> Any:
         """
@@ -1883,7 +1883,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_metadata_async(self, span_id: str, body: Any) -> Any:
         """
@@ -1923,7 +1923,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete_metadata(self, span_id: str) -> Any:
         """
@@ -1953,7 +1953,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_metadata_async(self, span_id: str) -> Any:
         """
@@ -1985,7 +1985,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class TextsResource:
@@ -2032,7 +2032,7 @@ class TextsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_metadata_async(self, text_id: str, body: Any) -> Any:
         """
@@ -2072,7 +2072,7 @@ class TextsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete_metadata(self, text_id: str) -> Any:
         """
@@ -2102,7 +2102,7 @@ class TextsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_metadata_async(self, text_id: str) -> Any:
         """
@@ -2134,7 +2134,7 @@ class TextsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
         """
@@ -2181,7 +2181,7 @@ body: the string which is the content of this text.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
         """
@@ -2230,7 +2230,7 @@ body: the string which is the content of this text.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, text_id: str, as_of: str = None) -> Any:
         """
@@ -2269,7 +2269,7 @@ body: the string which is the content of this text.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, text_id: str, as_of: str = None) -> Any:
         """
@@ -2310,7 +2310,7 @@ body: the string which is the content of this text.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, text_id: str) -> Any:
         """
@@ -2340,7 +2340,7 @@ body: the string which is the content of this text.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, text_id: str) -> Any:
         """
@@ -2372,7 +2372,7 @@ body: the string which is the content of this text.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, text_id: str, body: str) -> Any:
         """
@@ -2410,7 +2410,7 @@ body: the string which is the content of this text.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, text_id: str, body: str) -> Any:
         """
@@ -2450,7 +2450,7 @@ body: the string which is the content of this text.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class UsersResource:
@@ -2497,7 +2497,7 @@ class UsersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def list_async(self, as_of: str = None) -> Any:
         """
@@ -2537,7 +2537,7 @@ class UsersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, username: str, password: str, is_admin: bool) -> Any:
         """
@@ -2578,7 +2578,7 @@ class UsersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, username: str, password: str, is_admin: bool) -> Any:
         """
@@ -2621,7 +2621,7 @@ class UsersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def audit(self, user_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -2666,7 +2666,7 @@ class UsersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def audit_async(self, user_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -2713,7 +2713,7 @@ class UsersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, id: str, as_of: str = None) -> Any:
         """
@@ -2752,7 +2752,7 @@ class UsersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, id: str, as_of: str = None) -> Any:
         """
@@ -2793,7 +2793,7 @@ class UsersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, id: str) -> Any:
         """
@@ -2823,7 +2823,7 @@ class UsersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, id: str) -> Any:
         """
@@ -2855,7 +2855,7 @@ class UsersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, id: str, password: str = None, username: str = None, is_admin: bool = None) -> Any:
         """
@@ -2897,7 +2897,7 @@ class UsersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, id: str, password: str = None, username: str = None, is_admin: bool = None) -> Any:
         """
@@ -2941,7 +2941,7 @@ class UsersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class TokenLayersResource:
@@ -2988,7 +2988,7 @@ class TokenLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def shift_async(self, token_layer_id: str, direction: str) -> Any:
         """
@@ -3028,7 +3028,7 @@ class TokenLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, text_layer_id: str, name: str) -> Any:
         """
@@ -3067,7 +3067,7 @@ class TokenLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, text_layer_id: str, name: str) -> Any:
         """
@@ -3108,7 +3108,7 @@ class TokenLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def set_config(self, token_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -3143,7 +3143,7 @@ class TokenLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_config_async(self, token_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -3180,7 +3180,7 @@ class TokenLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete_config(self, token_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -3212,7 +3212,7 @@ class TokenLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_config_async(self, token_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -3246,7 +3246,7 @@ class TokenLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, token_layer_id: str, as_of: str = None) -> Any:
         """
@@ -3285,7 +3285,7 @@ class TokenLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, token_layer_id: str, as_of: str = None) -> Any:
         """
@@ -3326,7 +3326,7 @@ class TokenLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, token_layer_id: str) -> Any:
         """
@@ -3356,7 +3356,7 @@ class TokenLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, token_layer_id: str) -> Any:
         """
@@ -3388,7 +3388,7 @@ class TokenLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, token_layer_id: str, name: str) -> Any:
         """
@@ -3426,7 +3426,7 @@ class TokenLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, token_layer_id: str, name: str) -> Any:
         """
@@ -3466,7 +3466,7 @@ class TokenLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class DocumentsResource:
@@ -3520,7 +3520,7 @@ class DocumentsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def audit_async(self, document_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -3567,7 +3567,7 @@ class DocumentsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, document_id: str, include_body: bool = None, as_of: str = None) -> Any:
         """
@@ -3609,7 +3609,7 @@ class DocumentsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, document_id: str, include_body: bool = None, as_of: str = None) -> Any:
         """
@@ -3653,7 +3653,7 @@ class DocumentsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, document_id: str) -> Any:
         """
@@ -3683,7 +3683,7 @@ class DocumentsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, document_id: str) -> Any:
         """
@@ -3715,7 +3715,7 @@ class DocumentsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, document_id: str, name: str) -> Any:
         """
@@ -3755,7 +3755,7 @@ name: update a document's name.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, document_id: str, name: str) -> Any:
         """
@@ -3797,7 +3797,7 @@ name: update a document's name.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, project_id: str, name: str) -> Any:
         """
@@ -3836,7 +3836,7 @@ name: update a document's name.
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, project_id: str, name: str) -> Any:
         """
@@ -3877,7 +3877,7 @@ name: update a document's name.
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class ProjectsResource:
@@ -3924,7 +3924,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def send_message_async(self, id: str, body: Any) -> Any:
         """
@@ -3964,7 +3964,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def add_writer(self, id: str, user_id: str) -> Any:
         """
@@ -3995,7 +3995,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def add_writer_async(self, id: str, user_id: str) -> Any:
         """
@@ -4028,7 +4028,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def remove_writer(self, id: str, user_id: str) -> Any:
         """
@@ -4059,7 +4059,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def remove_writer_async(self, id: str, user_id: str) -> Any:
         """
@@ -4092,7 +4092,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def add_reader(self, id: str, user_id: str) -> Any:
         """
@@ -4123,7 +4123,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def add_reader_async(self, id: str, user_id: str) -> Any:
         """
@@ -4156,7 +4156,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def remove_reader(self, id: str, user_id: str) -> Any:
         """
@@ -4187,7 +4187,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def remove_reader_async(self, id: str, user_id: str) -> Any:
         """
@@ -4220,7 +4220,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def heartbeat(self, id: str, client_id: str) -> Any:
         """
@@ -4258,7 +4258,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def heartbeat_async(self, id: str, client_id: str) -> Any:
         """
@@ -4298,7 +4298,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def listen(self, id: str, on_event: Callable[[str, Dict[str, Any]], None]) -> Dict[str, Any]:
         """
@@ -4459,7 +4459,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def add_maintainer_async(self, id: str, user_id: str) -> Any:
         """
@@ -4492,7 +4492,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def remove_maintainer(self, id: str, user_id: str) -> Any:
         """
@@ -4523,7 +4523,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def remove_maintainer_async(self, id: str, user_id: str) -> Any:
         """
@@ -4556,7 +4556,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def audit(self, project_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -4601,7 +4601,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def audit_async(self, project_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -4648,7 +4648,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, id: str, include_documents: bool = None, as_of: str = None) -> Any:
         """
@@ -4690,7 +4690,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, id: str, include_documents: bool = None, as_of: str = None) -> Any:
         """
@@ -4734,7 +4734,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, id: str) -> Any:
         """
@@ -4764,7 +4764,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, id: str) -> Any:
         """
@@ -4796,7 +4796,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, id: str, name: str) -> Any:
         """
@@ -4834,7 +4834,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, id: str, name: str) -> Any:
         """
@@ -4874,7 +4874,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def list(self, as_of: str = None) -> Any:
         """
@@ -4912,7 +4912,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def list_async(self, as_of: str = None) -> Any:
         """
@@ -4952,7 +4952,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, name: str) -> Any:
         """
@@ -4989,7 +4989,7 @@ class ProjectsResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, name: str) -> Any:
         """
@@ -5028,7 +5028,7 @@ class ProjectsResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class TextLayersResource:
@@ -5072,7 +5072,7 @@ class TextLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_config_async(self, text_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -5109,7 +5109,7 @@ class TextLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete_config(self, text_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -5141,7 +5141,7 @@ class TextLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_config_async(self, text_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -5175,7 +5175,7 @@ class TextLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, text_layer_id: str, as_of: str = None) -> Any:
         """
@@ -5214,7 +5214,7 @@ class TextLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, text_layer_id: str, as_of: str = None) -> Any:
         """
@@ -5255,7 +5255,7 @@ class TextLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, text_layer_id: str) -> Any:
         """
@@ -5285,7 +5285,7 @@ class TextLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, text_layer_id: str) -> Any:
         """
@@ -5317,7 +5317,7 @@ class TextLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, text_layer_id: str, name: str) -> Any:
         """
@@ -5355,7 +5355,7 @@ class TextLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, text_layer_id: str, name: str) -> Any:
         """
@@ -5395,7 +5395,7 @@ class TextLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def shift(self, text_layer_id: str, direction: str) -> Any:
         """
@@ -5433,7 +5433,7 @@ class TextLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def shift_async(self, text_layer_id: str, direction: str) -> Any:
         """
@@ -5473,7 +5473,7 @@ class TextLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, project_id: str, name: str) -> Any:
         """
@@ -5512,7 +5512,7 @@ class TextLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, project_id: str, name: str) -> Any:
         """
@@ -5553,7 +5553,7 @@ class TextLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class LoginResource:
@@ -5600,7 +5600,7 @@ class LoginResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, user_id: str, password: str) -> Any:
         """
@@ -5640,7 +5640,7 @@ class LoginResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class BulkResource:
@@ -5681,7 +5681,7 @@ class BulkResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def submit_async(self, body: List[Any]) -> Any:
         """
@@ -5715,7 +5715,7 @@ class BulkResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class RelationLayersResource:
@@ -5762,7 +5762,7 @@ class RelationLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def shift_async(self, relation_layer_id: str, direction: str) -> Any:
         """
@@ -5802,7 +5802,7 @@ class RelationLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def create(self, span_layer_id: str, name: str) -> Any:
         """
@@ -5841,7 +5841,7 @@ class RelationLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, span_layer_id: str, name: str) -> Any:
         """
@@ -5882,7 +5882,7 @@ class RelationLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def set_config(self, relation_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -5917,7 +5917,7 @@ class RelationLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_config_async(self, relation_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -5954,7 +5954,7 @@ class RelationLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete_config(self, relation_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -5986,7 +5986,7 @@ class RelationLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_config_async(self, relation_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -6020,7 +6020,7 @@ class RelationLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, relation_layer_id: str, as_of: str = None) -> Any:
         """
@@ -6059,7 +6059,7 @@ class RelationLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, relation_layer_id: str, as_of: str = None) -> Any:
         """
@@ -6100,7 +6100,7 @@ class RelationLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, relation_layer_id: str) -> Any:
         """
@@ -6130,7 +6130,7 @@ class RelationLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, relation_layer_id: str) -> Any:
         """
@@ -6162,7 +6162,7 @@ class RelationLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, relation_layer_id: str, name: str) -> Any:
         """
@@ -6200,7 +6200,7 @@ class RelationLayersResource:
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, relation_layer_id: str, name: str) -> Any:
         """
@@ -6240,7 +6240,7 @@ class RelationLayersResource:
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class TokensResource:
@@ -6302,7 +6302,7 @@ precedence: used for tokens with the same begin value in order to indicate their
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def create_async(self, token_layer_id: str, text_id: str, begin: int, end: int, precedence: int = None, metadata: Any = None) -> Any:
         """
@@ -6357,7 +6357,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def get(self, token_id: str, as_of: str = None) -> Any:
         """
@@ -6396,7 +6396,7 @@ precedence: used for tokens with the same begin value in order to indicate their
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def get_async(self, token_id: str, as_of: str = None) -> Any:
         """
@@ -6437,7 +6437,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete(self, token_id: str) -> Any:
         """
@@ -6467,7 +6467,7 @@ precedence: used for tokens with the same begin value in order to indicate their
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_async(self, token_id: str) -> Any:
         """
@@ -6499,7 +6499,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def update(self, token_id: str, begin: int = None, end: int = None, precedence: int = None) -> Any:
         """
@@ -6545,7 +6545,7 @@ precedence: ordering value for the token relative to other tokens with the same 
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def update_async(self, token_id: str, begin: int = None, end: int = None, precedence: int = None) -> Any:
         """
@@ -6593,7 +6593,7 @@ precedence: ordering value for the token relative to other tokens with the same 
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def bulk_create(self, body: List[Any]) -> Any:
         """
@@ -6631,7 +6631,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def bulk_create_async(self, body: List[Any]) -> Any:
         """
@@ -6671,7 +6671,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def bulk_delete(self, body: List[Any]) -> Any:
         """
@@ -6703,7 +6703,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
@@ -6737,7 +6737,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def set_metadata(self, token_id: str, body: Any) -> Any:
         """
@@ -6775,7 +6775,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def set_metadata_async(self, token_id: str, body: Any) -> Any:
         """
@@ -6815,7 +6815,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
     def delete_metadata(self, token_id: str) -> Any:
         """
@@ -6845,7 +6845,7 @@ metadata, an optional map of metadata
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
-        return response.text()
+        return response.text
 
     async def delete_metadata_async(self, token_id: str) -> Any:
         """
@@ -6877,7 +6877,7 @@ metadata, an optional map of metadata
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
-                return await response.text()
+                return await response.text
 
 
 class PlaidClient:
