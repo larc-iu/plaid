@@ -341,7 +341,7 @@
         async-def (if sync? "def" "async def")
         await-keyword (if sync? "" "await ")
         response-json (if sync? "response.json()" "await response.json()")
-        response-text (if sync? "response.text()" "await response.text()")]
+        response-text (if sync? "response.text" "await response.text")]
 
     (str "    " async-def " " py-method-name "(" full-params ") -> Any:\n"
          "        \"\"\"\n"
