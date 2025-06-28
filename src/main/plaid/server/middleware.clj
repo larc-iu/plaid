@@ -83,6 +83,6 @@
         wrap-static-resources
         wrap-xtdb-inspector
         (wrap-defaults defaults-config)
-        (wrap-cors :access-control-allow-origin (:access-control-allow-origin cors-config)
+        (wrap-cors :access-control-allow-origin (re-pattern (:access-control-allow-origin cors-config))
                    :access-control-allow-methods (:access-control-allow-methods cors-config)
                    :access-control-allow-headers (:access-control-allow-headers cors-config)))))
