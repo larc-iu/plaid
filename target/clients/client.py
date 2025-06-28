@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Fri Jun 27 10:43:43 EDT 2025
+Generated on: Sat Jun 28 08:07:36 EDT 2025
 """
 
 import requests
@@ -4308,6 +4308,7 @@ class ProjectsResource:
             id: The UUID of the project to listen to
             on_event: Callback function that receives (event_type: str, data: dict). 
                      Heartbeat events are automatically filtered out.
+                     If it returns True, listening will stop.
             
         Returns:
             Dict[str, Any]: Summary of the listening session
@@ -4389,14 +4390,20 @@ class ProjectsResource:
                                     elif event_type == 'audit-log':
                                         audit_events_received += 1
                                         transformed_data = self.client._transform_response(data)
-                                        on_event(event_type, transformed_data)
+                                        should_stop = on_event(event_type, transformed_data)
+                                        if should_stop is True:
+                                            break
                                     elif event_type == 'message':
                                         message_events_received += 1
                                         transformed_data = self.client._transform_response(data)
-                                        on_event(event_type, transformed_data)
+                                        should_stop = on_event(event_type, transformed_data)
+                                        if should_stop is True:
+                                            break
                                     else:
                                         transformed_data = self.client._transform_response(data)
-                                        on_event(event_type, transformed_data)
+                                        should_stop = on_event(event_type, transformed_data)
+                                        if should_stop is True:
+                                            break
                                 else:
                                     # Skip non-JSON data
                                     pass

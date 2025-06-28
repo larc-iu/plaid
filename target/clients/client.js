@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Fri Jun 27 10:43:41 EDT 2025
+ * Generated on: Sat Jun 28 08:07:37 EDT 2025
  */
 
 class PlaidClient {
@@ -404,8 +404,7 @@ name: update a document's name.
       /**
        * Listen to audit log events and messages for a project via Server-Sent Events
  * @param {string} id - The UUID of the project to listen to
- * @param {function} onEvent - Callback function that receives (eventType, data)
- * @param {number} [timeout=300] - Maximum time to listen in seconds
+ * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
  * @returns {Object} SSE connection object with .close() and .getStats() methods
        */
       listen: this._projectsListen.bind(this),
@@ -3555,13 +3554,12 @@ name: update a document's name.
   }
 
   /**
-   * Listen to audit log events and messages for a project via Server-Sent Events (with Fetch-based connection for Python-like cleanup)
+   * Listen to audit log events and messages for a project via Server-Sent Events
    * @param {string} id - The UUID of the project to listen to
-   * @param {function} onEvent - Callback function that receives (eventType, data)
-   * @param {number} [timeout=300] - Maximum time to listen in seconds
+   * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
    * @returns {Object} SSE connection object with .close() method and .getStats() method
    */
-  _projectsListen(id, onEvent, timeout = 300) {
+  _projectsListen(id, onEvent) {
     
     const startTime = Date.now();
     let isConnected = false;
@@ -3618,15 +3616,6 @@ name: update a document's name.
         readyState: sseConnection.readyState
       })
     };
-    
-    // Auto-close after timeout
-    if (timeout > 0) {
-      setTimeout(() => {
-        if (!isClosed) {
-          sseConnection.close();
-        }
-      }, timeout * 1000);
-    }
     
     // Start the fetch streaming connection
     (async () => {
@@ -3692,7 +3681,12 @@ name: update a document's name.
                 } else {
                   // Pass audit-log, message, and other events to callback
                   const parsedData = JSON.parse(data);
-                  onEvent(eventType, client._transformResponse(parsedData));
+                  const shouldStop = onEvent(eventType, client._transformResponse(parsedData));
+                  if (shouldStop === true) {
+                    // User callback requested to stop listening
+                    sseConnection.close();
+                    return;
+                  }
                 }
               } catch (e) {
                 // Failed to parse event data

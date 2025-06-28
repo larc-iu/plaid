@@ -164,8 +164,8 @@
 
     ;; Special handling for SSE listen method
     (if (= (:method-name operation) "listen")
-      ;; SSE listen method has project ID, onEvent callback, and timeout parameters
-      (str (kebab->camel (first path-params)) ", onEvent, timeout = 300")
+      ;; SSE listen method has project ID and onEvent callback
+      (str (kebab->camel (first path-params)) ", onEvent")
       ;; Regular method parameter generation
       (let [;; Path parameters
             path-param-names (map kebab->camel path-params)
@@ -290,13 +290,12 @@
         js-path (str/replace path (str "{" project-id-param "}") (str "${" (kebab->camel project-id-param) "}"))]
 
     (str "  /**\n"
-         "   * " formatted-summary " (with Fetch-based connection for Python-like cleanup)\n"
+         "   * " formatted-summary "\n"
          "   * @param {string} " (kebab->camel project-id-param) " - The UUID of the project to listen to\n"
-         "   * @param {function} onEvent - Callback function that receives (eventType, data)\n"
-         "   * @param {number} [timeout=300] - Maximum time to listen in seconds\n"
+         "   * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.\n"
          "   * @returns {Object} SSE connection object with .close() method and .getStats() method\n"
          "   */\n"
-         "  " private-method-name "(" (kebab->camel project-id-param) ", onEvent, timeout = 300) {\n"
+         "  " private-method-name "(" (kebab->camel project-id-param) ", onEvent) {\n"
          "    \n"
          "    const startTime = Date.now();\n"
          "    let isConnected = false;\n"
@@ -353,15 +352,6 @@
          "        readyState: sseConnection.readyState\n"
          "      })\n"
          "    };\n"
-         "    \n"
-         "    // Auto-close after timeout\n"
-         "    if (timeout > 0) {\n"
-         "      setTimeout(() => {\n"
-         "        if (!isClosed) {\n"
-         "          sseConnection.close();\n"
-         "        }\n"
-         "      }, timeout * 1000);\n"
-         "    }\n"
          "    \n"
          "    // Start the fetch streaming connection\n"
          "    (async () => {\n"
@@ -427,7 +417,12 @@
          "                } else {\n"
          "                  // Pass audit-log, message, and other events to callback\n"
          "                  const parsedData = JSON.parse(data);\n"
-         "                  onEvent(eventType, client._transformResponse(parsedData));\n"
+         "                  const shouldStop = onEvent(eventType, client._transformResponse(parsedData));\n"
+         "                  if (shouldStop === true) {\n"
+         "                    // User callback requested to stop listening\n"
+         "                    sseConnection.close();\n"
+         "                    return;\n"
+         "                  }\n"
          "                }\n"
          "              } catch (e) {\n"
          "                // Failed to parse event data\n"
@@ -580,7 +575,7 @@
     ;; Special handling for SSE listen method
     (if (= method-name "listen")
       (let [path-param-str (str/join ", " (map #(str (kebab->camel %) ": string") path-params))]
-        (str transformed-method-name "(" path-param-str ", onEvent: (eventType: string, data: any) => void, timeout?: number): { close(): void; getStats(): any; readyState: number; };"))
+        (str transformed-method-name "(" path-param-str ", onEvent: (eventType: string, data: any) => void): { close(): void; getStats(): any; readyState: number; };"))
       ;; Regular method generation
       (let [;; Generate parameter list with types
             ts-params (concat
@@ -652,8 +647,7 @@
               (str " * @param {string} " (kebab->camel param) " - The UUID of the project to listen to"))
             path-params)
         ;; Single callback parameter that receives all events
-       [" * @param {function} onEvent - Callback function that receives (eventType, data)"
-        " * @param {number} [timeout=300] - Maximum time to listen in seconds"
+       [" * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop."
         " * @returns {Object} SSE connection object with .close() and .getStats() methods"])
       ;; Regular method parameters
       (concat
