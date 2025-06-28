@@ -9,6 +9,9 @@
             [clojure.data.json :as json]
             [org.httpkit.server :as http-kit]))
 
+(defn get-project-id [{params :params}]
+  (-> params :path :id))
+
 (defn sse-handler
   "Handle SSE connections for project audit log events with manual heartbeat tracking"
   [{{{:keys [id]} :path} :parameters :as req}]
@@ -124,7 +127,7 @@
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}
      :get {:summary "Get a project by ID. If <body>include-documents</body> is true, also include document IDs and names."
-           :middleware [[pra/wrap-reader-required #(-> % :parameters :path :id)]]
+           :middleware [[pra/wrap-reader-required get-project-id]]
            :parameters {:query [:map [:include-documents {:optional true} boolean?]]}
            :handler (fn [{{{:keys [id]} :path
                            {:keys [include-documents]} :query} :parameters
@@ -137,7 +140,7 @@
                            :body {:error "Project not found"}})))}
 
      :patch {:summary "Update a project's name."
-             :middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]
+             :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:name string?]]}
              :handler (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id :as req}]
                         (let [{:keys [success code error]} (prj/merge {:node xtdb} id {:project/name name} user-id)]
@@ -148,7 +151,7 @@
                              :body {:error error}})))}
 
      :delete {:summary "Delete a project."
-              :middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]
+              :middleware [[pra/wrap-maintainer-required get-project-id]]
               :handler (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb user-id :user/id :as req}]
                          (let [{:keys [success code error]} (prj/delete {:node xtdb} id user-id)]
                            (if success
@@ -157,7 +160,7 @@
 
    ;; Access management endpoints
    ["/:id"
-    {:middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]}
+    {:middleware [[pra/wrap-maintainer-required get-project-id]]}
     ["/readers/:user-id"
      {:post {:summary "Set a user's access level to read-only for this project."
              :parameters {:path [:map [:id :uuid] [:user-id string?]]}
@@ -211,7 +214,7 @@
    ["/:id/listen"
     {:parameters {:path [:map [:id :uuid]]}
      :get {:summary "Listen to audit log events and messages for a project via Server-Sent Events"
-           :middleware [[pra/wrap-reader-required #(-> % :parameters :path :id)]]
+           :middleware [[pra/wrap-reader-required get-project-id]]
            :openapi {:x-client-method "listen"}
            :handler sse-handler}}]
 
@@ -220,7 +223,7 @@
    ["/:id/heartbeat"
     {:parameters {:path [:map [:id :uuid]]}
      :post {:summary "INTERNAL, do not use directly."
-            :middleware [[pra/wrap-reader-required #(-> % :parameters :path :id)]]
+            :middleware [[pra/wrap-reader-required get-project-id]]
             :parameters {:body [:map [:client-id :string]]}
             :handler (fn [{{{:keys [id]} :path
                             {:keys [client-id]} :body} :parameters
@@ -236,7 +239,7 @@
     {:parameters {:path [:map [:id :uuid]]}
      :post {:summary (str "Send a message to all clients that are listening to a project. "
                           "Useful for e.g. telling an NLP service to perform some work.")
-            :middleware [[pra/wrap-writer-required #(-> % :parameters :path :id)]]
+            :middleware [[pra/wrap-writer-required get-project-id]]
             :openapi {:x-client-method "send-message"}
             :parameters {:body any?}                        ; Accept any JSON payload
             :handler (fn [{{{:keys [id]} :path
@@ -252,5 +255,5 @@
 
    ;; Config endpoints
    ["/:id"
-    {:middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]}
+    {:middleware [[pra/wrap-maintainer-required get-project-id]]}
     (layer-config-routes :id)]])
