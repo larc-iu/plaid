@@ -11,7 +11,8 @@
                 :project/readers
                 :project/writers
                 :project/maintainers
-                :project/text-layers])
+                :project/text-layers
+                :config])
 
 ;; reads --------------------------------------------------------------------------------
 (defn get-document-ids [db-like id]
@@ -84,7 +85,8 @@
                                                                  {:project/readers     []
                                                                   :project/writers     []
                                                                   :project/maintainers []
-                                                                  :project/text-layers []}
+                                                                  :project/text-layers []
+                                                                  :config              {}}
                                                                  (select-keys attrs attr-keys))]
     (pxc/valid-name? name)
     (cond

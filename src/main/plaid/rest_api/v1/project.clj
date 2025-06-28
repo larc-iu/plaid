@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.project
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
             [plaid.xtdb.project :as prj]
             [taoensso.timbre :as log]
@@ -247,4 +248,9 @@
                                    :body   {:success true
                                             :message "Message sent to subscribers"}}
                                   {:status 500
-                                   :body   {:error "Failed to publish message"}}))}}]])
+                                   :body   {:error "Failed to publish message"}}))}}]]
+
+  ;; Config endpoints
+  [\"/:id\"
+   {:middleware [[pra/wrap-maintainer-required #(-> % :parameters :path :id)]]}
+   (layer-config-routes :id)])
