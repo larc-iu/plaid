@@ -7,6 +7,7 @@ import { useLayerInfo } from './hooks/useLayerInfo';
 import { useAnnotationHandlers } from './hooks/useAnnotationHandlers';
 import { useSentenceData } from './hooks/useSentenceData';
 import { useDocumentHistory } from './hooks/useDocumentHistory';
+import { useNlpService } from './hooks/useNlpService';
 import { DocumentTabs } from './DocumentTabs';
 import { HistoryDrawer } from './HistoryDrawer';
 
@@ -56,6 +57,31 @@ export const AnnotationEditor = () => {
     handleRelationDelete
   } = useAnnotationHandlers(activeDocument, setDocument, setError, layerInfo, refreshData);
 
+  // NLP Service integration
+  const {
+    isAwake,
+    isChecking,
+    isParsing,
+    connectionStatus,
+    parseStatus,
+    parseError,
+    checkIfAwake,
+    requestParse,
+    clearParseStatus,
+    canParse,
+    hasParseResult
+  } = useNlpService(projectId, documentId);
+  
+  // Debug logging
+  console.log('Auto Parse button conditions:', {
+    isAwake,
+    viewingHistoricalState,
+    hasActiveDocument: !!activeDocument,
+    hasTextLayers: activeDocument?.textLayers?.length > 0,
+    hasText: !!activeDocument?.textLayers?.[0]?.text,
+    canParse
+  });
+
   // History drawer handlers
   const handleOpenHistory = () => {
     setIsHistoryDrawerOpen(true);
@@ -95,6 +121,21 @@ export const AnnotationEditor = () => {
   useEffect(() => {
     setSentences(processedSentences);
   }, [processedSentences]);
+
+  // Handle parse success - refresh data and clear status after delay
+  useEffect(() => {
+    if (parseStatus === 'success') {
+      // Refresh document data to show new annotations
+      refreshData();
+      
+      // Clear success message after 3 seconds
+      const timer = setTimeout(() => {
+        clearParseStatus();
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [parseStatus, refreshData, clearParseStatus]);
 
   // Always render the main container with drawer to maintain state
   return (
@@ -137,7 +178,7 @@ export const AnnotationEditor = () => {
                 document={activeDocument}
               />
               
-              {/* History controls */}
+              {/* History controls and NLP service */}
               <div className="flex items-center justify-between mt-4">
                 <div className="flex items-center gap-3">
                   <button
@@ -149,6 +190,78 @@ export const AnnotationEditor = () => {
                     </svg>
                     History
                   </button>
+                  
+                  {/* NLP Service Status */}
+                  <div className="flex items-center gap-2">
+                    {connectionStatus === 'connected' && (
+                      <>
+                        <div className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md ${
+                          isAwake 
+                            ? 'bg-green-100 text-green-800 border border-green-200' 
+                            : isChecking 
+                              ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                              : 'bg-gray-100 text-gray-600 border border-gray-200'
+                        }`}>
+                          {isChecking ? (
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : isAwake ? (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          )}
+                          <span className="text-sm font-medium">
+                            {isChecking ? 'Checking NLP...' : isAwake ? 'NLP Ready' : 'NLP Offline'}
+                          </span>
+                        </div>
+                        
+                        {!isAwake && !isChecking && (
+                          <button
+                            onClick={checkIfAwake}
+                            className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                          >
+                            Retry
+                          </button>
+                        )}
+                        
+                        {/* Auto Parse button - show when service is awake and has text content */}
+                        {isAwake && !viewingHistoricalState && activeDocument && activeDocument.textLayers?.[0]?.text && (
+                          <button
+                            onClick={requestParse}
+                            disabled={!canParse || isParsing}
+                            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+                              canParse && !isParsing
+                                ? 'bg-green-600 text-white hover:bg-green-700' 
+                                : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                            }`}
+                          >
+                            {isParsing ? (
+                              <>
+                                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Parsing...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                Auto Parse
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                   
                   {selectedHistoryEntry && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-yellow-100 text-yellow-800 rounded-md border border-yellow-200">
@@ -172,22 +285,62 @@ export const AnnotationEditor = () => {
                   )}
                 </div>
                 
-                {viewingHistoricalState && (
-                  <button
-                    onClick={() => handleSelectHistoryEntry(null)}
-                    className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                  >
-                    Return to Current
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {viewingHistoricalState && (
+                    <button
+                      onClick={() => handleSelectHistoryEntry(null)}
+                      className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    >
+                      Return to Current
+                    </button>
+                  )}
+                  
+                  {/* Auto Parse button - only show when not viewing historical state and has text content */}
+                  {!viewingHistoricalState && activeDocument && activeDocument.textLayers?.[0]?.text && (
+                    <button
+                      onClick={requestParse}
+                      disabled={!canParse || isParsing}
+                      className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+                        canParse && !isParsing
+                          ? 'bg-green-600 text-white hover:bg-green-700' 
+                          : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                      }`}
+                    >
+                      {isParsing ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Parsing...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Auto Parse
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Error display */}
-            {(error || historyError) && (
-              <div style={{ color: 'red', marginBottom: '1rem', padding: '0 1.5rem' }}>
-                {error && <div>{error}</div>}
-                {historyError && <div>{historyError}</div>}
+            {/* Error display and parse status */}
+            {(error || historyError || parseError) && (
+              <div style={{ marginBottom: '1rem', padding: '0 1.5rem' }}>
+                {error && <div style={{ color: 'red' }}>{error}</div>}
+                {historyError && <div style={{ color: 'red' }}>{historyError}</div>}
+                {parseError && <div style={{ color: 'red' }}>Parse Error: {parseError}</div>}
+              </div>
+            )}
+            
+            {/* Parse success message */}
+            {parseStatus === 'success' && (
+              <div style={{ marginBottom: '1rem', padding: '0 1.5rem' }}>
+                <div style={{ color: 'green' }}>✓ Document parsed successfully!</div>
               </div>
             )}
 
@@ -211,7 +364,7 @@ export const AnnotationEditor = () => {
                 document={activeDocument}
               />
               
-              {/* History controls */}
+              {/* History controls and NLP service */}
               <div className="flex items-center justify-between mt-4">
                 <div className="flex items-center gap-3">
                   <button
@@ -223,6 +376,78 @@ export const AnnotationEditor = () => {
                     </svg>
                     History
                   </button>
+                  
+                  {/* NLP Service Status */}
+                  <div className="flex items-center gap-2">
+                    {connectionStatus === 'connected' && (
+                      <>
+                        <div className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md ${
+                          isAwake 
+                            ? 'bg-green-100 text-green-800 border border-green-200' 
+                            : isChecking 
+                              ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                              : 'bg-gray-100 text-gray-600 border border-gray-200'
+                        }`}>
+                          {isChecking ? (
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : isAwake ? (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          )}
+                          <span className="text-sm font-medium">
+                            {isChecking ? 'Checking NLP...' : isAwake ? 'NLP Ready' : 'NLP Offline'}
+                          </span>
+                        </div>
+                        
+                        {!isAwake && !isChecking && (
+                          <button
+                            onClick={checkIfAwake}
+                            className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                          >
+                            Retry
+                          </button>
+                        )}
+                        
+                        {/* Auto Parse button - show when service is awake and has text content */}
+                        {isAwake && !viewingHistoricalState && activeDocument && activeDocument.textLayers?.[0]?.text && (
+                          <button
+                            onClick={requestParse}
+                            disabled={!canParse || isParsing}
+                            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+                              canParse && !isParsing
+                                ? 'bg-green-600 text-white hover:bg-green-700' 
+                                : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                            }`}
+                          >
+                            {isParsing ? (
+                              <>
+                                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Parsing...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                Auto Parse
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                   
                   {selectedHistoryEntry && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-yellow-100 text-yellow-800 rounded-md border border-yellow-200">
@@ -246,22 +471,62 @@ export const AnnotationEditor = () => {
                   )}
                 </div>
                 
-                {viewingHistoricalState && (
-                  <button
-                    onClick={() => handleSelectHistoryEntry(null)}
-                    className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                  >
-                    Return to Current
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {viewingHistoricalState && (
+                    <button
+                      onClick={() => handleSelectHistoryEntry(null)}
+                      className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    >
+                      Return to Current
+                    </button>
+                  )}
+                  
+                  {/* Auto Parse button - only show when not viewing historical state and has text content */}
+                  {!viewingHistoricalState && activeDocument && activeDocument.textLayers?.[0]?.text && (
+                    <button
+                      onClick={requestParse}
+                      disabled={!canParse || isParsing}
+                      className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+                        canParse && !isParsing
+                          ? 'bg-green-600 text-white hover:bg-green-700' 
+                          : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                      }`}
+                    >
+                      {isParsing ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Parsing...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Auto Parse
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Error display */}
-            {(error || historyError) && (
-              <div style={{ color: 'red', marginBottom: '1rem', padding: '0 1.5rem' }}>
-                {error && <div>{error}</div>}
-                {historyError && <div>{historyError}</div>}
+            {/* Error display and parse status */}
+            {(error || historyError || parseError) && (
+              <div style={{ marginBottom: '1rem', padding: '0 1.5rem' }}>
+                {error && <div style={{ color: 'red' }}>{error}</div>}
+                {historyError && <div style={{ color: 'red' }}>{historyError}</div>}
+                {parseError && <div style={{ color: 'red' }}>Parse Error: {parseError}</div>}
+              </div>
+            )}
+            
+            {/* Parse success message */}
+            {parseStatus === 'success' && (
+              <div style={{ marginBottom: '1rem', padding: '0 1.5rem' }}>
+                <div style={{ color: 'green' }}>✓ Document parsed successfully!</div>
               </div>
             )}
 
