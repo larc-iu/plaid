@@ -584,7 +584,7 @@
     (testing "Non-string body validation - coercion catches this at middleware level"
       ;; Note: The coercion middleware catches non-string bodies before our validation,
       ;; so this test verifies the middleware layer works correctly
-      (is (thrown? clojure.lang.ExceptionInfo
+      (is (thrown? java.lang.IllegalArgumentException
                    (api-call admin-request {:method :post
                                             :path   "/api/v1/texts"
                                             :body   {:text-layer-id tl
@@ -621,7 +621,7 @@
             text-res (create-text admin-request tl update-doc "original")
             text-id (-> text-res :body :id)
             _ (assert-created text-res)]
-        (is (thrown? clojure.lang.ExceptionInfo
+        (is (thrown? java.lang.IllegalArgumentException
                      (api-call admin-request {:method :patch
                                               :path   (str "/api/v1/texts/" text-id)
                                               :body   {:body 456}})))))))
@@ -661,7 +661,7 @@
         (assert-status 500 res)))
 
     (testing "Non-integer begin/end - coercion catches this at middleware level"
-      (is (thrown? clojure.lang.ExceptionInfo
+      (is (thrown? java.lang.IllegalArgumentException
                    (api-call admin-request {:method :post
                                             :path   "/api/v1/tokens"
                                             :body   {:token-layer-id tkl
@@ -678,7 +678,7 @@
         (assert-status 400 res)))
 
     (testing "Non-integer precedence - coercion catches this at middleware level"
-      (is (thrown? clojure.lang.ExceptionInfo
+      (is (thrown? java.lang.IllegalArgumentException
                    (api-call admin-request {:method :post
                                             :path   "/api/v1/tokens"
                                             :body   {:token-layer-id tkl
