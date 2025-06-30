@@ -102,6 +102,23 @@
       (throw (ex-info "Not all token IDs belong to the same document."
                       {:document-ids (map (partial get-doc-id-of-token db) tokens) :code 400})))))
 
+(defn- check-spans-consistency!
+  "Check if all spans belong to same layer and document.
+  Used for bulk operations."
+  [db spans-attrs]
+  ;; Check all spans are for the same layer
+  (when-not (= 1 (->> spans-attrs (map :span/layer) distinct count))
+    (throw (ex-info "Spans must all belong to the same layer" {:code 400})))
+  
+  ;; Check all spans belong to the same document (via their tokens)
+  (let [doc-ids (->> spans-attrs
+                     (map :span/tokens)
+                     (map first)
+                     (map (partial get-doc-id-of-token db))
+                     distinct)]
+    (when-not (= 1 (count doc-ids))
+      (throw (ex-info "Not all spans belong to the same document" {:document-ids doc-ids :code 400})))))
+
 (defn- span-attr?
   "Check if an attribute key belongs to span namespace (including metadata attributes)."
   [k]
@@ -319,18 +336,8 @@
                                 (clojure.core/merge span-attrs metadata-attrs))
                               (dissoc attrs :metadata)))
                           spans-attrs)]
-    ;; Validate all spans are for the same layer
-    (when-not (= 1 (->> spans-attrs (map :span/layer) distinct count))
-      (throw (ex-info "Spans must all belong to the same layer" {:code 400})))
-
-    ;; Validate all spans belong to the same document (via their tokens)
-    (let [doc-ids (->> spans-attrs
-                       (map :span/tokens)
-                       (map first)
-                       (map (partial get-doc-id-of-token db))
-                       distinct)]
-      (when-not (= 1 (count doc-ids))
-        (throw (ex-info "Not all spans belong to the same document" {:document-ids doc-ids :code 400}))))
+    ;; Check consistency of spans
+    (check-spans-consistency! db spans-attrs)
 
     ;; If validation passes, create transaction operations
     (vec
