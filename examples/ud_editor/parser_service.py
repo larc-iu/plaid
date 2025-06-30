@@ -79,16 +79,12 @@ def stanza_to_conllu(stanza_doc):
     return {'sentences': sentences}
 
 
-def parse_document(client, document_id, text_content):
+def parse_document(pipeline, client, document_id, text_content):
     """Parse a document using Stanza and create annotations in Plaid"""
     try:
         print(f"Starting parse for document {document_id}")
         
         # Parse with Stanza
-        pipeline = stanza.Pipeline(
-                'en',
-                processors='tokenize,pos,lemma,depparse',
-                download_method=stanza.DownloadMethod.REUSE_RESOURCES)
         stanza_doc = pipeline(text_content)
         
         # Convert to CoNLL-U format
@@ -285,6 +281,29 @@ def parse_document(client, document_id, text_content):
                 client.spans.bulk_create(feature_spans)
                 print(f"Created {len(feature_spans)} feature spans")
         
+        # Create multi-word token spans
+        if mwt_layer:
+            mwt_spans = []
+            for sent_idx, sentence in enumerate(parsed_data['sentences']):
+                sentence_token_ids = token_id_map[sent_idx]
+                for mwt in sentence['multiWordTokens']:
+                    # Find tokens that correspond to this MWT
+                    start_idx = mwt['start'] - 1  # Convert to 0-based
+                    end_idx = mwt['end'] - 1      # Convert to 0-based
+                    
+                    if 0 <= start_idx < len(sentence_token_ids) and 0 <= end_idx < len(sentence_token_ids):
+                        # Include all tokens from start to end (inclusive)
+                        mwt_token_ids = sentence_token_ids[start_idx:end_idx + 1]
+                        mwt_spans.append({
+                            'span_layer_id': mwt_layer['id'],
+                            'tokens': mwt_token_ids,
+                            'value': mwt['form']
+                        })
+            
+            if mwt_spans:
+                client.spans.bulk_create(mwt_spans)
+                print(f"Created {len(mwt_spans)} multi-word token spans")
+        
         # Create dependency relations
         if lemma_layer and lemma_span_ids:
             relation_layer = lemma_layer.get('relation_layers', [{}])[0] if lemma_layer.get('relation_layers') else None
@@ -334,6 +353,10 @@ def parse_document(client, document_id, text_content):
 
 def main():
     client = get_client()
+    pipeline = stanza.Pipeline(
+            'en',
+            processors='tokenize,pos,lemma,depparse',
+            download_method=stanza.DownloadMethod.REUSE_RESOURCES)
     
     def on_event(event_type, event_data):
         print(f"Received event. Type: {event_type}.\nPayload: {event_data}")
@@ -374,7 +397,7 @@ def main():
                     client.projects.send_message(project_id, f"parse-started:{document_id}")
 
                     # Perform the parse
-                    success = parse_document(client, document_id, text_content)
+                    success = parse_document(pipeline, client, document_id, text_content)
 
                     # Send completion message
                     if success:
@@ -388,7 +411,7 @@ def main():
                     raise(e)
 
 
-    target_project_id = "0f0f0574-ae5a-4060-814c-c5bbdce14d67"
+    target_project_id = "23f9cb87-c5e0-4081-b389-8e6ba00d6367"
     # Start by listening to a sample project (you can remove this hardcoded ID)
     print(f"Starting NLP service, listening to project {target_project_id}")
     connection = client.projects.listen(target_project_id, on_event)
