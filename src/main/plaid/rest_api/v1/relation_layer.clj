@@ -5,7 +5,7 @@
             [plaid.xtdb.relation-layer :as rl]
             [plaid.xtdb.common :as pxc]))
 
-(defn get-project-id [{db :db params :params}]
+(defn get-project-id [{db :db params :parameters}]
   (let [sl-id (-> params :body :span-layer-id)
         rl-id (-> params :path :relation-layer-id)]
     (cond sl-id

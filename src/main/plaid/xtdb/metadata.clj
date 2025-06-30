@@ -181,7 +181,7 @@
 
 (def ^:private valid-entity-types
   "Set of entity types that support metadata"
-  #{"text" "token" "span" "relation"})
+  #{"document" "text" "token" "span" "relation"})
 
 (defn- validate-entity-type!
   "Validate that the entity type supports metadata operations"

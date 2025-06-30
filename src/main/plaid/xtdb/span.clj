@@ -53,7 +53,7 @@
       first
       first))
 
-(defn- get-doc-id-of-token
+(defn get-doc-id-of-token
   [db-like token-id]
   (ffirst
     (xt/q (pxc/->db db-like)

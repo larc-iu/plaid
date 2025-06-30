@@ -115,7 +115,7 @@
     (throw (ex-info "Bad key" {:key key})))
   (fn [{xtdb :xtdb :as request}]
     (let [user-id (->user-id request)
-          id (get-project-id {:params (:parameters request)
+          id (get-project-id {:parameters (:parameters request)
                               :db (or (:db request) (xt/db xtdb))})
           admin? (user/admin? (user/get xtdb user-id))
           project (prj/get xtdb id)]

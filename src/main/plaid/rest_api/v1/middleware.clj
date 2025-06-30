@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.middleware
   (:require [clojure.instant :as instant]
+            [plaid.xtdb.document :as doc]
             [taoensso.timbre :as log]
             [xtdb.api :as xt]
             [clojure.string :as str]))
@@ -28,7 +29,7 @@
   "Enriches the request object with :db, which will hold either the current or an historical state of the database."
   [handler]
   (fn [request]
-    (let [as-of (get-in request [:params :as-of])
+    (let [as-of (get-in request [:parameters :as-of])
           db (if as-of
                (xt/db (:xtdb request) (instant/read-instant-date as-of))
                (xt/db (:xtdb request)))]
@@ -46,3 +47,30 @@
 
         :else
         (handler (assoc request :db db))))))
+
+(defn wrap-document-version
+  "Middleware that validates document version to prevent concurrent modifications.
+  Takes a ->document-id function that extracts the document ID from the request.
+  For non-GET requests with a document-version query parameter, ensures the 
+  provided version matches the latest audit ID for that document."
+  [handler ->document-id]
+  (fn [request]
+    (let [method (:request-method request)
+          document-version (get-in request [:parameters :query :document-version])
+          db (:db request)]
+
+      (if (and document-version
+               (not= method :get))
+        (if-let [doc-id (->document-id request)]
+          (let [latest-version (:document/version (doc/get db doc-id))]
+            (println)
+            (println (->document-id request))
+            (println document-version)
+            (println (:document/version (doc/get db doc-id)))
+            (println)
+            (if (not= latest-version document-version)
+              {:status 409
+               :body {:error "Document version mismatch. The document has been modified since you last fetched it."}}
+              (handler request)))
+          {:status 400 :body {:error "document-version was provided but no document was found with the provided version."}})
+        (handler request)))))

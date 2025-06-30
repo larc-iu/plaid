@@ -4,7 +4,7 @@
             [reitit.coercion.malli]
             [plaid.xtdb.text-layer :as txtl]))
 
-(defn get-project-id [{db :db params :params}]
+(defn get-project-id [{db :db params :parameters}]
   (let [prj-id (-> params :body :project-id)
         txtl-id (-> params :path :text-layer-id)]
     (cond prj-id
