@@ -79,9 +79,9 @@
         (is (= [] response-body))))
     
     (testing "Invalid method"
-      (let [operations [{:path "/api/v1/users/admin@example.com" :method "invalid" :body nil}]]
-        (is (thrown? clojure.lang.ExceptionInfo
-                     (make-bulk-request operations admin-token)))))
+      (let [operations [{:path "/api/v1/users/admin@example.com" :method "invalid" :body nil}]
+            response (make-bulk-request operations admin-token)]
+        (is (= 400 (:status response)))))
     
     (testing "Unauthenticated request"
       (let [operations [{:path "/api/v1/users/admin@example.com" :method "get" :body nil}]
