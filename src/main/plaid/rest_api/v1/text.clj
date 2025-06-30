@@ -33,7 +33,8 @@
                              "\n<body>body</body>: the string which is the content of this text.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]]
-               :parameters {:body [:map
+               :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                            :body [:map
                                    [:text-layer-id :uuid]
                                    [:document-id :uuid]
                                    [:body string?]
@@ -68,7 +69,8 @@
                                "or else deleted if there is whole overlap.")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
-                 :parameters {:body [:map [:body string?]]}
+                 :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                              :body [:map [:body string?]]}
                  :handler (fn [{{{:keys [text-id]} :path {:keys [body]} :body} :parameters xtdb :xtdb user-id :user/id}]
                             (let [{:keys [success code error]} (txt/update-body {:node xtdb} text-id body user-id)]
                               (if success
@@ -79,6 +81,7 @@
          :delete {:summary "Delete a text and all dependent data."
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
+                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :handler (fn [{{{:keys [text-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                              (let [{:keys [success code error]} (txt/delete {:node xtdb} text-id user-id)]
                                (if success

@@ -59,7 +59,8 @@
                              "\n<body>precedence</body>: used for tokens with the same <body>begin</body> value in order to indicate their preferred linear order.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]]
-               :parameters {:body [:map
+               :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                            :body [:map
                                    [:token-layer-id :uuid]
                                    [:text :uuid]
                                    [:begin int?]
@@ -89,7 +90,8 @@
                     :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                  [prm/wrap-document-version bulk-get-document-id]]
-                    :parameters {:body [:sequential
+                    :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                 :body [:sequential
                                         [:map
                                          [:token-layer-id :uuid]
                                          [:text :uuid]
@@ -117,7 +119,8 @@
                       :openapi {:x-client-method "bulkDelete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
-                      :parameters {:body [:sequential :uuid]}
+                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                   :body [:sequential :uuid]}
                       :handler (fn [{{token-ids :body} :parameters xtdb :xtdb user-id :user/id}]
                                  (let [{:keys [success code error]} (tok/bulk-delete {:node xtdb} token-ids user-id)]
                                    (if success
@@ -142,7 +145,8 @@
                                "\n<body>precedence</body>: ordering value for the token relative to other tokens with the same <body>begin</body>--lower means earlier")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
-                 :parameters {:body [:map
+                 :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                              :body [:map
                                      [:begin {:optional true} int?]
                                      [:end {:optional true} int?]
                                      [:precedence {:optional true} int?]]}
@@ -159,6 +163,7 @@
                                 "remaining associated tokens, the span will also be deleted.")
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
+                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :handler (fn [{{{:keys [token-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                              (let [{:keys [success code error]} (tok/delete {:node xtdb} token-id user-id)]
                                (if success

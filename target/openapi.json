@@ -115,15 +115,6 @@
                             "type": "string",
                             "format": "date-time"
                         }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
                     }
                 ],
                 "responses": {
@@ -150,15 +141,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     }
                 ],
@@ -283,15 +265,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "id",
                         "required": true,
@@ -327,15 +300,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "id",
                         "required": true,
@@ -368,15 +332,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -487,15 +442,6 @@
                             "type": "string",
                             "format": "date-time"
                         }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
                     }
                 ],
                 "responses": {
@@ -519,15 +465,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     }
                 ],
@@ -618,15 +555,6 @@
                     },
                     {
                         "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
-                        "in": "query",
                         "name": "include-documents",
                         "required": false,
                         "schema": {
@@ -667,15 +595,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "id",
                         "required": true,
@@ -706,15 +625,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -813,15 +723,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "id",
                         "required": true,
@@ -860,15 +761,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -915,15 +807,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "id",
                         "required": true,
@@ -962,15 +845,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -1017,15 +891,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "id",
                         "required": true,
@@ -1064,15 +929,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -1119,15 +975,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "id",
                         "required": true,
@@ -1161,15 +1008,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -1268,15 +1106,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "id",
                         "required": true,
@@ -1326,15 +1155,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -1403,15 +1223,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "id",
                         "required": true,
@@ -1460,15 +1271,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     }
                 ],
@@ -1595,15 +1397,6 @@
                     },
                     {
                         "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
-                        "in": "query",
                         "name": "include-body",
                         "required": false,
                         "schema": {
@@ -1644,15 +1437,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "document-id",
                         "required": true,
@@ -1683,15 +1467,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -2057,15 +1832,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "text-id",
                         "required": true,
@@ -2359,15 +2125,6 @@
                             "type": "string",
                             "format": "date-time"
                         }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
                     }
                 ],
                 "requestBody": {
@@ -2476,15 +2233,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "text-layer-id",
                         "required": true,
@@ -2518,15 +2266,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "text-layer-id",
                         "required": true,
@@ -2557,15 +2296,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -2661,15 +2391,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -2784,15 +2505,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "text-layer-id",
                         "required": true,
@@ -2858,15 +2570,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "text-layer-id",
                         "required": true,
@@ -2924,15 +2627,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     }
                 ],
@@ -3042,15 +2736,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "token-layer-id",
                         "required": true,
@@ -3084,15 +2769,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "token-layer-id",
                         "required": true,
@@ -3123,15 +2799,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -3227,15 +2894,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -3350,15 +3008,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "token-layer-id",
                         "required": true,
@@ -3421,15 +3070,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -3935,15 +3575,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -4771,15 +4402,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "span-id",
                         "required": true,
@@ -5246,15 +4868,6 @@
                             "type": "string",
                             "format": "date-time"
                         }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
                     }
                 ],
                 "requestBody": {
@@ -5363,15 +4976,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "span-layer-id",
                         "required": true,
@@ -5405,15 +5009,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "span-layer-id",
                         "required": true,
@@ -5444,15 +5039,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -5548,15 +5134,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -5671,15 +5248,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "span-layer-id",
                         "required": true,
@@ -5742,15 +5310,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -6224,15 +5783,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -6739,15 +6289,6 @@
                             "type": "string",
                             "format": "date-time"
                         }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
                     }
                 ],
                 "requestBody": {
@@ -6856,15 +6397,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "relation-layer-id",
                         "required": true,
@@ -6898,15 +6430,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "relation-layer-id",
                         "required": true,
@@ -6937,15 +6460,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -7041,15 +6555,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -7164,15 +6669,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "relation-layer-id",
                         "required": true,
@@ -7238,15 +6734,6 @@
                         }
                     },
                     {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "relation-layer-id",
                         "required": true,
@@ -7308,15 +6795,6 @@
                     },
                     {
                         "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
-                        "in": "query",
                         "name": "start-time",
                         "required": false,
                         "schema": {
@@ -7366,15 +6844,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     },
                     {
@@ -7432,15 +6901,6 @@
                     },
                     {
                         "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
-                        }
-                    },
-                    {
-                        "in": "query",
                         "name": "start-time",
                         "required": false,
                         "schema": {
@@ -7489,15 +6949,6 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "document-version",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "format": "uuid"
                         }
                     }
                 ],

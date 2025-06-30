@@ -78,7 +78,8 @@
                              "\n<body>value</value>: the label for the relation")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]]
-               :parameters {:body [:map
+               :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                            :body [:map
                                    [:layer-id :uuid]
                                    [:source-id :uuid]
                                    [:target-id :uuid]
@@ -105,7 +106,8 @@
                     :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                  [prm/wrap-document-version bulk-get-document-id]]
-                    :parameters {:body [:sequential
+                    :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                 :body [:sequential
                                         [:map
                                          [:relation-layer-id :uuid]
                                          [:source :uuid]
@@ -132,7 +134,8 @@
                       :openapi {:x-client-method "bulk-delete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
-                      :parameters {:body [:sequential :uuid]}
+                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                   :body [:sequential :uuid]}
                       :handler (fn [{{relation-ids :body} :parameters xtdb :xtdb user-id :user/id}]
                                  (let [{:keys [success code error]} (r/bulk-delete {:node xtdb} relation-ids user-id)]
                                    (if success
@@ -153,13 +156,15 @@
          :patch {:summary "Update a relation's value."
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
-                 :parameters {:body [:map [:value any?]]}
+                 :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                              :body [:map [:value any?]]}
                  :handler (fn [{{{:keys [relation-id]} :path {:keys [value]} :body} :parameters xtdb :xtdb user-id :user/id :as request}]
                             (let [{:keys [success code error]} (r/merge {:node xtdb} relation-id {:relation/value value} user-id)]
                               (if success
                                 {:status 200 :body (r/get xtdb relation-id)}
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a relation."
+                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
                   :handler (fn [{{{:keys [relation-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
@@ -171,7 +176,8 @@
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
                       :openapi {:x-client-method "set-source"}
-                      :parameters {:body [:map [:span-id :uuid]]}
+                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                   :body [:map [:span-id :uuid]]}
                       :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                                  (let [{:keys [success code error]} (r/set-end {:node xtdb} relation-id :relation/source span-id user-id)]
                                    (if success
@@ -181,7 +187,8 @@
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
                       :openapi {:x-client-method "set-target"}
-                      :parameters {:body [:map [:span-id :uuid]]}
+                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                   :body [:map [:span-id :uuid]]}
                       :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                                  (let [{:keys [success code error]} (r/set-end {:node xtdb} relation-id :relation/target span-id user-id)]
                                    (if success
