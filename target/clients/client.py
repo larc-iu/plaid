@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Sat Jun 28 18:39:30 EDT 2025
+Generated on: Mon Jun 30 17:10:35 EDT 2025
 """
 
 import requests
@@ -17,15 +17,24 @@ class RelationsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def set_metadata(self, relation_id: str, body: Any) -> Any:
+    def set_metadata(self, relation_id: str, body: Any, document_version: str = None) -> Any:
         """
         Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             relation_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -55,15 +64,24 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, relation_id: str, body: Any) -> Any:
+    async def set_metadata_async(self, relation_id: str, body: Any, document_version: str = None) -> Any:
         """
         Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             relation_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -95,14 +113,23 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, relation_id: str) -> Any:
+    def delete_metadata(self, relation_id: str, document_version: str = None) -> Any:
         """
         Remove all metadata from a relation.
 
         Args:
             relation_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -125,14 +152,23 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, relation_id: str) -> Any:
+    async def delete_metadata_async(self, relation_id: str, document_version: str = None) -> Any:
         """
         Remove all metadata from a relation.
 
         Args:
             relation_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -157,15 +193,24 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text
 
-    def set_target(self, relation_id: str, span_id: str) -> Any:
+    def set_target(self, relation_id: str, span_id: str, document_version: str = None) -> Any:
         """
         Update the target span of a relation.
 
         Args:
             relation_id: Path parameter
             span_id: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/target"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'span-id': span_id
         }
@@ -195,15 +240,24 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def set_target_async(self, relation_id: str, span_id: str) -> Any:
+    async def set_target_async(self, relation_id: str, span_id: str, document_version: str = None) -> Any:
         """
         Update the target span of a relation.
 
         Args:
             relation_id: Path parameter
             span_id: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/target"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'span-id': span_id
         }
@@ -315,14 +369,23 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete(self, relation_id: str) -> Any:
+    def delete(self, relation_id: str, document_version: str = None) -> Any:
         """
         Delete a relation.
 
         Args:
             relation_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -345,14 +408,23 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_async(self, relation_id: str) -> Any:
+    async def delete_async(self, relation_id: str, document_version: str = None) -> Any:
         """
         Delete a relation.
 
         Args:
             relation_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -377,15 +449,24 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text
 
-    def update(self, relation_id: str, value: Any) -> Any:
+    def update(self, relation_id: str, value: Any, document_version: str = None) -> Any:
         """
         Update a relation's value.
 
         Args:
             relation_id: Path parameter
             value: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'value': value
         }
@@ -415,15 +496,24 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def update_async(self, relation_id: str, value: Any) -> Any:
+    async def update_async(self, relation_id: str, value: Any, document_version: str = None) -> Any:
         """
         Update a relation's value.
 
         Args:
             relation_id: Path parameter
             value: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'value': value
         }
@@ -455,15 +545,24 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text
 
-    def set_source(self, relation_id: str, span_id: str) -> Any:
+    def set_source(self, relation_id: str, span_id: str, document_version: str = None) -> Any:
         """
         Update the source span of a relation.
 
         Args:
             relation_id: Path parameter
             span_id: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/source"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'span-id': span_id
         }
@@ -493,15 +592,24 @@ class RelationsResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def set_source_async(self, relation_id: str, span_id: str) -> Any:
+    async def set_source_async(self, relation_id: str, span_id: str, document_version: str = None) -> Any:
         """
         Update the source span of a relation.
 
         Args:
             relation_id: Path parameter
             span_id: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/source"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'span-id': span_id
         }
@@ -533,7 +641,7 @@ class RelationsResource:
                     return self.client._transform_response(data)
                 return await response.text
 
-    def create(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
+    def create(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None, document_version: str = None) -> Any:
         """
         Create a new relation. A relation is a directed edge between two spans with a value, useful for expressing phenomena such as syntactic or semantic relations. A relation must at all times have both a valid source and target span. These spans must also belong to a single span layer which is linked to the relation's relation layer.
 
@@ -548,8 +656,17 @@ target_id: the target span this relation goes to
             target_id: Required body parameter
             value: Required body parameter
             metadata: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'layer-id': layer_id,
             'source-id': source_id,
@@ -583,7 +700,7 @@ target_id: the target span this relation goes to
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
+    async def create_async(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None, document_version: str = None) -> Any:
         """
         Create a new relation. A relation is a directed edge between two spans with a value, useful for expressing phenomena such as syntactic or semantic relations. A relation must at all times have both a valid source and target span. These spans must also belong to a single span layer which is linked to the relation's relation layer.
 
@@ -598,8 +715,17 @@ target_id: the target span this relation goes to
             target_id: Required body parameter
             value: Required body parameter
             metadata: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'layer-id': layer_id,
             'source-id': source_id,
@@ -635,7 +761,7 @@ target_id: the target span this relation goes to
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_create(self, body: List[Any]) -> Any:
+    def bulk_create(self, body: List[Any], document_version: str = None) -> Any:
         """
         Create multiple relations in a single operation. Provide an array of objects whose keysare:
 relation_layer_id, the relation's layer
@@ -646,8 +772,17 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -672,7 +807,7 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_create_async(self, body: List[Any]) -> Any:
+    async def bulk_create_async(self, body: List[Any], document_version: str = None) -> Any:
         """
         Create multiple relations in a single operation. Provide an array of objects whose keysare:
 relation_layer_id, the relation's layer
@@ -683,8 +818,17 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -711,14 +855,23 @@ metadata, an optional map of metadata
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_delete(self, body: List[Any]) -> Any:
+    def bulk_delete(self, body: List[Any], document_version: str = None) -> Any:
         """
         Delete multiple relations in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -743,14 +896,23 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_delete_async(self, body: List[Any]) -> Any:
+    async def bulk_delete_async(self, body: List[Any], document_version: str = None) -> Any:
         """
         Delete multiple relations in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -1311,15 +1473,24 @@ class SpansResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def set_tokens(self, span_id: str, tokens: List[Any]) -> Any:
+    def set_tokens(self, span_id: str, tokens: List[Any], document_version: str = None) -> Any:
         """
         Replace tokens for a span.
 
         Args:
             span_id: Path parameter
             tokens: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/tokens"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'tokens': tokens
         }
@@ -1349,15 +1520,24 @@ class SpansResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def set_tokens_async(self, span_id: str, tokens: List[Any]) -> Any:
+    async def set_tokens_async(self, span_id: str, tokens: List[Any], document_version: str = None) -> Any:
         """
         Replace tokens for a span.
 
         Args:
             span_id: Path parameter
             tokens: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/tokens"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'tokens': tokens
         }
@@ -1389,7 +1569,7 @@ class SpansResource:
                     return self.client._transform_response(data)
                 return await response.text
 
-    def create(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
+    def create(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None, document_version: str = None) -> Any:
         """
         Create a new span. A span holds a primary atomic value and optional metadata, and must at all times be associated with one or more tokens.
 
@@ -1403,8 +1583,17 @@ metadata: optional key-value pairs for additional annotation data.
             tokens: Required body parameter
             value: Required body parameter
             metadata: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'span-layer-id': span_layer_id,
             'tokens': tokens,
@@ -1437,7 +1626,7 @@ metadata: optional key-value pairs for additional annotation data.
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
+    async def create_async(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None, document_version: str = None) -> Any:
         """
         Create a new span. A span holds a primary atomic value and optional metadata, and must at all times be associated with one or more tokens.
 
@@ -1451,8 +1640,17 @@ metadata: optional key-value pairs for additional annotation data.
             tokens: Required body parameter
             value: Required body parameter
             metadata: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'span-layer-id': span_layer_id,
             'tokens': tokens,
@@ -1567,14 +1765,23 @@ metadata: optional key-value pairs for additional annotation data.
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete(self, span_id: str) -> Any:
+    def delete(self, span_id: str, document_version: str = None) -> Any:
         """
         Delete a span.
 
         Args:
             span_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1597,14 +1804,23 @@ metadata: optional key-value pairs for additional annotation data.
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_async(self, span_id: str) -> Any:
+    async def delete_async(self, span_id: str, document_version: str = None) -> Any:
         """
         Delete a span.
 
         Args:
             span_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1629,15 +1845,24 @@ metadata: optional key-value pairs for additional annotation data.
                     return self.client._transform_response(data)
                 return await response.text
 
-    def update(self, span_id: str, value: Any) -> Any:
+    def update(self, span_id: str, value: Any, document_version: str = None) -> Any:
         """
         Update a span's value.
 
         Args:
             span_id: Path parameter
             value: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'value': value
         }
@@ -1667,15 +1892,24 @@ metadata: optional key-value pairs for additional annotation data.
             return self.client._transform_response(data)
         return response.text
 
-    async def update_async(self, span_id: str, value: Any) -> Any:
+    async def update_async(self, span_id: str, value: Any, document_version: str = None) -> Any:
         """
         Update a span's value.
 
         Args:
             span_id: Path parameter
             value: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'value': value
         }
@@ -1707,7 +1941,7 @@ metadata: optional key-value pairs for additional annotation data.
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_create(self, body: List[Any]) -> Any:
+    def bulk_create(self, body: List[Any], document_version: str = None) -> Any:
         """
         Create multiple spans in a single operation. Provide an array of objects whose keysare:
 span_layer_id, the span's layer
@@ -1717,8 +1951,17 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -1743,7 +1986,7 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_create_async(self, body: List[Any]) -> Any:
+    async def bulk_create_async(self, body: List[Any], document_version: str = None) -> Any:
         """
         Create multiple spans in a single operation. Provide an array of objects whose keysare:
 span_layer_id, the span's layer
@@ -1753,8 +1996,17 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -1781,14 +2033,23 @@ metadata, an optional map of metadata
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_delete(self, body: List[Any]) -> Any:
+    def bulk_delete(self, body: List[Any], document_version: str = None) -> Any:
         """
         Delete multiple spans in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -1813,14 +2074,23 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_delete_async(self, body: List[Any]) -> Any:
+    async def bulk_delete_async(self, body: List[Any], document_version: str = None) -> Any:
         """
         Delete multiple spans in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -1847,15 +2117,24 @@ metadata, an optional map of metadata
                     return self.client._transform_response(data)
                 return await response.text
 
-    def set_metadata(self, span_id: str, body: Any) -> Any:
+    def set_metadata(self, span_id: str, body: Any, document_version: str = None) -> Any:
         """
         Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             span_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -1885,15 +2164,24 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, span_id: str, body: Any) -> Any:
+    async def set_metadata_async(self, span_id: str, body: Any, document_version: str = None) -> Any:
         """
         Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             span_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -1925,14 +2213,23 @@ metadata, an optional map of metadata
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, span_id: str) -> Any:
+    def delete_metadata(self, span_id: str, document_version: str = None) -> Any:
         """
         Remove all metadata from a span.
 
         Args:
             span_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1955,14 +2252,23 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, span_id: str) -> Any:
+    async def delete_metadata_async(self, span_id: str, document_version: str = None) -> Any:
         """
         Remove all metadata from a span.
 
         Args:
             span_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1996,15 +2302,24 @@ class TextsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def set_metadata(self, text_id: str, body: Any) -> Any:
+    def set_metadata(self, text_id: str, body: Any, document_version: str = None) -> Any:
         """
         Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             text_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -2034,15 +2349,24 @@ class TextsResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, text_id: str, body: Any) -> Any:
+    async def set_metadata_async(self, text_id: str, body: Any, document_version: str = None) -> Any:
         """
         Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             text_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -2074,14 +2398,23 @@ class TextsResource:
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, text_id: str) -> Any:
+    def delete_metadata(self, text_id: str, document_version: str = None) -> Any:
         """
         Remove all metadata from a text.
 
         Args:
             text_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -2104,14 +2437,23 @@ class TextsResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, text_id: str) -> Any:
+    async def delete_metadata_async(self, text_id: str, document_version: str = None) -> Any:
         """
         Remove all metadata from a text.
 
         Args:
             text_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -2136,7 +2478,7 @@ class TextsResource:
                     return self.client._transform_response(data)
                 return await response.text
 
-    def create(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
+    def create(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None, document_version: str = None) -> Any:
         """
         Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
@@ -2149,8 +2491,17 @@ body: the string which is the content of this text.
             document_id: Required body parameter
             body: Required body parameter
             metadata: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'text-layer-id': text_layer_id,
             'document-id': document_id,
@@ -2183,7 +2534,7 @@ body: the string which is the content of this text.
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
+    async def create_async(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None, document_version: str = None) -> Any:
         """
         Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
@@ -2196,8 +2547,17 @@ body: the string which is the content of this text.
             document_id: Required body parameter
             body: Required body parameter
             metadata: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'text-layer-id': text_layer_id,
             'document-id': document_id,
@@ -2312,14 +2672,23 @@ body: the string which is the content of this text.
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete(self, text_id: str) -> Any:
+    def delete(self, text_id: str, document_version: str = None) -> Any:
         """
         Delete a text and all dependent data.
 
         Args:
             text_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -2342,14 +2711,23 @@ body: the string which is the content of this text.
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_async(self, text_id: str) -> Any:
+    async def delete_async(self, text_id: str, document_version: str = None) -> Any:
         """
         Delete a text and all dependent data.
 
         Args:
             text_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -2374,15 +2752,24 @@ body: the string which is the content of this text.
                     return self.client._transform_response(data)
                 return await response.text
 
-    def update(self, text_id: str, body: str) -> Any:
+    def update(self, text_id: str, body: str, document_version: str = None) -> Any:
         """
         Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
 
         Args:
             text_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -2412,15 +2799,24 @@ body: the string which is the content of this text.
             return self.client._transform_response(data)
         return response.text
 
-    async def update_async(self, text_id: str, body: str) -> Any:
+    async def update_async(self, text_id: str, body: str, document_version: str = None) -> Any:
         """
         Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
 
         Args:
             text_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -3477,6 +3873,182 @@ class DocumentsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
+    def set_metadata(self, document_id: str, body: Any, document_version: str = None) -> Any:
+        """
+        Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            document_id: Path parameter
+            body: Required body parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.put(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def set_metadata_async(self, document_id: str, body: Any, document_version: str = None) -> Any:
+        """
+        Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            document_id: Path parameter
+            body: Required body parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def delete_metadata(self, document_id: str, document_version: str = None) -> Any:
+        """
+        Remove all metadata from a document.
+
+        Args:
+            document_id: Path parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def delete_metadata_async(self, document_id: str, document_version: str = None) -> Any:
+        """
+        Remove all metadata from a document.
+
+        Args:
+            document_id: Path parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
     def audit(self, document_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
         Get audit log for a document
@@ -3799,18 +4371,20 @@ name: update a document's name.
                     return self.client._transform_response(data)
                 return await response.text
 
-    def create(self, project_id: str, name: str) -> Any:
+    def create(self, project_id: str, name: str, metadata: Any = None) -> Any:
         """
         Create a new document in a project. Requires project_id and name.
 
         Args:
             project_id: Required body parameter
             name: Required body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents"
         body_dict = {
             'project-id': project_id,
-            'name': name
+            'name': name,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -3838,18 +4412,20 @@ name: update a document's name.
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, project_id: str, name: str) -> Any:
+    async def create_async(self, project_id: str, name: str, metadata: Any = None) -> Any:
         """
         Create a new document in a project. Requires project_id and name.
 
         Args:
             project_id: Required body parameter
             name: Required body parameter
+            metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents"
         body_dict = {
             'project-id': project_id,
-            'name': name
+            'name': name,
+            'metadata': metadata
         }
         # Filter out None values
         body_dict = {k: v for k, v in body_dict.items() if v is not None}
@@ -4429,6 +5005,144 @@ class ProjectsResource:
             'last_heartbeat_seconds_ago': time.time() - last_heartbeat if heartbeat_events > 0 else None,
             'client_id': client_id
         }
+
+    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+        """
+        Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
+
+        Args:
+            id: Path parameter
+            namespace: Path parameter
+            config_key: Path parameter
+            config_value: Configuration value to set
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/config/{namespace}/{config_key}"
+        body_data = config_value
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.put(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def set_config_async(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+        """
+        Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
+
+        Args:
+            id: Path parameter
+            namespace: Path parameter
+            config_key: Path parameter
+            config_value: Configuration value to set
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/config/{namespace}/{config_key}"
+        body_data = config_value
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def delete_config(self, id: str, namespace: str, config_key: str) -> Any:
+        """
+        Remove a configuration value for a layer.
+
+        Args:
+            id: Path parameter
+            namespace: Path parameter
+            config_key: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/config/{namespace}/{config_key}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def delete_config_async(self, id: str, namespace: str, config_key: str) -> Any:
+        """
+        Remove a configuration value for a layer.
+
+        Args:
+            id: Path parameter
+            namespace: Path parameter
+            config_key: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/config/{namespace}/{config_key}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
 
     def add_maintainer(self, id: str, user_id: str) -> Any:
         """
@@ -6251,28 +6965,37 @@ class TokensResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def create(self, token_layer_id: str, text_id: str, begin: int, end: int, precedence: int = None, metadata: Any = None) -> Any:
+    def create(self, token_layer_id: str, text: str, begin: int, end: int, precedence: int = None, metadata: Any = None, document_version: str = None) -> Any:
         """
         Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
 
 token_layer_id: the layer in which to insert this token.
-text_id: the text in which this token is found.
-begin: the inclusive character-based offset at which this token begins in the body of the text specified by text_id
-end: the exclusive character-based offset at which this token ends in the body of the text specified by text_id
+text: the text in which this token is found.
+begin: the inclusive character-based offset at which this token begins in the body of the text specified by text
+end: the exclusive character-based offset at which this token ends in the body of the text specified by text
 precedence: used for tokens with the same begin value in order to indicate their preferred linear order.
 
         Args:
             token_layer_id: Required body parameter
-            text_id: Required body parameter
+            text: Required body parameter
             begin: Required body parameter
             end: Required body parameter
             precedence: Optional body parameter
             metadata: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'token-layer-id': token_layer_id,
-            'text-id': text_id,
+            'text': text,
             'begin': begin,
             'end': end,
             'precedence': precedence,
@@ -6304,28 +7027,37 @@ precedence: used for tokens with the same begin value in order to indicate their
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, token_layer_id: str, text_id: str, begin: int, end: int, precedence: int = None, metadata: Any = None) -> Any:
+    async def create_async(self, token_layer_id: str, text: str, begin: int, end: int, precedence: int = None, metadata: Any = None, document_version: str = None) -> Any:
         """
         Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
 
 token_layer_id: the layer in which to insert this token.
-text_id: the text in which this token is found.
-begin: the inclusive character-based offset at which this token begins in the body of the text specified by text_id
-end: the exclusive character-based offset at which this token ends in the body of the text specified by text_id
+text: the text in which this token is found.
+begin: the inclusive character-based offset at which this token begins in the body of the text specified by text
+end: the exclusive character-based offset at which this token ends in the body of the text specified by text
 precedence: used for tokens with the same begin value in order to indicate their preferred linear order.
 
         Args:
             token_layer_id: Required body parameter
-            text_id: Required body parameter
+            text: Required body parameter
             begin: Required body parameter
             end: Required body parameter
             precedence: Optional body parameter
             metadata: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'token-layer-id': token_layer_id,
-            'text-id': text_id,
+            'text': text,
             'begin': begin,
             'end': end,
             'precedence': precedence,
@@ -6439,14 +7171,23 @@ precedence: used for tokens with the same begin value in order to indicate their
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete(self, token_id: str) -> Any:
+    def delete(self, token_id: str, document_version: str = None) -> Any:
         """
         Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
 
         Args:
             token_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6469,14 +7210,23 @@ precedence: used for tokens with the same begin value in order to indicate their
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_async(self, token_id: str) -> Any:
+    async def delete_async(self, token_id: str, document_version: str = None) -> Any:
         """
         Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
 
         Args:
             token_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6501,7 +7251,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                     return self.client._transform_response(data)
                 return await response.text
 
-    def update(self, token_id: str, begin: int = None, end: int = None, precedence: int = None) -> Any:
+    def update(self, token_id: str, begin: int = None, end: int = None, precedence: int = None, document_version: str = None) -> Any:
         """
         Update a token. Supported keys:
 
@@ -6514,8 +7264,17 @@ precedence: ordering value for the token relative to other tokens with the same 
             begin: Optional body parameter
             end: Optional body parameter
             precedence: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'begin': begin,
             'end': end,
@@ -6547,7 +7306,7 @@ precedence: ordering value for the token relative to other tokens with the same 
             return self.client._transform_response(data)
         return response.text
 
-    async def update_async(self, token_id: str, begin: int = None, end: int = None, precedence: int = None) -> Any:
+    async def update_async(self, token_id: str, begin: int = None, end: int = None, precedence: int = None, document_version: str = None) -> Any:
         """
         Update a token. Supported keys:
 
@@ -6560,8 +7319,17 @@ precedence: ordering value for the token relative to other tokens with the same 
             begin: Optional body parameter
             end: Optional body parameter
             precedence: Optional body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'begin': begin,
             'end': end,
@@ -6595,7 +7363,7 @@ precedence: ordering value for the token relative to other tokens with the same 
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_create(self, body: List[Any]) -> Any:
+    def bulk_create(self, body: List[Any], document_version: str = None) -> Any:
         """
         Create multiple tokens in a single operation. Provide an array of objects whose keysare:
 token_layer_id, the token's layer
@@ -6607,8 +7375,17 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -6633,7 +7410,7 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_create_async(self, body: List[Any]) -> Any:
+    async def bulk_create_async(self, body: List[Any], document_version: str = None) -> Any:
         """
         Create multiple tokens in a single operation. Provide an array of objects whose keysare:
 token_layer_id, the token's layer
@@ -6645,8 +7422,17 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -6673,14 +7459,23 @@ metadata, an optional map of metadata
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_delete(self, body: List[Any]) -> Any:
+    def bulk_delete(self, body: List[Any], document_version: str = None) -> Any:
         """
         Delete multiple tokens in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -6705,14 +7500,23 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_delete_async(self, body: List[Any]) -> Any:
+    async def bulk_delete_async(self, body: List[Any], document_version: str = None) -> Any:
         """
         Delete multiple tokens in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -6739,15 +7543,24 @@ metadata, an optional map of metadata
                     return self.client._transform_response(data)
                 return await response.text
 
-    def set_metadata(self, token_id: str, body: Any) -> Any:
+    def set_metadata(self, token_id: str, body: Any, document_version: str = None) -> Any:
         """
         Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             token_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -6777,15 +7590,24 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, token_id: str, body: Any) -> Any:
+    async def set_metadata_async(self, token_id: str, body: Any, document_version: str = None) -> Any:
         """
         Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             token_id: Path parameter
             body: Required body parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -6817,14 +7639,23 @@ metadata, an optional map of metadata
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, token_id: str) -> Any:
+    def delete_metadata(self, token_id: str, document_version: str = None) -> Any:
         """
         Remove all metadata from a token.
 
         Args:
             token_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6847,14 +7678,23 @@ metadata, an optional map of metadata
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, token_id: str) -> Any:
+    async def delete_metadata_async(self, token_id: str, document_version: str = None) -> Any:
         """
         Remove all metadata from a token.
 
         Args:
             token_id: Path parameter
+            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'

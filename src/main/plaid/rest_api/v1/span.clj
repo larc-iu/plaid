@@ -69,7 +69,8 @@
                              "\n<body>metadata</body>: optional key-value pairs for additional annotation data.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]]
-               :parameters {:body [:map
+               :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                            :body [:map
                                    [:span-layer-id :uuid]
                                    [:tokens [:vector uuid?]]
                                    [:value [:or string? number? boolean? nil?]]
@@ -93,7 +94,8 @@
                     :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                  [prm/wrap-document-version bulk-get-document-id]]
-                    :parameters {:body [:sequential
+                    :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                 :body [:sequential
                                         [:map
                                          [:span-layer-id :uuid]
                                          [:tokens [:vector uuid?]]
@@ -118,7 +120,8 @@
                       :openapi {:x-client-method "bulkDelete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
-                      :parameters {:body [:sequential :uuid]}
+                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                   :body [:sequential :uuid]}
                       :handler (fn [{{span-ids :body} :parameters xtdb :xtdb user-id :user/id}]
                                  (let [{:keys [success code error]} (s/bulk-delete {:node xtdb} span-ids user-id)]
                                    (if success
@@ -138,7 +141,8 @@
          :patch {:summary "Update a span's <body>value</body>."
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
-                 :parameters {:body [:map
+                 :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                              :body [:map
                                      [:value [:or string? number? boolean? nil?]]]}
                  :handler (fn [{{{:keys [span-id]} :path {:keys [value]} :body} :parameters xtdb :xtdb user-id :user/id}]
                             (let [{:keys [success code error]} (s/merge {:node xtdb} span-id {:span/value value} user-id)]
@@ -146,6 +150,7 @@
                                 {:status 200 :body (s/get xtdb span-id)}
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a span."
+                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
                   :handler (fn [{{{:keys [span-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
@@ -159,7 +164,8 @@
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
                       :openapi {:x-client-method "set-tokens"}
-                      :parameters {:body [:map [:tokens [:vector uuid?]]]}
+                      :parameters {:body [:map [:tokens [:vector uuid?]]]
+                                   :query [:map [:document-version {:optional true} :uuid]]}
                       :handler (fn [{{{:keys [span-id]} :path {:keys [tokens]} :body} :parameters xtdb :xtdb user-id :user/id}]
                                  (let [{:keys [success code error]} (s/set-tokens {:node xtdb} span-id tokens user-id)]
                                    (if success

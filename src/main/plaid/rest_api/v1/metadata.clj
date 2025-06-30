@@ -25,7 +25,8 @@
              :middleware [[pra/wrap-writer-required get-project-id-fn]
                           [prm/wrap-document-version get-document-id-fn]]
              :openapi    {:x-client-method "set-metadata"}
-             :parameters {:body [:map-of string? any?]}
+             :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                          :body [:map-of string? any?]}
              :handler    (fn [{{path-params :path metadata :body} :parameters xtdb :xtdb user-id :user/id}]
                            (let [entity-id (get path-params entity-id-key)
                                  {:keys [success code error]} (entity-set-metadata-fn {:node xtdb} entity-id metadata user-id)]
@@ -35,6 +36,7 @@
     :delete {:summary    (str "Remove all metadata from a " entity-type ".")
              :middleware [[pra/wrap-writer-required get-project-id-fn]
                           [prm/wrap-document-version get-document-id-fn]]
+             :parameters {:query [:map [:document-version {:optional true} :uuid]]}
              :openapi    {:x-client-method "delete-metadata"}
              :handler    (fn [{{path-params :path} :parameters xtdb :xtdb user-id :user/id}]
                            (let [entity-id (get path-params entity-id-key)

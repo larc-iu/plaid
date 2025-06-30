@@ -1,14 +1,14 @@
 interface RelationsBundle {
-  setMetadata(relationId: string, body: any): Promise<any>;
-  deleteMetadata(relationId: string): Promise<any>;
-  setTarget(relationId: string, spanId: string): Promise<any>;
+  setMetadata(relationId: string, body: any, documentVersion?: string): Promise<any>;
+  deleteMetadata(relationId: string, documentVersion?: string): Promise<any>;
+  setTarget(relationId: string, spanId: string, documentVersion?: string): Promise<any>;
   get(relationId: string, asOf?: string): Promise<any>;
-  delete(relationId: string): Promise<any>;
-  update(relationId: string, value: any): Promise<any>;
-  setSource(relationId: string, spanId: string): Promise<any>;
-  create(layerId: string, sourceId: string, targetId: string, value: any, metadata?: any): Promise<any>;
-  bulkCreate(body: any[]): Promise<any>;
-  bulkDelete(body: any[]): Promise<any>;
+  delete(relationId: string, documentVersion?: string): Promise<any>;
+  update(relationId: string, value: any, documentVersion?: string): Promise<any>;
+  setSource(relationId: string, spanId: string, documentVersion?: string): Promise<any>;
+  create(layerId: string, sourceId: string, targetId: string, value: any, metadata?: any, documentVersion?: string): Promise<any>;
+  bulkCreate(body: any[], documentVersion?: string): Promise<any>;
+  bulkDelete(body: any[], documentVersion?: string): Promise<any>;
 }
 
 interface SpanLayersBundle {
@@ -22,24 +22,24 @@ interface SpanLayersBundle {
 }
 
 interface SpansBundle {
-  setTokens(spanId: string, tokens: any[]): Promise<any>;
-  create(spanLayerId: string, tokens: any[], value: any, metadata?: any): Promise<any>;
+  setTokens(spanId: string, tokens: any[], documentVersion?: string): Promise<any>;
+  create(spanLayerId: string, tokens: any[], value: any, metadata?: any, documentVersion?: string): Promise<any>;
   get(spanId: string, asOf?: string): Promise<any>;
-  delete(spanId: string): Promise<any>;
-  update(spanId: string, value: any): Promise<any>;
-  bulkCreate(body: any[]): Promise<any>;
-  bulkDelete(body: any[]): Promise<any>;
-  setMetadata(spanId: string, body: any): Promise<any>;
-  deleteMetadata(spanId: string): Promise<any>;
+  delete(spanId: string, documentVersion?: string): Promise<any>;
+  update(spanId: string, value: any, documentVersion?: string): Promise<any>;
+  bulkCreate(body: any[], documentVersion?: string): Promise<any>;
+  bulkDelete(body: any[], documentVersion?: string): Promise<any>;
+  setMetadata(spanId: string, body: any, documentVersion?: string): Promise<any>;
+  deleteMetadata(spanId: string, documentVersion?: string): Promise<any>;
 }
 
 interface TextsBundle {
-  setMetadata(textId: string, body: any): Promise<any>;
-  deleteMetadata(textId: string): Promise<any>;
-  create(textLayerId: string, documentId: string, body: string, metadata?: any): Promise<any>;
+  setMetadata(textId: string, body: any, documentVersion?: string): Promise<any>;
+  deleteMetadata(textId: string, documentVersion?: string): Promise<any>;
+  create(textLayerId: string, documentId: string, body: string, metadata?: any, documentVersion?: string): Promise<any>;
   get(textId: string, asOf?: string): Promise<any>;
-  delete(textId: string): Promise<any>;
-  update(textId: string, body: string): Promise<any>;
+  delete(textId: string, documentVersion?: string): Promise<any>;
+  update(textId: string, body: string, documentVersion?: string): Promise<any>;
 }
 
 interface UsersBundle {
@@ -62,11 +62,13 @@ interface TokenLayersBundle {
 }
 
 interface DocumentsBundle {
+  setMetadata(documentId: string, body: any, documentVersion?: string): Promise<any>;
+  deleteMetadata(documentId: string, documentVersion?: string): Promise<any>;
   audit(documentId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any>;
   get(documentId: string, includeBody?: boolean, asOf?: string): Promise<any>;
   delete(documentId: string): Promise<any>;
   update(documentId: string, name: string): Promise<any>;
-  create(projectId: string, name: string): Promise<any>;
+  create(projectId: string, name: string, metadata?: any): Promise<any>;
 }
 
 interface ProjectsBundle {
@@ -77,6 +79,8 @@ interface ProjectsBundle {
   removeReader(id: string, userId: string): Promise<any>;
   heartbeat(id: string, clientId: string): Promise<any>;
   listen(id: string, onEvent: (eventType: string, data: any) => void): { close(): void; getStats(): any; readyState: number; };
+  setConfig(id: string, namespace: string, configKey: string, configValue: any): Promise<any>;
+  deleteConfig(id: string, namespace: string, configKey: string): Promise<any>;
   addMaintainer(id: string, userId: string): Promise<any>;
   removeMaintainer(id: string, userId: string): Promise<any>;
   audit(projectId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any>;
@@ -116,14 +120,14 @@ interface RelationLayersBundle {
 }
 
 interface TokensBundle {
-  create(tokenLayerId: string, textId: string, begin: number, end: number, precedence?: number, metadata?: any): Promise<any>;
+  create(tokenLayerId: string, text: string, begin: number, end: number, precedence?: number, metadata?: any, documentVersion?: string): Promise<any>;
   get(tokenId: string, asOf?: string): Promise<any>;
-  delete(tokenId: string): Promise<any>;
-  update(tokenId: string, begin?: number, end?: number, precedence?: number): Promise<any>;
-  bulkCreate(body: any[]): Promise<any>;
-  bulkDelete(body: any[]): Promise<any>;
-  setMetadata(tokenId: string, body: any): Promise<any>;
-  deleteMetadata(tokenId: string): Promise<any>;
+  delete(tokenId: string, documentVersion?: string): Promise<any>;
+  update(tokenId: string, begin?: number, end?: number, precedence?: number, documentVersion?: string): Promise<any>;
+  bulkCreate(body: any[], documentVersion?: string): Promise<any>;
+  bulkDelete(body: any[], documentVersion?: string): Promise<any>;
+  setMetadata(tokenId: string, body: any, documentVersion?: string): Promise<any>;
+  deleteMetadata(tokenId: string, documentVersion?: string): Promise<any>;
 }
 
 declare class PlaidClient {

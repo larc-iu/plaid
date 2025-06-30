@@ -63,11 +63,6 @@
                (not= method :get))
         (if-let [doc-id (->document-id request)]
           (let [latest-version (:document/version (doc/get db doc-id))]
-            (println)
-            (println (->document-id request))
-            (println document-version)
-            (println (:document/version (doc/get db doc-id)))
-            (println)
             (if (not= latest-version document-version)
               {:status 409
                :body {:error "Document version mismatch. The document has been modified since you last fetched it."}}

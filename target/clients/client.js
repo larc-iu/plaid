@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Sat Jun 28 18:39:31 EDT 2025
+ * Generated on: Mon Jun 30 17:10:33 EDT 2025
  */
 
 class PlaidClient {
@@ -24,17 +24,20 @@ class PlaidClient {
        * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} relationId - Relation-id identifier
  * @param {any} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._relationsSetMetadata.bind(this),
       /**
        * Remove all metadata from a relation.
  * @param {string} relationId - Relation-id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._relationsDeleteMetadata.bind(this),
       /**
        * Update the target span of a relation.
  * @param {string} relationId - Relation-id identifier
  * @param {string} spanId - Required. Spanid
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       setTarget: this._relationsSetTarget.bind(this),
       /**
@@ -46,18 +49,21 @@ class PlaidClient {
       /**
        * Delete a relation.
  * @param {string} relationId - Relation-id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       delete: this._relationsDelete.bind(this),
       /**
        * Update a relation's value.
  * @param {string} relationId - Relation-id identifier
  * @param {any} value - Required. Value
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       update: this._relationsUpdate.bind(this),
       /**
        * Update the source span of a relation.
  * @param {string} relationId - Relation-id identifier
  * @param {string} spanId - Required. Spanid
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       setSource: this._relationsSetSource.bind(this),
       /**
@@ -72,6 +78,7 @@ targetId: the target span this relation goes to
  * @param {string} targetId - Required. Targetid
  * @param {any} value - Required. Value
  * @param {any} [metadata] - Optional. Metadata
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       create: this._relationsCreate.bind(this),
       /**
@@ -82,11 +89,13 @@ target, the span id of the relation's target
 value, the relation's value
 metadata, an optional map of metadata
  * @param {Array} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkCreate: this._relationsBulkCreate.bind(this),
       /**
        * Delete multiple relations in a single operation. Provide an array of IDs.
  * @param {Array} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkDelete: this._relationsBulkDelete.bind(this)
     };
@@ -141,6 +150,7 @@ metadata, an optional map of metadata
        * Replace tokens for a span.
  * @param {string} spanId - Span-id identifier
  * @param {Array} tokens - Required. Tokens
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       setTokens: this._spansSetTokens.bind(this),
       /**
@@ -154,6 +164,7 @@ metadata: optional key-value pairs for additional annotation data.
  * @param {Array} tokens - Required. Tokens
  * @param {any} value - Required. Value
  * @param {any} [metadata] - Optional. Metadata
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       create: this._spansCreate.bind(this),
       /**
@@ -165,12 +176,14 @@ metadata: optional key-value pairs for additional annotation data.
       /**
        * Delete a span.
  * @param {string} spanId - Span-id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       delete: this._spansDelete.bind(this),
       /**
        * Update a span's value.
  * @param {string} spanId - Span-id identifier
  * @param {any} value - Required. Value
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       update: this._spansUpdate.bind(this),
       /**
@@ -180,22 +193,26 @@ tokens, the IDs of the span's constituent tokens
 value, the relation's value
 metadata, an optional map of metadata
  * @param {Array} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkCreate: this._spansBulkCreate.bind(this),
       /**
        * Delete multiple spans in a single operation. Provide an array of IDs.
  * @param {Array} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkDelete: this._spansBulkDelete.bind(this),
       /**
        * Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} spanId - Span-id identifier
  * @param {any} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._spansSetMetadata.bind(this),
       /**
        * Remove all metadata from a span.
  * @param {string} spanId - Span-id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._spansDeleteMetadata.bind(this)
     };
@@ -204,11 +221,13 @@ metadata, an optional map of metadata
        * Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} textId - Text-id identifier
  * @param {any} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._textsSetMetadata.bind(this),
       /**
        * Remove all metadata from a text.
  * @param {string} textId - Text-id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._textsDeleteMetadata.bind(this),
       /**
@@ -221,6 +240,7 @@ body: the string which is the content of this text.
  * @param {string} documentId - Required. Documentid
  * @param {string} body - Required. Body
  * @param {any} [metadata] - Optional. Metadata
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       create: this._textsCreate.bind(this),
       /**
@@ -232,12 +252,14 @@ body: the string which is the content of this text.
       /**
        * Delete a text and all dependent data.
  * @param {string} textId - Text-id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       delete: this._textsDelete.bind(this),
       /**
        * Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
  * @param {string} textId - Text-id identifier
  * @param {string} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       update: this._textsUpdate.bind(this)
     };
@@ -330,6 +352,19 @@ body: the string which is the content of this text.
     };
     this.documents = {
       /**
+       * Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+ * @param {string} documentId - Document-id identifier
+ * @param {any} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
+       */
+      setMetadata: this._documentsSetMetadata.bind(this),
+      /**
+       * Remove all metadata from a document.
+ * @param {string} documentId - Document-id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
+       */
+      deleteMetadata: this._documentsDeleteMetadata.bind(this),
+      /**
        * Get audit log for a document
  * @param {string} documentId - Document-id identifier
  * @param {string} [startTime] - Optional startTime
@@ -361,6 +396,7 @@ name: update a document's name.
        * Create a new document in a project. Requires projectId and name.
  * @param {string} projectId - Required. Projectid
  * @param {string} name - Required. Name
+ * @param {any} [metadata] - Optional. Metadata
        */
       create: this._documentsCreate.bind(this)
     };
@@ -408,6 +444,21 @@ name: update a document's name.
  * @returns {Object} SSE connection object with .close() and .getStats() methods
        */
       listen: this._projectsListen.bind(this),
+      /**
+       * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
+ * @param {string} id - Id identifier
+ * @param {string} namespace - Namespace identifier
+ * @param {string} configKey - Config-key identifier
+ * @param {any} configValue - Configuration value to set
+       */
+      setConfig: this._projectsSetConfig.bind(this),
+      /**
+       * Remove a configuration value for a layer.
+ * @param {string} id - Id identifier
+ * @param {string} namespace - Namespace identifier
+ * @param {string} configKey - Config-key identifier
+       */
+      deleteConfig: this._projectsDeleteConfig.bind(this),
       /**
        * Assign a user as a maintainer for this project.
  * @param {string} id - Id identifier
@@ -569,16 +620,17 @@ name: update a document's name.
        * Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
 
 tokenLayerId: the layer in which to insert this token.
-textId: the text in which this token is found.
-begin: the inclusive character-based offset at which this token begins in the body of the text specified by textId
-end: the exclusive character-based offset at which this token ends in the body of the text specified by textId
+text: the text in which this token is found.
+begin: the inclusive character-based offset at which this token begins in the body of the text specified by text
+end: the exclusive character-based offset at which this token ends in the body of the text specified by text
 precedence: used for tokens with the same begin value in order to indicate their preferred linear order.
  * @param {string} tokenLayerId - Required. Tokenlayerid
- * @param {string} textId - Required. Textid
+ * @param {string} text - Required. Text
  * @param {number} begin - Required. Begin
  * @param {number} end - Required. End
  * @param {number} [precedence] - Optional. Precedence
  * @param {any} [metadata] - Optional. Metadata
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       create: this._tokensCreate.bind(this),
       /**
@@ -590,6 +642,7 @@ precedence: used for tokens with the same begin value in order to indicate their
       /**
        * Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
  * @param {string} tokenId - Token-id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       delete: this._tokensDelete.bind(this),
       /**
@@ -602,6 +655,7 @@ precedence: ordering value for the token relative to other tokens with the same 
  * @param {number} [begin] - Optional. Begin
  * @param {number} [end] - Optional. End
  * @param {number} [precedence] - Optional. Precedence
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       update: this._tokensUpdate.bind(this),
       /**
@@ -613,22 +667,26 @@ end, the character index at which the token ends (exclusive)
 precedence, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same begin
 metadata, an optional map of metadata
  * @param {Array} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkCreate: this._tokensBulkCreate.bind(this),
       /**
        * Delete multiple tokens in a single operation. Provide an array of IDs.
  * @param {Array} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkDelete: this._tokensBulkDelete.bind(this),
       /**
        * Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} tokenId - Token-id identifier
  * @param {any} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._tokensSetMetadata.bind(this),
       /**
        * Remove all metadata from a token.
  * @param {string} tokenId - Token-id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._tokensDeleteMetadata.bind(this)
     };
@@ -765,8 +823,14 @@ metadata, an optional map of metadata
   /**
    * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _relationsSetMetadata(relationId, body) {
+  async _relationsSetMetadata(relationId, body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "body": body
     };
@@ -777,7 +841,7 @@ metadata, an optional map of metadata
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -794,13 +858,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -817,13 +881,19 @@ metadata, an optional map of metadata
   /**
    * Remove all metadata from a relation.
    */
-  async _relationsDeleteMetadata(relationId) {
+  async _relationsDeleteMetadata(relationId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -838,13 +908,13 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -861,8 +931,14 @@ metadata, an optional map of metadata
   /**
    * Update the target span of a relation.
    */
-  async _relationsSetTarget(relationId, spanId) {
+  async _relationsSetTarget(relationId, spanId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}/target`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "span-id": spanId
     };
@@ -873,7 +949,7 @@ metadata, an optional map of metadata
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -890,13 +966,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -963,13 +1039,19 @@ metadata, an optional map of metadata
   /**
    * Delete a relation.
    */
-  async _relationsDelete(relationId) {
+  async _relationsDelete(relationId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -984,13 +1066,13 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1007,8 +1089,14 @@ metadata, an optional map of metadata
   /**
    * Update a relation's value.
    */
-  async _relationsUpdate(relationId, value) {
+  async _relationsUpdate(relationId, value, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "value": value
     };
@@ -1019,7 +1107,7 @@ metadata, an optional map of metadata
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PATCH'
         , body: requestBody
       };
@@ -1036,13 +1124,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -1059,8 +1147,14 @@ metadata, an optional map of metadata
   /**
    * Update the source span of a relation.
    */
-  async _relationsSetSource(relationId, spanId) {
+  async _relationsSetSource(relationId, spanId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/relations/${relationId}/source`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "span-id": spanId
     };
@@ -1071,7 +1165,7 @@ metadata, an optional map of metadata
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -1088,13 +1182,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -1116,8 +1210,14 @@ sourceId: the source span this relation originates from
 targetId: the target span this relation goes to
 <body>value</value>: the label for the relation
    */
-  async _relationsCreate(layerId, sourceId, targetId, value, metadata = undefined) {
+  async _relationsCreate(layerId, sourceId, targetId, value, metadata = undefined, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/relations`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "layer-id": layerId,
       "source-id": sourceId,
@@ -1132,7 +1232,7 @@ targetId: the target span this relation goes to
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -1149,13 +1249,13 @@ targetId: the target span this relation goes to
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1177,14 +1277,20 @@ target, the span id of the relation's target
 value, the relation's value
 metadata, an optional map of metadata
    */
-  async _relationsBulkCreate(body) {
+  async _relationsBulkCreate(body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/relations/bulk`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -1201,13 +1307,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1224,14 +1330,20 @@ metadata, an optional map of metadata
   /**
    * Delete multiple relations in a single operation. Provide an array of IDs.
    */
-  async _relationsBulkDelete(body) {
+  async _relationsBulkDelete(body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/relations/bulk`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
         , body: requestBody
       };
@@ -1248,13 +1360,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1613,8 +1725,14 @@ metadata, an optional map of metadata
   /**
    * Replace tokens for a span.
    */
-  async _spansSetTokens(spanId, tokens) {
+  async _spansSetTokens(spanId, tokens, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}/tokens`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "tokens": tokens
     };
@@ -1625,7 +1743,7 @@ metadata, an optional map of metadata
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -1642,13 +1760,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -1670,8 +1788,14 @@ tokens: a list of tokens associated with this span. Must contain at least one to
 value: the primary value of the span (must be string, number, boolean, or null).
 metadata: optional key-value pairs for additional annotation data.
    */
-  async _spansCreate(spanLayerId, tokens, value, metadata = undefined) {
+  async _spansCreate(spanLayerId, tokens, value, metadata = undefined, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/spans`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "span-layer-id": spanLayerId,
       "tokens": tokens,
@@ -1685,7 +1809,7 @@ metadata: optional key-value pairs for additional annotation data.
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -1702,13 +1826,13 @@ metadata: optional key-value pairs for additional annotation data.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1775,13 +1899,19 @@ metadata: optional key-value pairs for additional annotation data.
   /**
    * Delete a span.
    */
-  async _spansDelete(spanId) {
+  async _spansDelete(spanId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -1796,13 +1926,13 @@ metadata: optional key-value pairs for additional annotation data.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1819,8 +1949,14 @@ metadata: optional key-value pairs for additional annotation data.
   /**
    * Update a span's value.
    */
-  async _spansUpdate(spanId, value) {
+  async _spansUpdate(spanId, value, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "value": value
     };
@@ -1831,7 +1967,7 @@ metadata: optional key-value pairs for additional annotation data.
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PATCH'
         , body: requestBody
       };
@@ -1848,13 +1984,13 @@ metadata: optional key-value pairs for additional annotation data.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -1875,14 +2011,20 @@ tokens, the IDs of the span's constituent tokens
 value, the relation's value
 metadata, an optional map of metadata
    */
-  async _spansBulkCreate(body) {
+  async _spansBulkCreate(body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/spans/bulk`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -1899,13 +2041,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -1922,14 +2064,20 @@ metadata, an optional map of metadata
   /**
    * Delete multiple spans in a single operation. Provide an array of IDs.
    */
-  async _spansBulkDelete(body) {
+  async _spansBulkDelete(body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/spans/bulk`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
         , body: requestBody
       };
@@ -1946,13 +2094,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -1969,8 +2117,14 @@ metadata, an optional map of metadata
   /**
    * Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _spansSetMetadata(spanId, body) {
+  async _spansSetMetadata(spanId, body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "body": body
     };
@@ -1981,7 +2135,7 @@ metadata, an optional map of metadata
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -1998,13 +2152,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -2021,13 +2175,19 @@ metadata, an optional map of metadata
   /**
    * Remove all metadata from a span.
    */
-  async _spansDeleteMetadata(spanId) {
+  async _spansDeleteMetadata(spanId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -2042,13 +2202,13 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2065,8 +2225,14 @@ metadata, an optional map of metadata
   /**
    * Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _textsSetMetadata(textId, body) {
+  async _textsSetMetadata(textId, body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "body": body
     };
@@ -2077,7 +2243,7 @@ metadata, an optional map of metadata
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -2094,13 +2260,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -2117,13 +2283,19 @@ metadata, an optional map of metadata
   /**
    * Remove all metadata from a text.
    */
-  async _textsDeleteMetadata(textId) {
+  async _textsDeleteMetadata(textId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -2138,13 +2310,13 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2165,8 +2337,14 @@ textLayerId: the text's associated layer.
 documentId: the text's associated document.
 body: the string which is the content of this text.
    */
-  async _textsCreate(textLayerId, documentId, body, metadata = undefined) {
+  async _textsCreate(textLayerId, documentId, body, metadata = undefined, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/texts`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "text-layer-id": textLayerId,
       "document-id": documentId,
@@ -2180,7 +2358,7 @@ body: the string which is the content of this text.
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -2197,13 +2375,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -2270,13 +2448,19 @@ body: the string which is the content of this text.
   /**
    * Delete a text and all dependent data.
    */
-  async _textsDelete(textId) {
+  async _textsDelete(textId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -2291,13 +2475,13 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -2314,8 +2498,14 @@ body: the string which is the content of this text.
   /**
    * Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
    */
-  async _textsUpdate(textId, body) {
+  async _textsUpdate(textId, body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/texts/${textId}`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "body": body
     };
@@ -2326,7 +2516,7 @@ body: the string which is the content of this text.
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PATCH'
         , body: requestBody
       };
@@ -2343,13 +2533,13 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -3014,6 +3204,114 @@ body: the string which is the content of this text.
   }
 
   /**
+   * Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+   */
+  async _documentsSetMetadata(documentId, body, documentVersion = undefined) {
+    const url = `${this.baseUrl}/api/v1/documents/${documentId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    const bodyObj = {
+      "body": body
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'PUT';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove all metadata from a document.
+   */
+  async _documentsDeleteMetadata(documentId, documentVersion = undefined) {
+    const url = `${this.baseUrl}/api/v1/documents/${documentId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
    * Get audit log for a document
    */
   async _documentsAudit(documentId, startTime = undefined, endTime = undefined, asOf = undefined) {
@@ -3223,11 +3521,12 @@ name: update a document's name.
   /**
    * Create a new document in a project. Requires projectId and name.
    */
-  async _documentsCreate(projectId, name) {
+  async _documentsCreate(projectId, name, metadata = undefined) {
     const url = `${this.baseUrl}/api/v1/documents`;
     const bodyObj = {
       "project-id": projectId,
-      "name": name
+      "name": name,
+      "metadata": metadata
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
@@ -3709,6 +4008,97 @@ name: update a document's name.
     })();
     
     return sseConnection;
+  }
+
+  /**
+   * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
+   */
+  async _projectsSetConfig(id, namespace, configKey, configValue) {
+    const url = `${this.baseUrl}/api/v1/projects/${id}/config/${namespace}/${configKey}`;
+    const requestBody = configValue;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'PUT';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove a configuration value for a layer.
+   */
+  async _projectsDeleteConfig(id, namespace, configKey) {
+    const url = `${this.baseUrl}/api/v1/projects/${id}/config/${namespace}/${configKey}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
   }
 
   /**
@@ -4893,16 +5283,22 @@ name: update a document's name.
    * Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
 
 tokenLayerId: the layer in which to insert this token.
-textId: the text in which this token is found.
-begin: the inclusive character-based offset at which this token begins in the body of the text specified by textId
-end: the exclusive character-based offset at which this token ends in the body of the text specified by textId
+text: the text in which this token is found.
+begin: the inclusive character-based offset at which this token begins in the body of the text specified by text
+end: the exclusive character-based offset at which this token ends in the body of the text specified by text
 precedence: used for tokens with the same begin value in order to indicate their preferred linear order.
    */
-  async _tokensCreate(tokenLayerId, textId, begin, end, precedence = undefined, metadata = undefined) {
+  async _tokensCreate(tokenLayerId, text, begin, end, precedence = undefined, metadata = undefined, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "token-layer-id": tokenLayerId,
-      "text-id": textId,
+      "text": text,
       "begin": begin,
       "end": end,
       "precedence": precedence,
@@ -4915,7 +5311,7 @@ precedence: used for tokens with the same begin value in order to indicate their
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -4932,13 +5328,13 @@ precedence: used for tokens with the same begin value in order to indicate their
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -5005,13 +5401,19 @@ precedence: used for tokens with the same begin value in order to indicate their
   /**
    * Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
    */
-  async _tokensDelete(tokenId) {
+  async _tokensDelete(tokenId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -5026,13 +5428,13 @@ precedence: used for tokens with the same begin value in order to indicate their
       }
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -5053,8 +5455,14 @@ begin: start index of the token
 end: end index of the token
 precedence: ordering value for the token relative to other tokens with the same begin--lower means earlier
    */
-  async _tokensUpdate(tokenId, begin = undefined, end = undefined, precedence = undefined) {
+  async _tokensUpdate(tokenId, begin = undefined, end = undefined, precedence = undefined, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "begin": begin,
       "end": end,
@@ -5067,7 +5475,7 @@ precedence: ordering value for the token relative to other tokens with the same 
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PATCH'
         , body: requestBody
       };
@@ -5084,13 +5492,13 @@ precedence: ordering value for the token relative to other tokens with the same 
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
@@ -5113,14 +5521,20 @@ end, the character index at which the token ends (exclusive)
 precedence, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same begin
 metadata, an optional map of metadata
    */
-  async _tokensBulkCreate(body) {
+  async _tokensBulkCreate(body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens/bulk`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -5137,13 +5551,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
@@ -5160,14 +5574,20 @@ metadata, an optional map of metadata
   /**
    * Delete multiple tokens in a single operation. Provide an array of IDs.
    */
-  async _tokensBulkDelete(body) {
+  async _tokensBulkDelete(body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens/bulk`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const requestBody = this._transformRequest(body);
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
         , body: requestBody
       };
@@ -5184,13 +5604,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
@@ -5207,8 +5627,14 @@ metadata, an optional map of metadata
   /**
    * Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _tokensSetMetadata(tokenId, body) {
+  async _tokensSetMetadata(tokenId, body, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     const bodyObj = {
       "body": body
     };
@@ -5219,7 +5645,7 @@ metadata, an optional map of metadata
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -5236,13 +5662,13 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
@@ -5259,13 +5685,19 @@ metadata, an optional map of metadata
   /**
    * Remove all metadata from a token.
    */
-  async _tokensDeleteMetadata(tokenId) {
+  async _tokensDeleteMetadata(tokenId, documentVersion = undefined) {
     const url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: url.replace(this.baseUrl, ''),
+        path: finalUrl.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -5280,13 +5712,13 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(finalUrl, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = url;
+      error.url = finalUrl;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
