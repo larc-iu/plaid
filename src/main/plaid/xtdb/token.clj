@@ -76,70 +76,78 @@
   (:text/document (pxc/entity db text-id)))
 
 ;; Mutations ----------------------------------------------------------------------
-(defn- token-attr?
-  "Check if an attribute key belongs to token namespace (including metadata attributes)."
-  [k]
-  (= "token" (namespace k)))
+(defn- check-token-bounds!
+  "Check if token bounds are valid relative to text body.
+  Returns nil if valid, throws exception with appropriate error info otherwise."
+  [begin end text-body]
+  (cond
+    ;; Numeric end and begin indices?
+    (or (not (int? end)) (not (int? begin)))
+    (throw (ex-info "Token end and begin must be numeric" {:end end :begin begin :code 400}))
+    
+    ;; Non-negative extent?
+    (neg? (- end begin))
+    (throw (ex-info "Token has non-positive extent" {:begin begin :end end :code 400}))
+    
+    ;; Bounds check: left
+    (< begin 0)
+    (throw (ex-info "Token has a negative start index" {:begin begin :code 400}))
+    
+    ;; Bounds check: right
+    (> end (count text-body))
+    (throw (ex-info "Token ends beyond the end of its associated text" 
+                    {:end end :text-length (count text-body) :code 400}))))
+
+(defn- check-token-precedence!
+  "Check if precedence value is valid (nil or integer).
+  Returns nil if valid, throws exception otherwise."
+  [precedence]
+  (when-not (or (nil? precedence) (int? precedence))
+    (throw (ex-info "Precedence must either be not supplied or an integer." 
+                    {:code 400 :precedence precedence}))))
+
+(defn- check-tokens-consistency!
+  "Check if all tokens belong to same text and layer.
+  Used for bulk operations."
+  [tokens-attrs]
+  (when-not (= 1 (->> tokens-attrs (map :token/text) distinct count))
+    (throw (ex-info "Tokens must all belong to the same text" {:code 400})))
+  (when-not (= 1 (->> tokens-attrs (map :token/layer) distinct count))
+    (throw (ex-info "Tokens must all belong to the same layer" {:code 400}))))
 
 (defn schema-check!
   ([db token]
    (schema-check! db token false))
   ([db {:token/keys [id end begin text layer precedence] :as token} token-only?]
-   (let [#_#_other-tokens (map first (xt/q db
-                                           '{:find  [(pull ?t [:token/begin :token/end])]
-                                             :where [[?t :token/layer layer]
-                                                     [?t :token/text text]]
-                                             :in    [[layer text]]}
-                                           [layer text]))
-         ;; sorted-tokens (sort-by :token/begin (conj other-tokens token))
-         {text-body :text/body text-layer-id :text/layer :as text} (pxc/entity db text)
+   (let [{text-body :text/body text-layer-id :text/layer :as text-record} (pxc/entity db text)
          {token-layers :text-layer/token-layers} (pxc/entity db text-layer-id)]
      ;; ID is not already taken?
-     (cond
-       (some? (pxc/entity db id))
-       (throw (ex-info (pxc/err-msg-already-exists "Token" id) {:id id :code 409}))
+     (when (some? (pxc/entity db id))
+       (throw (ex-info (pxc/err-msg-already-exists "Token" id) {:id id :code 409})))
 
-       ;; Token layer exists?
-       (and (not token-only?) (nil? (:token-layer/id (pxc/entity db layer))))
-       (throw (ex-info (pxc/err-msg-not-found "Token layer" layer) {:id layer :code 400}))
+     ;; Token layer exists?
+     (when (and (not token-only?) (nil? (:token-layer/id (pxc/entity db layer))))
+       (throw (ex-info (pxc/err-msg-not-found "Token layer" layer) {:id layer :code 400})))
 
-       ;; Text exists?
-       (and (not token-only?) (nil? (:text/id text)))
-       (throw (ex-info (pxc/err-msg-not-found "Text" text) {:id (:text/id text) :code 400}))
+     ;; Text exists?
+     (when (and (not token-only?) (nil? (:text/id text-record)))
+       (throw (ex-info (pxc/err-msg-not-found "Text" text) {:id text :code 400})))
 
-       ;; Text layer of the text is linked to the token layer
-       (and (not token-only?) (not ((set token-layers) layer)))
+     ;; Text layer of the text is linked to the token layer
+     (when (and (not token-only?) (not ((set token-layers) layer)))
        (throw (ex-info (str "Text layer " text-layer-id " is not linked to token layer " layer ".")
-                       {:text-layer-id text-layer-id :token-layer-id layer}))
+                       {:text-layer-id text-layer-id :token-layer-id layer})))
 
-       ;; Numeric end and begin indices?
-       (or (not (int? end)) (not (int? begin)))
-       (throw (ex-info (str "Token end and begin must be numeric") {:end end :begin begin :code 400}))
+     ;; Validate bounds
+     (check-token-bounds! begin end text-body)
+     
+     ;; Validate precedence
+     (check-token-precedence! precedence))))
 
-       ;; Precedence either nil or int?
-       (not (or (nil? precedence) (int? precedence)))
-       (throw (ex-info (str "Precedence must either be not supplied or an integer.") {:code 400 :precedence precedence}))
-
-       ;; Non-negative extent?
-       (neg? (- end begin))
-       (throw (ex-info "Token has non-positive extent" {:token token :code 400}))
-
-       ;; Bounds check: left
-       (< begin 0)
-       (throw (ex-info "Token has a negative start index" {:token token :code 400}))
-
-       ;; Bounds check: right
-       (> end (count text-body))
-       (throw (ex-info "Token ends beyond the end of its associated text" {:token       token
-                                                                           :text-length (count text-body)
-                                                                           :text        text-body
-                                                                           :code        400})))))
-  ;; Overlap with other tokens
-  ;; (some (fn [[{t1-end :token/end} {t2-begin :token/begin}]]
-  ;;         (< t2-begin t1-end))
-  ;;       (partition 2 1 sorted-tokens))
-  ;; (throw (ex-info "Token creation would result in overlap with another token" {:token token}))
-  )
+(defn- token-attr?
+  "Check if an attribute key belongs to token namespace (including metadata attributes)."
+  [k]
+  (= "token" (namespace k)))
 
 (defn create*
   [xt-map attrs]
@@ -183,61 +191,30 @@
   (let [{:token/keys [begin end text layer] :as token} (pxc/entity db eid)
         new-begin (or new-begin begin)
         new-end (or new-end end)
-        new-token (-> token
-                      (assoc :token/begin new-begin)
-                      (assoc :token/end new-end))
-        #_#_other-tokens (map first (xt/q db
-                                          '{:find  [(pull ?t2 [:token/begin :token/end])]
-                                            :where [[?t2 :token/layer layer]
-                                                    [?t2 :token/text text]
-                                                    (not [?t2 :token/id ?t])]
-                                            :in    [[?t layer text]]}
-                                          [eid layer text]))
-        #_#_sorted-tokens (sort-by :token/begin (conj other-tokens new-token))
         {text-body :text/body :as text-record} (pxc/entity db text)]
-    (cond
-      ;; Token doesn't exist?
-      (nil? token)
-      (throw (ex-info "Token does not exist" {:id eid :code 404}))
-
-      ;; Non-negative extent?
-      (neg? (- new-end new-begin))
-      (throw (ex-info "Token has non-positive extent" {:old-token token
-                                                       :new-token new-token
-                                                       :code      400}))
-
-      ;; Bounds check: left
-      (and (some? new-begin) (< new-begin 0))
-      (throw (ex-info "Token has a negative start index" {:new-token new-token :code 400}))
-
-      ;; Bounds check: right
-      (and (some? new-end) (> new-end (count text-body)))
-      (throw (ex-info "Token ends beyond the end of its associated text" {:new-token   new-token
-                                                                          :text-length (count text-body)
-                                                                          :text        text-body
-                                                                          :code        400}))
-      ;; Overlap with other tokens
-      #_#_(some (fn [[{t1-end :token/end} {t2-begin :token/begin}]]
-                  (< t2-begin t1-end))
-                (partition 2 1 sorted-tokens))
-              (throw (ex-info "Change in extent would result in overlap with another token" {:new-token new-token}))
-
-      :else
-      (select-keys new-token [:token/begin :token/end]))))
+    ;; Token doesn't exist?
+    (when (nil? token)
+      (throw (ex-info "Token does not exist" {:id eid :code 404})))
+    
+    ;; Validate bounds
+    (check-token-bounds! new-begin new-end text-body)
+    
+    ;; Return the new extent
+    {:token/begin new-begin :token/end new-end}))
 
 (defn- set-precedence [{:keys [node db] :as xt-map} eid precedence]
   (let [token (pxc/entity db eid)]
-    (cond
-      (nil? token)
-      (throw (ex-info "Token does not exist" {:id eid :code 404}))
-
-      (not (or (nil? precedence) (int? precedence)))
-      (throw (ex-info (str "Precedence must either be not supplied or an integer.") {:code 400 :precedence precedence}))
-
-      :else
-      (if (nil? precedence)
-        {}
-        {:token/precedence precedence}))))
+    ;; Token doesn't exist?
+    (when (nil? token)
+      (throw (ex-info "Token does not exist" {:id eid :code 404})))
+    
+    ;; Validate precedence
+    (check-token-precedence! precedence)
+    
+    ;; Return precedence update (or empty map if nil)
+    (if (nil? precedence)
+      {}
+      {:token/precedence precedence})))
 
 (defn merge* [xt-map eid attrs]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
@@ -296,10 +273,8 @@
                              (dissoc :metadata)
                              (clojure.core/merge (metadata/transform-metadata-for-storage metadata "token")))
                          (dissoc attrs :metadata)))]
-    (when-not (= 1 (->> tokens-attrs (map :token/text) distinct count))
-      (throw (ex-info "Tokens must all belong to the same text" {:code 400})))
-    (when-not (= 1 (->> tokens-attrs (map :token/layer) distinct count))
-      (throw (ex-info "Tokens must all belong to the same layer" {:code 400})))
+    (check-tokens-consistency! tokens-attrs)
+    
     ;; If validation passes, create transaction operations
     (vec
       (concat
@@ -385,10 +360,7 @@
   [xt-map eids]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
         tokens-attrs (mapv #(pxc/entity db %) eids)
-        _ (when-not (= 1 (->> tokens-attrs (map :token/text) distinct count))
-            (throw (ex-info "Tokens must all belong to the same text" {:code 400})))
-        _ (when-not (= 1 (->> tokens-attrs (map :token/layer) distinct count))
-            (throw (ex-info "Tokens must all belong to the same layer" {:code 400})))
+        _ (check-tokens-consistency! tokens-attrs)
         eids-set (set eids)
         ;; Find all spans that contain any of the tokens being deleted
         spans (->> (xt/q db
