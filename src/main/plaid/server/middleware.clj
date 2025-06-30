@@ -60,7 +60,12 @@
       (if (and (= :get request-method)
                (not (str/starts-with? uri "/api/"))
                (not (str/starts-with? uri "/_")))
-        (let [file (io/file resources-path (subs uri 1))]
+        (let [file-path (subs uri 1)
+              ;; If URI ends with /, try to serve index.html from that directory
+              actual-path (if (str/ends-with? file-path "/")
+                           (str file-path "index.html")
+                           file-path)
+              file (io/file resources-path actual-path)]
           (if (and (.exists file) 
                    (.isFile file)
                    ;; Security: ensure the file is within our resources directory
