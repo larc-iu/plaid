@@ -71,7 +71,7 @@
                      :in    [?tok]}
                    eid)))
 
-(defn- get-doc-id-of-text
+(defn get-doc-id-of-text
   [db text-id]
   (:text/document (pxc/entity db text-id)))
 

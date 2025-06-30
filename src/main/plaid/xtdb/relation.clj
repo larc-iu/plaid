@@ -49,7 +49,7 @@
       first
       first))
 
-(defn- get-doc-id-of-span
+(defn get-doc-id-of-span
   "Get document id of a span"
   [db-like span-id]
   (ffirst

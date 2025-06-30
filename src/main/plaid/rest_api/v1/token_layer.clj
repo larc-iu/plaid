@@ -5,7 +5,7 @@
             [plaid.xtdb.text-layer :as txtl]
             [plaid.xtdb.token-layer :as tokl]))
 
-(defn get-project-id [{db :db params :params}]
+(defn get-project-id [{db :db params :parameters}]
   (let [txtl-id (-> params :body :text-layer-id)
         tokl-id (-> params :path :token-layer-id)]
     (cond txtl-id

@@ -62,7 +62,9 @@
      :middleware [pra/wrap-login-required]}
 
     [""
-     {:parameters {:query [:map [:as-of {:optional true} inst?]]}}
+     {:parameters {:query [:map
+                           [:as-of {:optional true} inst?]
+                           [:document-version {:optional true} :uuid]]}}
      user-routes
      project-routes
      document-routes

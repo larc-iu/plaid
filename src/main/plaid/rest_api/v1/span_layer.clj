@@ -5,7 +5,7 @@
             [plaid.xtdb.token-layer :as tokl]
             [plaid.xtdb.span-layer :as sl]))
 
-(defn get-project-id [{db :db params :params}]
+(defn get-project-id [{db :db params :parameters}]
   (let [tokl-id (-> params :body :token-layer-id)
         sl-id (-> params :path :span-layer-id)]
     (cond tokl-id

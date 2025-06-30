@@ -9,7 +9,7 @@
             [clojure.data.json :as json]
             [org.httpkit.server :as http-kit]))
 
-(defn get-project-id [{params :params}]
+(defn get-project-id [{params :parameters}]
   (-> params :path :id))
 
 (defn sse-handler

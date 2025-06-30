@@ -1,11 +1,13 @@
 (ns plaid.rest-api.v1.token
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.metadata :as metadata]
+            [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
+            [xtdb.api :as xt]
             [plaid.xtdb.token :as tok]
             [plaid.xtdb.token-layer :as tokl]))
 
-(defn get-project-id [{db :db params :params}]
+(defn get-project-id [{db :db params :parameters}]
   (let [tokl-id (or (-> params :body :token-layer-id))
         token-id (-> params :path :token-id)]
     (cond
@@ -13,12 +15,32 @@
       token-id (tok/project-id db token-id)
       :else nil)))
 
-(defn bulk-get-project-id [{db :db params :params}]
+(defn bulk-get-project-id [{db :db params :parameters}]
   (let [tokl-id (or (-> params :body first :token-layer-id))
         token-id (-> params :body first)]
     (cond
       tokl-id (tokl/project-id db tokl-id)
       token-id (tok/project-id db token-id)
+      :else nil)))
+
+(defn get-document-id [{db :db params :parameters}]
+  (let [text-id (-> params :body :text)
+        token-id (-> params :path :token-id)]
+    (cond
+      text-id (:text/document (xt/entity db text-id))
+      token-id (let [token (tok/get db token-id)]
+                 (when token
+                   (:text/document (xt/entity db (:token/text token)))))
+      :else nil)))
+
+(defn bulk-get-document-id [{db :db params :parameters}]
+  (let [text-id (or (-> params :body first :text))
+        token-id (-> params :body first)]
+    (cond
+      text-id (:text/document (xt/entity db text-id))
+      token-id (let [token (tok/get db token-id)]
+                 (when token
+                   (:text/document (xt/entity db (:token/text token)))))
       :else nil)))
 
 (def token-routes
@@ -35,7 +57,8 @@
                              "\n<body>begin</body>: the inclusive character-based offset at which this token begins in the body of the text specified by <body>text</body>"
                              "\n<body>end</body>: the exclusive character-based offset at which this token ends in the body of the text specified by <body>text</body>"
                              "\n<body>precedence</body>: used for tokens with the same <body>begin</body> value in order to indicate their preferred linear order.")
-               :middleware [[pra/wrap-writer-required get-project-id]]
+               :middleware [[pra/wrap-writer-required get-project-id]
+                            [prm/wrap-document-version get-document-id]]
                :parameters {:body [:map
                                    [:token-layer-id :uuid]
                                    [:text :uuid]
@@ -64,7 +87,8 @@
                                   "<body>precedence</body>, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same <body>begin</body>\n"
                                   "<body>metadata</body>, an optional map of metadata")
                     :openapi {:x-client-method "bulk-create"}
-                    :middleware [[pra/wrap-writer-required bulk-get-project-id]]
+                    :middleware [[pra/wrap-writer-required bulk-get-project-id]
+                                 [prm/wrap-document-version bulk-get-document-id]]
                     :parameters {:body [:sequential
                                         [:map
                                          [:token-layer-id :uuid]
@@ -80,7 +104,7 @@
                                                                                :token/text text
                                                                                :token/begin begin
                                                                                :token/end end}
-                                                                              (some? precedence) (assoc :token/precedence precedence))]
+                                                                        (some? precedence) (assoc :token/precedence precedence))]
                                                             (if metadata
                                                               (assoc attrs :metadata metadata)
                                                               attrs)))
@@ -91,7 +115,8 @@
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple tokens in a single operation. Provide an array of IDs."
                       :openapi {:x-client-method "bulkDelete"}
-                      :middleware [[pra/wrap-writer-required bulk-get-project-id]]
+                      :middleware [[pra/wrap-writer-required bulk-get-project-id]
+                                   [prm/wrap-document-version bulk-get-document-id]]
                       :parameters {:body [:sequential :uuid]}
                       :handler (fn [{{token-ids :body} :parameters xtdb :xtdb user-id :user/id}]
                                  (let [{:keys [success code error]} (tok/bulk-delete {:node xtdb} token-ids user-id)]
@@ -115,7 +140,8 @@
                                "\n<body>begin</body>: start index of the token"
                                "\n<body>end</body>: end index of the token"
                                "\n<body>precedence</body>: ordering value for the token relative to other tokens with the same <body>begin</body>--lower means earlier")
-                 :middleware [[pra/wrap-writer-required get-project-id]]
+                 :middleware [[pra/wrap-writer-required get-project-id]
+                              [prm/wrap-document-version get-document-id]]
                  :parameters {:body [:map
                                      [:begin {:optional true} int?]
                                      [:end {:optional true} int?]
@@ -131,7 +157,8 @@
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary (str "Delete a token and remove it from any spans. If this causes the span to have no "
                                 "remaining associated tokens, the span will also be deleted.")
-                  :middleware [[pra/wrap-writer-required get-project-id]]
+                  :middleware [[pra/wrap-writer-required get-project-id]
+                               [prm/wrap-document-version get-document-id]]
                   :handler (fn [{{{:keys [token-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                              (let [{:keys [success code error]} (tok/delete {:node xtdb} token-id user-id)]
                                (if success
@@ -139,4 +166,4 @@
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations
-    (metadata/metadata-routes "token" :token-id get-project-id tok/get tok/set-metadata tok/delete-metadata)]])
+    (metadata/metadata-routes "token" :token-id get-project-id get-document-id tok/get tok/set-metadata tok/delete-metadata)]])

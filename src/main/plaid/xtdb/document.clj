@@ -14,14 +14,24 @@
                 :document/name
                 :document/project])
 
-
 ;; Queries ------------------------------------------------------------------------
 (defn get
   "Get a document by ID, formatted for external consumption (API responses)."
   [db-like id]
   (when-let [document-entity (pxc/find-entity (pxc/->db db-like) {:document/id id})]
-    (let [core-attrs (select-keys document-entity attr-keys)]
-      (metadata/add-metadata-to-response core-attrs document-entity "document"))))
+    (let [db (pxc/->db db-like)
+          core-attrs (select-keys document-entity attr-keys)
+          ;; Get the latest audit ID for this document as version
+          latest-audit-id (ffirst (xt/q db
+                                            '{:find     [?a s]
+                                              :where    [[?a :audit/documents ?doc]
+                                                         [(get-start-valid-time ?a) s]]
+                                              :order-by [[s :desc]]
+                                              :limit    1
+                                              :in       [?doc]}
+                                            id))
+          core-attrs-with-version (assoc core-attrs :document/version latest-audit-id)]
+      (metadata/add-metadata-to-response core-attrs-with-version document-entity "document"))))
 
 (defn project-id [db-like id]
   (:document/project (pxc/entity (pxc/->db db-like) id)))
@@ -51,10 +61,10 @@
   (let [token-layer (pxc/entity db id)
         sl-ids (:token-layer/span-layers token-layer)
         tokens (->> (xt/q db
-                          '{:find  [(pull ?tok [*])]
+                          '{:find [(pull ?tok [*])]
                             :where [[?tok :token/-document ?doc]
                                     [?tok :token/layer ?tokl]]
-                            :in    [[?doc ?tokl]]}
+                            :in [[?doc ?tokl]]}
                           [doc-id id])
                     (into [] (comp (map first)
                                    (map token/format)
@@ -72,10 +82,10 @@
                              (map s/format)
                              (map #(dissoc % :span/layer)))
                     (xt/q db
-                          '{:find  [(pull ?s [*])]
+                          '{:find [(pull ?s [*])]
                             :where [[?s :span/-document ?doc]
                                     [?s :span/layer ?sl]]
-                            :in    [[?doc ?sl]]}
+                            :in [[?doc ?sl]]}
                           [doc-id id]))]
     (-> (select-keys span-layer [:span-layer/id :span-layer/name :config])
         (assoc :span-layer/spans spans)
@@ -83,13 +93,13 @@
 
 (defmethod get-doc-info :relation-layer/id [db doc-id parent-id [key id]]
   (let [relations (into [] (comp (map first)
-                                  (map r/format)
-                                  (map #(dissoc % :relation/layer)))
+                                 (map r/format)
+                                 (map #(dissoc % :relation/layer)))
                         (xt/q db
-                              '{:find  [(pull ?r [*])]
+                              '{:find [(pull ?r [*])]
                                 :where [[?r :relation/-document ?doc]
                                         [?r :relation/layer ?rl]]
-                                :in    [[?doc ?rl]]}
+                                :in [[?doc ?rl]]}
                               [doc-id id]))]
     (-> (select-keys (pxc/entity db id) [:relation-layer/id :relation-layer/name :config])
         (assoc :relation-layer/relations relations))))
@@ -106,22 +116,22 @@
   [db-like id]
   (let [db (pxc/->db db-like)]
     (->> (xt/q db
-               '{:find  [?txtl]
+               '{:find [?txtl]
                  :where [[?doc :document/project ?prj]
                          [?prj :project/text-layers ?txtl]]
-                 :in    [?doc]}
+                 :in [?doc]}
                id)
          (mapv #(hash-map :text-layer/id (first %))))))
 
 (defn get-text-ids [db-like eid]
   (map first (xt/q (pxc/->db db-like)
-                   '{:find  [?txt]
+                   '{:find [?txt]
                      :where [[?txt :text/document ?doc]]
-                     :in    [?doc]}
+                     :in [?doc]}
                    eid)))
 
 ;; Mutations ----------------------------------------------------------------------
-(defn- document-attr? 
+(defn- document-attr?
   "Check if an attribute key belongs to document namespace (including metadata attributes)."
   [k]
   (= "document" (namespace k)))
@@ -155,12 +165,12 @@
         attrs-with-metadata (clojure.core/merge attrs metadata-attrs)
         tx-ops (create* xt-map attrs-with-metadata)]
     (op/make-operation
-     {:type        :document/create
-      :project     project
-      :document    (-> tx-ops last last :xt/id)
+     {:type :document/create
+      :project project
+      :document (-> tx-ops last last :xt/id)
       :description (str "Create document \"" name "\" in project " project
                         (when metadata (str " with " (count metadata) " metadata keys")))
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn create
   ([xt-map attrs user-id]
@@ -178,11 +188,11 @@
                      (pxc/valid-name? name))
                    (pxc/merge* xt-map eid (select-keys m [:document/name])))]
     (op/make-operation
-     {:type        :document/update
-      :project     project-id
-      :document    eid
+     {:type :document/update
+      :project project-id
+      :document eid
       :description (str "Update document " eid (when (:document/name m) (str " to name \"" (:document/name m) "\"")))
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m user-id]
@@ -209,11 +219,11 @@
         text-ids (get-text-ids db eid)
         tx-ops (delete* xt-map eid)]
     (op/make-operation
-     {:type        :document/delete
-      :project     project-id
-      :document    eid
+     {:type :document/delete
+      :project project-id
+      :document eid
       :description (str "Delete document " eid " with " (count text-ids) " texts")
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn delete [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
