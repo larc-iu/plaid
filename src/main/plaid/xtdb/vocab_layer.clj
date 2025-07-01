@@ -163,17 +163,12 @@
 (defn- modify-maintainers*
   [xt-map vocab-id f]
   (let [{:keys [db]} xt-map
-        current (pxc/entity db vocab-id)
-        next (f current)]
+        current (pxc/entity db vocab-id)]
     (when-not current
       (throw (ex-info (pxc/err-msg-not-found "Vocab" vocab-id)
                       {:code 404 :id vocab-id})))
-    (into
-      (mapv (fn [user-id]
-              [::xt/match user-id (pxc/entity db user-id)])
-            (:vocab/maintainers next))
-      [[::xt/match vocab-id current]
-       [::xt/put next]])))
+    [[::xt/match vocab-id current]
+     [::xt/put (f current)]]))
 
 (defn add-maintainer*
   [xt-map vocab-id user-id]

@@ -105,7 +105,7 @@
                         {:code 409 :id id})))
       (let [record (pxc/create-record "vmap" id attrs attr-keys)]
         (into
-          (mapv (fn [t] [::xt/match (:token/id t)]) token-records)
+          (mapv (fn [t] [::xt/match (:token/id t) t]) token-records)
           [[::xt/match vocab-item (pxc/entity db vocab-item)]
            [::xt/match id nil]
            [::xt/put record]])))))
