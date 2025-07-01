@@ -12,21 +12,22 @@
                 :project/writers
                 :project/maintainers
                 :project/text-layers
+                :project/vocabs
                 :config])
 
 ;; reads --------------------------------------------------------------------------------
 (defn get-document-ids [db-like id]
   (map first (xt/q (pxc/->db db-like)
-                   '{:find  [?doc]
+                   '{:find [?doc]
                      :where [[?doc :document/project ?prj]]
-                     :in    [?prj]}
+                     :in [?prj]}
                    id)))
 
 (defn get-documents [db-like id]
   (map first (xt/q (pxc/->db db-like)
-                   '{:find  [(pull ?doc [:document/id :document/name])]
+                   '{:find [(pull ?doc [:document/id :document/name])]
                      :where [[?doc :document/project ?prj]]
-                     :in    [?prj]}
+                     :in [?prj]}
                    id)))
 
 (defn get
@@ -55,11 +56,11 @@
 
 (defn get-accessible-ids [db-like user-id]
   (let [db (pxc/->db db-like)]
-    (map first (xt/q db '{:find  [?p]
+    (map first (xt/q db '{:find [?p]
                           :where [(or [?p :project/readers ?u]
                                       [?p :project/writers ?u]
                                       [?p :project/maintainers ?u])]
-                          :in    [?u]}
+                          :in [?u]}
                      user-id))))
 
 (defn get-accessible
@@ -82,11 +83,12 @@
 (defn create* [xt-map attrs]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         {:project/keys [id name] :as record} (clojure.core/merge (pxc/new-record "project")
-                                                                 {:project/readers     []
-                                                                  :project/writers     []
+                                                                 {:project/readers []
+                                                                  :project/writers []
                                                                   :project/maintainers []
                                                                   :project/text-layers []
-                                                                  :config              {}}
+                                                                  :project/vocabs []
+                                                                  :config {}}
                                                                  (select-keys attrs attr-keys))]
     (pxc/valid-name? name)
     (cond
@@ -103,11 +105,11 @@
   (let [{:project/keys [name]} attrs
         tx-ops (create* xt-map attrs)]
     (op/make-operation
-     {:type        :project/create
-      :project     (-> tx-ops last last :xt/id)
-      :document    nil
+     {:type :project/create
+      :project (-> tx-ops last last :xt/id)
+      :document nil
       :description (str "Create project \"" name "\"")
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn create [xt-map attrs user-id]
   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
@@ -121,11 +123,11 @@
                      (pxc/valid-name? name))
                    (pxc/merge* xt-map eid (select-keys m [:project/name])))]
     (op/make-operation
-     {:type        :project/update
-      :project     eid
-      :document    nil
+     {:type :project/update
+      :project eid
+      :document nil
       :description (str "Update project " eid (when (:project/name m) (str " to name \"" (:project/name m) "\"")))
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m user-id]
@@ -165,11 +167,11 @@
         documents (get-document-ids db eid)
         tx-ops (delete* xt-map eid)]
     (op/make-operation
-     {:type        :project/delete
-      :project     eid
-      :document    nil
+     {:type :project/delete
+      :project eid
+      :document nil
       :description (str "Delete project " eid " with " (count text-layers) " text layers and " (count documents) " documents")
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn delete [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
@@ -184,13 +186,13 @@
                         (pxc/remove-id :project/writers user-id)
                         (pxc/remove-id :project/maintainers user-id)
                         (cond-> (and add? (= key :project/readers))
-                                (pxc/add-id :project/readers user-id)
+                          (pxc/add-id :project/readers user-id)
 
-                                (and add? (= key :project/writers))
-                                (pxc/add-id :project/writers user-id)
+                          (and add? (= key :project/writers))
+                          (pxc/add-id :project/writers user-id)
 
-                                (and add? (= key :project/maintainers))
-                                (pxc/add-id :project/maintainers user-id)))]
+                          (and add? (= key :project/maintainers))
+                          (pxc/add-id :project/maintainers user-id)))]
     (cond
       (nil? (:user/id user))
       (throw (ex-info (str "Not a valid user ID: " user-id) {:id user-id :code 400}))
@@ -204,7 +206,6 @@
                 [::xt/match project-id project]
                 [::xt/put new-project]]]))))
 
-
 (defn add-reader*
   [xt-map project-id user-id]
   (modify-privileges* xt-map project-id user-id [true :project/readers]))
@@ -213,11 +214,11 @@
   [xt-map project-id user-id]
   (let [tx-ops (add-reader* xt-map project-id user-id)]
     (op/make-operation
-     {:type        :project/add-reader
-      :project     project-id
-      :document    nil
+     {:type :project/add-reader
+      :project project-id
+      :document nil
       :description (str "Add reader " user-id " to project " project-id)
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn add-reader [xt-map project-id user-id actor-user-id]
   (submit-operations! xt-map [(add-reader-operation xt-map project-id user-id)] actor-user-id))
@@ -229,11 +230,11 @@
   [xt-map project-id user-id]
   (let [tx-ops (remove-reader* xt-map project-id user-id)]
     (op/make-operation
-     {:type        :project/remove-reader
-      :project     project-id
-      :document    nil
+     {:type :project/remove-reader
+      :project project-id
+      :document nil
       :description (str "Remove reader " user-id " from project " project-id)
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn remove-reader [xt-map project-id user-id actor-user-id]
   (submit-operations! xt-map [(remove-reader-operation xt-map project-id user-id)] actor-user-id))
@@ -246,11 +247,11 @@
   [xt-map project-id user-id]
   (let [tx-ops (add-writer* xt-map project-id user-id)]
     (op/make-operation
-     {:type        :project/add-writer
-      :project     project-id
-      :document    nil
+     {:type :project/add-writer
+      :project project-id
+      :document nil
       :description (str "Add writer " user-id " to project " project-id)
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn add-writer [xt-map project-id user-id actor-user-id]
   (submit-operations! xt-map [(add-writer-operation xt-map project-id user-id)] actor-user-id))
@@ -262,11 +263,11 @@
   [xt-map project-id user-id]
   (let [tx-ops (remove-writer* xt-map project-id user-id)]
     (op/make-operation
-     {:type        :project/remove-writer
-      :project     project-id
-      :document    nil
+     {:type :project/remove-writer
+      :project project-id
+      :document nil
       :description (str "Remove writer " user-id " from project " project-id)
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn remove-writer [xt-map project-id user-id actor-user-id]
   (submit-operations! xt-map [(remove-writer-operation xt-map project-id user-id)] actor-user-id))
@@ -279,11 +280,11 @@
   [xt-map project-id user-id]
   (let [tx-ops (add-maintainer* xt-map project-id user-id)]
     (op/make-operation
-     {:type        :project/add-maintainer
-      :project     project-id
-      :document    nil
+     {:type :project/add-maintainer
+      :project project-id
+      :document nil
       :description (str "Add maintainer " user-id " to project " project-id)
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn add-maintainer [xt-map project-id user-id actor-user-id]
   (submit-operations! xt-map [(add-maintainer-operation xt-map project-id user-id)] actor-user-id))
@@ -295,11 +296,11 @@
   [xt-map project-id user-id]
   (let [tx-ops (remove-maintainer* xt-map project-id user-id)]
     (op/make-operation
-     {:type        :project/remove-maintainer
-      :project     project-id
-      :document    nil
+     {:type :project/remove-maintainer
+      :project project-id
+      :document nil
       :description (str "Remove maintainer " user-id " from project " project-id)
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 (defn remove-maintainer [xt-map project-id user-id actor-user-id]
   (submit-operations! xt-map [(remove-maintainer-operation xt-map project-id user-id)] actor-user-id))
@@ -330,3 +331,94 @@
 
       :else
       (pxc/submit! node tx))))
+
+ ;; Vocab management --------------------------------------------------------------------------------
+
+(defn add-vocab*
+  [xt-map project-id vocab-id]
+  (let [{:keys [db]} xt-map
+        project (pxc/entity db project-id)
+        vocab (pxc/entity db vocab-id)]
+    (cond
+      (nil? project)
+      (throw (ex-info (pxc/err-msg-not-found "Project" project-id)
+                      {:type :not-found :id project-id}))
+
+      (nil? vocab)
+      (throw (ex-info (pxc/err-msg-not-found "Vocab" vocab-id)
+                      {:type :not-found :id vocab-id}))
+
+      (contains? (set (:project/vocabs project)) vocab-id)
+      (throw (ex-info "Vocab already linked to project"
+                      {:type :already-exists :project-id project-id :vocab-id vocab-id}))
+
+      :else
+      [[:xtdb.api/match project-id project]
+       [:xtdb.api/put (update project :project/vocabs conj vocab-id)]])))
+
+(defn add-vocab-operation
+  [xt-map project-id vocab-id]
+  (let [{:keys [db]} xt-map
+        project (pxc/entity db project-id)
+        vocab (pxc/entity db vocab-id)]
+    (op/make-operation
+     {:type :project/add-vocab
+      :project project-id
+      :document nil
+      :description (format "Add vocab '%s' to project '%s'"
+                           (:vocab/name vocab)
+                           (:project/name project))
+      :tx-ops (add-vocab* xt-map project-id vocab-id)})))
+
+(defn add-vocab
+  [xt-map project-id vocab-id actor-user-id]
+  (let [{:keys [db]} xt-map
+        actor-rec (user/get db actor-user-id)]
+    ;; Only project maintainers or admins can add vocabs to projects
+    (when-not (or (user/admin? actor-rec)
+                  (contains? (set (maintainer-ids db project-id)) actor-user-id))
+      (throw (ex-info "User must be project maintainer to add vocabs"
+                      {:type :unauthorized :user-id actor-user-id :project-id project-id})))
+    (submit-operations! xt-map [(add-vocab-operation xt-map project-id vocab-id)] actor-user-id)))
+
+(defn remove-vocab*
+  [xt-map project-id vocab-id]
+  (let [{:keys [db]} xt-map
+        project (pxc/entity db project-id)]
+    (cond
+      (nil? project)
+      (throw (ex-info (pxc/err-msg-not-found "Project" project-id)
+                      {:type :not-found :id project-id}))
+
+      (not (contains? (set (:project/vocabs project)) vocab-id))
+      (throw (ex-info "Vocab not linked to project"
+                      {:type :not-found :project-id project-id :vocab-id vocab-id}))
+
+      :else
+      [[:xtdb.api/match project-id project]
+       [:xtdb.api/put (update project :project/vocabs #(vec (remove #{vocab-id} %)))]])))
+
+(defn remove-vocab-operation
+  [xt-map project-id vocab-id]
+  (let [{:keys [db]} xt-map
+        project (pxc/entity db project-id)
+        vocab (pxc/entity db vocab-id)]
+    (op/make-operation
+     {:type :project/remove-vocab
+      :project project-id
+      :document nil
+      :description (format "Remove vocab '%s' from project '%s'"
+                           (when vocab (:vocab/name vocab))
+                           (:project/name project))
+      :tx-ops (remove-vocab* xt-map project-id vocab-id)})))
+
+(defn remove-vocab
+  [xt-map project-id vocab-id actor-user-id]
+  (let [{:keys [db]} xt-map
+        actor-rec (user/get db actor-user-id)]
+    ;; Only project maintainers or admins can remove vocabs from projects
+    (when-not (or (user/admin? actor-rec)
+                  (contains? (set (maintainer-ids db project-id)) actor-user-id))
+      (throw (ex-info "User must be project maintainer to remove vocabs"
+                      {:type :unauthorized :user-id actor-user-id :project-id project-id})))
+    (submit-operations! xt-map [(remove-vocab-operation xt-map project-id vocab-id)] actor-user-id)))
