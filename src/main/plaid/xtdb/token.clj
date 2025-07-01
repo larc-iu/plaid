@@ -84,18 +84,18 @@
     ;; Numeric end and begin indices?
     (or (not (int? end)) (not (int? begin)))
     (throw (ex-info "Token end and begin must be numeric" {:end end :begin begin :code 400}))
-    
+
     ;; Non-negative extent?
     (neg? (- end begin))
     (throw (ex-info "Token has non-positive extent" {:begin begin :end end :code 400}))
-    
+
     ;; Bounds check: left
     (< begin 0)
     (throw (ex-info "Token has a negative start index" {:begin begin :code 400}))
-    
+
     ;; Bounds check: right
     (> end (count text-body))
-    (throw (ex-info "Token ends beyond the end of its associated text" 
+    (throw (ex-info "Token ends beyond the end of its associated text"
                     {:end end :text-length (count text-body) :code 400}))))
 
 (defn- check-token-precedence!
@@ -103,7 +103,7 @@
   Returns nil if valid, throws exception otherwise."
   [precedence]
   (when-not (or (nil? precedence) (int? precedence))
-    (throw (ex-info "Precedence must either be not supplied or an integer." 
+    (throw (ex-info "Precedence must either be not supplied or an integer."
                     {:code 400 :precedence precedence}))))
 
 (defn- check-tokens-consistency!
@@ -140,7 +140,7 @@
 
      ;; Validate bounds
      (check-token-bounds! begin end text-body)
-     
+
      ;; Validate precedence
      (check-token-precedence! precedence))))
 
@@ -195,10 +195,10 @@
     ;; Token doesn't exist?
     (when (nil? token)
       (throw (ex-info "Token does not exist" {:id eid :code 404})))
-    
+
     ;; Validate bounds
     (check-token-bounds! new-begin new-end text-body)
-    
+
     ;; Return the new extent
     {:token/begin new-begin :token/end new-end}))
 
@@ -207,10 +207,10 @@
     ;; Token doesn't exist?
     (when (nil? token)
       (throw (ex-info "Token does not exist" {:id eid :code 404})))
-    
+
     ;; Validate precedence
     (check-token-precedence! precedence)
-    
+
     ;; Return precedence update (or empty map if nil)
     (if (nil? precedence)
       {}
@@ -274,7 +274,7 @@
                              (clojure.core/merge (metadata/transform-metadata-for-storage metadata "token")))
                          (dissoc attrs :metadata)))]
     (check-tokens-consistency! tokens-attrs)
-    
+
     ;; If validation passes, create transaction operations
     (vec
       (concat
@@ -325,15 +325,26 @@
 (defn delete*
   [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
-        spans (get-span-ids db eid)]
+        spans (get-span-ids db eid)
+        ;; Delete all vmaps containing this token
+        vmap-ids (map first (xt/q db
+                                  '{:find [?vm]
+                                    :where [[?vm :vmap/tokens ?tok]]
+                                    :in [?tok]}
+                                  eid))
+        vmap-deletions (reduce into (mapv (fn [vmap-id]
+                                            [[::xt/match vmap-id (pxc/entity db vmap-id)]
+                                             [::xt/delete vmap-id]])
+                                          vmap-ids))]
 
     (when-not (:token/id (pxc/entity db eid))
       (throw (ex-info (pxc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
 
-    (into
-      (reduce into (map #(s/remove-token* xt-map % eid) spans))
-      [[::xt/match eid (pxc/entity db eid)]
-       [::xt/delete eid]])))
+    (reduce into
+            [vmap-deletions
+             (mapcat #(s/remove-token* xt-map % eid) spans)
+             [[::xt/match eid (pxc/entity db eid)]
+              [::xt/delete eid]]])))
 
 (defn delete-operation
   "Build an operation for deleting a token"
@@ -391,9 +402,23 @@
                                          (vec span-ids-to-delete))
                                    (map first)
                                    (distinct)
-                                   (map #(pxc/entity db %))))]
+                                   (map #(pxc/entity db %))))
+        ;; Delete all vmaps for these tokens
+        vmap-ids (mapcat (fn [eid]
+                           (map first (xt/q db
+                                            '{:find [?vm]
+                                              :where [[?vm :vmap/tokens ?tok]]
+                                              :in [?tok]}
+                                            eid)))
+                         eids)
+        vmap-deletions (reduce into [] (mapv (fn [vmap-id]
+                                               [[::xt/match vmap-id (pxc/entity db vmap-id)]
+                                                [::xt/delete vmap-id]])
+                                             (distinct vmap-ids)))]
     (vec
       (concat
+        ;; Delete vmaps first
+        vmap-deletions
         ;; Match and delete all tokens
         (for [eid eids
               :let [token (pxc/entity db eid)]

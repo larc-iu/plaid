@@ -135,13 +135,9 @@
 
 (defn delete*
   [xt-map eid]
-  ;; A project needs to delete three kinds of things
-  ;; - Its dependent text layers
-  ;; - Its dependent documents
-  ;; - Itself
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         text-layers (:project/text-layers (pxc/entity db eid))
-        txtl-txs (reduce into (mapv #(txtl/delete* xt-map %) text-layers))
+        txtl-txs (reduce into [] (mapv #(txtl/delete* xt-map %) text-layers))
         documents (get-document-ids db eid)
         doc-txs (mapcat (fn [id]
                           [[::xt/match id (pxc/entity db id)]
@@ -150,7 +146,7 @@
         project (pxc/entity db eid)
         project-txs [[::xt/match (:xt/id project) project]
                      [::xt/delete eid]]
-        all-txs (reduce into [txtl-txs doc-txs project-txs])]
+        all-txs (vec (concat txtl-txs doc-txs project-txs))]
     (cond
       (nil? (:project/id project))
       (throw (ex-info (pxc/err-msg-not-found "Project" eid) {:code 404}))
@@ -333,7 +329,6 @@
       (pxc/submit! node tx))))
 
  ;; Vocab management --------------------------------------------------------------------------------
-
 (defn add-vocab*
   [xt-map project-id vocab-id]
   (let [{:keys [db]} xt-map
@@ -342,19 +337,15 @@
     (cond
       (nil? project)
       (throw (ex-info (pxc/err-msg-not-found "Project" project-id)
-                      {:type :not-found :id project-id}))
+                      {:code 404 :id project-id}))
 
       (nil? vocab)
       (throw (ex-info (pxc/err-msg-not-found "Vocab" vocab-id)
-                      {:type :not-found :id vocab-id}))
-
-      (contains? (set (:project/vocabs project)) vocab-id)
-      (throw (ex-info "Vocab already linked to project"
-                      {:type :already-exists :project-id project-id :vocab-id vocab-id}))
+                      {:code 400 :id vocab-id}))
 
       :else
-      [[:xtdb.api/match project-id project]
-       [:xtdb.api/put (update project :project/vocabs conj vocab-id)]])))
+      [[::xt/match project-id project]
+       [::xt/put (pxc/add-id project :project/vocabs vocab-id)]])))
 
 (defn add-vocab-operation
   [xt-map project-id vocab-id]
@@ -372,14 +363,7 @@
 
 (defn add-vocab
   [xt-map project-id vocab-id actor-user-id]
-  (let [{:keys [db]} xt-map
-        actor-rec (user/get db actor-user-id)]
-    ;; Only project maintainers or admins can add vocabs to projects
-    (when-not (or (user/admin? actor-rec)
-                  (contains? (set (maintainer-ids db project-id)) actor-user-id))
-      (throw (ex-info "User must be project maintainer to add vocabs"
-                      {:type :unauthorized :user-id actor-user-id :project-id project-id})))
-    (submit-operations! xt-map [(add-vocab-operation xt-map project-id vocab-id)] actor-user-id)))
+  (submit-operations! xt-map [(add-vocab-operation xt-map project-id vocab-id)] actor-user-id))
 
 (defn remove-vocab*
   [xt-map project-id vocab-id]
@@ -388,15 +372,15 @@
     (cond
       (nil? project)
       (throw (ex-info (pxc/err-msg-not-found "Project" project-id)
-                      {:type :not-found :id project-id}))
+                      {:code 404 :id project-id}))
 
-      (not (contains? (set (:project/vocabs project)) vocab-id))
-      (throw (ex-info "Vocab not linked to project"
-                      {:type :not-found :project-id project-id :vocab-id vocab-id}))
+      (nil? (pxc/entity db vocab-id))
+      (throw (ex-info (pxc/err-msg-not-found "Vocab" vocab-id)
+                      {:code 400 :id vocab-id}))
 
       :else
-      [[:xtdb.api/match project-id project]
-       [:xtdb.api/put (update project :project/vocabs #(vec (remove #{vocab-id} %)))]])))
+      [[::xt/match project-id project]
+       [::xt/put (pxc/remove-id project :project/vocabs vocab-id)]])))
 
 (defn remove-vocab-operation
   [xt-map project-id vocab-id]
@@ -408,17 +392,10 @@
       :project project-id
       :document nil
       :description (format "Remove vocab '%s' from project '%s'"
-                           (when vocab (:vocab/name vocab))
+                           (:vocab/name vocab)
                            (:project/name project))
       :tx-ops (remove-vocab* xt-map project-id vocab-id)})))
 
 (defn remove-vocab
   [xt-map project-id vocab-id actor-user-id]
-  (let [{:keys [db]} xt-map
-        actor-rec (user/get db actor-user-id)]
-    ;; Only project maintainers or admins can remove vocabs from projects
-    (when-not (or (user/admin? actor-rec)
-                  (contains? (set (maintainer-ids db project-id)) actor-user-id))
-      (throw (ex-info "User must be project maintainer to remove vocabs"
-                      {:type :unauthorized :user-id actor-user-id :project-id project-id})))
-    (submit-operations! xt-map [(remove-vocab-operation xt-map project-id vocab-id)] actor-user-id)))
+  (submit-operations! xt-map [(remove-vocab-operation xt-map project-id vocab-id)] actor-user-id))

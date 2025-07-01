@@ -136,22 +136,36 @@
 (defn delete* [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
         {span-layers :token-layer/span-layers :as token-layer} (pxc/entity db eid)
-        span-layer-deletions (reduce into (map #(sl/delete* xt-map %) span-layers))
+        span-layer-deletions (reduce into [] (map #(sl/delete* xt-map %) span-layers))
         token-ids (map first (xt/q db '{:find  [?tok]
                                         :where [[?tok :token/layer ?tokl]]
                                         :in    [?tokl]}
                                    eid))
-        token-deletions (vec (mapcat (fn [id]
-                                       [[::xt/match id (pxc/entity db id)]
-                                        [::xt/delete id]])
-                                     token-ids))]
+        ;; Delete all vmaps for these tokens
+        vmap-ids (distinct (mapcat (fn [token-id]
+                                     (map first (xt/q db
+                                                      '{:find [?vm]
+                                                        :where [[?vm :vmap/tokens ?tok]]
+                                                        :in [?tok]}
+                                                      token-id)))
+                                   token-ids))
+        vmap-deletions (reduce into (mapv (fn [vmap-id]
+                                            [[::xt/match vmap-id (pxc/entity db vmap-id)]
+                                             [::xt/delete vmap-id]])
+                                          vmap-ids))
+        token-deletions (reduce into (mapv (fn [id]
+                                             [[::xt/match id (pxc/entity db id)]
+                                              [::xt/delete id]])
+                                           token-ids))]
     (cond
       (nil? (:token-layer/id token-layer))
       (throw (ex-info (pxc/err-msg-not-found "Token layer" eid) {:code 404}))
 
       :else
       (reduce into
-              [span-layer-deletions
+              []
+              [vmap-deletions
+               span-layer-deletions
                token-deletions
                [[::xt/match eid (pxc/entity db eid)]
                 [::xt/delete eid]]]))))
