@@ -94,7 +94,7 @@
     (when-not (pxc/valid-name? (:vocab/name attrs))
       (throw (ex-info "Invalid vocab name"
                       {:code 400 :name (:vocab/name attrs)})))
-    (let [record (pxc/create-record :vocab id attrs #{:vocab/name})]
+    (let [record (pxc/create-record :vocab id attrs attr-keys)]
       [[::xt/match id nil]
        [::xt/put record]])))
 
@@ -196,7 +196,7 @@
 
 (defn remove-maintainer*
   [xt-map vocab-id user-id]
-  (modify-maintainers* xt-map vocab-id #(pxc/remove-id % :vocab-maintainers user-id)))
+  (modify-maintainers* xt-map vocab-id #(pxc/remove-id % :vocab/maintainers user-id)))
 
 (defn remove-maintainer-operation
   [xt-map vocab-id user-id]

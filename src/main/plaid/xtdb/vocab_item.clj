@@ -16,7 +16,7 @@
 (defn get
   [db-like id]
   (when-let [item-entity (pxc/find-entity (pxc/->db db-like) {:vocab-item/id id})]
-    (let [core-attrs (select-keys item-entity [:attr-keys])]
+    (let [core-attrs (select-keys item-entity attr-keys)]
       (metadata/add-metadata-to-response core-attrs item-entity "vocab-item"))))
 
 (defn get-all-in-layer
@@ -24,10 +24,11 @@
   [db-like layer-id]
   (let [db (pxc/->db db-like)]
     (->> (xt/q db
-               '{:find  [(pull ?e [*])]
+               '{:find [e]
                  :where [[?e :vocab-item/layer ?layer]]
-                 :in    [?layer]}
+                 :in [?layer]}
                layer-id)
+         (map first)
          (mapv (partial get db)))))
 
 ;; writes --------------------------------------------------------------------------------
@@ -36,7 +37,7 @@
   (let [{:keys [node db]} xt-map
         attrs (filter (fn [[k _]] (= "vocab-item" (namespace k))) attrs)
         {:vocab-item/keys [id layer] :as record} (clojure.core/merge (pxc/new-record "vocab-item")
-                                                                    (into {} attrs))]
+                                                                     (into {} attrs))]
     ;; Check if vocab layer exists
     (when-not (pxc/entity db layer)
       (throw (ex-info (pxc/err-msg-not-found "Vocab layer" layer)
@@ -54,11 +55,11 @@
   (let [metadata-attrs (metadata/transform-metadata-for-storage metadata "vocab-item")
         attrs-with-metadata (clojure.core/merge attrs metadata-attrs)]
     (op/make-operation
-      {:type        :vocab-item/create
+      {:type :vocab-item/create
        :description (format "Create vocab item '%s'" (:vocab-item/form attrs))
-       :tx-ops      (create* xt-map attrs-with-metadata)
-       :project     nil
-       :document    nil})))
+       :tx-ops (create* xt-map attrs-with-metadata)
+       :project nil
+       :document nil})))
 
 (defn create
   ([xt-map attrs user-id]
@@ -75,11 +76,11 @@
                       {:code 404 :id eid})))
     ;; If changing form, check uniqueness
     (op/make-operation
-     {:type :vocab-item/merge
-      :description (format "Update vocab item '%s'" (:vocab-item/form current))
-      :tx-ops (pxc/merge* xt-map eid m)
-      :project nil
-      :document nil})))
+      {:type :vocab-item/merge
+       :description (format "Update vocab item '%s'" (:vocab-item/form current))
+       :tx-ops (pxc/merge* xt-map eid m)
+       :project nil
+       :document nil})))
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m user-id]
@@ -101,11 +102,11 @@
   (let [{:keys [db]} xt-map
         current (pxc/entity db eid)]
     (op/make-operation
-     {:type :vocab-item/delete
-      :description (format "Delete vocab item '%s'" (:vocab-item/form current))
-      :tx-ops (delete* xt-map eid)
-      :project nil
-      :document nil})))
+      {:type :vocab-item/delete
+       :description (format "Delete vocab item '%s'" (:vocab-item/form current))
+       :tx-ops (delete* xt-map eid)
+       :project nil
+       :document nil})))
 
 (defn delete
   [xt-map eid user-id]

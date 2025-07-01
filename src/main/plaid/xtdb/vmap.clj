@@ -46,7 +46,7 @@
     (map first (xt/q db
                      '{:find [(pull ?vm [:vmap/id :vmap/vocab-item :vmap/tokens])]
                        :where [[?vm :vmap/vocab-item ?vi]
-                               [?vi :vocab-item/vocab ?v]]
+                               [?vi :vocab-item/layer ?v]]
                        :in [?v]}
                      vocab-id))))
 
