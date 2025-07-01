@@ -93,9 +93,19 @@
     (when-not record
       (throw (ex-info (pxc/err-msg-not-found "Vocab item" eid)
                       {:code 404 :id eid})))
-    ;; TODO: Check for dependent vmaps before deleting
-    [[::xt/match eid record]
-     [::xt/delete eid]]))
+    ;; Delete all vmaps for this vocab item
+    (let [vmap-ids (map first (xt/q db
+                                    '{:find [?vm]
+                                      :where [[?vm :vmap/vocab-item ?vi]]
+                                      :in [?vi]}
+                                    eid))
+          vmap-deletions (mapcat (fn [vmap-id]
+                                   [[::xt/match vmap-id (pxc/entity db vmap-id)]
+                                    [::xt/delete vmap-id]])
+                                 vmap-ids)]
+      (into vmap-deletions
+            [[::xt/match eid record]
+             [::xt/delete eid]]))))
 
 (defn delete-operation
   [xt-map eid]

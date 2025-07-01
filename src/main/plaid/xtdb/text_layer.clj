@@ -107,7 +107,7 @@
   [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
         {token-layers :text-layer/token-layers :as text-layer} (pxc/entity db eid)
-        token-layer-deletions (reduce into (mapv #(tokl/delete* xt-map %) token-layers))
+        token-layer-deletions (reduce into [] (mapv #(tokl/delete* xt-map %) token-layers))
         text-ids (map first (xt/q db '{:find  [?txt]
                                        :where [[?txt :text/layer ?txtl]]
                                        :in    [?txtl]}
