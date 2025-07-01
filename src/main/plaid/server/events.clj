@@ -226,7 +226,7 @@
       (do (log/warn "Event bus is not initialized") false)
 
       (not (satisfies? clojure.core.async.impl.protocols/WritePort event-bus))
-      (do (log/warn "Event bus is not writable") false)
+      (do #_(log/warn "Event bus is not writable") false)
 
       :else
       (let [event {:event/type      :audit-log
