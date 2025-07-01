@@ -84,7 +84,7 @@
       (throw (ex-info (pxc/err-msg-already-exists "Text" id) {:id id :code 409}))
 
       (not (string? body))
-      (throw (ex-info "Text body must be a string." {:body body}))
+      (throw (ex-info "Text body must be a string." {:body body :code 400}))
 
       (nil? (:text-layer/id (pxc/entity db layer)))
       (throw (ex-info (pxc/err-msg-not-found "Text layer" layer) {:id layer :code 400}))
@@ -139,7 +139,7 @@
         _ (when-not text
             (throw (ex-info (pxc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
         _ (when-not (string? new-body)
-            (throw (ex-info "Text body must be a string." {:body body})))
+            (throw (ex-info "Text body must be a string." {:body body :code 400})))
         ops (ta/diff body new-body)
         tokens (map #(pxc/entity db %) (get-token-ids db eid))
         indexed-tokens (reduce #(assoc %1 (:token/id %2) %2) {} tokens)
