@@ -8,7 +8,7 @@
             [plaid.xtdb.project :as prj]
             [plaid.xtdb.metadata :as metadata]
             [taoensso.timbre :as log])
-  (:refer-clojure :exclude [get]))
+  (:refer-clojure :exclude [get format]))
 
 (def attr-keys [:vocab-link/id
                 :vocab-link/vocab-item
