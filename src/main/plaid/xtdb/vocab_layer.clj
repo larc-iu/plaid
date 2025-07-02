@@ -195,7 +195,7 @@
 ;; Maintainer management --------------------------------------------------------------------------------
 (defn- modify-maintainers*
   [xt-map vocab-id f]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         current (pxc/entity db vocab-id)]
     (when-not current
       (throw (ex-info (pxc/err-msg-not-found "Vocab" vocab-id)
@@ -209,7 +209,7 @@
 
 (defn add-maintainer-operation
   [xt-map vocab-id user-id]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         vocab (pxc/entity db vocab-id)]
     (op/make-operation
       {:type :vocab/add-maintainer
@@ -228,7 +228,7 @@
 
 (defn remove-maintainer-operation
   [xt-map vocab-id user-id]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         vocab (pxc/entity db vocab-id)]
     (op/make-operation
       {:type :vocab/remove-maintainer
