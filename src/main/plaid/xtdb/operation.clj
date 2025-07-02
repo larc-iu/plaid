@@ -65,7 +65,10 @@
                audit-entry# @audit-entry-vol#]
            (when (and operations# audit-entry#)
              (events/publish-audit-event! audit-entry# operations# ~user-id))))
-       result#)))
+       (-> result#
+           (cond-> (:audit/id @audit-entry-vol#)
+                   (assoc result# :document-version (:audit/id @audit-entry-vol#)))))))
+
 
 (defmacro submit-operations-with-extras!
   "Submit operations and return extra data from the transaction.
@@ -92,4 +95,6 @@
                audit-entry# @audit-entry-vol#]
            (when (and operations# audit-entry#)
              (events/publish-audit-event! audit-entry# operations# ~user-id))))
-       result#)))
+       (-> result#
+           (cond-> (:audit/id @audit-entry-vol#)
+                   (assoc result# :document-version (:audit/id @audit-entry-vol#)))))))
