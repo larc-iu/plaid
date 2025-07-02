@@ -210,6 +210,28 @@
                               {:status 204}
                               {:status (or code 500) :body {:error error}})))}}]]
 
+   ;; Vocabs
+   ["/:id"
+    {:middleware [[pra/wrap-maintainer-required get-project-id]]}
+    ["/vocabs/:vocab-id"
+     {:post {:summary "Link a vocabulary to a project."
+             :openapi {:x-client-method "link-vocab"}
+             :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
+             :handler (fn [{{{:keys [id vocab-id]} :path} :parameters xtdb :xtdb user-id :user/id :as req}]
+                        (let [{:keys [success code error]} (prj/add-vocab {:node xtdb} id vocab-id user-id)]
+                          (if success
+                            {:status 204}
+                            {:status (or code 500) :body {:error error}})))}
+
+      :delete {:summary "Unlink a vocabulary to a project."
+               :openapi {:x-client-method "unlink-vocab"}
+               :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
+               :handler (fn [{{{:keys [id vocab-id]} :path} :parameters xtdb :xtdb user-id :user/id :as req}]
+                          (let [{:keys [success code error]} (prj/remove-vocab {:node xtdb} id vocab-id user-id)]
+                            (if success
+                              {:status 204}
+                              {:status (or code 500) :body {:error error}})))}}]]
+
    ;; SSE endpoint for audit log events
    ["/:id/listen"
     {:parameters {:path [:map [:id :uuid]]}
