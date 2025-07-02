@@ -4,25 +4,26 @@
             [buddy.sign.jwt :as jwt]
             [plaid.xtdb.project :as prj]
             [plaid.xtdb.user :as user]
+            [plaid.xtdb.vocab-layer :as vocab]
             [taoensso.timbre :as log]
             [xtdb.api :as xt]))
 
 (def authentication-routes
   ["/login"
-   {:post {:summary    (str "Authenticate with a <body>user-id</body> and <body>password</body> and get a JWT token. The token should be included "
-                            "in request headers under \"Authorization: Bearer ...\" in order to prove successful "
-                            "authentication to the server.")
+   {:post {:summary (str "Authenticate with a <body>user-id</body> and <body>password</body> and get a JWT token. The token should be included "
+                         "in request headers under \"Authorization: Bearer ...\" in order to prove successful "
+                         "authentication to the server.")
            :parameters {:body {:user-id string? :password string?}}
-           :handler    (fn [{{{:keys [user-id password]} :body} :parameters xtdb :xtdb secret-key :secret-key}]
-                         (if-let [{:user/keys [id password-changes password-hash]} (user/get-internal xtdb user-id)]
-                           (if (hashers/check password password-hash)
-                             (let [token (jwt/sign {:user/id id :version password-changes} secret-key)]
-                               {:status 200
-                                :body   {:token token}})
-                             {:status 401
-                              :body   {:error "Invalid password"}})
-                           {:status 401
-                            :body   {:error "User not found"}}))}}])
+           :handler (fn [{{{:keys [user-id password]} :body} :parameters xtdb :xtdb secret-key :secret-key}]
+                      (if-let [{:user/keys [id password-changes password-hash]} (user/get-internal xtdb user-id)]
+                        (if (hashers/check password password-hash)
+                          (let [token (jwt/sign {:user/id id :version password-changes} secret-key)]
+                            {:status 200
+                             :body {:token token}})
+                          {:status 401
+                           :body {:error "Invalid password"}})
+                        {:status 401
+                         :body {:error "User not found"}}))}}])
 
 (defn ->user-id [request]
   (-> request :jwt-data :user/id))
@@ -65,30 +66,30 @@
                 (instance? Exception token-data)
                 (do (log/warn token-data "JWT validation error")
                     {:status 401
-                     :body   {:error (str "Token invalid. Obtain a new token.")}})
+                     :body {:error (str "Token invalid. Obtain a new token.")}})
 
                 (nil? user)
                 {:status 401
-                 :body   {:error (str "Token invalid because user does not exist.")}}
+                 :body {:error (str "Token invalid because user does not exist.")}}
 
                 (not= (:version token-data)
                       (:user/password-changes user))
                 {:status 401
-                 :body   {:error (str "Token invalid because password has changed.")}}
+                 :body {:error (str "Token invalid because password has changed.")}}
 
                 :else
                 (do
                   (log/debug (str "Found JWT data: " token-data " (source: "
                                   (if (and auth-header (.startsWith auth-header "Bearer ")) "header" "query") ")"))
                   (handler (assoc request
-                             :jwt-data token-data
-                             :user/id (:user/id token-data))))))))))
+                                  :jwt-data token-data
+                                  :user/id (:user/id token-data))))))))))
 
 (defn wrap-login-required [handler]
   (fn [request]
     (if-not (->user-id request)
       {:status 403
-       :body   {:error "Valid token required for this operation."}}
+       :body {:error "Valid token required for this operation."}}
       (handler request))))
 
 (defn wrap-admin-required [handler]
@@ -96,17 +97,17 @@
     (let [user (user/get xtdb (->user-id request))]
       (if-not (user/admin? user)
         {:status 403
-         :body   {:error "Admin privileges required for this operation."}}
+         :body {:error "Admin privileges required for this operation."}}
         (handler request)))))
 
 (def ^:private levels
-  {:project/readers     [:project/readers :project/writers :project/maintainers]
-   :project/writers     [:project/writers :project/maintainers]
+  {:project/readers [:project/readers :project/writers :project/maintainers]
+   :project/writers [:project/writers :project/maintainers]
    :project/maintainers [:project/maintainers]})
 
 (def ^:private verb
-  {:project/readers     "read"
-   :project/writers     "write for"
+  {:project/readers "read"
+   :project/writers "write for"
    :project/maintainers "maintain"})
 
 (defn wrap-project-privileges-required
@@ -121,7 +122,7 @@
           project (prj/get xtdb id)]
       (if-not (or admin? (some #(seq ((-> project % set) user-id)) (key levels)))
         {:status 403
-         :body   {:error (str "User " user-id " lacks sufficient privileges to " (key verb) " project " id)}}
+         :body {:error (str "User " user-id " lacks sufficient privileges to " (key verb) " project " id)}}
         (handler request)))))
 
 (defn wrap-reader-required [handler get-project-id]
@@ -130,5 +131,54 @@
   (wrap-project-privileges-required handler :project/writers get-project-id))
 (defn wrap-maintainer-required [handler get-project-id]
   (wrap-project-privileges-required handler :project/maintainers get-project-id))
+
+(defn wrap-vocab-maintainer-required
+  "Requires that the user is a maintainer of the vocab layer or an admin."
+  [handler get-vocab-id]
+  (fn [{xtdb :xtdb :as request}]
+    (let [user-id (->user-id request)
+          vocab-id (get-vocab-id {:parameters (:parameters request)
+                                  :db (or (:db request) (xt/db xtdb))})
+          admin? (user/admin? (user/get xtdb user-id))
+          maintainer? (and vocab-id
+                           (vocab/maintainer? xtdb vocab-id user-id))]
+      (if-not (or admin? maintainer?)
+        {:status 403
+         :body {:error (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id)}}
+        (handler request)))))
+
+(defn wrap-vocab-reader-required
+  "Requires that the user has read access to the vocab layer through a project or is a maintainer/admin."
+  [handler get-vocab-id]
+  (fn [{xtdb :xtdb :as request}]
+    (let [user-id (->user-id request)
+          vocab-id (get-vocab-id {:parameters (:parameters request)
+                                  :db (or (:db request) (xt/db xtdb))})
+          admin? (user/admin? (user/get xtdb user-id))
+          maintainer? (and vocab-id
+                           (vocab/maintainer? xtdb vocab-id user-id))
+          accessible? (and vocab-id
+                           (vocab/accessible-through-project? xtdb vocab-id user-id))]
+      (if-not (or admin? maintainer? accessible?)
+        {:status 403
+         :body {:error (str "User " user-id " lacks read access to vocab layer " vocab-id)}}
+        (handler request)))))
+
+(defn wrap-vocab-writer-required
+  "Requires that the user has write access to vocab items through a project or is a maintainer/admin."
+  [handler get-vocab-id]
+  (fn [{xtdb :xtdb :as request}]
+    (let [user-id (->user-id request)
+          vocab-id (get-vocab-id {:parameters (:parameters request)
+                                  :db (or (:db request) (xt/db xtdb))})
+          admin? (user/admin? (user/get xtdb user-id))
+          maintainer? (and vocab-id
+                           (vocab/maintainer? xtdb vocab-id user-id))
+          write-accessible? (and vocab-id
+                                 (vocab/write-accessible-through-project? xtdb vocab-id user-id))]
+      (if-not (or admin? maintainer? write-accessible?)
+        {:status 403
+         :body {:error (str "User " user-id " lacks write access to vocab layer " vocab-id)}}
+        (handler request)))))
 
 

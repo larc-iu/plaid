@@ -145,13 +145,13 @@
         tx-ops (set-metadata-tx-ops* xt-map eid metadata entity-type)
         op-type (keyword entity-type "set-metadata")]
     (op/make-operation
-     {:type        op-type
-      :project     project-id
-      :document    doc-id
+     {:type op-type
+      :project project-id
+      :document doc-id
       :description (str "Set metadata on " entity-type " " eid " with " (count metadata) " keys")
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
-(defn make-delete-metadata-operation  
+(defn make-delete-metadata-operation
   "Build an operation for removing all metadata from an entity.
    
    Args:
@@ -171,17 +171,17 @@
         tx-ops (delete-metadata-tx-ops* xt-map eid entity-type)
         op-type (keyword entity-type "delete-metadata")]
     (op/make-operation
-     {:type        op-type
-      :project     project-id
-      :document    doc-id
+     {:type op-type
+      :project project-id
+      :document doc-id
       :description (str "Delete all metadata from " entity-type " " eid)
-      :tx-ops      tx-ops})))
+      :tx-ops tx-ops})))
 
 ;; Entity type validation -------------------------------------------------------
 
 (def ^:private valid-entity-types
   "Set of entity types that support metadata"
-  #{"document" "text" "token" "span" "relation"})
+  #{"document" "text" "token" "span" "relation" "vocab-item"})
 
 (defn- validate-entity-type!
   "Validate that the entity type supports metadata operations"
@@ -211,9 +211,9 @@
      Result of operation submission"
   [xt-map eid metadata user-id entity-type project-id-fn document-id-fn]
   (validate-entity-type! entity-type)
-  (submit-operations! xt-map 
-                      [(make-set-metadata-operation xt-map eid metadata entity-type 
-                                                    project-id-fn document-id-fn)] 
+  (submit-operations! xt-map
+                      [(make-set-metadata-operation xt-map eid metadata entity-type
+                                                    project-id-fn document-id-fn)]
                       user-id))
 
 (defn delete-metadata
@@ -231,7 +231,7 @@
      Result of operation submission"
   [xt-map eid user-id entity-type project-id-fn document-id-fn]
   (validate-entity-type! entity-type)
-  (submit-operations! xt-map 
-                      [(make-delete-metadata-operation xt-map eid entity-type 
-                                                       project-id-fn document-id-fn)] 
+  (submit-operations! xt-map
+                      [(make-delete-metadata-operation xt-map eid entity-type
+                                                       project-id-fn document-id-fn)]
                       user-id))

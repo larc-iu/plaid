@@ -25,7 +25,9 @@
             [plaid.rest-api.v1.relation-layer :refer [relation-layer-routes]]
             [plaid.rest-api.v1.relation :refer [relation-routes]]
             [plaid.rest-api.v1.audit :refer [audit-routes]]
-            [plaid.rest-api.v1.bulk :refer [bulk-routes]]))
+            [plaid.rest-api.v1.bulk :refer [bulk-routes]]
+            [plaid.rest-api.v1.vocab-layer :refer [vocab-layer-routes]]
+            [plaid.rest-api.v1.vocab-item :refer [vocab-item-routes]]))
 
 (def coercion
   (reitit.coercion.malli/create
@@ -75,7 +77,9 @@
      relation-routes
      relation-layer-routes
      audit-routes
-     bulk-routes]]
+     bulk-routes
+     vocab-layer-routes
+     vocab-item-routes]]
 
    ;; swagger documentation
    [""
