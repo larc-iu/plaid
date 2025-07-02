@@ -6,6 +6,7 @@
             [plaid.xtdb.vocab-item :as vi]
             [plaid.xtdb.user :as user]
             [plaid.xtdb.project :as prj]
+            [plaid.xtdb.metadata :as metadata]
             [taoensso.timbre :as log])
   (:refer-clojure :exclude [get]))
 
@@ -14,50 +15,73 @@
                 :vmap/tokens])
 
 ;; reads --------------------------------------------------------------------------------
+(defn format [raw-record]
+  (let [core-attrs (select-keys raw-record [:vmap/id :vmap/vocab-item :vmap/tokens])]
+    (metadata/add-metadata-to-response core-attrs raw-record "vmap")))
+
 (defn get
+  "Get a vmap by ID, formatted for external consumption (API responses)."
   [db-like id]
-  (-> (pxc/find-entity (pxc/->db db-like) {:vmap/id id})
-      (dissoc :xt/id)))
+  (when-let [vmap-entity (pxc/find-entity (pxc/->db db-like) {:vmap/id id})]
+    (format vmap-entity)))
 
 (defn get-by-token
   "Get all vmaps associated with a specific token"
   [db-like token-id]
   (let [db (pxc/->db db-like)]
-    (map first (xt/q db
-                     '{:find [(pull ?vm [:vmap/id :vmap/vocab-item :vmap/tokens])]
-                       :where [[?vm :vmap/tokens ?tok]]
-                       :in [?tok]}
-                     token-id))))
+    (->> (xt/q db
+               '{:find [(pull ?vm [*])]
+                 :where [[?vm :vmap/tokens ?tok]]
+                 :in [?tok]}
+               token-id)
+         (map first)
+         (map format))))
 
 (defn get-by-vocab-item
   "Get all vmaps for a specific vocab item"
   [db-like vocab-item-id]
   (let [db (pxc/->db db-like)]
-    (map first (xt/q db
-                     '{:find [(pull ?vm [:vmap/id :vmap/vocab-item :vmap/tokens])]
-                       :where [[?vm :vmap/vocab-item ?vi]]
-                       :in [?vi]}
-                     vocab-item-id))))
+    (->> (xt/q db
+               '{:find [(pull ?vm [*])]
+                 :where [[?vm :vmap/vocab-item ?vi]]
+                 :in [?vi]}
+               vocab-item-id)
+         (map first)
+         (map format))))
 
 (defn get-by-vocab
   "Get all vmaps for a specific vocab layer"
   [db-like vocab-id]
   (let [db (pxc/->db db-like)]
-    (map first (xt/q db
-                     '{:find [(pull ?vm [:vmap/id :vmap/vocab-item :vmap/tokens])]
-                       :where [[?vm :vmap/vocab-item ?vi]
-                               [?vi :vocab-item/layer ?v]]
-                       :in [?v]}
-                     vocab-id))))
+    (->> (xt/q db
+               '{:find [(pull ?vm [*])]
+                 :where [[?vm :vmap/vocab-item ?vi]
+                         [?vi :vocab-item/layer ?v]]
+                 :in [?v]}
+               vocab-id)
+         (map first)
+         (map format))))
 
 ;; Helper to get project ID from token
-(defn- project-id-from-token
+(defn project-id-from-token
   [db-like token-id]
   (-> (xt/q (pxc/->db db-like)
             '{:find [?prj]
               :where [[?prj :project/text-layers ?txtl]
                       [?txtl :text-layer/token-layers ?tokl]
                       [?tok :token/layer ?tokl]]
+              :in [?tok]}
+            token-id)
+      first
+      first))
+
+;; Helper to get document ID from token
+(defn document-id-from-token
+  [db-like token-id]
+  (-> (xt/q (pxc/->db db-like)
+            '{:find [?doc]
+              :where [[?tok :token/text ?txt]
+                      [?txt :text/document ?doc]]
               :in [?tok]}
             token-id)
       first
@@ -110,22 +134,31 @@
          [::xt/put record]]))))
 
 (defn create-operation
-  [xt-map attrs]
-  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
-        ;; Get project and document info from first token
-        first-token-id (first (:vmap/tokens attrs))
-        project-id (when first-token-id (project-id-from-token db first-token-id))
-        document-id (when first-token-id (:token/document (pxc/entity db first-token-id)))]
-    (op/make-operation
-      {:type :vmap/create
-       :description "Create vocab mapping"
-       :tx-ops (create* xt-map attrs)
-       :project project-id
-       :document document-id})))
+  "Build an operation for creating a vmap"
+  ([xt-map attrs]
+   (create-operation xt-map attrs nil))
+  ([xt-map attrs metadata]
+   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
+         ;; Get project and document info from first token
+         first-token-id (first (:vmap/tokens attrs))
+         project-id (when first-token-id (project-id-from-token db first-token-id))
+         document-id (when first-token-id (document-id-from-token db first-token-id))
+         ;; Expand metadata into vmap attributes
+         metadata-attrs (metadata/transform-metadata-for-storage metadata "vmap")
+         attrs-with-metadata (clojure.core/merge attrs metadata-attrs)]
+     (op/make-operation
+       {:type :vmap/create
+        :description (str "Create vocab mapping" 
+                          (when metadata (str " with " (count metadata) " metadata keys")))
+        :tx-ops (create* xt-map attrs-with-metadata)
+        :project project-id
+        :document document-id}))))
 
 (defn create
-  [xt-map attrs user-id]
-  (submit-operations! xt-map [(create-operation xt-map attrs)] user-id))
+  ([xt-map attrs user-id]
+   (create xt-map attrs user-id nil))
+  ([xt-map attrs user-id metadata]
+   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn delete*
   [{:keys [db]} eid]
@@ -143,7 +176,7 @@
         ;; Get project and document info from first token
         first-token-id (first (:vmap/tokens vmap))
         project-id (when first-token-id (project-id-from-token db first-token-id))
-        document-id (when first-token-id (:token/document (pxc/entity db first-token-id)))]
+        document-id (when first-token-id (document-id-from-token db first-token-id))]
     (op/make-operation
       {:type :vmap/delete
        :description "Delete vocab mapping"
@@ -154,3 +187,58 @@
 (defn delete
   [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
+
+;; Metadata operations ----------------------------------------------------------------
+(defn set-metadata*
+  "Build transaction ops for replacing all metadata on a vmap"
+  [xt-map eid metadata]
+  (metadata/set-metadata-tx-ops* xt-map eid metadata "vmap"))
+
+(defn set-metadata-operation
+  "Build an operation for replacing all metadata on a vmap"
+  [xt-map eid metadata]
+  (letfn [(project-id-fn [db eid] 
+            (let [vmap (pxc/entity db eid)
+                  first-token-id (first (:vmap/tokens vmap))]
+              (when first-token-id (project-id-from-token db first-token-id))))
+          (document-id-fn [db vmap] 
+            (let [first-token-id (first (:vmap/tokens vmap))]
+              (when first-token-id (document-id-from-token db first-token-id))))]
+    (metadata/make-set-metadata-operation xt-map eid metadata "vmap" project-id-fn document-id-fn)))
+
+(defn set-metadata [xt-map eid metadata user-id]
+  (letfn [(project-id-fn [db eid] 
+            (let [vmap (pxc/entity db eid)
+                  first-token-id (first (:vmap/tokens vmap))]
+              (when first-token-id (project-id-from-token db first-token-id))))
+          (document-id-fn [db vmap] 
+            (let [first-token-id (first (:vmap/tokens vmap))]
+              (when first-token-id (document-id-from-token db first-token-id))))]
+    (metadata/set-metadata xt-map eid metadata user-id "vmap" project-id-fn document-id-fn)))
+
+(defn delete-metadata*
+  "Build transaction ops for removing all metadata from a vmap"
+  [xt-map eid]
+  (metadata/delete-metadata-tx-ops* xt-map eid "vmap"))
+
+(defn delete-metadata-operation
+  "Build an operation for removing all metadata from a vmap"
+  [xt-map eid]
+  (letfn [(project-id-fn [db eid] 
+            (let [vmap (pxc/entity db eid)
+                  first-token-id (first (:vmap/tokens vmap))]
+              (when first-token-id (project-id-from-token db first-token-id))))
+          (document-id-fn [db vmap] 
+            (let [first-token-id (first (:vmap/tokens vmap))]
+              (when first-token-id (document-id-from-token db first-token-id))))]
+    (metadata/make-delete-metadata-operation xt-map eid "vmap" project-id-fn document-id-fn)))
+
+(defn delete-metadata [xt-map eid user-id]
+  (letfn [(project-id-fn [db eid] 
+            (let [vmap (pxc/entity db eid)
+                  first-token-id (first (:vmap/tokens vmap))]
+              (when first-token-id (project-id-from-token db first-token-id))))
+          (document-id-fn [db vmap] 
+            (let [first-token-id (first (:vmap/tokens vmap))]
+              (when first-token-id (document-id-from-token db first-token-id))))]
+    (metadata/delete-metadata xt-map eid user-id "vmap" project-id-fn document-id-fn)))
