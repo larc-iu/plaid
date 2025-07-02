@@ -75,28 +75,29 @@
                          {:status 403
                           :body {:error "Insufficient privileges to access the specified vocab item"}}))}}]
    ["/:id"
-    {:parameters {:path [:map [:id :uuid]]}
-     :get {:summary "Get a vocab link by ID"
-           :middleware [[pra/wrap-reader-required get-project-id-from-vocab-link]]
-           :handler (fn [{{{:keys [id]} :path} :parameters
-                          db :db :as req}]
-                      (let [vocab-link-record (vocab-link/get db id)]
-                        (if vocab-link-record
-                          {:status 200
-                           :body vocab-link-record}
-                          {:status 404
-                           :body {:error "vocab link not found"}})))}
+    {:parameters {:path [:map [:id :uuid]]}}
 
-     :delete {:summary "Delete a vocab link"
-              :middleware [[pra/wrap-writer-required get-project-id-from-vocab-link]]
-              :handler (fn [{{{:keys [id]} :path} :parameters
-                             xtdb :xtdb
-                             user-id :user/id :as req}]
-                         (let [{:keys [success code error]} (vocab-link/delete {:node xtdb} id user-id)]
-                           (if success
-                             {:status 204}
-                             {:status (or code 500)
-                              :body {:error (or error "Internal server error")}})))}}
+    ["" {:get {:summary "Get a vocab link by ID"
+               :middleware [[pra/wrap-reader-required get-project-id-from-vocab-link]]
+               :handler (fn [{{{:keys [id]} :path} :parameters
+                              db :db :as req}]
+                          (let [vocab-link-record (vocab-link/get db id)]
+                            (if vocab-link-record
+                              {:status 200
+                               :body vocab-link-record}
+                              {:status 404
+                               :body {:error "vocab link not found"}})))}
+
+         :delete {:summary "Delete a vocab link"
+                  :middleware [[pra/wrap-writer-required get-project-id-from-vocab-link]]
+                  :handler (fn [{{{:keys [id]} :path} :parameters
+                                 xtdb :xtdb
+                                 user-id :user/id :as req}]
+                             (let [{:keys [success code error]} (vocab-link/delete {:node xtdb} id user-id)]
+                               (if success
+                                 {:status 204}
+                                 {:status (or code 500)
+                                  :body {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "vocab link" :id get-project-id-from-vocab-link get-document-id-from-vocab-link vocab-link/get vocab-link/set-metadata vocab-link/delete-metadata)]])
