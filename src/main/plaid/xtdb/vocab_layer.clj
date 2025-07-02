@@ -3,6 +3,7 @@
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
             [plaid.xtdb.user :as user]
+            [plaid.xtdb.vocab-item :as vi]
             [taoensso.timbre :as log])
   (:refer-clojure :exclude [get merge]))
 
@@ -13,9 +14,15 @@
 
 ;; reads --------------------------------------------------------------------------------
 (defn get
-  [db-like id]
-  (-> (pxc/find-entity (pxc/->db db-like) {:vocab/id id})
-      (dissoc :xt/id)))
+  "Get vocab layer with all vocab items."
+  ([db-like id]
+   (get db-like id false))
+  ([db-like id include-items?]
+   (when-let [record (pxc/entity (pxc/->db db-like) id)]
+     (-> record
+         (dissoc :xt/id)
+         (cond-> include-items?
+                 (assoc :vocab/items (vi/get-all-in-layer db-like id)))))))
 
 (defn get-all-ids
   "Get all vocab IDs in the system"
@@ -86,17 +93,18 @@
 
 ;; writes --------------------------------------------------------------------------------
 (defn create*
-  [xt-map {:vocab/keys [id] :as attrs}]
-  (let [{:keys [node db]} xt-map]
+  [xt-map attrs]
+  (let [{:keys [node db]} (pxc/ensure-db xt-map)
+        {:vocab/keys [id name] :as record} (clojure.core/merge (pxc/new-record "vocab")
+                                                               (select-keys attrs attr-keys))]
     (when (pxc/find-entity db {:vocab/id id})
       (throw (ex-info (pxc/err-msg-already-exists "Vocab" id)
                       {:code 409 :id id})))
-    (when-not (pxc/valid-name? (:vocab/name attrs))
+    (when-not (pxc/valid-name? name)
       (throw (ex-info "Invalid vocab name"
-                      {:code 400 :name (:vocab/name attrs)})))
-    (let [record (pxc/create-record :vocab id attrs attr-keys)]
-      [[::xt/match id nil]
-       [::xt/put record]])))
+                      {:code 400 :name name})))
+    [[::xt/match id nil]
+     [::xt/put record]]))
 
 (defn create-operation
   [xt-map attrs]
@@ -135,7 +143,7 @@
 
 (defn delete*
   [xt-map eid]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         record (pxc/entity db eid)]
     (when-not record
       (throw (ex-info (pxc/err-msg-not-found "Vocab" eid)
@@ -171,7 +179,7 @@
 
 (defn delete-operation
   [xt-map eid]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         current (pxc/entity db eid)]
     (op/make-operation
       {:type :vocab/delete

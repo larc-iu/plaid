@@ -112,7 +112,7 @@
 
 (defn create-operation
   [xt-map attrs]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         ;; Get project and document info from first token
         first-token-id (first (:vmap/tokens attrs))
         project-id (when first-token-id (project-id-from-token db first-token-id))
@@ -140,7 +140,7 @@
 
 (defn delete-operation
   [xt-map eid]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         vmap (pxc/entity db eid)
         ;; Get project and document info from first token
         first-token-id (first (:vmap/tokens vmap))
@@ -156,18 +156,3 @@
 (defn delete
   [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
-
-;; Bulk operations --------------------------------------------------------------------------------
-(defn delete-by-token*
-  "Delete all vmaps associated with a token"
-  [xt-map token-id]
-  (let [{:keys [db]} xt-map
-        vmaps (get-by-token db token-id)]
-    (mapcat #(delete* xt-map (:vmap/id %)) vmaps)))
-
-(defn delete-by-vocab-item*
-  "Delete all vmaps associated with a vocab item"
-  [xt-map vocab-item-id]
-  (let [{:keys [db]} xt-map
-        vmaps (get-by-vocab-item db vocab-item-id)]
-    (mapcat #(delete* xt-map (:vmap/id %)) vmaps)))
