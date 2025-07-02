@@ -2,7 +2,6 @@
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
             [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
-            [plaid.xtdb.vocab-layer :as vl]
             [plaid.xtdb.user :as user]
             [plaid.xtdb.metadata :as metadata]
             [taoensso.timbre :as log])
@@ -24,17 +23,18 @@
   [db-like layer-id]
   (let [db (pxc/->db db-like)]
     (->> (xt/q db
-               '{:find [e]
-                 :where [[?e :vocab-item/layer ?layer]]
-                 :in [?layer]}
+               '{:find [(pull ?vi [*])]
+                 :where [[?vi :vocab-item/layer ?vl]]
+                 :in [?vl]}
                layer-id)
          (map first)
-         (mapv (partial get db)))))
+         (map #(dissoc % :xt/id))
+         (mapv #(metadata/add-metadata-to-response (select-keys % [:vocab-item/id :vocab-item/form]) % "vocab-item")))))
 
 ;; writes --------------------------------------------------------------------------------
 (defn create*
   [xt-map attrs]
-  (let [{:keys [node db]} xt-map
+  (let [{:keys [node db]} (pxc/ensure-db xt-map)
         attrs (filter (fn [[k _]] (= "vocab-item" (namespace k))) attrs)
         {:vocab-item/keys [id layer] :as record} (clojure.core/merge (pxc/new-record "vocab-item")
                                                                      (into {} attrs))]
@@ -69,7 +69,7 @@
 
 (defn merge-operation
   [xt-map eid m]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         current (pxc/entity db eid)]
     (when-not current
       (throw (ex-info (pxc/err-msg-not-found "Vocab item" eid)
@@ -88,7 +88,7 @@
 
 (defn delete*
   [xt-map eid]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         record (pxc/entity db eid)]
     (when-not record
       (throw (ex-info (pxc/err-msg-not-found "Vocab item" eid)
@@ -109,7 +109,7 @@
 
 (defn delete-operation
   [xt-map eid]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db]} (pxc/ensure-db xt-map)
         current (pxc/entity db eid)]
     (op/make-operation
       {:type :vocab-item/delete
