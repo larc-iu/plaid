@@ -349,7 +349,7 @@
 
 (defn add-vocab-operation
   [xt-map project-id vocab-id]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         project (pxc/entity db project-id)
         vocab (pxc/entity db vocab-id)]
     (op/make-operation
@@ -384,7 +384,7 @@
 
 (defn remove-vocab-operation
   [xt-map project-id vocab-id]
-  (let [{:keys [db]} xt-map
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         project (pxc/entity db project-id)
         vocab (pxc/entity db vocab-id)]
     (op/make-operation

@@ -39,12 +39,20 @@
     (if (user/admin? user-rec)
       ;; Admins can see all vocabs
       (get-all-ids db)
-      ;; Otherwise only vocabs where user is maintainer
-      (map first (xt/q db
-                       '{:find  [?v]
-                         :where [[?v :vocab/maintainers ?u]]
-                         :in    [?u]}
-                       user-id)))))
+      ;; Otherwise vocabs where user is maintainer or the user has read access on a linked project
+      (let [maintainer-ids (mapv first (xt/q db '{:find [?v] :where [[?v :vocab/maintainers ?u]] :in [?u]} user-id))
+            project-granted-ids (->> (xt/q db
+                                           '{:find [(pull ?p [:project/id :project/vocabs])]
+                                             :where [(or [?p :project/maintainers ?u]
+                                                         [?p :project/writers ?u]
+                                                         [?p :project/readers ?u])]
+                                             :in [?u]}
+                                           user-id)
+                                     (mapv (comp :project/vocabs first))
+                                     (apply concat)
+                                     distinct
+                                     vec)]
+        (into project-granted-ids maintainer-ids)))))
 
 (defn get-accessible
   "Get all vocab records accessible to a user"
@@ -93,9 +101,8 @@
 
 ;; writes --------------------------------------------------------------------------------
 (defn create*
-  [xt-map attrs]
-  (let [{:keys [node db]} (pxc/ensure-db xt-map)
-        {:vocab/keys [id name] :as record} (clojure.core/merge (pxc/new-record "vocab")
+  [{:keys [db]} attrs]
+  (let [{:vocab/keys [id name] :as record} (clojure.core/merge (pxc/new-record "vocab")
                                                                (select-keys attrs attr-keys))]
     (when (pxc/find-entity db {:vocab/id id})
       (throw (ex-info (pxc/err-msg-already-exists "Vocab" id)
@@ -111,7 +118,7 @@
   (op/make-operation
     {:type :vocab/create
      :description (format "Create vocab '%s'" (:vocab/name attrs))
-     :tx-ops (create* xt-map attrs)
+     :tx-ops (create* (pxc/ensure-db xt-map) attrs)
      :project nil
      :document nil}))
 
@@ -142,9 +149,8 @@
   (submit-operations! xt-map [(merge-operation xt-map eid m)] user-id))
 
 (defn delete*
-  [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        record (pxc/entity db eid)]
+  [{:keys [db]} eid]
+  (let [record (pxc/entity db eid)]
     (when-not record
       (throw (ex-info (pxc/err-msg-not-found "Vocab" eid)
                       {:code 404 :id eid})))
@@ -179,7 +185,7 @@
 
 (defn delete-operation
   [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         current (pxc/entity db eid)]
     (op/make-operation
       {:type :vocab/delete
@@ -194,9 +200,8 @@
 
 ;; Maintainer management --------------------------------------------------------------------------------
 (defn- modify-maintainers*
-  [xt-map vocab-id f]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        current (pxc/entity db vocab-id)]
+  [{:keys [db]} vocab-id f]
+  (let [current (pxc/entity db vocab-id)]
     (when-not current
       (throw (ex-info (pxc/err-msg-not-found "Vocab" vocab-id)
                       {:code 404 :id vocab-id})))
@@ -209,7 +214,7 @@
 
 (defn add-maintainer-operation
   [xt-map vocab-id user-id]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         vocab (pxc/entity db vocab-id)]
     (op/make-operation
       {:type :vocab/add-maintainer
@@ -228,7 +233,7 @@
 
 (defn remove-maintainer-operation
   [xt-map vocab-id user-id]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         vocab (pxc/entity db vocab-id)]
     (op/make-operation
       {:type :vocab/remove-maintainer
