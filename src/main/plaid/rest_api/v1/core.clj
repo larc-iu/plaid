@@ -28,7 +28,7 @@
             [plaid.rest-api.v1.bulk :refer [bulk-routes]]
             [plaid.rest-api.v1.vocab-layer :refer [vocab-layer-routes]]
             [plaid.rest-api.v1.vocab-item :refer [vocab-item-routes]]
-            [plaid.rest-api.v1.vmap :refer [vmap-routes]]))
+            [plaid.rest-api.v1.vocab-link :refer [vocab-link-routes]]))
 
 (def coercion
   (reitit.coercion.malli/create
@@ -81,7 +81,7 @@
      bulk-routes
      vocab-layer-routes
      vocab-item-routes
-     vmap-routes]]
+     vocab-link-routes]]
 
    ;; swagger documentation
    [""

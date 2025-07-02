@@ -326,22 +326,22 @@
   [xt-map eid]
   (let [{:keys [node db] :as xt-map} (pxc/ensure-db xt-map)
         spans (get-span-ids db eid)
-        ;; Delete all vmaps containing this token
-        vmap-ids (map first (xt/q db
-                                  '{:find [?vm]
-                                    :where [[?vm :vmap/tokens ?tok]]
-                                    :in [?tok]}
-                                  eid))
-        vmap-deletions (reduce into (mapv (fn [vmap-id]
-                                            [[::xt/match vmap-id (pxc/entity db vmap-id)]
-                                             [::xt/delete vmap-id]])
-                                          vmap-ids))]
+        ;; Delete all vocab-links containing this token
+        vocab-link-ids (map first (xt/q db
+                                        '{:find [?vm]
+                                          :where [[?vm :vocab-link/tokens ?tok]]
+                                          :in [?tok]}
+                                        eid))
+        vocab-link-deletions (reduce into (mapv (fn [vocab-link-id]
+                                                  [[::xt/match vocab-link-id (pxc/entity db vocab-link-id)]
+                                                   [::xt/delete vocab-link-id]])
+                                                vocab-link-ids))]
 
     (when-not (:token/id (pxc/entity db eid))
       (throw (ex-info (pxc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
 
     (reduce into
-            [vmap-deletions
+            [vocab-link-deletions
              (mapcat #(s/remove-token* xt-map % eid) spans)
              [[::xt/match eid (pxc/entity db eid)]
               [::xt/delete eid]]])))
@@ -403,22 +403,22 @@
                                    (map first)
                                    (distinct)
                                    (map #(pxc/entity db %))))
-        ;; Delete all vmaps for these tokens
-        vmap-ids (mapcat (fn [eid]
-                           (map first (xt/q db
-                                            '{:find [?vm]
-                                              :where [[?vm :vmap/tokens ?tok]]
-                                              :in [?tok]}
-                                            eid)))
-                         eids)
-        vmap-deletions (reduce into [] (mapv (fn [vmap-id]
-                                               [[::xt/match vmap-id (pxc/entity db vmap-id)]
-                                                [::xt/delete vmap-id]])
-                                             (distinct vmap-ids)))]
+        ;; Delete all vocab-links for these tokens
+        vocab-link-ids (mapcat (fn [eid]
+                                 (map first (xt/q db
+                                                  '{:find [?vm]
+                                                    :where [[?vm :vocab-link/tokens ?tok]]
+                                                    :in [?tok]}
+                                                  eid)))
+                               eids)
+        vocab-link-deletions (reduce into [] (mapv (fn [vocab-link-id]
+                                                     [[::xt/match vocab-link-id (pxc/entity db vocab-link-id)]
+                                                      [::xt/delete vocab-link-id]])
+                                                   (distinct vocab-link-ids)))]
     (vec
       (concat
-        ;; Delete vmaps first
-        vmap-deletions
+        ;; Delete vocab-links first
+        vocab-link-deletions
         ;; Match and delete all tokens
         (for [eid eids
               :let [token (pxc/entity db eid)]

@@ -19,8 +19,7 @@
 
 (def relation-layer-routes
   ["/relation-layers"
-   {:middleware [[pra/wrap-maintainer-required get-project-id]]
-    :x-client-bundle "relationLayers"}
+   {:middleware [[pra/wrap-maintainer-required get-project-id]]}
 
    [""
     {:post {:summary    "Create a new relation layer."

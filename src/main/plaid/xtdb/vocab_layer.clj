@@ -154,31 +154,31 @@
     (when-not record
       (throw (ex-info (pxc/err-msg-not-found "Vocab" eid)
                       {:code 404 :id eid})))
-    ;; Delete all vocab items in this layer and their dependent vmaps
+    ;; Delete all vocab items in this layer and their dependent vocab-links
     (let [vocab-item-ids (map first (xt/q db
                                           '{:find [?vi]
                                             :where [[?vi :vocab-item/layer ?layer]]
                                             :in [?layer]}
                                           eid))
-          ;; Get all vmaps that reference these vocab items
-          vmap-ids (mapcat (fn [vocab-item-id]
-                             (map first (xt/q db
-                                               '{:find [?vm]
-                                                 :where [[?vm :vmap/vocab-item ?vi]]
-                                                 :in [?vi]}
-                                               vocab-item-id)))
-                           vocab-item-ids)
-          vmap-deletions (mapcat (fn [vmap-id]
-                                   [[::xt/match vmap-id (pxc/entity db vmap-id)]
-                                    [::xt/delete vmap-id]])
-                                 vmap-ids)
+          ;; Get all vocab-links that reference these vocab items
+          vocab-link-ids (mapcat (fn [vocab-item-id]
+                                   (map first (xt/q db
+                                                     '{:find [?vm]
+                                                       :where [[?vm :vocab-link/vocab-item ?vi]]
+                                                       :in [?vi]}
+                                                     vocab-item-id)))
+                                 vocab-item-ids)
+          vocab-link-deletions (mapcat (fn [vocab-link-id]
+                                         [[::xt/match vocab-link-id (pxc/entity db vocab-link-id)]
+                                          [::xt/delete vocab-link-id]])
+                                       vocab-link-ids)
           vocab-item-deletions (mapcat (fn [item-id]
                                          [[::xt/match item-id (pxc/entity db item-id)]
                                           [::xt/delete item-id]])
                                        vocab-item-ids)]
       (vec
         (concat
-          vmap-deletions
+          vocab-link-deletions
           vocab-item-deletions
           [[::xt/match eid record]
            [::xt/delete eid]])))))

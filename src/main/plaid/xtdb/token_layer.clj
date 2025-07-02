@@ -141,18 +141,18 @@
                                         :where [[?tok :token/layer ?tokl]]
                                         :in    [?tokl]}
                                    eid))
-        ;; Delete all vmaps for these tokens
-        vmap-ids (distinct (mapcat (fn [token-id]
-                                     (map first (xt/q db
-                                                      '{:find [?vm]
-                                                        :where [[?vm :vmap/tokens ?tok]]
-                                                        :in [?tok]}
-                                                      token-id)))
-                                   token-ids))
-        vmap-deletions (reduce into (mapv (fn [vmap-id]
-                                            [[::xt/match vmap-id (pxc/entity db vmap-id)]
-                                             [::xt/delete vmap-id]])
-                                          vmap-ids))
+        ;; Delete all vocab-links for these tokens
+        vocab-link-ids (distinct (mapcat (fn [token-id]
+                                           (map first (xt/q db
+                                                            '{:find [?vm]
+                                                              :where [[?vm :vocab-link/tokens ?tok]]
+                                                              :in [?tok]}
+                                                            token-id)))
+                                         token-ids))
+        vocab-link-deletions (reduce into (mapv (fn [vocab-link-id]
+                                                  [[::xt/match vocab-link-id (pxc/entity db vocab-link-id)]
+                                                   [::xt/delete vocab-link-id]])
+                                                vocab-link-ids))
         token-deletions (reduce into (mapv (fn [id]
                                              [[::xt/match id (pxc/entity db id)]
                                               [::xt/delete id]])
@@ -164,7 +164,7 @@
       :else
       (reduce into
               []
-              [vmap-deletions
+              [vocab-link-deletions
                span-layer-deletions
                token-deletions
                [[::xt/match eid (pxc/entity db eid)]
