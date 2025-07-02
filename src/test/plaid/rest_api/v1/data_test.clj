@@ -2,7 +2,7 @@
   (:require [clojure.test :refer :all]
             [plaid.fixtures :refer [with-xtdb with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request
-                                    with-admin with-test-users]]
+                                    with-admin with-test-users user1-request user2-request]]
             [ring.mock.request :as mock]))
 
 (use-fixtures :once with-xtdb with-rest-handler with-admin with-test-users)
@@ -10,8 +10,8 @@
 ;; Helper to create a project for tests
 (defn- create-test-project [user-request-fn project-name]
   (let [response (api-call user-request-fn {:method :post
-                                            :path   "/api/v1/projects"
-                                            :body   {:name project-name}})]
+                                            :path "/api/v1/projects"
+                                            :body {:name project-name}})]
     (assert-created response)
     (-> response :body :id)))
 
@@ -21,214 +21,214 @@
 ;; Helper to create a document for tests
 (defn- create-test-document [user-request-fn project-id doc-name]
   (let [response (api-call user-request-fn {:method :post
-                                            :path   "/api/v1/documents"
-                                            :body   {:project-id project-id :name doc-name}})]
+                                            :path "/api/v1/documents"
+                                            :body {:project-id project-id :name doc-name}})]
     (assert-created response)
     (-> response :body :id)))
 
 ;; Helper functions for layer creation
 (defn- create-text-layer [user-request-fn project-id name]
   (api-call user-request-fn {:method :post
-                             :path   "/api/v1/text-layers"
-                             :body   {:project-id project-id :name name}}))
+                             :path "/api/v1/text-layers"
+                             :body {:project-id project-id :name name}}))
 
 (defn- create-token-layer [user-request-fn text-layer-id name]
   (api-call user-request-fn {:method :post
-                             :path   "/api/v1/token-layers"
-                             :body   {:text-layer-id text-layer-id :name name}}))
+                             :path "/api/v1/token-layers"
+                             :body {:text-layer-id text-layer-id :name name}}))
 
 (defn- create-span-layer [user-request-fn token-layer-id name]
   (api-call user-request-fn {:method :post
-                             :path   "/api/v1/span-layers"
-                             :body   {:token-layer-id token-layer-id :name name}}))
+                             :path "/api/v1/span-layers"
+                             :body {:token-layer-id token-layer-id :name name}}))
 
 (defn- create-relation-layer [user-request-fn span-layer-id name]
   (api-call user-request-fn {:method :post
-                             :path   "/api/v1/relation-layers"
-                             :body   {:span-layer-id span-layer-id :name name}}))
+                             :path "/api/v1/relation-layers"
+                             :body {:span-layer-id span-layer-id :name name}}))
 
 ;; Text API Helper Functions
 (defn- create-text
   ([user-request-fn text-layer-id document-id body]
    (api-call user-request-fn {:method :post
-                              :path   "/api/v1/texts"
-                              :body   {:text-layer-id text-layer-id
-                                       :document-id   document-id
-                                       :body          body}}))
+                              :path "/api/v1/texts"
+                              :body {:text-layer-id text-layer-id
+                                     :document-id document-id
+                                     :body body}}))
   ([user-request-fn text-layer-id document-id body metadata]
    (api-call user-request-fn {:method :post
-                              :path   "/api/v1/texts"
-                              :body   {:text-layer-id text-layer-id
-                                       :document-id   document-id
-                                       :body          body
-                                       :metadata      metadata}})))
+                              :path "/api/v1/texts"
+                              :body {:text-layer-id text-layer-id
+                                     :document-id document-id
+                                     :body body
+                                     :metadata metadata}})))
 
 (defn- get-text [user-request-fn text-id]
   (api-call user-request-fn {:method :get
-                             :path   (str "/api/v1/texts/" text-id)}))
+                             :path (str "/api/v1/texts/" text-id)}))
 
 (defn- update-text [user-request-fn text-id new-body]
   (api-call user-request-fn {:method :patch
-                             :path   (str "/api/v1/texts/" text-id)
-                             :body   {:body new-body}}))
+                             :path (str "/api/v1/texts/" text-id)
+                             :body {:body new-body}}))
 
 (defn- update-text-metadata [user-request-fn text-id metadata]
   (api-call user-request-fn {:method :put
-                             :path   (str "/api/v1/texts/" text-id "/metadata")
-                             :body   metadata}))
+                             :path (str "/api/v1/texts/" text-id "/metadata")
+                             :body metadata}))
 
 (defn- delete-text-metadata [user-request-fn text-id]
   (api-call user-request-fn {:method :delete
-                             :path   (str "/api/v1/texts/" text-id "/metadata")}))
+                             :path (str "/api/v1/texts/" text-id "/metadata")}))
 
 (defn- delete-text [user-request-fn text-id]
   (api-call user-request-fn {:method :delete
-                             :path   (str "/api/v1/texts/" text-id)}))
+                             :path (str "/api/v1/texts/" text-id)}))
 
 ;; Token API Helper Functions
 (defn- create-token
   ([user-request-fn token-layer-id text-id begin end]
    (api-call user-request-fn {:method :post
-                              :path   "/api/v1/tokens"
-                              :body   {:token-layer-id token-layer-id
-                                       :text           text-id
-                                       :begin          begin
-                                       :end            end}}))
+                              :path "/api/v1/tokens"
+                              :body {:token-layer-id token-layer-id
+                                     :text text-id
+                                     :begin begin
+                                     :end end}}))
   ([user-request-fn token-layer-id text-id begin end precedence]
    (api-call user-request-fn {:method :post
-                              :path   "/api/v1/tokens"
-                              :body   (cond-> {:token-layer-id token-layer-id
-                                               :text           text-id
-                                               :begin          begin
-                                               :end            end}
-                                              (some? precedence) (assoc :precedence precedence))}))
+                              :path "/api/v1/tokens"
+                              :body (cond-> {:token-layer-id token-layer-id
+                                             :text text-id
+                                             :begin begin
+                                             :end end}
+                                      (some? precedence) (assoc :precedence precedence))}))
   ([user-request-fn token-layer-id text-id begin end precedence metadata]
    (api-call user-request-fn {:method :post
-                              :path   "/api/v1/tokens"
-                              :body   (cond-> {:token-layer-id token-layer-id
-                                               :text           text-id
-                                               :begin          begin
-                                               :end            end}
-                                              (some? precedence) (assoc :precedence precedence)
-                                              (some? metadata) (assoc :metadata metadata))})))
+                              :path "/api/v1/tokens"
+                              :body (cond-> {:token-layer-id token-layer-id
+                                             :text text-id
+                                             :begin begin
+                                             :end end}
+                                      (some? precedence) (assoc :precedence precedence)
+                                      (some? metadata) (assoc :metadata metadata))})))
 
 (defn- get-token [user-request-fn token-id]
   (api-call user-request-fn {:method :get
-                             :path   (str "/api/v1/tokens/" token-id)}))
+                             :path (str "/api/v1/tokens/" token-id)}))
 
 (defn- update-token [user-request-fn token-id & {:keys [begin end precedence]}]
   (api-call user-request-fn {:method :patch
-                             :path   (str "/api/v1/tokens/" token-id)
-                             :body   (cond-> {}
-                                             begin (assoc :begin begin)
-                                             end (assoc :end end)
-                                             precedence (assoc :precedence precedence))}))
+                             :path (str "/api/v1/tokens/" token-id)
+                             :body (cond-> {}
+                                     begin (assoc :begin begin)
+                                     end (assoc :end end)
+                                     precedence (assoc :precedence precedence))}))
 
 (defn- update-token-metadata [user-request-fn token-id metadata]
   (api-call user-request-fn {:method :put
-                             :path   (str "/api/v1/tokens/" token-id "/metadata")
-                             :body   metadata}))
+                             :path (str "/api/v1/tokens/" token-id "/metadata")
+                             :body metadata}))
 
 (defn- delete-token-metadata [user-request-fn token-id]
   (api-call user-request-fn {:method :delete
-                             :path   (str "/api/v1/tokens/" token-id "/metadata")}))
+                             :path (str "/api/v1/tokens/" token-id "/metadata")}))
 
 (defn- delete-token [user-request-fn token-id]
   (api-call user-request-fn {:method :delete
-                             :path   (str "/api/v1/tokens/" token-id)}))
+                             :path (str "/api/v1/tokens/" token-id)}))
 
 ;; Span API Helper Functions
 (defn- create-span
   ([user-request-fn span-layer-id tokens value]
    (api-call user-request-fn {:method :post
-                              :path   "/api/v1/spans"
-                              :body   {:span-layer-id span-layer-id
-                                       :tokens        tokens
-                                       :value         value}}))
+                              :path "/api/v1/spans"
+                              :body {:span-layer-id span-layer-id
+                                     :tokens tokens
+                                     :value value}}))
   ([user-request-fn span-layer-id tokens value metadata]
    (api-call user-request-fn {:method :post
-                              :path   "/api/v1/spans"
-                              :body   {:span-layer-id span-layer-id
-                                       :tokens        tokens
-                                       :value         value
-                                       :metadata      metadata}})))
+                              :path "/api/v1/spans"
+                              :body {:span-layer-id span-layer-id
+                                     :tokens tokens
+                                     :value value
+                                     :metadata metadata}})))
 
 (defn- get-span [user-request-fn span-id]
   (api-call user-request-fn {:method :get
-                             :path   (str "/api/v1/spans/" span-id)}))
+                             :path (str "/api/v1/spans/" span-id)}))
 
 (defn- update-span [user-request-fn span-id & {:keys [value]}]
   (api-call user-request-fn {:method :patch
-                             :path   (str "/api/v1/spans/" span-id)
-                             :body   {:value value}}))
+                             :path (str "/api/v1/spans/" span-id)
+                             :body {:value value}}))
 
 (defn- update-span-metadata [user-request-fn span-id metadata]
   (api-call user-request-fn {:method :put
-                             :path   (str "/api/v1/spans/" span-id "/metadata")
-                             :body   metadata}))
+                             :path (str "/api/v1/spans/" span-id "/metadata")
+                             :body metadata}))
 
 (defn- delete-span-metadata [user-request-fn span-id]
   (api-call user-request-fn {:method :delete
-                             :path   (str "/api/v1/spans/" span-id "/metadata")}))
+                             :path (str "/api/v1/spans/" span-id "/metadata")}))
 
 (defn- update-span-tokens [user-request-fn span-id tokens]
   (api-call user-request-fn {:method :put
-                             :path   (str "/api/v1/spans/" span-id "/tokens")
-                             :body   {:tokens tokens}}))
+                             :path (str "/api/v1/spans/" span-id "/tokens")
+                             :body {:tokens tokens}}))
 
 (defn- delete-span [user-request-fn span-id]
   (api-call user-request-fn {:method :delete
-                             :path   (str "/api/v1/spans/" span-id)}))
+                             :path (str "/api/v1/spans/" span-id)}))
 
 ;; Relation API Helper Functions
 (defn- create-relation
   ([user-request-fn layer-id source-id target-id value]
    (api-call user-request-fn {:method :post
-                              :path   "/api/v1/relations"
-                              :body   {:layer-id  layer-id
-                                       :source-id source-id
-                                       :target-id target-id
-                                       :value     value}}))
+                              :path "/api/v1/relations"
+                              :body {:layer-id layer-id
+                                     :source-id source-id
+                                     :target-id target-id
+                                     :value value}}))
   ([user-request-fn layer-id source-id target-id value metadata]
    (api-call user-request-fn {:method :post
-                              :path   "/api/v1/relations"
-                              :body   {:layer-id  layer-id
-                                       :source-id source-id
-                                       :target-id target-id
-                                       :value     value
-                                       :metadata  metadata}})))
+                              :path "/api/v1/relations"
+                              :body {:layer-id layer-id
+                                     :source-id source-id
+                                     :target-id target-id
+                                     :value value
+                                     :metadata metadata}})))
 
 (defn- get-relation [user-request-fn relation-id]
   (api-call user-request-fn {:method :get
-                             :path   (str "/api/v1/relations/" relation-id)}))
+                             :path (str "/api/v1/relations/" relation-id)}))
 
 (defn- update-relation [user-request-fn relation-id value]
   (api-call user-request-fn {:method :patch
-                             :path   (str "/api/v1/relations/" relation-id)
-                             :body   {:value value}}))
+                             :path (str "/api/v1/relations/" relation-id)
+                             :body {:value value}}))
 
 (defn- update-relation-source [user-request-fn relation-id span-id]
   (api-call user-request-fn {:method :put
-                             :path   (str "/api/v1/relations/" relation-id "/source")
-                             :body   {:span-id span-id}}))
+                             :path (str "/api/v1/relations/" relation-id "/source")
+                             :body {:span-id span-id}}))
 
 (defn- update-relation-target [user-request-fn relation-id span-id]
   (api-call user-request-fn {:method :put
-                             :path   (str "/api/v1/relations/" relation-id "/target")
-                             :body   {:span-id span-id}}))
+                             :path (str "/api/v1/relations/" relation-id "/target")
+                             :body {:span-id span-id}}))
 
 (defn- update-relation-metadata [user-request-fn relation-id metadata]
   (api-call user-request-fn {:method :put
-                             :path   (str "/api/v1/relations/" relation-id "/metadata")
-                             :body   metadata}))
+                             :path (str "/api/v1/relations/" relation-id "/metadata")
+                             :body metadata}))
 
 (defn- delete-relation-metadata [user-request-fn relation-id]
   (api-call user-request-fn {:method :delete
-                             :path   (str "/api/v1/relations/" relation-id "/metadata")}))
+                             :path (str "/api/v1/relations/" relation-id "/metadata")}))
 
 (defn- delete-relation [user-request-fn relation-id]
   (api-call user-request-fn {:method :delete
-                             :path   (str "/api/v1/relations/" relation-id)}))
+                             :path (str "/api/v1/relations/" relation-id)}))
 
 (deftest text-crud-and-uniqueness
   (let [proj (create-test-project admin-request "DataProj")
@@ -464,10 +464,10 @@
         tkl-res (create-token-layer admin-request tl "RelTokenL")
         tkl (-> tkl-res :body :id)
         _ (assert-created tkl-res)
-        tk1 (create-token admin-request tkl tid 0 6)        ; "source"
+        tk1 (create-token admin-request tkl tid 0 6) ; "source"
         id1 (-> tk1 :body :id)
         _ (assert-created tk1)
-        tk2 (create-token admin-request tkl tid 7 13)       ; "target"
+        tk2 (create-token admin-request tkl tid 7 13) ; "target"
         id2 (-> tk2 :body :id)
         _ (assert-created tk2)
         sl-res (create-span-layer admin-request tkl "RelSL")
@@ -586,10 +586,10 @@
       ;; so this test verifies the middleware layer works correctly
       (is (thrown? java.lang.IllegalArgumentException
                    (api-call admin-request {:method :post
-                                            :path   "/api/v1/texts"
-                                            :body   {:text-layer-id tl
-                                                     :document-id   doc
-                                                     :body          123}}))))
+                                            :path "/api/v1/texts"
+                                            :body {:text-layer-id tl
+                                                   :document-id doc
+                                                   :body 123}}))))
 
     (testing "Non-existent text layer"
       (let [fake-tl (java.util.UUID/randomUUID)
@@ -623,8 +623,8 @@
             _ (assert-created text-res)]
         (is (thrown? java.lang.IllegalArgumentException
                      (api-call admin-request {:method :patch
-                                              :path   (str "/api/v1/texts/" text-id)
-                                              :body   {:body 456}})))))))
+                                              :path (str "/api/v1/texts/" text-id)
+                                              :body {:body 456}})))))))
 
 (deftest token-validation-rules
   (let [proj (create-test-project admin-request "TokenValidationProj")
@@ -663,11 +663,11 @@
     (testing "Non-integer begin/end - coercion catches this at middleware level"
       (is (thrown? java.lang.IllegalArgumentException
                    (api-call admin-request {:method :post
-                                            :path   "/api/v1/tokens"
-                                            :body   {:token-layer-id tkl
-                                                     :text           text-id
-                                                     :begin          "0"
-                                                     :end            "5"}}))))
+                                            :path "/api/v1/tokens"
+                                            :body {:token-layer-id tkl
+                                                   :text text-id
+                                                   :begin "0"
+                                                   :end "5"}}))))
 
     (testing "Negative begin index"
       (let [res (create-token admin-request tkl text-id -1 5)]
@@ -680,12 +680,12 @@
     (testing "Non-integer precedence - coercion catches this at middleware level"
       (is (thrown? java.lang.IllegalArgumentException
                    (api-call admin-request {:method :post
-                                            :path   "/api/v1/tokens"
-                                            :body   {:token-layer-id tkl
-                                                     :text           text-id
-                                                     :begin          0
-                                                     :end            5
-                                                     :precedence     "high"}}))))
+                                            :path "/api/v1/tokens"
+                                            :body {:token-layer-id tkl
+                                                   :text text-id
+                                                   :begin 0
+                                                   :end 5
+                                                   :precedence "high"}}))))
 
     (testing "Zero-length token (begin equals end)"
       (let [res (create-token admin-request tkl text-id 5 5)]
@@ -1032,12 +1032,12 @@
         (assert-ok (update-text admin-request text-id "The quick fox jumped over the lazy dog and then some more"))
 
         ;; Check tokens
-        (assert-ok (get-token admin-request tok1-id))       ; still exists at position 0
+        (assert-ok (get-token admin-request tok1-id)) ; still exists at position 0
         (assert-not-found (get-token admin-request tok2-id)) ; deleted
         (let [tok3-get (get-token admin-request tok3-id)]
           (assert-ok tok3-get)
-          (is (= 57 (-> tok3-get :body :token/begin)))      ; shifted left by 6
-          (is (= 57 (-> tok3-get :body :token/end))))       ; still zero-width
+          (is (= 57 (-> tok3-get :body :token/begin))) ; shifted left by 6
+          (is (= 57 (-> tok3-get :body :token/end)))) ; still zero-width
 
         (delete-text admin-request text-id)))
 
@@ -1059,7 +1059,7 @@
         (assert-ok (update-text admin-request text-id "The fox jumped over the lazy dog and then some more"))
 
         ;; Check tokens
-        (assert-ok (get-token admin-request tok1-id))       ; still exists
+        (assert-ok (get-token admin-request tok1-id)) ; still exists
         (assert-not-found (get-token admin-request tok2-id)) ; deleted
         (assert-not-found (get-token admin-request tok3-id)) ; deleted
 
@@ -1085,9 +1085,9 @@
           (assert-ok tok1-get)
           (assert-ok tok2-get)
           (is (= 4 (-> tok1-get :body :token/begin)))
-          (is (= 9 (-> tok1-get :body :token/end)))         ; shrunk to "overp"
-          (is (= 8 (-> tok2-get :body :token/begin)))       ; starts where deletion happened
-          (is (= 12 (-> tok2-get :body :token/end))))       ; adjusted for deletion: "ping"
+          (is (= 9 (-> tok1-get :body :token/end))) ; shrunk to "overp"
+          (is (= 8 (-> tok2-get :body :token/begin))) ; starts where deletion happened
+          (is (= 12 (-> tok2-get :body :token/end)))) ; adjusted for deletion: "ping"
 
         (delete-text admin-request text-id)))
 
@@ -1106,7 +1106,7 @@
         (let [tok-get (get-token admin-request tok-id)]
           (assert-ok tok-get)
           (is (= 4 (-> tok-get :body :token/begin)))
-          (is (= 12 (-> tok-get :body :token/end))))        ; expanded to include insertion
+          (is (= 12 (-> tok-get :body :token/end)))) ; expanded to include insertion
 
         (delete-text admin-request text-id)))
 
@@ -1139,7 +1139,7 @@
         (assert-ok (update-text admin-request text-id "AAXEE followed by more text to ensure proper diff behavior"))
 
         ;; Check results
-        (assert-ok (get-token admin-request tok1-id))       ; "AA" unaffected
+        (assert-ok (get-token admin-request tok1-id)) ; "AA" unaffected
         (assert-not-found (get-token admin-request tok2-id)) ; deleted
         (assert-not-found (get-token admin-request tok3-id)) ; deleted
         (assert-not-found (get-token admin-request tok4-id)) ; deleted
@@ -1147,8 +1147,8 @@
 
         (let [tok5-get (get-token admin-request tok5-id)]
           (assert-ok tok5-get)
-          (is (= 3 (-> tok5-get :body :token/begin)))       ; shifted left significantly
-          (is (= 5 (-> tok5-get :body :token/end))))        ; still "EE"
+          (is (= 3 (-> tok5-get :body :token/begin))) ; shifted left significantly
+          (is (= 5 (-> tok5-get :body :token/end)))) ; still "EE"
 
         (delete-text admin-request text-id)))
 
@@ -1172,9 +1172,9 @@
           (assert-ok tok1-get)
           (assert-ok tok2-get)
           (is (= 4 (-> tok1-get :body :token/begin)))
-          (is (= 12 (-> tok1-get :body :token/end)))        ; unchanged
-          (is (= 12 (-> tok2-get :body :token/begin)))      ; shifted to touch tok1
-          (is (= 16 (-> tok2-get :body :token/end))))       ; shifted left by 1
+          (is (= 12 (-> tok1-get :body :token/end))) ; unchanged
+          (is (= 12 (-> tok2-get :body :token/begin))) ; shifted to touch tok1
+          (is (= 16 (-> tok2-get :body :token/end)))) ; shifted left by 1
 
         (delete-text admin-request text-id)))
 
@@ -1242,16 +1242,16 @@
         (assert-ok (update-text admin-request text-id "The first word third word in this long sentence with many additional words to ensure the diff algorithm works properly"))
 
         ;; Check cascading deletions
-        (assert-ok (get-token admin-request tok1-id))       ; still exists
+        (assert-ok (get-token admin-request tok1-id)) ; still exists
         (assert-not-found (get-token admin-request tok2-id)) ; deleted
         (let [tok3-get (get-token admin-request tok3-id)]
-          (assert-ok tok3-get)                              ; still exists but shifted
-          (is (= 15 (-> tok3-get :body :token/begin)))      ; shifted left
-          (is (= 20 (-> tok3-get :body :token/end))))       ; shifted left
+          (assert-ok tok3-get) ; still exists but shifted
+          (is (= 15 (-> tok3-get :body :token/begin))) ; shifted left
+          (is (= 20 (-> tok3-get :body :token/end)))) ; shifted left
 
-        (assert-ok (get-span admin-request span1-id))       ; still exists
+        (assert-ok (get-span admin-request span1-id)) ; still exists
         (assert-not-found (get-span admin-request span2-id)) ; deleted with token
-        (assert-ok (get-span admin-request span3-id))       ; still exists
+        (assert-ok (get-span admin-request span3-id)) ; still exists
 
         (assert-not-found (get-relation admin-request rel-id)) ; deleted with span
 
@@ -1404,23 +1404,23 @@
 ;; Bulk API Helper Functions
 (defn- bulk-create-tokens [user-request-fn tokens]
   (api-call user-request-fn {:method :post
-                             :path   "/api/v1/tokens/bulk"
-                             :body   tokens}))
+                             :path "/api/v1/tokens/bulk"
+                             :body tokens}))
 
 (defn- bulk-delete-tokens [user-request-fn token-ids]
   (api-call user-request-fn {:method :delete
-                             :path   "/api/v1/tokens/bulk"
-                             :body   token-ids}))
+                             :path "/api/v1/tokens/bulk"
+                             :body token-ids}))
 
 (defn- bulk-create-spans [user-request-fn spans]
   (api-call user-request-fn {:method :post
-                             :path   "/api/v1/spans/bulk"
-                             :body   spans}))
+                             :path "/api/v1/spans/bulk"
+                             :body spans}))
 
 (defn- bulk-delete-spans [user-request-fn span-ids]
   (api-call user-request-fn {:method :delete
-                             :path   "/api/v1/spans/bulk"
-                             :body   span-ids}))
+                             :path "/api/v1/spans/bulk"
+                             :body span-ids}))
 
 (deftest bulk-token-operations
   (let [proj (create-test-project admin-request "BulkTokenProj")
@@ -1701,12 +1701,12 @@
         _ (assert-created rl-res)]
 
     (testing "Complex metadata values work for all entity types"
-      (let [complex-metadata {"string"      "value"
-                              "number"      42
-                              "float"       3.14
-                              "boolean"     true
-                              "nested"      {:inner "value"} ; Use keyword keys for nested maps
-                              "array"       [1 2 3]
+      (let [complex-metadata {"string" "value"
+                              "number" 42
+                              "float" 3.14
+                              "boolean" true
+                              "nested" {:inner "value"} ; Use keyword keys for nested maps
+                              "array" [1 2 3]
                               "mixed-array" ["string" 42 true nil]}]
 
         ;; Test text metadata (check each key-value pair)
@@ -1759,3 +1759,1034 @@
         (is (nil? (-> (get-text admin-request text-id) :body :metadata)))
         (is (nil? (-> (get-token admin-request token-id) :body :metadata)))
         (is (nil? (-> (get-span admin-request span-id) :body :metadata)))))))
+
+;; ============================================================================
+;; Vocab System Tests
+;; ============================================================================
+
+;; Vocab layer helper functions
+(defn- create-vocab-layer
+  ([user-request-fn name]
+   (api-call user-request-fn {:method :post
+                              :path "/api/v1/vocab-layers"
+                              :body {:name name}}))
+  ([user-request-fn name config]
+   ;; Config not supported in creation - create first then set config if needed
+   (api-call user-request-fn {:method :post
+                              :path "/api/v1/vocab-layers"
+                              :body {:name name}})))
+
+(defn- get-vocab-layer
+  ([user-request-fn vocab-id]
+   (api-call user-request-fn {:method :get
+                              :path (str "/api/v1/vocab-layers/" vocab-id)}))
+  ([user-request-fn vocab-id include-items?]
+   (api-call user-request-fn {:method :get
+                              :path (str "/api/v1/vocab-layers/" vocab-id
+                                         (when include-items? "?include-items=true"))})))
+
+(defn- update-vocab-layer [user-request-fn vocab-id updates]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/vocab-layers/" vocab-id)
+                             :body updates}))
+
+(defn- delete-vocab-layer [user-request-fn vocab-id]
+  (api-call user-request-fn {:method :delete
+                             :path (str "/api/v1/vocab-layers/" vocab-id)}))
+
+(defn- add-vocab-maintainer [user-request-fn vocab-id user-id]
+  (api-call user-request-fn {:method :post
+                             :path (str "/api/v1/vocab-layers/" vocab-id "/maintainers/" user-id)}))
+
+(defn- remove-vocab-maintainer [user-request-fn vocab-id user-id]
+  (api-call user-request-fn {:method :delete
+                             :path (str "/api/v1/vocab-layers/" vocab-id "/maintainers/" user-id)}))
+
+;; Vocab item helper functions
+(defn- create-vocab-item
+  ([user-request-fn vocab-layer-id form]
+   (api-call user-request-fn {:method :post
+                              :path "/api/v1/vocab-items"
+                              :body {:vocab-layer-id vocab-layer-id :form form}}))
+  ([user-request-fn vocab-layer-id form metadata]
+   (api-call user-request-fn {:method :post
+                              :path "/api/v1/vocab-items"
+                              :body {:vocab-layer-id vocab-layer-id :form form :metadata metadata}})))
+
+(defn- get-vocab-item [user-request-fn item-id]
+  (api-call user-request-fn {:method :get
+                             :path (str "/api/v1/vocab-items/" item-id)}))
+
+(defn- update-vocab-item [user-request-fn item-id new-form]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/vocab-items/" item-id)
+                             :body {:form new-form}}))
+
+(defn- update-vocab-item-metadata [user-request-fn item-id metadata]
+  (api-call user-request-fn {:method :put
+                             :path (str "/api/v1/vocab-items/" item-id "/metadata")
+                             :body metadata}))
+
+(defn- delete-vocab-item-metadata [user-request-fn item-id]
+  (api-call user-request-fn {:method :delete
+                             :path (str "/api/v1/vocab-items/" item-id "/metadata")}))
+
+(defn- delete-vocab-item [user-request-fn item-id]
+  (api-call user-request-fn {:method :delete
+                             :path (str "/api/v1/vocab-items/" item-id)}))
+
+;; Vocab link helper functions
+(defn- create-vocab-link
+  ([user-request-fn vocab-item-id tokens]
+   (api-call user-request-fn {:method :post
+                              :path "/api/v1/vocab-links"
+                              :body {:vocab-item-id vocab-item-id :tokens tokens}}))
+  ([user-request-fn vocab-item-id tokens metadata]
+   (api-call user-request-fn {:method :post
+                              :path "/api/v1/vocab-links"
+                              :body {:vocab-item-id vocab-item-id :tokens tokens :metadata metadata}})))
+
+(defn- get-vocab-link [user-request-fn link-id]
+  (api-call user-request-fn {:method :get
+                             :path (str "/api/v1/vocab-links/" link-id)}))
+
+(defn- update-vocab-link-metadata [user-request-fn link-id metadata]
+  (api-call user-request-fn {:method :put
+                             :path (str "/api/v1/vocab-links/" link-id "/metadata")
+                             :body metadata}))
+
+(defn- delete-vocab-link-metadata [user-request-fn link-id]
+  (api-call user-request-fn {:method :delete
+                             :path (str "/api/v1/vocab-links/" link-id "/metadata")}))
+
+(defn- delete-vocab-link [user-request-fn link-id]
+  (api-call user-request-fn {:method :delete
+                             :path (str "/api/v1/vocab-links/" link-id)}))
+
+(deftest vocab-layer-functionality
+  (testing "Vocab layer basic CRUD operations"
+    ;; Create vocab layer
+    (let [vocab-res (create-vocab-layer admin-request "Test Vocab Layer")
+          vocab-id (-> vocab-res :body :id)]
+      (assert-created vocab-res)
+
+      ;; Get vocab layer
+      (let [get-res (get-vocab-layer admin-request vocab-id)]
+        (assert-ok get-res)
+        (is (= "Test Vocab Layer" (-> get-res :body :vocab/name)))
+        (is (= vocab-id (-> get-res :body :vocab/id))))
+
+      ;; Update vocab layer
+      (let [update-res (update-vocab-layer admin-request vocab-id {:name "Updated Vocab Layer"})]
+        (assert-ok update-res)
+        (is (= "Updated Vocab Layer" (-> update-res :body :vocab/name))))
+
+      ;; Delete vocab layer
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))
+      (assert-not-found (get-vocab-layer admin-request vocab-id))))
+
+  (testing "Vocab layer with config"
+    ;; Create vocab layer first
+    (let [vocab-res (create-vocab-layer admin-request "Config Vocab")
+          vocab-id (-> vocab-res :body :id)]
+      (assert-created vocab-res)
+
+      ;; Set config via separate endpoint (if available) or verify basic creation
+      (let [get-res (get-vocab-layer admin-request vocab-id)]
+        (assert-ok get-res)
+        (is (= "Config Vocab" (-> get-res :body :vocab/name))))
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))))
+
+  (testing "Vocab layer maintainer management"
+    (let [vocab-res (create-vocab-layer admin-request "Maintainer Test Vocab")
+          vocab-id (-> vocab-res :body :id)]
+      (assert-created vocab-res)
+
+      ;; Add user1 as maintainer
+      (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
+
+      ;; Verify user1 can now access the vocab
+      (assert-ok (get-vocab-layer user1-request vocab-id))
+
+      ;; Verify user2 cannot access the vocab
+      (assert-status 403 (get-vocab-layer user2-request vocab-id))
+
+      ;; User1 (as maintainer) can add another maintainer
+      (assert-no-content (add-vocab-maintainer user1-request vocab-id "user2@example.com"))
+
+      ;; Now user2 can access
+      (assert-ok (get-vocab-layer user2-request vocab-id))
+
+      ;; Remove user1 as maintainer
+      (assert-no-content (remove-vocab-maintainer admin-request vocab-id "user1@example.com"))
+
+      ;; User1 can no longer access
+      (assert-status 403 (get-vocab-layer user1-request vocab-id))
+
+      ;; Clean up
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))))
+
+  (testing "Vocab layer authorization edge cases"
+    (let [vocab-res (create-vocab-layer admin-request "Auth Test Vocab")
+          vocab-id (-> vocab-res :body :id)]
+      (assert-created vocab-res)
+
+      ;; Non-admin, non-maintainer cannot access
+      (assert-status 403 (get-vocab-layer user1-request vocab-id))
+      (assert-status 403 (update-vocab-layer user1-request vocab-id {:name "Hacked"}))
+      (assert-status 403 (delete-vocab-layer user1-request vocab-id))
+
+      ;; Cannot add/remove maintainers without permission
+      (assert-status 403 (add-vocab-maintainer user1-request vocab-id "user2@example.com"))
+      (assert-status 403 (remove-vocab-maintainer user1-request vocab-id "admin@example.com"))
+
+      ;; Clean up
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))))
+
+  (testing "Vocab layer invalid operations"
+    ;; Create with duplicate name should work (names not unique globally)
+    (let [vocab1-res (create-vocab-layer admin-request "Duplicate Name")
+          vocab1-id (-> vocab1-res :body :id)
+          vocab2-res (create-vocab-layer admin-request "Duplicate Name")
+          vocab2-id (-> vocab2-res :body :id)]
+      (assert-created vocab1-res)
+      (assert-created vocab2-res)
+      (is (not= vocab1-id vocab2-id))
+      (assert-no-content (delete-vocab-layer admin-request vocab1-id))
+      (assert-no-content (delete-vocab-layer admin-request vocab2-id)))
+
+    ;; Operations on non-existent vocab
+    (let [fake-id (java.util.UUID/randomUUID)]
+      (assert-not-found (get-vocab-layer admin-request fake-id))
+      (assert-not-found (update-vocab-layer admin-request fake-id {:name "Test"}))
+      (assert-not-found (delete-vocab-layer admin-request fake-id))
+      (assert-not-found (add-vocab-maintainer admin-request fake-id "user1@example.com"))
+      (assert-not-found (remove-vocab-maintainer admin-request fake-id "user1@example.com")))))
+
+(deftest vocab-item-functionality
+  (let [vocab-res (create-vocab-layer admin-request "Test Vocab for Items")
+        vocab-id (-> vocab-res :body :id)]
+    (assert-created vocab-res)
+
+    (testing "Vocab item basic CRUD operations"
+      ;; Create vocab item
+      (let [item-res (create-vocab-item admin-request vocab-id "test-word")
+            item-id (-> item-res :body :id)]
+        (assert-created item-res)
+
+        ;; Get vocab item
+        (let [get-res (get-vocab-item admin-request item-id)]
+          (assert-ok get-res)
+          (is (= "test-word" (-> get-res :body :vocab-item/form)))
+          (is (= vocab-id (-> get-res :body :vocab-item/layer)))
+          (is (= item-id (-> get-res :body :vocab-item/id))))
+
+        ;; Update vocab item
+        (let [update-res (update-vocab-item admin-request item-id "updated-word")]
+          (assert-ok update-res)
+          (is (= "updated-word" (-> update-res :body :vocab-item/form))))
+
+        ;; Delete vocab item
+        (assert-no-content (delete-vocab-item admin-request item-id))
+        (assert-not-found (get-vocab-item admin-request item-id))))
+
+    (testing "Vocab item with metadata"
+      (let [metadata {"confidence" 0.95 "source" "wordnet" "synonyms" ["test" "exam"]}
+            item-res (create-vocab-item admin-request vocab-id "metadata-word" metadata)
+            item-id (-> item-res :body :id)]
+        (assert-created item-res)
+
+        ;; Verify metadata is returned
+        (let [get-res (get-vocab-item admin-request item-id)]
+          (assert-ok get-res)
+          (is (= "metadata-word" (-> get-res :body :vocab-item/form)))
+          (is (= metadata (-> get-res :body :metadata))))
+
+        ;; Update metadata
+        (let [new-metadata {"updated" true "confidence" 0.99}]
+          (assert-ok (update-vocab-item-metadata admin-request item-id new-metadata))
+          (let [updated-res (get-vocab-item admin-request item-id)]
+            (assert-ok updated-res)
+            (is (= "metadata-word" (-> updated-res :body :vocab-item/form)))
+            (is (= new-metadata (-> updated-res :body :metadata)))))
+
+        ;; Delete metadata
+        (assert-ok (delete-vocab-item-metadata admin-request item-id))
+        (let [no-meta-res (get-vocab-item admin-request item-id)]
+          (assert-ok no-meta-res)
+          (is (= "metadata-word" (-> no-meta-res :body :vocab-item/form)))
+          (is (nil? (-> no-meta-res :body :metadata))))
+
+        ;; Clean up
+        (assert-no-content (delete-vocab-item admin-request item-id))))
+
+    (testing "Vocab item authorization through vocab layer"
+      ;; Add user1 as vocab maintainer
+      (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
+
+      ;; User1 can create, read, update, delete vocab items
+      (let [item-res (create-vocab-item user1-request vocab-id "user1-word")
+            item-id (-> item-res :body :id)]
+        (assert-created item-res)
+        (assert-ok (get-vocab-item user1-request item-id))
+        (assert-ok (update-vocab-item user1-request item-id "user1-updated"))
+        (assert-no-content (delete-vocab-item user1-request item-id)))
+
+      ;; User2 (not a maintainer) cannot access
+      (let [item-res (create-vocab-item admin-request vocab-id "admin-word")
+            item-id (-> item-res :body :id)]
+        (assert-created item-res)
+        (assert-status 403 (get-vocab-item user2-request item-id))
+        (assert-status 403 (update-vocab-item user2-request item-id "hacked"))
+        (assert-status 403 (update-vocab-item-metadata user2-request item-id {"hacked" true}))
+        (assert-status 403 (delete-vocab-item user2-request item-id))
+
+        ;; Clean up
+        (assert-no-content (delete-vocab-item admin-request item-id)))
+
+      ;; Remove user1 as maintainer
+      (assert-no-content (remove-vocab-maintainer admin-request vocab-id "user1@example.com"))
+
+      ;; User1 can no longer access
+      (assert-status 403 (create-vocab-item user1-request vocab-id "should-fail")))
+
+    (testing "Vocab item complex metadata"
+      (let [complex-metadata {"string" "value"
+                              "number" 42
+                              "float" 3.14159
+                              "boolean" true
+                              "nested" {:inner "data" :count 5}
+                              "array" [1 "two" true]
+                              "mixed" {:numbers [1 2 3] :flag false}}
+            item-res (create-vocab-item admin-request vocab-id "complex-meta" complex-metadata)
+            item-id (-> item-res :body :id)]
+        (assert-created item-res)
+
+        (let [get-res (get-vocab-item admin-request item-id)
+              returned-metadata (-> get-res :body :metadata)]
+          (assert-ok get-res)
+          (is (= (count complex-metadata) (count returned-metadata)))
+          (doseq [[k v] complex-metadata]
+            (is (= v (get returned-metadata k)))))
+
+        ;; Clean up
+        (assert-no-content (delete-vocab-item admin-request item-id))))
+
+    (testing "Vocab item edge cases"
+      ;; Empty form should be allowed
+      (let [empty-res (create-vocab-item admin-request vocab-id "")
+            empty-id (-> empty-res :body :id)]
+        (assert-created empty-res)
+        (is (= "" (-> (get-vocab-item admin-request empty-id) :body :vocab-item/form)))
+        (assert-no-content (delete-vocab-item admin-request empty-id)))
+
+      ;; Unicode and special characters
+      (let [unicode-form "café résumé naïve 中文 🚀 emoji"
+            unicode-res (create-vocab-item admin-request vocab-id unicode-form)
+            unicode-id (-> unicode-res :body :id)]
+        (assert-created unicode-res)
+        (is (= unicode-form (-> (get-vocab-item admin-request unicode-id) :body :vocab-item/form)))
+        (assert-no-content (delete-vocab-item admin-request unicode-id)))
+
+      ;; Operations on non-existent item
+      (let [fake-id (java.util.UUID/randomUUID)]
+        (assert-not-found (get-vocab-item admin-request fake-id))
+        (assert-not-found (update-vocab-item admin-request fake-id "test"))
+        (assert-not-found (update-vocab-item-metadata admin-request fake-id {"test" true}))
+        (assert-not-found (delete-vocab-item-metadata admin-request fake-id))
+        (assert-not-found (delete-vocab-item admin-request fake-id))))
+
+    (testing "Vocab layer with include-items parameter"
+      ;; Create several items
+      (let [item1-res (create-vocab-item admin-request vocab-id "item1")
+            item1-id (-> item1-res :body :id)
+            item2-res (create-vocab-item admin-request vocab-id "item2")
+            item2-id (-> item2-res :body :id)]
+        (assert-created item1-res)
+        (assert-created item2-res)
+
+        ;; Get vocab without items
+        (let [no-items-res (get-vocab-layer admin-request vocab-id)]
+          (assert-ok no-items-res)
+          (is (nil? (-> no-items-res :body :vocab/items))))
+
+        ;; Get vocab with items
+        (let [with-items-res (get-vocab-layer admin-request vocab-id true)]
+          (assert-ok with-items-res)
+          (let [items (-> with-items-res :body :vocab/items)]
+            (is (= 2 (count items)))
+            (is (some #(= "item1" (:vocab-item/form %)) items))
+            (is (some #(= "item2" (:vocab-item/form %)) items))))
+
+        ;; Clean up
+        (assert-no-content (delete-vocab-item admin-request item1-id))
+        (assert-no-content (delete-vocab-item admin-request item2-id))))
+
+    ;; Clean up vocab layer
+    (assert-no-content (delete-vocab-layer admin-request vocab-id))))
+
+(deftest vocab-link-functionality
+  ;; Set up basic infrastructure for vocab-link tests
+  (let [proj-res (api-call admin-request {:method :post
+                                          :path "/api/v1/projects"
+                                          :body {:name "VocabLinkProject"}})
+        proj-id (-> proj-res :body :id)
+        doc-res (api-call admin-request {:method :post
+                                         :path "/api/v1/documents"
+                                         :body {:project-id proj-id :name "VocabLinkDoc"}})
+        doc-id (-> doc-res :body :id)
+        tl-res (api-call admin-request {:method :post
+                                        :path "/api/v1/text-layers"
+                                        :body {:project-id proj-id :name "VocabLinkTextLayer"}})
+        tl-id (-> tl-res :body :id)
+        text-res (api-call admin-request {:method :post
+                                          :path "/api/v1/texts"
+                                          :body {:text-layer-id tl-id
+                                                 :document-id doc-id
+                                                 :body "hello world test"}})
+        text-id (-> text-res :body :id)
+        tkl-res (api-call admin-request {:method :post
+                                         :path "/api/v1/token-layers"
+                                         :body {:text-layer-id tl-id :name "VocabLinkTokenLayer"}})
+        tkl-id (-> tkl-res :body :id)
+        token1-res (api-call admin-request {:method :post
+                                            :path "/api/v1/tokens"
+                                            :body {:token-layer-id tkl-id
+                                                   :text text-id
+                                                   :begin 0 :end 5}}) ; "hello"
+        token1-id (-> token1-res :body :id)
+        token2-res (api-call admin-request {:method :post
+                                            :path "/api/v1/tokens"
+                                            :body {:token-layer-id tkl-id
+                                                   :text text-id
+                                                   :begin 6 :end 11}}) ; "world"
+        token2-id (-> token2-res :body :id)
+        token3-res (api-call admin-request {:method :post
+                                            :path "/api/v1/tokens"
+                                            :body {:token-layer-id tkl-id
+                                                   :text text-id
+                                                   :begin 12 :end 16}}) ; "test"
+        token3-id (-> token3-res :body :id)
+        vocab-res (create-vocab-layer admin-request "VocabLinkVocab")
+        vocab-id (-> vocab-res :body :id)
+        item-res (create-vocab-item admin-request vocab-id "greeting")
+        item-id (-> item-res :body :id)]
+
+    (assert-created proj-res)
+    (assert-created doc-res)
+    (assert-created tl-res)
+    (assert-created text-res)
+    (assert-created tkl-res)
+    (assert-created token1-res)
+    (assert-created token2-res)
+    (assert-created token3-res)
+    (assert-created vocab-res)
+    (assert-created item-res)
+
+    (testing "Vocab link basic operations"
+      ;; Create vocab link
+      (let [link-res (create-vocab-link admin-request item-id [token1-id])
+            link-id (-> link-res :body :id)]
+        (assert-created link-res)
+
+        ;; Get vocab link
+        (let [get-res (get-vocab-link admin-request link-id)]
+          (assert-ok get-res)
+          (is (= item-id (-> get-res :body :vocab-link/vocab-item)))
+          (is (= [token1-id] (-> get-res :body :vocab-link/tokens)))
+          (is (= link-id (-> get-res :body :vocab-link/id))))
+
+        ;; Delete vocab link
+        (assert-no-content (delete-vocab-link admin-request link-id))
+        (assert-not-found (get-vocab-link admin-request link-id))))
+
+    (testing "Vocab link with multiple tokens"
+      ;; Create link with multiple tokens
+      (let [link-res (create-vocab-link admin-request item-id [token1-id token2-id])
+            link-id (-> link-res :body :id)]
+        (assert-created link-res)
+
+        (let [get-res (get-vocab-link admin-request link-id)]
+          (assert-ok get-res)
+          (is (= [token1-id token2-id] (-> get-res :body :vocab-link/tokens))))
+
+        ;; Clean up
+        (assert-no-content (delete-vocab-link admin-request link-id))))
+
+    (testing "Vocab link with metadata"
+      (let [metadata {"confidence" 0.87 "annotator" "human" "notes" "checked by expert"}
+            link-res (create-vocab-link admin-request item-id [token3-id] metadata)
+            link-id (-> link-res :body :id)]
+        (assert-created link-res)
+
+        ;; Verify metadata is returned
+        (let [get-res (get-vocab-link admin-request link-id)]
+          (assert-ok get-res)
+          (is (= metadata (-> get-res :body :metadata))))
+
+        ;; Update metadata
+        (let [new-metadata {"updated" true "confidence" 0.95}]
+          (assert-ok (update-vocab-link-metadata admin-request link-id new-metadata))
+          (let [updated-res (get-vocab-link admin-request link-id)]
+            (assert-ok updated-res)
+            (is (= new-metadata (-> updated-res :body :metadata)))))
+
+        ;; Delete metadata
+        (assert-ok (delete-vocab-link-metadata admin-request link-id))
+        (let [no-meta-res (get-vocab-link admin-request link-id)]
+          (assert-ok no-meta-res)
+          (is (nil? (-> no-meta-res :body :metadata))))
+
+        ;; Clean up
+        (assert-no-content (delete-vocab-link admin-request link-id))))
+
+    (testing "Vocab link dual authorization - project write + vocab read"
+      ;; Add user1 as project writer but not vocab maintainer
+      (let [add-writer-res (api-call admin-request {:method :post
+                                                    :path (str "/api/v1/projects/" proj-id "/writers/user1@example.com")})]
+        (assert-no-content add-writer-res))
+
+      ;; Add user2 as vocab maintainer but not project member
+      (assert-no-content (add-vocab-maintainer admin-request vocab-id "user2@example.com"))
+
+      ;; User1 has project write but no vocab read - should fail
+      (assert-status 403 (create-vocab-link user1-request item-id [token1-id]))
+
+      ;; User2 has vocab read but no project write - should fail
+      (assert-status 403 (create-vocab-link user2-request item-id [token1-id]))
+
+      ;; Add vocab to project so user1 gets vocab read access
+      (let [update-proj-res (api-call admin-request {:method :post
+                                                     :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab-id)})]
+        (assert-no-content update-proj-res))
+
+      ;; Now user1 should be able to create vocab links (project write + vocab read through project)
+      (let [link-res (create-vocab-link user1-request item-id [token2-id])
+            link-id (-> link-res :body :id)]
+        (assert-created link-res)
+
+        ;; User1 can also read and delete the link
+        (assert-ok (get-vocab-link user1-request link-id))
+        (assert-no-content (delete-vocab-link user1-request link-id)))
+
+      ;; User2 still cannot create links (vocab read but no project write)
+      (assert-status 403 (create-vocab-link user2-request item-id [token3-id]))
+
+      ;; Add user2 as project writer
+      (let [add-writer2-res (api-call admin-request {:method :post
+                                                     :path (str "/api/v1/projects/" proj-id "/writers/user2@example.com")})]
+        (assert-no-content add-writer2-res))
+
+      ;; Now user2 can create links (project write + vocab read as maintainer)
+      (let [link-res (create-vocab-link user2-request item-id [token3-id])
+            link-id (-> link-res :body :id)]
+        (assert-created link-res)
+        (assert-no-content (delete-vocab-link user2-request link-id))))
+
+    (testing "Vocab link edge cases"
+      ;; Create link to non-existent vocab item
+      (let [fake-item-id (java.util.UUID/randomUUID)]
+        (assert-status 403 (create-vocab-link admin-request fake-item-id [token1-id])))
+
+      ;; Create link to non-existent token
+      (let [fake-token-id (java.util.UUID/randomUUID)]
+        (assert-bad-request (create-vocab-link admin-request item-id [fake-token-id])))
+
+      ;; Create link with empty token list
+      (assert-bad-request (create-vocab-link admin-request item-id []))
+
+      ;; Operations on non-existent link
+      (let [fake-link-id (java.util.UUID/randomUUID)]
+        (assert-not-found (get-vocab-link admin-request fake-link-id))
+        (assert-not-found (update-vocab-link-metadata admin-request fake-link-id {"test" true}))
+        (assert-not-found (delete-vocab-link-metadata admin-request fake-link-id))
+        (assert-not-found (delete-vocab-link admin-request fake-link-id))))
+
+    (testing "Multiple vocab links per token"
+      ;; Create multiple vocab items
+      (let [item2-res (create-vocab-item admin-request vocab-id "salutation")
+            item2-id (-> item2-res :body :id)
+            item3-res (create-vocab-item admin-request vocab-id "word")
+            item3-id (-> item3-res :body :id)]
+        (assert-created item2-res)
+        (assert-created item3-res)
+
+        ;; Create multiple links to the same token
+        (let [link1-res (create-vocab-link admin-request item-id [token1-id]) ; "greeting" -> "hello"
+              link1-id (-> link1-res :body :id)
+              link2-res (create-vocab-link admin-request item2-id [token1-id]) ; "salutation" -> "hello"
+              link2-id (-> link2-res :body :id)
+              link3-res (create-vocab-link admin-request item3-id [token1-id]) ; "word" -> "hello"
+              link3-id (-> link3-res :body :id)]
+          (assert-created link1-res)
+          (assert-created link2-res)
+          (assert-created link3-res)
+
+          ;; Verify all links exist and point to the same token
+          (is (= [token1-id] (-> (get-vocab-link admin-request link1-id) :body :vocab-link/tokens)))
+          (is (= [token1-id] (-> (get-vocab-link admin-request link2-id) :body :vocab-link/tokens)))
+          (is (= [token1-id] (-> (get-vocab-link admin-request link3-id) :body :vocab-link/tokens)))
+
+          ;; Clean up
+          (assert-no-content (delete-vocab-link admin-request link1-id))
+          (assert-no-content (delete-vocab-link admin-request link2-id))
+          (assert-no-content (delete-vocab-link admin-request link3-id))
+          (assert-no-content (delete-vocab-item admin-request item2-id))
+          (assert-no-content (delete-vocab-item admin-request item3-id)))))
+
+    ;; Clean up
+    (assert-no-content (delete-vocab-item admin-request item-id))
+    (assert-no-content (delete-vocab-layer admin-request vocab-id))
+    (assert-no-content (delete-test-project admin-request proj-id))))
+
+(deftest vocab-integration-scenarios
+  (testing "Document enhancement with vocab data - token-layer/vocabs"
+    ;; Set up project with vocab
+    (let [proj-id (create-test-project admin-request "IntegrationProject")
+          doc-id (create-test-document admin-request proj-id "IntegrationDoc")
+          tl-res (api-call admin-request {:method :post
+                                          :path "/api/v1/text-layers"
+                                          :body {:project-id proj-id :name "IntegrationTextLayer"}})
+          tl-id (-> tl-res :body :id)
+          text-res (api-call admin-request {:method :post
+                                            :path "/api/v1/texts"
+                                            :body {:text-layer-id tl-id
+                                                   :document-id doc-id
+                                                   :body "The quick brown fox"}})
+          text-id (-> text-res :body :id)
+          tkl-res (api-call admin-request {:method :post
+                                           :path "/api/v1/token-layers"
+                                           :body {:text-layer-id tl-id :name "IntegrationTokenLayer"}})
+          tkl-id (-> tkl-res :body :id)
+          token1-res (api-call admin-request {:method :post
+                                              :path "/api/v1/tokens"
+                                              :body {:token-layer-id tkl-id
+                                                     :text text-id
+                                                     :begin 0 :end 3}}) ; "The"
+          token1-id (-> token1-res :body :id)
+          token2-res (api-call admin-request {:method :post
+                                              :path "/api/v1/tokens"
+                                              :body {:token-layer-id tkl-id
+                                                     :text text-id
+                                                     :begin 4 :end 9}}) ; "quick"
+          token2-id (-> token2-res :body :id)
+          token3-res (api-call admin-request {:method :post
+                                              :path "/api/v1/tokens"
+                                              :body {:token-layer-id tkl-id
+                                                     :text text-id
+                                                     :begin 10 :end 15}}) ; "brown"
+          token3-id (-> token3-res :body :id)
+          token4-res (api-call admin-request {:method :post
+                                              :path "/api/v1/tokens"
+                                              :body {:token-layer-id tkl-id
+                                                     :text text-id
+                                                     :begin 16 :end 19}}) ; "fox"
+          token4-id (-> token4-res :body :id)
+
+          ;; Create vocab layers and items
+          vocab1-res (create-vocab-layer admin-request "Articles")
+          vocab1-id (-> vocab1-res :body :id)
+          vocab2-res (create-vocab-layer admin-request "Adjectives")
+          vocab2-id (-> vocab2-res :body :id)
+          vocab3-res (create-vocab-layer admin-request "Animals")
+          vocab3-id (-> vocab3-res :body :id)
+
+          article-item-res (create-vocab-item admin-request vocab1-id "definite-article" {"pos" "DT"})
+          article-item-id (-> article-item-res :body :id)
+          adjective1-res (create-vocab-item admin-request vocab2-id "speed-adjective" {"semantic" "velocity"})
+          adjective1-id (-> adjective1-res :body :id)
+          adjective2-res (create-vocab-item admin-request vocab2-id "color-adjective" {"semantic" "color"})
+          adjective2-id (-> adjective2-res :body :id)
+          animal-item-res (create-vocab-item admin-request vocab3-id "canine" {"species" "vulpes"})
+          animal-item-id (-> animal-item-res :body :id)]
+
+      (assert-created tl-res)
+      (assert-created text-res)
+      (assert-created tkl-res)
+      (assert-created token1-res)
+      (assert-created token2-res)
+      (assert-created token3-res)
+      (assert-created token4-res)
+      (assert-created vocab1-res)
+      (assert-created vocab2-res)
+      (assert-created vocab3-res)
+      (assert-created article-item-res)
+      (assert-created adjective1-res)
+      (assert-created adjective2-res)
+      (assert-created animal-item-res)
+
+      ;; Create vocab links
+      (let [link1-res (create-vocab-link admin-request article-item-id [token1-id] {"confidence" 1.0})
+            link1-id (-> link1-res :body :id)
+            link2-res (create-vocab-link admin-request adjective1-id [token2-id] {"confidence" 0.9})
+            link2-id (-> link2-res :body :id)
+            link3-res (create-vocab-link admin-request adjective2-id [token3-id] {"confidence" 0.95})
+            link3-id (-> link3-res :body :id)
+            link4-res (create-vocab-link admin-request animal-item-id [token4-id] {"confidence" 0.87})
+            link4-id (-> link4-res :body :id)]
+
+        (assert-created link1-res)
+        (assert-created link2-res)
+        (assert-created link3-res)
+        (assert-created link4-res)
+
+        ;; Get document with layer data to check vocab enhancement
+        (let [doc-with-layers-res (api-call admin-request {:method :get
+                                                           :path (str "/api/v1/documents/" doc-id "?include-body=true")})
+              doc-data (-> doc-with-layers-res :body)
+              text-layer (-> doc-data :document/text-layers first)
+              token-layer (-> text-layer :text-layer/token-layers first)
+              vocabs (-> token-layer :token-layer/vocabs)]
+
+          (assert-ok doc-with-layers-res)
+
+          ;; Verify vocab structure is correct
+          (is (= 3 (count vocabs))) ; Three vocab layers
+
+          ;; Check each vocab layer has correct structure
+          (doseq [vocab vocabs]
+            (is (contains? vocab :vocab/id))
+            (is (contains? vocab :vocab/name))
+            (is (contains? vocab :vocab-layer/vocab-links))
+
+            ;; Each vocab-link should have expanded vocab-item
+            (doseq [link (:vocab-layer/vocab-links vocab)]
+              (is (contains? link :vocab-link/id))
+              (is (contains? link :vocab-link/tokens))
+              (is (contains? link :vocab-link/vocab-item))
+              (is (map? (:vocab-link/vocab-item link))) ; Should be expanded, not just UUID
+              (is (contains? (:vocab-link/vocab-item link) :vocab-item/form))))
+
+          ;; Verify specific vocab content
+          (let [articles-vocab (first (filter #(= "Articles" (:vocab/name %)) vocabs))
+                adjectives-vocab (first (filter #(= "Adjectives" (:vocab/name %)) vocabs))
+                animals-vocab (first (filter #(= "Animals" (:vocab/name %)) vocabs))]
+
+            ;; Articles vocab should have one link
+            (is (= 1 (count (:vocab-layer/vocab-links articles-vocab))))
+            (let [article-link (first (:vocab-layer/vocab-links articles-vocab))]
+              (is (= "definite-article" (get-in article-link [:vocab-link/vocab-item :vocab-item/form])))
+              (is (= [token1-id] (:vocab-link/tokens article-link)))
+              (is (= {"confidence" 1.0} (:metadata article-link))))
+
+            ;; Adjectives vocab should have two links
+            (is (= 2 (count (:vocab-layer/vocab-links adjectives-vocab))))
+
+            ;; Animals vocab should have one link
+            (is (= 1 (count (:vocab-layer/vocab-links animals-vocab))))
+            (let [animal-link (first (:vocab-layer/vocab-links animals-vocab))]
+              (is (= "canine" (get-in animal-link [:vocab-link/vocab-item :vocab-item/form])))
+              (is (= [token4-id] (:vocab-link/tokens animal-link)))))
+
+          ;; Clean up
+          (assert-no-content (delete-vocab-link admin-request link1-id))
+          (assert-no-content (delete-vocab-link admin-request link2-id))
+          (assert-no-content (delete-vocab-link admin-request link3-id))
+          (assert-no-content (delete-vocab-link admin-request link4-id)))
+
+        ;; Clean up
+        (assert-no-content (delete-vocab-item admin-request article-item-id))
+        (assert-no-content (delete-vocab-item admin-request adjective1-id))
+        (assert-no-content (delete-vocab-item admin-request adjective2-id))
+        (assert-no-content (delete-vocab-item admin-request animal-item-id))
+        (assert-no-content (delete-vocab-layer admin-request vocab1-id))
+        (assert-no-content (delete-vocab-layer admin-request vocab2-id))
+        (assert-no-content (delete-vocab-layer admin-request vocab3-id))
+        (delete-test-project admin-request proj-id))))
+
+  (testing "Cross-project vocab access through project configuration"
+    ;; Create two projects and one shared vocab
+    (let [proj1-id (create-test-project admin-request "Project1")
+          proj2-id (create-test-project admin-request "Project2")
+          shared-vocab-res (create-vocab-layer admin-request "SharedVocab")
+          shared-vocab-id (-> shared-vocab-res :body :id)
+          item-res (create-vocab-item admin-request shared-vocab-id "shared-term")
+          item-id (-> item-res :body :id)]
+
+      (assert-created shared-vocab-res)
+      (assert-created item-res)
+
+      ;; Add user1 as writer to both projects
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj1-id "/writers/user1@example.com")}))
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj2-id "/writers/user1@example.com")}))
+
+      ;; Initially user1 cannot access the vocab
+      (assert-status 403 (get-vocab-layer user1-request shared-vocab-id))
+      (assert-status 403 (get-vocab-item user1-request item-id))
+
+      ;; Add shared vocab to project1
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj1-id "/vocabs/" shared-vocab-id)}))
+
+      ;; Now user1 can access vocab through project1
+      (assert-ok (get-vocab-layer user1-request shared-vocab-id))
+      (assert-ok (get-vocab-item user1-request item-id))
+
+      ;; Add shared vocab to project2 as well
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj2-id "/vocabs/" shared-vocab-id)}))
+
+      ;; User1 still has access (through either project)
+      (assert-ok (get-vocab-layer user1-request shared-vocab-id))
+
+      ;; Remove vocab from project1
+      (assert-no-content (api-call admin-request {:method :delete
+                                                  :path (str "/api/v1/projects/" proj1-id "/vocabs/" shared-vocab-id)}))
+
+      ;; User1 still has access through project2
+      (assert-ok (get-vocab-layer user1-request shared-vocab-id))
+
+      ;; Remove vocab from project2
+      (assert-no-content (api-call admin-request {:method :delete
+                                                  :path (str "/api/v1/projects/" proj2-id "/vocabs/" shared-vocab-id)}))
+
+      ;; Now user1 loses access
+      (assert-status 403 (get-vocab-layer user1-request shared-vocab-id))
+
+      ;; Clean up
+      (assert-no-content (delete-vocab-item admin-request item-id))
+      (assert-no-content (delete-vocab-layer admin-request shared-vocab-id))
+      ;; Note: delete-test-project takes IDs directly, not response objects
+      (delete-test-project admin-request proj1-id)
+      (delete-test-project admin-request proj2-id)))
+
+  (testing "Cascading deletion - vocab layer affects items and links"
+    ;; Create infrastructure
+    (let [proj-id (create-test-project admin-request "CascadeProject")
+          doc-id (create-test-document admin-request proj-id "CascadeDoc")
+          tl-res (api-call admin-request {:method :post
+                                          :path "/api/v1/text-layers"
+                                          :body {:project-id proj-id :name "CascadeTextLayer"}})
+          tl-id (-> tl-res :body :id)
+          text-res (api-call admin-request {:method :post
+                                            :path "/api/v1/texts"
+                                            :body {:text-layer-id tl-id
+                                                   :document-id doc-id
+                                                   :body "test word"}})
+          text-id (-> text-res :body :id)
+          tkl-res (api-call admin-request {:method :post
+                                           :path "/api/v1/token-layers"
+                                           :body {:text-layer-id tl-id :name "CascadeTokenLayer"}})
+          tkl-id (-> tkl-res :body :id)
+          token-res (api-call admin-request {:method :post
+                                             :path "/api/v1/tokens"
+                                             :body {:token-layer-id tkl-id
+                                                    :text text-id
+                                                    :begin 0 :end 4}}) ; "test"
+          token-id (-> token-res :body :id)
+          vocab-res (create-vocab-layer admin-request "CascadeVocab")
+          vocab-id (-> vocab-res :body :id)]
+
+      (assert-created tl-res)
+      (assert-created text-res)
+      (assert-created tkl-res)
+      (assert-created token-res)
+      (assert-created vocab-res)
+
+      ;; Create vocab items and links
+      (let [item1-res (create-vocab-item admin-request vocab-id "term1")
+            item1-id (-> item1-res :body :id)
+            item2-res (create-vocab-item admin-request vocab-id "term2")
+            item2-id (-> item2-res :body :id)
+            link1-res (create-vocab-link admin-request item1-id [token-id])
+            link1-id (-> link1-res :body :id)
+            link2-res (create-vocab-link admin-request item2-id [token-id])
+            link2-id (-> link2-res :body :id)]
+
+        (assert-created item1-res)
+        (assert-created item2-res)
+        (assert-created link1-res)
+        (assert-created link2-res)
+
+        ;; Verify everything exists
+        (assert-ok (get-vocab-layer admin-request vocab-id))
+        (assert-ok (get-vocab-item admin-request item1-id))
+        (assert-ok (get-vocab-item admin-request item2-id))
+        (assert-ok (get-vocab-link admin-request link1-id))
+        (assert-ok (get-vocab-link admin-request link2-id))
+
+        ;; Delete vocab layer - should cascade to items and links
+        (assert-no-content (delete-vocab-layer admin-request vocab-id))
+
+        ;; Verify everything is gone
+        (assert-not-found (get-vocab-layer admin-request vocab-id))
+        (assert-not-found (get-vocab-item admin-request item1-id))
+        (assert-not-found (get-vocab-item admin-request item2-id))
+        (assert-not-found (get-vocab-link admin-request link1-id))
+        (assert-not-found (get-vocab-link admin-request link2-id)))
+
+      ;; Clean up
+      (delete-test-project admin-request proj-id))))
+
+(deftest vocab-edge-cases
+  (testing "Complex unicode and special characters in vocab forms"
+    (let [vocab-res (create-vocab-layer admin-request "UnicodeVocab")
+          vocab-id (-> vocab-res :body :id)]
+      (assert-created vocab-res)
+
+      ;; Test various unicode and special character forms
+      (let [test-forms ["café résumé" ; Accented characters
+                        "中文词汇" ; Chinese characters
+                        "العربية" ; Arabic text
+                        "🚀🎉💻" ; Emojis
+                        "math: ∀x∈ℝ, x²≥0" ; Mathematical symbols
+                        "quotes: \"double\" 'single'" ; Quotes
+                        "symbols: @#$%^&*()_+-={}[]|\\:;\"'<>?,./" ; Special chars
+                        "" ; Empty string
+                        "   spaces   " ; Leading/trailing spaces
+                        "\t\n\r" ; Whitespace chars
+                        "very" (apply str (repeat 1000 "long"))]] ; Very long string
+
+        (doseq [form test-forms]
+          (let [item-res (create-vocab-item admin-request vocab-id form)
+                item-id (-> item-res :body :id)]
+            (assert-created item-res)
+            (let [get-res (get-vocab-item admin-request item-id)]
+              (assert-ok get-res)
+              (is (= form (-> get-res :body :vocab-item/form))))
+            (assert-no-content (delete-vocab-item admin-request item-id)))))
+
+      ;; Clean up
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))))
+
+  (testing "Large metadata structures and boundary conditions"
+    (let [vocab-res (create-vocab-layer admin-request "MetadataTestVocab")
+          vocab-id (-> vocab-res :body :id)]
+      (assert-created vocab-res)
+
+      ;; Test very large metadata
+      (let [large-metadata (into {} (for [i (range 100)]
+                                      [(str "key" i) (str "value" i)]))
+            item-res (create-vocab-item admin-request vocab-id "large-meta-item" large-metadata)
+            item-id (-> item-res :body :id)]
+        (assert-created item-res)
+        (let [get-res (get-vocab-item admin-request item-id)]
+          (assert-ok get-res)
+          (is (= 100 (count (-> get-res :body :metadata)))))
+        (assert-no-content (delete-vocab-item admin-request item-id)))
+
+      ;; Test deeply nested metadata (skip for now - metadata system may not support deep nesting)
+      ;; TODO: Investigate if deep nesting is supported or if metadata is flattened
+
+      ;; Clean up
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))))
+
+  ;; Stress test removed for now - can be added later when basic functionality is stable
+
+  (testing "Permission edge cases and complex inheritance"
+    ;; Test complex permission scenarios
+    (let [vocab-res (create-vocab-layer admin-request "PermissionTestVocab")
+          vocab-id (-> vocab-res :body :id)
+          item-res (create-vocab-item admin-request vocab-id "perm-test-item")
+          item-id (-> item-res :body :id)
+          proj1-id (create-test-project admin-request "PermProject1")
+          proj2-id (create-test-project admin-request "PermProject2")]
+
+      (assert-created vocab-res)
+      (assert-created item-res)
+
+      ;; Complex permission scenario:
+      ;; - user1 is vocab maintainer
+      ;; - user2 is project1 writer (but not vocab maintainer)
+      ;; - vocab is linked to project1 (so user2 gets vocab read access)
+      ;; - user2 is also project2 maintainer
+
+      ;; Set up permissions
+      (assert-no-content (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj1-id "/writers/user2@example.com")}))
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj2-id "/maintainers/user2@example.com")}))
+      ;; Link vocab to project1
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj1-id "/vocabs/" vocab-id)}))
+
+      ;; Test access patterns
+      ;; user1 can access vocab (maintainer)
+      (assert-ok (get-vocab-layer user1-request vocab-id))
+      (assert-ok (get-vocab-item user1-request item-id))
+      (assert-ok (update-vocab-item user1-request item-id "updated-by-user1"))
+
+      ;; user2 can read AND write vocab through project1 (as a project writer)
+      (assert-ok (get-vocab-layer user2-request vocab-id))
+      (assert-ok (get-vocab-item user2-request item-id))
+      (assert-ok (update-vocab-item user2-request item-id "updated-by-user2"))
+      (let [new-item-res (create-vocab-item user2-request vocab-id "created-by-user2")
+            new-item-id (-> new-item-res :body :id)]
+        (assert-created new-item-res)
+        ;; Clean up the item
+        (assert-no-content (delete-vocab-item admin-request new-item-id)))
+
+      ;; Remove vocab from project1 - user2 loses access
+      (assert-no-content (api-call admin-request {:method :delete
+                                                  :path (str "/api/v1/projects/" proj1-id "/vocabs/" vocab-id)}))
+      (assert-status 403 (get-vocab-layer user2-request vocab-id))
+      (assert-status 403 (get-vocab-item user2-request item-id))
+
+      ;; Add vocab to project2 - user2 regains access (as project2 maintainer)
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj2-id "/vocabs/" vocab-id)}))
+      (assert-ok (get-vocab-layer user2-request vocab-id))
+      (assert-ok (get-vocab-item user2-request item-id))
+
+      ;; Clean up
+      (assert-no-content (delete-vocab-item admin-request item-id))
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))
+      (delete-test-project admin-request proj1-id)
+      (delete-test-project admin-request proj2-id)))
+
+  (testing "Invalid requests and malformed data"
+    ;; Test various invalid request scenarios
+    (let [vocab-res (create-vocab-layer admin-request "InvalidTestVocab")
+          vocab-id (-> vocab-res :body :id)]
+      (assert-created vocab-res)
+
+      ;; Invalid vocab layer operations
+      (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
+                                                                               :path "/api/v1/vocab-layers"
+                                                                               :body {}}))) ; Missing name
+
+      (assert-bad-request (api-call admin-request {:method :post
+                                                   :path "/api/v1/vocab-layers"
+                                                   :body {:name ""}})) ; Empty name
+
+      ;; Invalid vocab item operations
+      (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
+                                                                               :path "/api/v1/vocab-items"
+                                                                               :body {:vocab-layer-id vocab-id}}))) ; Missing form
+
+      (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
+                                                                               :path "/api/v1/vocab-items"
+                                                                               :body {:form "test"}}))) ; Missing vocab-layer-id
+
+      (let [fake-vocab-id (java.util.UUID/randomUUID)]
+        (assert-not-found (api-call admin-request {:method :post
+                                                   :path "/api/v1/vocab-items"
+                                                   :body {:vocab-layer-id fake-vocab-id
+                                                          :form "test"}}))) ; Non-existent vocab
+
+      ;; Invalid vocab link operations  
+      (let [item-res (create-vocab-item admin-request vocab-id "test-item")
+            item-id (-> item-res :body :id)]
+        (assert-created item-res)
+
+        (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
+                                                                                 :path "/api/v1/vocab-links"
+                                                                                 :body {:vocab-item-id item-id}}))) ; Missing tokens
+
+        (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
+                                                                                 :path "/api/v1/vocab-links"
+                                                                                 :body {:tokens []}}))) ; Missing vocab-item-id
+
+        (assert-bad-request (api-call admin-request {:method :post
+                                                     :path "/api/v1/vocab-links"
+                                                     :body {:vocab-item-id item-id
+                                                            :tokens []}})) ; Empty tokens array
+
+        ;; Clean up
+        (assert-no-content (delete-vocab-item admin-request item-id)))
+
+      ;; Clean up
+      (assert-no-content (delete-vocab-layer admin-request vocab-id)))))
