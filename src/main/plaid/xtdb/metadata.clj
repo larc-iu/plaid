@@ -28,7 +28,7 @@
                       (str/starts-with? (name k) "_")
                       (not (nil? v)))))
        (reduce (fn [m [k v]]
-                 (assoc m (keyword (subs (name k) 1)) v))
+                 (assoc m (subs (name k) 1) v))
                {})))
 
 (defn add-metadata-to-response
