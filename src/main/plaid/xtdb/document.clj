@@ -7,7 +7,10 @@
             [plaid.xtdb.token-layer :as tokl]
             [plaid.xtdb.span :as s]
             [plaid.xtdb.relation :as r]
-            [plaid.xtdb.metadata :as metadata])
+            [plaid.xtdb.metadata :as metadata]
+            [plaid.xtdb.vocab-layer :as vocab-layer]
+            [plaid.xtdb.vocab-item :as vocab-item]
+            [plaid.xtdb.vocab-link :as vocab-link])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:document/id
@@ -70,10 +73,36 @@
                                    (map token/format)
                                    (map #(dissoc % :token/layer))))
                     tokl/sort-token-records
-                    vec)]
+                    vec)
+        ;; Get vocab-links for tokens in this layer and document
+        vocab-links (->> (xt/q db
+                               '{:find [(pull ?vl [*])]
+                                 :where [[?vl :vocab-link/tokens ?tok]
+                                         [?tok :token/-document ?doc]
+                                         [?tok :token/layer ?tokl]]
+                                 :in [[?doc ?tokl]]}
+                               [doc-id id])
+                         (map first)
+                         (map vocab-link/format))
+        ;; Group vocab-links by vocab-layer and build vocab structure
+        vocabs (->> vocab-links
+                    (group-by (fn [link]
+                                ;; Get vocab-item to find its layer
+                                (let [vocab-item-record (vocab-item/get db (:vocab-link/vocab-item link))]
+                                  (:vocab-item/layer vocab-item-record))))
+                    (mapv (fn [[vocab-layer-id links]]
+                            (let [vocab-layer-record (vocab-layer/get db vocab-layer-id)
+                                  ;; Expand vocab-items in each link
+                                  expanded-links (mapv (fn [link]
+                                                         (let [vocab-item-record (vocab-item/get db (:vocab-link/vocab-item link))]
+                                                           (assoc link :vocab-link/vocab-item vocab-item-record)))
+                                                       links)]
+                              (assoc vocab-layer-record :vocab-layer/vocab-links expanded-links))))
+                    (filterv #(some? (first %))))]
     (-> (select-keys token-layer [:token-layer/id :token-layer/name :config])
         (assoc :token-layer/tokens tokens)
-        (assoc :token-layer/span-layers (mapv #(get-doc-info db doc-id id [:span-layer/id %]) sl-ids)))))
+        (assoc :token-layer/span-layers (mapv #(get-doc-info db doc-id id [:span-layer/id %]) sl-ids))
+        (assoc :token-layer/vocabs vocabs))))
 
 (defmethod get-doc-info :span-layer/id [db doc-id parent-id [key id]]
   (let [span-layer (pxc/entity db id)
