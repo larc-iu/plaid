@@ -89,49 +89,59 @@
 
 ;; writes --------------------------------------------------------------------------------
 (defn create*
-  [{:keys [db]} {:vocab-link/keys [id vocab-item tokens] :as attrs}]
-  ;; Validate vocab item exists
-  (let [item (pxc/entity db vocab-item)]
-    (when-not item
-      (throw (ex-info (pxc/err-msg-not-found "Vocab item" vocab-item)
-                      {:code 404 :id vocab-item}))))
+  [{:keys [db]} attrs]
+  ;; Generate ID if not provided and merge with provided attrs
+  (let [attrs (filter (fn [[k _]] (= "vocab-link" (namespace k))) attrs)
+        {:vocab-link/keys [id vocab-item tokens] :as record} (clojure.core/merge
+                                                               (pxc/new-record "vocab-link")
+                                                               attrs)]
 
-  ;; Validate 1 or more tokens referenced
-  (when (empty? tokens)
-    (throw (ex-info "Vocab link must reference at least one token"
-                    {:code 400})))
+    ;; Validate vocab item exists
+    (let [item (pxc/entity db vocab-item)]
+      (when-not item
+        (throw (ex-info (pxc/err-msg-not-found "Vocab item" vocab-item)
+                        {:code 404 :id vocab-item}))))
 
-  (let [token-records (map #(pxc/entity db %) tokens)]
-    ;; Validate token exists
-    (doseq [token-record token-records]
-      (when-not token-record
-        (throw (ex-info (pxc/err-msg-not-found "Token" (:token/id token-record))
-                        {:code 404 :id (:token/id token-record)}))))
-    ;; Validate tokens all belong to the same layer
-    (when (> (->> token-records
-                  (map :token/layer)
-                  set
-                  count)
-             1)
-      (throw (ex-info "Tokens inside vocab link must all belong to the same layer" {:code 400})))
-    ;; Validate tokens all belong to the same text
-    (when (> (->> token-records
-                  (map :token/text)
-                  set
-                  count)
-             1)
-      (throw (ex-info "Tokens inside vocab link must all belong to the same text" {:code 400})))
+    ;; Validate 1 or more tokens referenced
+    (when (or (empty? tokens)
+              (not (every? #(:token/id (pxc/entity db %)) tokens)))
+      (throw (ex-info "Vocab link must reference at least one token"
+                      {:code 400})))
 
-    ;; Check if vocab-link already exists
-    (when (pxc/find-entity db {:vocab-link/id id})
-      (throw (ex-info (pxc/err-msg-already-exists "Vocab link" id)
-                      {:code 409 :id id})))
-    (let [record (pxc/create-record "vocab-link" id attrs attr-keys)]
-      (into
-        (mapv (fn [t] [::xt/match (:token/id t) t]) token-records)
-        [[::xt/match vocab-item (pxc/entity db vocab-item)]
-         [::xt/match id nil]
-         [::xt/put record]]))))
+    (let [token-records (map #(pxc/entity db %) tokens)]
+      ;; Validate tokens exist
+      (doseq [[token-id token-record] (map vector tokens token-records)]
+        (when-not token-record
+          (throw (ex-info (pxc/err-msg-not-found "Token" token-id)
+                          {:code 404 :id token-id}))))
+      ;; Validate tokens all belong to the same layer
+      (when (> (->> token-records
+                    (map :token/layer)
+                    set
+                    count)
+               1)
+        (throw (ex-info "Tokens inside vocab link must all belong to the same layer" {:code 400})))
+      ;; Validate tokens all belong to the same text
+      (when (> (->> token-records
+                    (map :token/text)
+                    set
+                    count)
+               1)
+        (throw (ex-info "Tokens inside vocab link must all belong to the same text" {:code 400})))
+
+      ;; Check if vocab-link already exists
+      (when (pxc/find-entity db {:vocab-link/id id})
+        (throw (ex-info (pxc/err-msg-already-exists "Vocab link" id)
+                        {:code 409 :id id})))
+      (let [token-matches (mapv (fn [t]
+                                  [::xt/match (:token/id t) t])
+                                token-records)
+            vocab-item-entity (pxc/entity db vocab-item)
+            other-ops [[::xt/match vocab-item vocab-item-entity]
+                       [::xt/match id nil]
+                       [::xt/put record]]
+            all-ops (into token-matches other-ops)]
+        all-ops))))
 
 (defn create-operation
   "Build an operation for creating a vocab-link"
@@ -147,12 +157,12 @@
          metadata-attrs (metadata/transform-metadata-for-storage metadata "vocab-link")
          attrs-with-metadata (clojure.core/merge attrs metadata-attrs)]
      (op/make-operation
-       {:type :vocab-link/create
-        :description (str "Create vocab mapping" 
-                          (when metadata (str " with " (count metadata) " metadata keys")))
-        :tx-ops (create* xt-map attrs-with-metadata)
-        :project project-id
-        :document document-id}))))
+      {:type :vocab-link/create
+       :description (str "Create vocab mapping"
+                         (when metadata (str " with " (count metadata) " metadata keys")))
+       :tx-ops (create* xt-map attrs-with-metadata)
+       :project project-id
+       :document document-id}))))
 
 (defn create
   ([xt-map attrs user-id]
@@ -178,11 +188,11 @@
         project-id (when first-token-id (project-id-from-token db first-token-id))
         document-id (when first-token-id (document-id-from-token db first-token-id))]
     (op/make-operation
-      {:type :vocab-link/delete
-       :description "Delete vocab mapping"
-       :tx-ops (delete* xt-map eid)
-       :project project-id
-       :document document-id})))
+     {:type :vocab-link/delete
+      :description "Delete vocab mapping"
+      :tx-ops (delete* xt-map eid)
+      :project project-id
+      :document document-id})))
 
 (defn delete
   [xt-map eid user-id]
@@ -197,7 +207,7 @@
 (defn set-metadata-operation
   "Build an operation for replacing all metadata on a vocab-link"
   [xt-map eid metadata]
-  (letfn [(project-id-fn [db eid] 
+  (letfn [(project-id-fn [db eid]
             (let [vocab-link (pxc/entity db eid)
                   first-token-id (first (:vocab-link/tokens vocab-link))]
               (when first-token-id (project-id-from-token db first-token-id))))
@@ -207,7 +217,7 @@
     (metadata/make-set-metadata-operation xt-map eid metadata "vocab-link" project-id-fn document-id-fn)))
 
 (defn set-metadata [xt-map eid metadata user-id]
-  (letfn [(project-id-fn [db eid] 
+  (letfn [(project-id-fn [db eid]
             (let [vocab-link (pxc/entity db eid)
                   first-token-id (first (:vocab-link/tokens vocab-link))]
               (when first-token-id (project-id-from-token db first-token-id))))
@@ -224,7 +234,7 @@
 (defn delete-metadata-operation
   "Build an operation for removing all metadata from a vocab-link"
   [xt-map eid]
-  (letfn [(project-id-fn [db eid] 
+  (letfn [(project-id-fn [db eid]
             (let [vocab-link (pxc/entity db eid)
                   first-token-id (first (:vocab-link/tokens vocab-link))]
               (when first-token-id (project-id-from-token db first-token-id))))
@@ -234,7 +244,7 @@
     (metadata/make-delete-metadata-operation xt-map eid "vocab-link" project-id-fn document-id-fn)))
 
 (defn delete-metadata [xt-map eid user-id]
-  (letfn [(project-id-fn [db eid] 
+  (letfn [(project-id-fn [db eid]
             (let [vocab-link (pxc/entity db eid)
                   first-token-id (first (:vocab-link/tokens vocab-link))]
               (when first-token-id (project-id-from-token db first-token-id))))
