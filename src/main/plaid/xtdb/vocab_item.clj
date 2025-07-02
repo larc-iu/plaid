@@ -97,10 +97,13 @@
                                             :where [[?vm :vocab-link/vocab-item ?vi]]
                                             :in [?vi]}
                                           eid))
-          vocab-link-deletions (mapcat (fn [vocab-link-id]
-                                         [[::xt/match vocab-link-id (pxc/entity db vocab-link-id)]
-                                          [::xt/delete vocab-link-id]])
-                                       vocab-link-ids)]
+          vocab-link-deletions (if (seq vocab-link-ids)
+                                 (mapcat (fn [vocab-link-id]
+                                           (when-let [entity (pxc/entity db vocab-link-id)]
+                                             [[::xt/match vocab-link-id entity]
+                                              [::xt/delete vocab-link-id]]))
+                                         vocab-link-ids)
+                                 [])]
       (into vocab-link-deletions
             [[::xt/match eid record]
              [::xt/delete eid]]))))
