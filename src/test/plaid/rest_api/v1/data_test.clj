@@ -2183,6 +2183,10 @@
     (assert-created vocab-res)
     (assert-created item-res)
 
+    ;; Link vocab layer to project before creating vocab links
+    (assert-no-content (api-call admin-request {:method :post
+                                                :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab-id)}))
+
     (testing "Vocab link basic operations"
       ;; Create vocab link
       (let [link-res (create-vocab-link admin-request item-id [token1-id])
@@ -2241,6 +2245,10 @@
         (assert-no-content (delete-vocab-link admin-request link-id))))
 
     (testing "Vocab link dual authorization - project write + vocab read"
+      ;; First unlink vocab from project to test initial authorization
+      (assert-no-content (api-call admin-request {:method :delete
+                                                  :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab-id)}))
+
       ;; Add user1 as project writer but not vocab maintainer
       (let [add-writer-res (api-call admin-request {:method :post
                                                     :path (str "/api/v1/projects/" proj-id "/writers/user1@example.com")})]
@@ -2415,6 +2423,14 @@
       (assert-created adjective2-res)
       (assert-created animal-item-res)
 
+      ;; Link vocab layers to project before creating vocab links
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab1-id)}))
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab2-id)}))
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab3-id)}))
+
       ;; Create vocab links
       (let [link1-res (create-vocab-link admin-request article-item-id [token1-id] {"confidence" 1.0})
             link1-id (-> link1-res :body :id)
@@ -2584,6 +2600,10 @@
       (assert-created tkl-res)
       (assert-created token-res)
       (assert-created vocab-res)
+
+      ;; Link vocab layer to project before creating vocab links
+      (assert-no-content (api-call admin-request {:method :post
+                                                  :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab-id)}))
 
       ;; Create vocab items and links
       (let [item1-res (create-vocab-item admin-request vocab-id "term1")
@@ -2790,3 +2810,232 @@
 
       ;; Clean up
       (assert-no-content (delete-vocab-layer admin-request vocab-id)))))
+
+(deftest vocab-link-project-validation
+  "Test that vocab link creation fails when project is not linked to vocab layer"
+  (testing "vocab link creation should fail if project is not linked to vocab layer"
+    (let [project1-id (create-test-project admin-request "Project 1")
+          project2-id (create-test-project admin-request "Project 2")
+          vocab-id (-> (create-vocab-layer admin-request "TestVocab") :body :id)
+          doc1-id (create-test-document admin-request project1-id "Doc1")
+          doc2-id (create-test-document admin-request project2-id "Doc2")
+          
+          ;; Create layers and texts for both projects
+          txtl1-res (create-text-layer admin-request project1-id "TextLayer1")
+          txtl2-res (create-text-layer admin-request project2-id "TextLayer2")
+          _ (assert-created txtl1-res)
+          _ (assert-created txtl2-res)
+          txtl1-id (-> txtl1-res :body :id)
+          txtl2-id (-> txtl2-res :body :id)
+          
+          tokl1-res (create-token-layer admin-request txtl1-id "TokenLayer1")
+          tokl2-res (create-token-layer admin-request txtl2-id "TokenLayer2")
+          _ (assert-created tokl1-res)
+          _ (assert-created tokl2-res)
+          tokl1-id (-> tokl1-res :body :id)
+          tokl2-id (-> tokl2-res :body :id)
+          
+          text1-res (create-text admin-request txtl1-id doc1-id "Hello world")
+          text2-res (create-text admin-request txtl2-id doc2-id "Goodbye world")
+          _ (assert-created text1-res)
+          _ (assert-created text2-res)
+          text1-id (-> text1-res :body :id)
+          text2-id (-> text2-res :body :id)
+          
+          token1-res (create-token admin-request tokl1-id text1-id 0 5)
+          token2-res (create-token admin-request tokl2-id text2-id 0 7)
+          _ (assert-created token1-res)
+          _ (assert-created token2-res)
+          token1-id (-> token1-res :body :id)
+          token2-id (-> token2-res :body :id)]
+
+      ;; Create vocab item
+      (let [item-res (create-vocab-item admin-request vocab-id "test")
+            _ (assert-created item-res)
+            item-id (-> item-res :body :id)]
+
+        ;; Link vocab to project1 only
+        (assert-no-content (api-call admin-request {:method :post
+                                                    :path (str "/api/v1/projects/" project1-id "/vocabs/" vocab-id)}))
+
+        ;; Should succeed: creating vocab link with token from project1 (linked to vocab)
+        (let [link-res (create-vocab-link admin-request item-id [token1-id])]
+          (assert-created link-res)
+          (let [link-id (-> link-res :body :id)]
+            ;; Clean up the link
+            (assert-no-content (delete-vocab-link admin-request link-id))))
+
+        ;; Should fail: creating vocab link with token from project2 (not linked to vocab)
+        (assert-bad-request (create-vocab-link admin-request item-id [token2-id]))
+
+        ;; Clean up
+        (assert-no-content (delete-vocab-item admin-request item-id)))
+
+      ;; Clean up projects and vocabs
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))
+      (assert-no-content (delete-test-project admin-request project1-id))
+      (assert-no-content (delete-test-project admin-request project2-id)))))
+
+(deftest vocab-unlink-cleanup
+  "Test that unlinking a vocab from a project deletes all associated vocab links"
+  (testing "unlinking vocab should delete all vocab links for that project"
+    (let [project-id (create-test-project admin-request "TestProject")
+          vocab-id (-> (create-vocab-layer admin-request "TestVocab") :body :id)
+          doc-id (create-test-document admin-request project-id "TestDoc")
+          
+          ;; Create layers and text
+          txtl-res (create-text-layer admin-request project-id "TextLayer")
+          _ (assert-created txtl-res)
+          txtl-id (-> txtl-res :body :id)
+          
+          tokl-res (create-token-layer admin-request txtl-id "TokenLayer")
+          _ (assert-created tokl-res)
+          tokl-id (-> tokl-res :body :id)
+          
+          text-res (create-text admin-request txtl-id doc-id "Hello wonderful world")
+          _ (assert-created text-res)
+          text-id (-> text-res :body :id)
+          
+          ;; Create multiple tokens
+          token1-res (create-token admin-request tokl-id text-id 0 5)  ; "Hello"
+          token2-res (create-token admin-request tokl-id text-id 6 15) ; "wonderful"
+          token3-res (create-token admin-request tokl-id text-id 16 21) ; "world"
+          _ (assert-created token1-res)
+          _ (assert-created token2-res)
+          _ (assert-created token3-res)
+          token1-id (-> token1-res :body :id)
+          token2-id (-> token2-res :body :id)
+          token3-id (-> token3-res :body :id)]
+
+      ;; Create vocab items and link vocab to project
+      (let [item1-res (create-vocab-item admin-request vocab-id "greeting")
+            item2-res (create-vocab-item admin-request vocab-id "adjective")
+            item3-res (create-vocab-item admin-request vocab-id "noun")
+            _ (assert-created item1-res)
+            _ (assert-created item2-res)
+            _ (assert-created item3-res)
+            item1-id (-> item1-res :body :id)
+            item2-id (-> item2-res :body :id)
+            item3-id (-> item3-res :body :id)]
+
+        ;; Link vocab to project
+        (assert-no-content (api-call admin-request {:method :post
+                                                    :path (str "/api/v1/projects/" project-id "/vocabs/" vocab-id)}))
+
+        ;; Create vocab links
+        (let [link1-res (create-vocab-link admin-request item1-id [token1-id])
+              link2-res (create-vocab-link admin-request item2-id [token2-id])
+              link3-res (create-vocab-link admin-request item3-id [token3-id])
+              _ (assert-created link1-res)
+              _ (assert-created link2-res)
+              _ (assert-created link3-res)
+              link1-id (-> link1-res :body :id)
+              link2-id (-> link2-res :body :id)
+              link3-id (-> link3-res :body :id)]
+
+          ;; Verify all vocab links exist
+          (assert-ok (get-vocab-link admin-request link1-id))
+          (assert-ok (get-vocab-link admin-request link2-id))
+          (assert-ok (get-vocab-link admin-request link3-id))
+
+          ;; Unlink vocab from project
+          (assert-no-content (api-call admin-request {:method :delete
+                                                      :path (str "/api/v1/projects/" project-id "/vocabs/" vocab-id)}))
+
+          ;; Verify all vocab links are gone
+          (assert-not-found (get-vocab-link admin-request link1-id))
+          (assert-not-found (get-vocab-link admin-request link2-id))
+          (assert-not-found (get-vocab-link admin-request link3-id))
+
+          ;; Vocab items should still exist
+          (assert-ok (get-vocab-item admin-request item1-id))
+          (assert-ok (get-vocab-item admin-request item2-id))
+          (assert-ok (get-vocab-item admin-request item3-id)))
+
+        ;; Clean up vocab items
+        (assert-no-content (delete-vocab-item admin-request item1-id))
+        (assert-no-content (delete-vocab-item admin-request item2-id))
+        (assert-no-content (delete-vocab-item admin-request item3-id)))
+
+      ;; Clean up project and vocab
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))
+      (assert-no-content (delete-test-project admin-request project-id)))))
+
+(deftest vocab-multi-project-scenario
+  "Test complex scenario with multiple projects and selective unlinking"
+  (testing "unlinking vocab should only affect links from that specific project"
+    (let [project1-id (create-test-project admin-request "Project1")
+          project2-id (create-test-project admin-request "Project2")
+          vocab-id (-> (create-vocab-layer admin-request "SharedVocab") :body :id)
+          
+          ;; Setup project 1
+          doc1-id (create-test-document admin-request project1-id "Doc1")
+          txtl1-res (create-text-layer admin-request project1-id "TextLayer1")
+          _ (assert-created txtl1-res)
+          txtl1-id (-> txtl1-res :body :id)
+          tokl1-res (create-token-layer admin-request txtl1-id "TokenLayer1")
+          _ (assert-created tokl1-res)
+          tokl1-id (-> tokl1-res :body :id)
+          text1-res (create-text admin-request txtl1-id doc1-id "Hello world")
+          _ (assert-created text1-res)
+          text1-id (-> text1-res :body :id)
+          token1-res (create-token admin-request tokl1-id text1-id 0 5)
+          _ (assert-created token1-res)
+          token1-id (-> token1-res :body :id)
+          
+          ;; Setup project 2
+          doc2-id (create-test-document admin-request project2-id "Doc2")
+          txtl2-res (create-text-layer admin-request project2-id "TextLayer2")
+          _ (assert-created txtl2-res)
+          txtl2-id (-> txtl2-res :body :id)
+          tokl2-res (create-token-layer admin-request txtl2-id "TokenLayer2")
+          _ (assert-created tokl2-res)
+          tokl2-id (-> tokl2-res :body :id)
+          text2-res (create-text admin-request txtl2-id doc2-id "Hello universe")
+          _ (assert-created text2-res)
+          text2-id (-> text2-res :body :id)
+          token2-res (create-token admin-request tokl2-id text2-id 0 5)
+          _ (assert-created token2-res)
+          token2-id (-> token2-res :body :id)]
+
+      ;; Create vocab item
+      (let [item-res (create-vocab-item admin-request vocab-id "greeting")
+            _ (assert-created item-res)
+            item-id (-> item-res :body :id)]
+
+        ;; Link vocab to both projects
+        (assert-no-content (api-call admin-request {:method :post
+                                                    :path (str "/api/v1/projects/" project1-id "/vocabs/" vocab-id)}))
+        (assert-no-content (api-call admin-request {:method :post
+                                                    :path (str "/api/v1/projects/" project2-id "/vocabs/" vocab-id)}))
+
+        ;; Create vocab links in both projects
+        (let [link1-res (create-vocab-link admin-request item-id [token1-id])
+              link2-res (create-vocab-link admin-request item-id [token2-id])
+              _ (assert-created link1-res)
+              _ (assert-created link2-res)
+              link1-id (-> link1-res :body :id)
+              link2-id (-> link2-res :body :id)]
+
+          ;; Verify both links exist
+          (assert-ok (get-vocab-link admin-request link1-id))
+          (assert-ok (get-vocab-link admin-request link2-id))
+
+          ;; Unlink vocab from project1 only
+          (assert-no-content (api-call admin-request {:method :delete
+                                                      :path (str "/api/v1/projects/" project1-id "/vocabs/" vocab-id)}))
+
+          ;; Only project1's link should be gone
+          (assert-not-found (get-vocab-link admin-request link1-id))
+          (assert-ok (get-vocab-link admin-request link2-id))
+
+          ;; Clean up remaining link
+          (assert-no-content (delete-vocab-link admin-request link2-id)))
+
+        ;; Clean up vocab item
+        (assert-no-content (delete-vocab-item admin-request item-id)))
+
+      ;; Clean up
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))
+      (assert-no-content (delete-test-project admin-request project1-id))
+      (assert-no-content (delete-test-project admin-request project2-id)))))

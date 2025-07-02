@@ -129,6 +129,16 @@
                1)
         (throw (ex-info "Tokens inside vocab link must all belong to the same text" {:code 400})))
 
+      ;; Validate project is linked to vocab layer
+      (let [project-id (project-id-from-token db (first tokens))
+            {vocab-layer-id :vocab-item/layer} (pxc/entity db vocab-item)]
+        (let [project-vocabs (set (:project/vocabs (pxc/entity db project-id)))]
+          (when-not (project-vocabs vocab-layer-id)
+            (throw (ex-info "Cannot create vocab link: project is not linked to the vocab layer"
+                            {:code 400
+                             :project-id project-id
+                             :vocab-layer-id vocab-layer-id})))))
+
       ;; Check if vocab-link already exists
       (when (pxc/find-entity db {:vocab-link/id id})
         (throw (ex-info (pxc/err-msg-already-exists "Vocab link" id)
@@ -157,12 +167,12 @@
          metadata-attrs (metadata/transform-metadata-for-storage metadata "vocab-link")
          attrs-with-metadata (clojure.core/merge attrs metadata-attrs)]
      (op/make-operation
-      {:type :vocab-link/create
-       :description (str "Create vocab mapping"
-                         (when metadata (str " with " (count metadata) " metadata keys")))
-       :tx-ops (create* xt-map attrs-with-metadata)
-       :project project-id
-       :document document-id}))))
+       {:type :vocab-link/create
+        :description (str "Create vocab mapping"
+                          (when metadata (str " with " (count metadata) " metadata keys")))
+        :tx-ops (create* xt-map attrs-with-metadata)
+        :project project-id
+        :document document-id}))))
 
 (defn create
   ([xt-map attrs user-id]
@@ -188,11 +198,11 @@
         project-id (when first-token-id (project-id-from-token db first-token-id))
         document-id (when first-token-id (document-id-from-token db first-token-id))]
     (op/make-operation
-     {:type :vocab-link/delete
-      :description "Delete vocab mapping"
-      :tx-ops (delete* xt-map eid)
-      :project project-id
-      :document document-id})))
+      {:type :vocab-link/delete
+       :description "Delete vocab mapping"
+       :tx-ops (delete* xt-map eid)
+       :project project-id
+       :document document-id})))
 
 (defn delete
   [xt-map eid user-id]
