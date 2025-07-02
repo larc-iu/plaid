@@ -379,8 +379,28 @@
                       {:code 400 :id vocab-id}))
 
       :else
-      [[::xt/match project-id project]
-       [::xt/put (pxc/remove-id project :project/vocabs vocab-id)]])))
+      ;; Find all vocab-links that belong to vocab items in this vocab layer 
+      ;; and have tokens in documents belonging to this project
+      (let [vocab-link-ids (map first (xt/q db
+                                            '{:find [?vl]
+                                              :where [[?doc :document/project ?prj]
+                                                      [?txt :text/document ?doc]
+                                                      [?tok :token/text ?txt]
+                                                      [?vi :vocab-item/layer ?vocab-layer]
+                                                      [?vl :vocab-link/vocab-item ?vi]
+                                                      [?vl :vocab-link/tokens ?tok]]
+                                              :in [?vocab-layer ?prj]}
+                                            vocab-id project-id))
+            vocab-link-deletions (if (seq vocab-link-ids)
+                                   (vec (mapcat (fn [vocab-link-id]
+                                                  (when-let [entity (pxc/entity db vocab-link-id)]
+                                                    [[::xt/match vocab-link-id entity]
+                                                     [::xt/delete vocab-link-id]]))
+                                                vocab-link-ids))
+                                   [])
+            project-update-ops [[::xt/match project-id project]
+                                [::xt/put (pxc/remove-id project :project/vocabs vocab-id)]]]
+        (into vocab-link-deletions project-update-ops)))))
 
 (defn remove-vocab-operation
   [xt-map project-id vocab-id]
