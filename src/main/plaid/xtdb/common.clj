@@ -37,11 +37,12 @@
                         {:value o}))))
 
 (defn layer? [entity]
-  (or (:text-layer/id entity)
+  (or (:project/id entity)
+      (:text-layer/id entity)
       (:token-layer/id entity)
       (:span-layer/id entity)
       (:relation-layer/id entity)
-      (:vocab-layer/id entity)))
+      (:vocab/id entity)))
 
 ;; queries ----------------------------------------------------------------------
 (defn entity [db id]
