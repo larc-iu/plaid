@@ -33,9 +33,8 @@
 
 ;; writes --------------------------------------------------------------------------------
 (defn create*
-  [xt-map attrs]
-  (let [{:keys [node db]} (pxc/ensure-db xt-map)
-        attrs (filter (fn [[k _]] (= "vocab-item" (namespace k))) attrs)
+  [{:keys [db]} attrs]
+  (let [attrs (filter (fn [[k _]] (= "vocab-item" (namespace k))) attrs)
         {:vocab-item/keys [id layer] :as record} (clojure.core/merge (pxc/new-record "vocab-item")
                                                                      (into {} attrs))]
     ;; Check if vocab layer exists
@@ -57,7 +56,7 @@
     (op/make-operation
       {:type :vocab-item/create
        :description (format "Create vocab item '%s'" (:vocab-item/form attrs))
-       :tx-ops (create* xt-map attrs-with-metadata)
+       :tx-ops (create* (pxc/ensure-db xt-map) attrs-with-metadata)
        :project nil
        :document nil})))
 
@@ -69,7 +68,7 @@
 
 (defn merge-operation
   [xt-map eid m]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         current (pxc/entity db eid)]
     (when-not current
       (throw (ex-info (pxc/err-msg-not-found "Vocab item" eid)
@@ -87,9 +86,8 @@
   (submit-operations! xt-map [(merge-operation xt-map eid m)] user-id))
 
 (defn delete*
-  [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        record (pxc/entity db eid)]
+  [{:keys [db]} eid]
+  (let [record (pxc/entity db eid)]
     (when-not record
       (throw (ex-info (pxc/err-msg-not-found "Vocab item" eid)
                       {:code 404 :id eid})))
@@ -109,7 +107,7 @@
 
 (defn delete-operation
   [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         current (pxc/entity db eid)]
     (op/make-operation
       {:type :vocab-item/delete
