@@ -67,7 +67,7 @@
              (events/publish-audit-event! audit-entry# operations# ~user-id))))
        (-> result#
            (cond-> (:audit/id @audit-entry-vol#)
-                   (assoc result# :document-version (:audit/id @audit-entry-vol#)))))))
+                   (assoc :document-version (:audit/id @audit-entry-vol#)))))))
 
 
 (defmacro submit-operations-with-extras!
@@ -97,4 +97,4 @@
              (events/publish-audit-event! audit-entry# operations# ~user-id))))
        (-> result#
            (cond-> (:audit/id @audit-entry-vol#)
-                   (assoc result# :document-version (:audit/id @audit-entry-vol#)))))))
+                   (assoc :document-version (:audit/id @audit-entry-vol#)))))))
