@@ -65,54 +65,53 @@
 
 ;; writes --------------------------------------------------------------------------------
 (defn create*
-  [xt-map {:vmap/keys [id vocab-item tokens] :as attrs}]
-  (let [{:keys [node db]} (pxc/ensure-db xt-map)]
-    ;; Validate vocab item exists
-    (let [item (pxc/entity db vocab-item)]
-      (when-not item
-        (throw (ex-info (pxc/err-msg-not-found "Vocab item" vocab-item)
-                        {:code 404 :id vocab-item}))))
+  [{:keys [db]} {:vmap/keys [id vocab-item tokens] :as attrs}]
+  ;; Validate vocab item exists
+  (let [item (pxc/entity db vocab-item)]
+    (when-not item
+      (throw (ex-info (pxc/err-msg-not-found "Vocab item" vocab-item)
+                      {:code 404 :id vocab-item}))))
 
-    ;; Validate 1 or more tokens referenced
-    (when (empty? tokens)
-      (throw (ex-info "VMap must reference at least one token"
-                      {:code 400})))
+  ;; Validate 1 or more tokens referenced
+  (when (empty? tokens)
+    (throw (ex-info "VMap must reference at least one token"
+                    {:code 400})))
 
-    (let [token-records (map #(pxc/entity db %) tokens)]
-      ;; Validate token exists
-      (doseq [token-record token-records]
-        (when-not token-record
-          (throw (ex-info (pxc/err-msg-not-found "Token" (:token/id token-record))
-                          {:code 404 :id (:token/id token-record)}))))
-      ;; Validate tokens all belong to the same layer
-      (when (> (->> token-records
-                    (map :token/layer)
-                    set
-                    count)
-               1)
-        (throw (ex-info "Tokens inside VMap must all belong to the same layer" {:code 400})))
-      ;; Validate tokens all belong to the same text
-      (when (> (->> token-records
-                    (map :token/text)
-                    set
-                    count)
-               1)
-        (throw (ex-info "Tokens inside VMap must all belong to the same text" {:code 400})))
+  (let [token-records (map #(pxc/entity db %) tokens)]
+    ;; Validate token exists
+    (doseq [token-record token-records]
+      (when-not token-record
+        (throw (ex-info (pxc/err-msg-not-found "Token" (:token/id token-record))
+                        {:code 404 :id (:token/id token-record)}))))
+    ;; Validate tokens all belong to the same layer
+    (when (> (->> token-records
+                  (map :token/layer)
+                  set
+                  count)
+             1)
+      (throw (ex-info "Tokens inside VMap must all belong to the same layer" {:code 400})))
+    ;; Validate tokens all belong to the same text
+    (when (> (->> token-records
+                  (map :token/text)
+                  set
+                  count)
+             1)
+      (throw (ex-info "Tokens inside VMap must all belong to the same text" {:code 400})))
 
-      ;; Check if vmap already exists
-      (when (pxc/find-entity db {:vmap/id id})
-        (throw (ex-info (pxc/err-msg-already-exists "VMap" id)
-                        {:code 409 :id id})))
-      (let [record (pxc/create-record "vmap" id attrs attr-keys)]
-        (into
-          (mapv (fn [t] [::xt/match (:token/id t) t]) token-records)
-          [[::xt/match vocab-item (pxc/entity db vocab-item)]
-           [::xt/match id nil]
-           [::xt/put record]])))))
+    ;; Check if vmap already exists
+    (when (pxc/find-entity db {:vmap/id id})
+      (throw (ex-info (pxc/err-msg-already-exists "VMap" id)
+                      {:code 409 :id id})))
+    (let [record (pxc/create-record "vmap" id attrs attr-keys)]
+      (into
+        (mapv (fn [t] [::xt/match (:token/id t) t]) token-records)
+        [[::xt/match vocab-item (pxc/entity db vocab-item)]
+         [::xt/match id nil]
+         [::xt/put record]]))))
 
 (defn create-operation
   [xt-map attrs]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         ;; Get project and document info from first token
         first-token-id (first (:vmap/tokens attrs))
         project-id (when first-token-id (project-id-from-token db first-token-id))
@@ -129,9 +128,8 @@
   (submit-operations! xt-map [(create-operation xt-map attrs)] user-id))
 
 (defn delete*
-  [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
-        record (pxc/entity db eid)]
+  [{:keys [db]} eid]
+  (let [record (pxc/entity db eid)]
     (when-not record
       (throw (ex-info (pxc/err-msg-not-found "VMap" eid)
                       {:code 404 :id eid})))
@@ -140,7 +138,7 @@
 
 (defn delete-operation
   [xt-map eid]
-  (let [{:keys [db]} (pxc/ensure-db xt-map)
+  (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
         vmap (pxc/entity db eid)
         ;; Get project and document info from first token
         first-token-id (first (:vmap/tokens vmap))
