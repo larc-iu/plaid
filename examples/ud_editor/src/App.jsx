@@ -12,22 +12,35 @@ import { AnnotationEditor } from './components/editor/AnnotationEditor';
 import { ExportEditor } from './components/editor/ExportEditor';
 import './App.css';
 
-// Determine the basename from the current URL for subdirectory deployments
+// Get the deployment basename by finding where the app's static assets are served from
 function getBasename() {
-  let pathname = window.location.pathname;
+  // Find a script tag that loads this app's bundle
+  const scripts = document.querySelectorAll('script[src]');
   
-  // Remove /index.html if present
-  if (pathname.endsWith('/index.html')) {
-    pathname = pathname.slice(0, -11); // Remove '/index.html'
+  for (const script of scripts) {
+    const src = script.getAttribute('src');
+    // Look for the main bundle (usually contains 'main' or 'index' and ends with .js)
+    if (src && (src.includes('main') || src.includes('index')) && src.endsWith('.js') && !src.startsWith('http')) {
+      // Extract the directory path from the script src
+      const lastSlash = src.lastIndexOf('/');
+      if (lastSlash > 0) {
+        const scriptDir = src.substring(0, lastSlash);
+        // If script is in a subdirectory like '/app/assets/main.js', 
+        // the basename is likely '/app'
+        const segments = scriptDir.split('/').filter(Boolean);
+        if (segments.length > 0 && segments[segments.length - 1] === 'assets') {
+          // Remove 'assets' directory to get app root
+          return '/' + segments.slice(0, -1).join('/');
+        } else if (segments.length > 0) {
+          // Script is directly in subdirectory
+          return '/' + segments.join('/');
+        }
+      }
+    }
   }
   
-  // Remove trailing slash unless it's the root
-  if (pathname.length > 1 && pathname.endsWith('/')) {
-    pathname = pathname.slice(0, -1);
-  }
-  
-  // Ensure we return at least '/' for root
-  return pathname || '/';
+  // Fallback: no basename (root deployment)
+  return '';
 }
 
 function App() {
