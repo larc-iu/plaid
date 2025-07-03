@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Thu Jul 03 13:20:36 EDT 2025
+Generated on: Thu Jul 03 14:01:39 EDT 2025
 """
 
 import requests
@@ -28,14 +28,6 @@ class VocabLinksResource:
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'vocab-item-id': vocab_item_id,
             'tokens': tokens,
@@ -91,14 +83,6 @@ class VocabLinksResource:
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'vocab-item-id': vocab_item_id,
             'tokens': tokens,
@@ -155,14 +139,6 @@ class VocabLinksResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -215,14 +191,6 @@ class VocabLinksResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -276,14 +244,6 @@ class VocabLinksResource:
             id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -328,14 +288,6 @@ class VocabLinksResource:
             id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -490,14 +442,6 @@ class VocabLinksResource:
             id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -542,14 +486,6 @@ class VocabLinksResource:
             id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1513,14 +1449,6 @@ class RelationsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -1573,14 +1501,6 @@ class RelationsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -1634,14 +1554,6 @@ class RelationsResource:
             relation_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1686,14 +1598,6 @@ class RelationsResource:
             relation_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -1741,14 +1645,6 @@ class RelationsResource:
             span_id: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/target"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'span-id': span_id
         }
@@ -1801,14 +1697,6 @@ class RelationsResource:
             span_id: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/target"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'span-id': span_id
         }
@@ -1970,14 +1858,6 @@ class RelationsResource:
             relation_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -2022,14 +1902,6 @@ class RelationsResource:
             relation_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -2077,14 +1949,6 @@ class RelationsResource:
             value: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'value': value
         }
@@ -2137,14 +2001,6 @@ class RelationsResource:
             value: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'value': value
         }
@@ -2199,14 +2055,6 @@ class RelationsResource:
             span_id: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/source"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'span-id': span_id
         }
@@ -2259,14 +2107,6 @@ class RelationsResource:
             span_id: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/source"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'span-id': span_id
         }
@@ -2329,14 +2169,6 @@ target_id: the target span this relation goes to
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'layer-id': layer_id,
             'source-id': source_id,
@@ -2401,14 +2233,6 @@ target_id: the target span this relation goes to
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'layer-id': layer_id,
             'source-id': source_id,
@@ -2471,14 +2295,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -2530,14 +2346,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -2586,14 +2394,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -2640,14 +2440,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -3427,14 +3219,6 @@ class SpansResource:
             tokens: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/tokens"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'tokens': tokens
         }
@@ -3487,14 +3271,6 @@ class SpansResource:
             tokens: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/tokens"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'tokens': tokens
         }
@@ -3556,14 +3332,6 @@ metadata: optional key-value pairs for additional annotation data.
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'span-layer-id': span_layer_id,
             'tokens': tokens,
@@ -3626,14 +3394,6 @@ metadata: optional key-value pairs for additional annotation data.
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'span-layer-id': span_layer_id,
             'tokens': tokens,
@@ -3798,14 +3558,6 @@ metadata: optional key-value pairs for additional annotation data.
             span_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -3850,14 +3602,6 @@ metadata: optional key-value pairs for additional annotation data.
             span_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -3905,14 +3649,6 @@ metadata: optional key-value pairs for additional annotation data.
             value: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'value': value
         }
@@ -3965,14 +3701,6 @@ metadata: optional key-value pairs for additional annotation data.
             value: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'value': value
         }
@@ -4030,14 +3758,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -4088,14 +3808,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -4144,14 +3856,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -4198,14 +3902,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -4255,14 +3951,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -4315,14 +4003,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -4376,14 +4056,6 @@ metadata, an optional map of metadata
             span_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -4428,14 +4100,6 @@ metadata, an optional map of metadata
             span_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -4492,14 +4156,6 @@ class TextsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -4552,14 +4208,6 @@ class TextsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -4613,14 +4261,6 @@ class TextsResource:
             text_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -4665,14 +4305,6 @@ class TextsResource:
             text_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -4726,14 +4358,6 @@ body: the string which is the content of this text.
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'text-layer-id': text_layer_id,
             'document-id': document_id,
@@ -4795,14 +4419,6 @@ body: the string which is the content of this text.
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'text-layer-id': text_layer_id,
             'document-id': document_id,
@@ -4967,14 +4583,6 @@ body: the string which is the content of this text.
             text_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -5019,14 +4627,6 @@ body: the string which is the content of this text.
             text_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -5074,14 +4674,6 @@ body: the string which is the content of this text.
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -5134,14 +4726,6 @@ body: the string which is the content of this text.
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -6585,14 +6169,6 @@ class DocumentsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -6645,14 +6221,6 @@ class DocumentsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -6706,14 +6274,6 @@ class DocumentsResource:
             document_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -6758,14 +6318,6 @@ class DocumentsResource:
             document_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -7046,14 +6598,6 @@ class DocumentsResource:
             document_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -7098,14 +6642,6 @@ class DocumentsResource:
             document_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -7155,14 +6691,6 @@ name: update a document's name.
             name: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'name': name
         }
@@ -7217,14 +6745,6 @@ name: update a document's name.
             name: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'name': name
         }
@@ -11612,14 +11132,6 @@ precedence: used for tokens with the same begin value in order to indicate their
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'token-layer-id': token_layer_id,
             'text': text,
@@ -11687,14 +11199,6 @@ precedence: used for tokens with the same begin value in order to indicate their
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'token-layer-id': token_layer_id,
             'text': text,
@@ -11861,14 +11365,6 @@ precedence: used for tokens with the same begin value in order to indicate their
             token_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -11913,14 +11409,6 @@ precedence: used for tokens with the same begin value in order to indicate their
             token_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -11974,14 +11462,6 @@ precedence: ordering value for the token relative to other tokens with the same 
             precedence: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'begin': begin,
             'end': end,
@@ -12042,14 +11522,6 @@ precedence: ordering value for the token relative to other tokens with the same 
             precedence: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'begin': begin,
             'end': end,
@@ -12111,14 +11583,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -12171,14 +11635,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -12227,14 +11683,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -12281,14 +11729,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
@@ -12338,14 +11778,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -12398,14 +11830,6 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         body_dict = {
             'body': body
         }
@@ -12459,14 +11883,6 @@ metadata, an optional map of metadata
             token_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
@@ -12511,14 +11927,6 @@ metadata, an optional map of metadata
             token_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
-        params = {}
-        if document_version is not None:
-            params['document-version'] = document_version
-        if params:
-            from urllib.parse import urlencode
-            # Convert boolean values to lowercase strings
-            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
