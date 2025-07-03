@@ -65,9 +65,13 @@
                audit-entry# @audit-entry-vol#]
            (when (and operations# audit-entry#)
              (events/publish-audit-event! audit-entry# operations# ~user-id))))
-       (-> result#
-           (cond-> (:audit/id @audit-entry-vol#)
-                   (assoc :document-version (:audit/id @audit-entry-vol#)))))))
+       (let [val# (deref audit-entry-vol#)]
+         (-> result#
+             ;; Include `:document-versions` for all affected documents, mapping document IDs to versions
+             (cond-> (and (:audit/id val#)
+                          (seq (:audit/documents val#)))
+                     (assoc :document-versions (into {} (for [doc-id# (:audit/documents val#)]
+                                                          [doc-id# (:audit/id val#)])))))))))
 
 
 (defmacro submit-operations-with-extras!
@@ -95,6 +99,11 @@
                audit-entry# @audit-entry-vol#]
            (when (and operations# audit-entry#)
              (events/publish-audit-event! audit-entry# operations# ~user-id))))
-       (-> result#
-           (cond-> (:audit/id @audit-entry-vol#)
-                   (assoc :document-version (:audit/id @audit-entry-vol#)))))))
+
+       (let [val# (deref audit-entry-vol#)]
+         (-> result#
+             ;; Include `:document-versions` for all affected documents, mapping document IDs to versions
+             (cond-> (and (:audit/id val#)
+                          (seq (:audit/documents val#)))
+                     (assoc :document-versions (into {} (for [doc-id# (:audit/documents val#)]
+                                                          [doc-id# (:audit/id val#)])))))))))
