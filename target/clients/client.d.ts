@@ -1,3 +1,23 @@
+interface VocabLinksBundle {
+  create(vocabItemId: string, tokens: any[], metadata?: any, documentVersion?: string): Promise<any>;
+  setMetadata(id: string, body: any, documentVersion?: string): Promise<any>;
+  deleteMetadata(id: string, documentVersion?: string): Promise<any>;
+  get(id: string, asOf?: string): Promise<any>;
+  delete(id: string): Promise<any>;
+}
+
+interface VocabLayersBundle {
+  get(id: string, includeItems?: boolean, asOf?: string): Promise<any>;
+  delete(id: string): Promise<any>;
+  update(id: string, name: string): Promise<any>;
+  setConfig(id: string, namespace: string, configKey: string, configValue: any): Promise<any>;
+  deleteConfig(id: string, namespace: string, configKey: string): Promise<any>;
+  list(asOf?: string): Promise<any>;
+  create(name: string): Promise<any>;
+  addMaintainer(id: string, userId: string): Promise<any>;
+  removeMaintainer(id: string, userId: string): Promise<any>;
+}
+
 interface RelationsBundle {
   setMetadata(relationId: string, body: any, documentVersion?: string): Promise<any>;
   deleteMetadata(relationId: string, documentVersion?: string): Promise<any>;
@@ -84,6 +104,8 @@ interface ProjectsBundle {
   addMaintainer(id: string, userId: string): Promise<any>;
   removeMaintainer(id: string, userId: string): Promise<any>;
   audit(projectId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any>;
+  linkVocab(id: string, vocabId: string): Promise<any>;
+  unlinkVocab(id: string, vocabId: string): Promise<any>;
   get(id: string, includeDocuments?: boolean, asOf?: string): Promise<any>;
   delete(id: string): Promise<any>;
   update(id: string, name: string): Promise<any>;
@@ -107,6 +129,15 @@ interface LoginBundle {
 
 interface BulkBundle {
   submit(body: any[]): Promise<any>;
+}
+
+interface VocabItemsBundle {
+  setMetadata(id: string, body: any): Promise<any>;
+  deleteMetadata(id: string): Promise<any>;
+  create(vocabLayerId: string, form: string, metadata?: any): Promise<any>;
+  get(id: string, asOf?: string): Promise<any>;
+  delete(id: string): Promise<any>;
+  update(id: string, form: string): Promise<any>;
 }
 
 interface RelationLayersBundle {
@@ -133,6 +164,8 @@ interface TokensBundle {
 declare class PlaidClient {
   constructor(baseUrl: string, token: string);
   static login(baseUrl: string, userId: string, password: string): Promise<PlaidClient>;
+  vocabLinks: VocabLinksBundle;
+  vocabLayers: VocabLayersBundle;
   relations: RelationsBundle;
   spanLayers: SpanLayersBundle;
   spans: SpansBundle;
@@ -144,6 +177,7 @@ declare class PlaidClient {
   textLayers: TextLayersBundle;
   login: LoginBundle;
   bulk: BulkBundle;
+  vocabItems: VocabItemsBundle;
   relationLayers: RelationLayersBundle;
   tokens: TokensBundle;
 }

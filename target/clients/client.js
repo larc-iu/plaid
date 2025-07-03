@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Mon Jun 30 17:10:33 EDT 2025
+ * Generated on: Wed Jul 02 22:10:41 EDT 2025
  */
 
 class PlaidClient {
@@ -19,6 +19,97 @@ class PlaidClient {
     this.batchOperations = [];
     
     // Initialize API bundles
+    this.vocabLinks = {
+      /**
+       * Create a new vocab link (link between tokens and vocab item).
+ * @param {string} vocabItemId - Required. Vocabitemid
+ * @param {Array} tokens - Required. Tokens
+ * @param {any} [metadata] - Optional. Metadata
+ * @param {string} [documentVersion] - Optional documentVersion
+       */
+      create: this._vocabLinksCreate.bind(this),
+      /**
+       * Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+ * @param {string} id - Id identifier
+ * @param {any} body - Required. Body
+ * @param {string} [documentVersion] - Optional documentVersion
+       */
+      setMetadata: this._vocabLinksSetMetadata.bind(this),
+      /**
+       * Remove all metadata from a vocab link.
+ * @param {string} id - Id identifier
+ * @param {string} [documentVersion] - Optional documentVersion
+       */
+      deleteMetadata: this._vocabLinksDeleteMetadata.bind(this),
+      /**
+       * Get a vocab link by ID
+ * @param {string} id - Id identifier
+ * @param {string} [asOf] - Optional asOf
+       */
+      get: this._vocabLinksGet.bind(this),
+      /**
+       * Delete a vocab link
+ * @param {string} id - Id identifier
+       */
+      delete: this._vocabLinksDelete.bind(this)
+    };
+    this.vocabLayers = {
+      /**
+       * Get a vocab layer by ID
+ * @param {string} id - Id identifier
+ * @param {boolean} [includeItems] - Optional includeItems
+ * @param {string} [asOf] - Optional asOf
+       */
+      get: this._vocabLayersGet.bind(this),
+      /**
+       * Delete a vocab layer.
+ * @param {string} id - Id identifier
+       */
+      delete: this._vocabLayersDelete.bind(this),
+      /**
+       * Update a vocab layer's name.
+ * @param {string} id - Id identifier
+ * @param {string} name - Required. Name
+       */
+      update: this._vocabLayersUpdate.bind(this),
+      /**
+       * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
+ * @param {string} id - Id identifier
+ * @param {string} namespace - Namespace identifier
+ * @param {string} configKey - Config-key identifier
+ * @param {any} configValue - Configuration value to set
+       */
+      setConfig: this._vocabLayersSetConfig.bind(this),
+      /**
+       * Remove a configuration value for a layer.
+ * @param {string} id - Id identifier
+ * @param {string} namespace - Namespace identifier
+ * @param {string} configKey - Config-key identifier
+       */
+      deleteConfig: this._vocabLayersDeleteConfig.bind(this),
+      /**
+       * List all vocab layers accessible to user
+ * @param {string} [asOf] - Optional asOf
+       */
+      list: this._vocabLayersList.bind(this),
+      /**
+       * Create a new vocab layer. Note: this also registers the user as a maintainer.
+ * @param {string} name - Required. Name
+       */
+      create: this._vocabLayersCreate.bind(this),
+      /**
+       * Assign a user as a maintainer for this vocab layer.
+ * @param {string} id - Id identifier
+ * @param {string} userId - User-id identifier
+       */
+      addMaintainer: this._vocabLayersAddMaintainer.bind(this),
+      /**
+       * Remove a user's maintainer privileges for this vocab layer.
+ * @param {string} id - Id identifier
+ * @param {string} userId - User-id identifier
+       */
+      removeMaintainer: this._vocabLayersRemoveMaintainer.bind(this)
+    };
     this.relations = {
       /**
        * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
@@ -480,6 +571,18 @@ name: update a document's name.
        */
       audit: this._projectsAudit.bind(this),
       /**
+       * Link a vocabulary to a project.
+ * @param {string} id - Id identifier
+ * @param {string} vocabId - Vocab-id identifier
+       */
+      linkVocab: this._projectsLinkVocab.bind(this),
+      /**
+       * Unlink a vocabulary to a project.
+ * @param {string} id - Id identifier
+ * @param {string} vocabId - Vocab-id identifier
+       */
+      unlinkVocab: this._projectsUnlinkVocab.bind(this),
+      /**
        * Get a project by ID. If includeDocuments is true, also include document IDs and names.
  * @param {string} id - Id identifier
  * @param {boolean} [includeDocuments] - Optional includeDocuments
@@ -568,6 +671,43 @@ name: update a document's name.
  * @param {Array} body - Required. Body
        */
       submit: this._bulkSubmit.bind(this)
+    };
+    this.vocabItems = {
+      /**
+       * Replace all metadata for a vocab item. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+ * @param {string} id - Id identifier
+ * @param {any} body - Required. Body
+       */
+      setMetadata: this._vocabItemsSetMetadata.bind(this),
+      /**
+       * Remove all metadata from a vocab item.
+ * @param {string} id - Id identifier
+       */
+      deleteMetadata: this._vocabItemsDeleteMetadata.bind(this),
+      /**
+       * Create a new vocab item
+ * @param {string} vocabLayerId - Required. Vocablayerid
+ * @param {string} form - Required. Form
+ * @param {any} [metadata] - Optional. Metadata
+       */
+      create: this._vocabItemsCreate.bind(this),
+      /**
+       * Get a vocab item by ID
+ * @param {string} id - Id identifier
+ * @param {string} [asOf] - Optional asOf
+       */
+      get: this._vocabItemsGet.bind(this),
+      /**
+       * Delete a vocab item
+ * @param {string} id - Id identifier
+       */
+      delete: this._vocabItemsDelete.bind(this),
+      /**
+       * Update a vocab item's form
+ * @param {string} id - Id identifier
+ * @param {string} form - Required. Form
+       */
+      update: this._vocabItemsUpdate.bind(this)
     };
     this.relationLayers = {
       /**
@@ -820,6 +960,698 @@ metadata, an optional map of metadata
   isBatchMode() {
     return this.isBatching;
   }
+  /**
+   * Create a new vocab link (link between tokens and vocab item).
+   */
+  async _vocabLinksCreate(vocabItemId, tokens, metadata = undefined, documentVersion = undefined) {
+    const url = `${this.baseUrl}/api/v1/vocab-links`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    const bodyObj = {
+      "vocab-item-id": vocabItemId,
+      "tokens": tokens,
+      "metadata": metadata
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+   */
+  async _vocabLinksSetMetadata(id, body, documentVersion = undefined) {
+    const url = `${this.baseUrl}/api/v1/vocab-links/${id}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    const bodyObj = {
+      "body": body
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'PUT';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove all metadata from a vocab link.
+   */
+  async _vocabLinksDeleteMetadata(id, documentVersion = undefined) {
+    const url = `${this.baseUrl}/api/v1/vocab-links/${id}/metadata`;
+    const queryParams = new URLSearchParams();
+    if (documentVersion !== undefined && documentVersion !== null) {
+      queryParams.append('document-version', documentVersion);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Get a vocab link by ID
+   */
+  async _vocabLinksGet(id, asOf = undefined) {
+    const url = `${this.baseUrl}/api/v1/vocab-links/${id}`;
+    const queryParams = new URLSearchParams();
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'GET';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Delete a vocab link
+   */
+  async _vocabLinksDelete(id) {
+    const url = `${this.baseUrl}/api/v1/vocab-links/${id}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Get a vocab layer by ID
+   */
+  async _vocabLayersGet(id, includeItems = undefined, asOf = undefined) {
+    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}`;
+    const queryParams = new URLSearchParams();
+    if (includeItems !== undefined && includeItems !== null) {
+      queryParams.append('include-items', includeItems);
+    }
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'GET';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Delete a vocab layer.
+   */
+  async _vocabLayersDelete(id) {
+    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Update a vocab layer's name.
+   */
+  async _vocabLayersUpdate(id, name) {
+    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}`;
+    const bodyObj = {
+      "name": name
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'PATCH';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
+   */
+  async _vocabLayersSetConfig(id, namespace, configKey, configValue) {
+    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`;
+    const requestBody = configValue;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'PUT';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove a configuration value for a layer.
+   */
+  async _vocabLayersDeleteConfig(id, namespace, configKey) {
+    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * List all vocab layers accessible to user
+   */
+  async _vocabLayersList(asOf = undefined) {
+    const url = `${this.baseUrl}/api/v1/vocab-layers`;
+    const queryParams = new URLSearchParams();
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'GET';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Create a new vocab layer. Note: this also registers the user as a maintainer.
+   */
+  async _vocabLayersCreate(name) {
+    const url = `${this.baseUrl}/api/v1/vocab-layers`;
+    const bodyObj = {
+      "name": name
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Assign a user as a maintainer for this vocab layer.
+   */
+  async _vocabLayersAddMaintainer(id, userId) {
+    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}/maintainers/${userId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove a user's maintainer privileges for this vocab layer.
+   */
+  async _vocabLayersRemoveMaintainer(id, userId) {
+    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}/maintainers/${userId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
   /**
    * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
@@ -4246,6 +5078,94 @@ name: update a document's name.
   }
 
   /**
+   * Link a vocabulary to a project.
+   */
+  async _projectsLinkVocab(id, vocabId) {
+    const url = `${this.baseUrl}/api/v1/projects/${id}/vocabs/${vocabId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Unlink a vocabulary to a project.
+   */
+  async _projectsUnlinkVocab(id, vocabId) {
+    const url = `${this.baseUrl}/api/v1/projects/${id}/vocabs/${vocabId}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
    * Get a project by ID. If includeDocuments is true, also include document IDs and names.
    */
   async _projectsGet(id, includeDocuments = undefined, asOf = undefined) {
@@ -4925,6 +5845,302 @@ name: update a document's name.
       error.statusText = response.statusText;
       error.url = url;
       error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Replace all metadata for a vocab item. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+   */
+  async _vocabItemsSetMetadata(id, body) {
+    const url = `${this.baseUrl}/api/v1/vocab-items/${id}/metadata`;
+    const bodyObj = {
+      "body": body
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PUT'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'PUT';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Remove all metadata from a vocab item.
+   */
+  async _vocabItemsDeleteMetadata(id) {
+    const url = `${this.baseUrl}/api/v1/vocab-items/${id}/metadata`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Create a new vocab item
+   */
+  async _vocabItemsCreate(vocabLayerId, form, metadata = undefined) {
+    const url = `${this.baseUrl}/api/v1/vocab-items`;
+    const bodyObj = {
+      "vocab-layer-id": vocabLayerId,
+      "form": form,
+      "metadata": metadata
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Get a vocab item by ID
+   */
+  async _vocabItemsGet(id, asOf = undefined) {
+    const url = `${this.baseUrl}/api/v1/vocab-items/${id}`;
+    const queryParams = new URLSearchParams();
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'GET';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Delete a vocab item
+   */
+  async _vocabItemsDelete(id) {
+    const url = `${this.baseUrl}/api/v1/vocab-items/${id}`;
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Update a vocab item's form
+   */
+  async _vocabItemsUpdate(id, form) {
+    const url = `${this.baseUrl}/api/v1/vocab-items/${id}`;
+    const bodyObj = {
+      "form": form
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'PATCH'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
     }

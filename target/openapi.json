@@ -962,6 +962,94 @@
                 ]
             }
         },
+        "/api/v1/projects/{id}/vocabs/{vocab-id}": {
+            "post": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "vocab-id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Link a vocabulary to a project.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ],
+                "x-client-method": "link-vocab"
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "vocab-id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Unlink a vocabulary to a project.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ],
+                "x-client-method": "unlink-vocab"
+            }
+        },
         "/api/v1/projects/{id}/listen": {
             "get": {
                 "parameters": [
@@ -7105,6 +7193,1197 @@
                 ],
                 "x-client-bundle": "bulk",
                 "x-client-method": "submit"
+            }
+        },
+        "/api/v1/vocab-layers": {
+            "get": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "List all vocab layers accessible to user",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            },
+            "post": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+msgpack": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/edn": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Create a new vocab layer. Note: this also registers the user as a maintainer.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/vocab-layers/{id}": {
+            "get": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "include-items",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Get a vocab layer by ID",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Delete a vocab layer.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            },
+            "patch": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+msgpack": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/edn": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Update a vocab layer's name.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/vocab-layers/{id}/maintainers/{user-id}": {
+            "post": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "user-id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Assign a user as a maintainer for this vocab layer.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "user-id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Remove a user's maintainer privileges for this vocab layer.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/vocab-layers/{id}/config/{namespace}/{config-key}": {
+            "put": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "namespace",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "config-key",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {}
+                        },
+                        "application/transit+msgpack": {
+                            "schema": {}
+                        },
+                        "application/transit+json": {
+                            "schema": {}
+                        },
+                        "application/edn": {
+                            "schema": {}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "namespace",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "config-key",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Remove a configuration value for a layer.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/vocab-items": {
+            "post": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "vocab-layer-id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "form": {
+                                        "type": "string"
+                                    },
+                                    "metadata": {
+                                        "type": "object",
+                                        "additionalProperties": {}
+                                    }
+                                },
+                                "required": [
+                                    "vocab-layer-id",
+                                    "form"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+msgpack": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "vocab-layer-id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "form": {
+                                        "type": "string"
+                                    },
+                                    "metadata": {
+                                        "type": "object",
+                                        "additionalProperties": {}
+                                    }
+                                },
+                                "required": [
+                                    "vocab-layer-id",
+                                    "form"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "vocab-layer-id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "form": {
+                                        "type": "string"
+                                    },
+                                    "metadata": {
+                                        "type": "object",
+                                        "additionalProperties": {}
+                                    }
+                                },
+                                "required": [
+                                    "vocab-layer-id",
+                                    "form"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/edn": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "vocab-layer-id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "form": {
+                                        "type": "string"
+                                    },
+                                    "metadata": {
+                                        "type": "object",
+                                        "additionalProperties": {}
+                                    }
+                                },
+                                "required": [
+                                    "vocab-layer-id",
+                                    "form"
+                                ],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Create a new vocab item",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/vocab-items/{id}": {
+            "get": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Get a vocab item by ID",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Delete a vocab item",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            },
+            "patch": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "form": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "form"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+msgpack": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "form": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "form"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "form": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "form"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/edn": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "form": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "form"
+                                ],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Update a vocab item's form",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/vocab-items/{id}/metadata": {
+            "put": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        },
+                        "application/transit+msgpack": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        },
+                        "application/transit+json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        },
+                        "application/edn": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Replace all metadata for a vocab item. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ],
+                "x-client-method": "set-metadata"
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Remove all metadata from a vocab item.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ],
+                "x-client-method": "delete-metadata"
+            }
+        },
+        "/api/v1/vocab-links": {
+            "post": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "document-version",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "vocab-item-id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "tokens": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        }
+                                    },
+                                    "metadata": {
+                                        "type": "object",
+                                        "additionalProperties": {}
+                                    }
+                                },
+                                "required": [
+                                    "vocab-item-id",
+                                    "tokens"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+msgpack": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "vocab-item-id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "tokens": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        }
+                                    },
+                                    "metadata": {
+                                        "type": "object",
+                                        "additionalProperties": {}
+                                    }
+                                },
+                                "required": [
+                                    "vocab-item-id",
+                                    "tokens"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/transit+json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "vocab-item-id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "tokens": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        }
+                                    },
+                                    "metadata": {
+                                        "type": "object",
+                                        "additionalProperties": {}
+                                    }
+                                },
+                                "required": [
+                                    "vocab-item-id",
+                                    "tokens"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "application/edn": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "vocab-item-id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                    },
+                                    "tokens": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        }
+                                    },
+                                    "metadata": {
+                                        "type": "object",
+                                        "additionalProperties": {}
+                                    }
+                                },
+                                "required": [
+                                    "vocab-item-id",
+                                    "tokens"
+                                ],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Create a new vocab link (link between tokens and vocab item).",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/vocab-links/{id}": {
+            "get": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Get a vocab link by ID",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Delete a vocab link",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/vocab-links/{id}/metadata": {
+            "put": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "document-version",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        },
+                        "application/transit+msgpack": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        },
+                        "application/transit+json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        },
+                        "application/edn": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ],
+                "x-client-method": "set-metadata"
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "document-version",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Remove all metadata from a vocab link.",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ],
+                "x-client-method": "delete-metadata"
             }
         }
     }
