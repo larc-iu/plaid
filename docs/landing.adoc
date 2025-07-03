@@ -1,0 +1,252 @@
+= Plaid: Linguistic Annotation Platform
+:author: Luke Gessler
+:lang: en
+:encoding: UTF-8
+:doctype: book
+:toc: left
+:toclevels: 3
+:sectlinks:
+:sectanchors:
+:leveloffset: 1
+:sectnums:
+:imagesdir: assets/images
+:favicon: assets/favicon.ico
+:hide-uri-scheme: 1
+:source-highlighter: coderay
+
+++++
+<div class="hero">
+  <h1>Plaid</h1>
+  <p>A powerful platform for building linguistic annotation applications</p>
+  <a href="manual/index.html" class="button">Get Started</a>
+  <a href="api/index.html" class="button">API Docs</a>
+</div>
+++++
+
+== Overview
+
+Plaid is a Clojure-based platform for building linguistic annotation applications. It provides a REST API for managing hierarchical linguistic data structures with a configurable data model based on composable "layers". Thanks to its immutable database (XTDB), Plaid offers a complete history of all data and comprehensive audit logging.
+
+== Key Features
+
+++++
+<div class="features">
+  <div class="feature">
+    <h3>🔧 Flexible Data Model</h3>
+    <p>Configurable layer system allows you to model any linguistic annotation task, from simple part-of-speech tagging to complex syntactic structures.</p>
+  </div>
+  <div class="feature">
+    <h3>📚 Complete History</h3>
+    <p>Immutable database preserves all changes, allowing you to view any past state of your data and maintain detailed audit logs.</p>
+  </div>
+  <div class="feature">
+    <h3>🚀 REST API</h3>
+    <p>Comprehensive REST API with OpenAPI documentation enables easy integration with custom tools and applications.</p>
+  </div>
+  <div class="feature">
+    <h3>👥 Collaboration</h3>
+    <p>Built-in user management and project-based access control support seamless team collaboration.</p>
+  </div>
+  <div class="feature">
+    <h3>🎯 Type-Safe Clients</h3>
+    <p>Auto-generated client libraries for JavaScript and Python provide type safety and excellent developer experience.</p>
+  </div>
+  <div class="feature">
+    <h3>⚡ Real-time Updates</h3>
+    <p>Changes propagate in real-time across all connected clients for immediate collaboration feedback.</p>
+  </div>
+</div>
+++++
+
+== Architecture
+
+Plaid follows a layered architecture that separates concerns cleanly:
+
+=== Core Technologies
+
+* **Language**: Clojure
+* **Database**: XTDB (immutable, bitemporal)
+* **Web Server**: HTTP-kit with Ring middleware
+* **Routing**: Reitit
+* **Authentication**: JWT tokens
+* **API Documentation**: OpenAPI 3.0
+
+=== Data Model
+
+The data model is built around a hierarchical structure of composable layers:
+
+[source]
+----
+User
+Project
+├── Document
+└── TextLayer
+    └── TokenLayer
+        └── SpanLayer
+            └── RelationLayer
+----
+
+Each layer type holds corresponding annotations and can be configured independently, allowing for flexible modeling of different linguistic phenomena.
+
+== Getting Started
+
+=== Quick Start
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/your-org/plaid.git
+   cd plaid
+   ```
+
+2. **Start the development server**:
+   ```bash
+   clojure -M:dev
+   ```
+
+3. **Access the API**:
+   - Base URL: `http://localhost:8085/api/v1/`
+   - OpenAPI docs: `http://localhost:8085/api/v1/openapi.json`
+
+4. **Run tests**:
+   ```bash
+   clojure -M:test
+   ```
+
+=== Documentation
+
+[cols="2,3,1"]
+|===
+|Resource |Description |Link
+
+|**Technical Manual**
+|Complete user and developer guide covering all aspects of Plaid
+|link:manual/index.html[View Manual]
+
+|**API Reference**
+|Interactive API documentation generated from OpenAPI specification
+|link:api/index.html[View API Docs]
+
+|**Client Libraries**
+|Auto-generated client libraries for JavaScript and Python
+|link:clients/index.html[View Client Docs]
+|===
+
+== Use Cases
+
+Plaid is designed to support a wide range of linguistic annotation tasks:
+
+=== Language Documentation
+- **Interlinear Glossed Text**: Traditional three-line glossing with morpheme-level annotation
+- **Phonetic Transcription**: Multiple representation layers for phonetic and phonological data
+- **Dialectal Variation**: Comparative annotation across language varieties
+
+=== Computational Linguistics
+- **Part-of-Speech Tagging**: Token-level grammatical category annotation
+- **Named Entity Recognition**: Span-level entity identification and classification
+- **Syntactic Parsing**: Hierarchical sentence structure with dependency relations
+- **Coreference Resolution**: Cross-sentence reference chains
+
+=== Corpus Linguistics
+- **Text Classification**: Document-level categorization and metadata
+- **Discourse Analysis**: Multi-level annotation of discourse phenomena
+- **Pragmatic Annotation**: Speaker intentions and conversational structure
+
+== Data Model Deep Dive
+
+=== Layer Types
+
+==== Text Layer
+Holds the primary text content that serves as the foundation for all other annotations. Most projects use a single text layer, though multiple layers are supported for parallel texts or multilingual data.
+
+==== Token Layer
+Defines non-overlapping substrings of text that serve as basic units for further analysis. Typically represents words or morphemes, depending on the annotation granularity required.
+
+==== Span Layer
+Provides annotations over one or more tokens. Spans can have values (plain text or vocabulary items) and support various cardinality constraints. Examples include POS tags, named entities, and translations.
+
+==== Relation Layer
+Defines directed relationships between spans in a single span layer. Essential for syntactic dependencies, coreference chains, and other structured relationships.
+
+==== Vocabularies
+Controlled vocabularies can be associated with span and relation layers to ensure consistent annotation. Support both open (user-extensible) and closed (admin-controlled) vocabularies.
+
+=== Configuration System
+
+Each layer includes a `:config` field for storing arbitrary configuration data, enabling UI customization and behavior specification without code changes:
+
+- **Token layers**: Specify semantic units (words, morphemes, phonemes)
+- **Span layers**: Define cardinality constraints and validation rules
+- **Relation layers**: Specify allowed relation types and constraints
+
+== Development
+
+=== Code Organization
+
+[source]
+----
+src/main/plaid/
+├── server/          # HTTP server, middleware, XTDB config
+├── rest_api/v1/     # REST API endpoint handlers
+├── xtdb/            # Database layer (entity-specific namespaces)
+├── algos/           # Text processing algorithms
+└── config/          # Environment-specific configuration
+----
+
+=== Database Patterns
+
+Plaid uses XTDB's immutable, bitemporal database for all data storage. Key patterns include:
+
+- **Transaction Functions**: Ensure data integrity across related entities
+- **Audit Logging**: Track all changes with detailed operation logs
+- **Temporal Queries**: Access any historical state of the database
+- **Optimistic Concurrency**: Use match operations to prevent conflicts
+
+=== API Design
+
+The REST API follows OpenAPI 3.0 standards and includes:
+
+- **Consistent Resource Naming**: Predictable URL patterns
+- **Comprehensive Error Handling**: Detailed error responses
+- **Temporal Queries**: `as-of` parameter for historical data access
+- **Batch Operations**: Efficient bulk data operations
+
+== Community
+
+=== Getting Help
+
+- **Documentation**: Start with the link:manual/index.html[Technical Manual]
+- **API Reference**: Consult the link:api/index.html[API Documentation]
+- **Issues**: Report bugs on https://github.com/your-org/plaid/issues[GitHub Issues]
+- **Discussions**: Join conversations on https://github.com/your-org/plaid/discussions[GitHub Discussions]
+
+=== Contributing
+
+Plaid is open source and welcomes contributions:
+
+1. **Fork the repository** on GitHub
+2. **Create a feature branch** for your changes
+3. **Write tests** for new functionality
+4. **Submit a pull request** with detailed description
+
+=== License
+
+Plaid is released under the MIT License. See the LICENSE file for details.
+
+== Next Steps
+
+Ready to dive deeper? Here are some recommended next steps:
+
+1. **Read the Manual**: The link:manual/index.html[Technical Manual] provides comprehensive coverage of all Plaid features
+2. **Explore the API**: Try out the interactive link:api/index.html[API Documentation]
+3. **Download Clients**: Get started with the link:clients/index.html[client libraries]
+4. **Join the Community**: Connect with other users and contributors
+
+++++
+<div style="text-align: center; margin-top: 4rem; padding: 2rem; background: #f8f9fa;">
+  <h3>Ready to get started?</h3>
+  <p>Choose your preferred way to explore Plaid:</p>
+  <a href="manual/index.html" class="button">Read the Manual</a>
+  <a href="api/index.html" class="button">Explore the API</a>
+  <a href="clients/index.html" class="button">Get Client Libraries</a>
+</div>
+++++
