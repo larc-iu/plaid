@@ -1,0 +1,22 @@
+= Glam Manual
+:author: Luke Gessler
+:lang: en
+:encoding: UTF-8
+:doctype: book
+:toc: left
+:toclevels: 3
+:sectlinks:
+:sectanchors:
+:leveloffset: 1
+:sectnums:
+:imagesdir: img/src
+:imagesoutdir: img/out
+:favicon: favicon.ico
+:hide-uri-scheme: 1
+:source-highlighter: coderay
+
+= Introduction
+
+Stub, link to link:book.adoc[book].
+
+
