@@ -225,7 +225,7 @@ export const TextEditor = () => {
         if (part.trim()) {
           proposedTokens.push({
             tokenLayerId: tokenLayer.id,
-            textId: text.id,
+            text: text.id,
             begin: currentIndex,
             end: currentIndex + part.length,
           });
