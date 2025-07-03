@@ -1,9 +1,10 @@
+import sys
 import stanza
 import requests
 from client import PlaidClient
 
 
-def get_client(api_url="http://localhost:8085"):
+def get_client(api_url):
     try:
         with open(".token", "r") as f:
             token = f.read()
@@ -352,7 +353,17 @@ def parse_document(pipeline, client, document_id, text_content):
 
 
 def main():
-    client = get_client()
+    if len(sys.argv) < 2:
+        print("Usage: `python parser_service.py PROJECT_ID [URL]`", file=sys.stderr)
+        sys.exit(1)
+    client = get_client(sys.argv[2] if len(sys.argv) > 2 else "http://localhost:8085")
+    target_project_id = sys.argv[1]
+    try:
+        client.projects.get(target_project_id)
+    except requests.exceptions.HTTPError as e:
+        print(f"Invalid project ID {target_project_id}: {e}", file=sys.stderr)
+        sys.exit(1)
+
     pipeline = stanza.Pipeline(
             'en',
             processors='tokenize,pos,lemma,depparse',
@@ -410,8 +421,6 @@ def main():
                     client.projects.send_message(project_id, f"parse-error:{document_id}:{e}")
                     raise(e)
 
-
-    target_project_id = "23f9cb87-c5e0-4081-b389-8e6ba00d6367"
     # Start by listening to a sample project (you can remove this hardcoded ID)
     print(f"Starting NLP service, listening to project {target_project_id}")
     connection = client.projects.listen(target_project_id, on_event)
