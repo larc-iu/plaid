@@ -40,73 +40,136 @@ function parseJSDoc(content) {
 // Parse Python docstrings
 function parsePythonDoc(content) {
   const methods = [];
-  const methodRegex = /def (\w+)\([^)]*\):[^"]*"""([^"]*(?:"""|$))/g;
-  let match;
+  const lines = content.split('\n');
   
-  while ((match = methodRegex.exec(content)) !== null) {
-    const [, methodName, docContent] = match;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const defMatch = line.match(/^\s*(?:async )?def (\w+)\([^)]*\)(?:\s*->\s*[^:]+)?:/);
     
-    if (methodName.startsWith('_')) continue; // Skip private methods
-    
-    const lines = docContent.split('\n').map(line => line.trim());
-    const description = lines[0] || '';
-    
-    // Extract parameters from Args section
-    const params = [];
-    const argsIndex = lines.findIndex(line => line === 'Args:');
-    
-    if (argsIndex !== -1) {
-      for (let i = argsIndex + 1; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line || line.endsWith(':')) break;
+    if (defMatch) {
+      const methodName = defMatch[1];
+      
+      if (methodName.startsWith('_') || methodName === '__init__') continue; // Skip private methods
+      if (line.includes('async def') || methodName.endsWith('_async')) continue; // Skip async duplicates
+      
+      // Look for docstring on the next lines
+      let docstringStart = -1;
+      let docstringEnd = -1;
+      
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        if (lines[j].trim().startsWith('"""')) {
+          docstringStart = j;
+          break;
+        }
+      }
+      
+      if (docstringStart !== -1) {
+        // Find end of docstring
+        for (let j = docstringStart; j < lines.length; j++) {
+          if (j > docstringStart && lines[j].trim().endsWith('"""')) {
+            docstringEnd = j;
+            break;
+          }
+        }
         
-        const paramMatch = line.match(/^(\w+):\s*(.*)/);
-        if (paramMatch) {
-          const [, name, desc] = paramMatch;
-          params.push({
-            name: name,
-            type: 'Any', // Python client uses Any for most types
-            optional: desc.includes('Optional'),
-            description: desc
+        if (docstringEnd !== -1) {
+          // Extract docstring content
+          const docLines = lines.slice(docstringStart, docstringEnd + 1)
+            .map(line => line.trim())
+            .map(line => line.replace(/^"""/, '').replace(/"""$/, ''));
+          
+          const description = docLines.find(line => line && !line.startsWith('Args:')) || '';
+          
+          // Extract parameters from Args section
+          const params = [];
+          const argsIndex = docLines.findIndex(line => line === 'Args:');
+          
+          if (argsIndex !== -1) {
+            for (let k = argsIndex + 1; k < docLines.length; k++) {
+              const paramLine = docLines[k];
+              if (!paramLine || paramLine.endsWith(':')) break;
+              
+              const paramMatch = paramLine.match(/^(\w+):\s*(.*)/);
+              if (paramMatch) {
+                const [, name, desc] = paramMatch;
+                params.push({
+                  name: name,
+                  type: 'Any',
+                  optional: desc.includes('Optional'),
+                  description: desc
+                });
+              }
+            }
+          }
+          
+          // Try to infer bundle from surrounding class context
+          let bundleName = 'misc';
+          
+          // Look backwards to find the class this method belongs to
+          for (let k = i - 1; k >= 0; k--) {
+            const classMatch = lines[k].match(/^class (\w+):/);
+            if (classMatch) {
+              const className = classMatch[1];
+              if (className.endsWith('Resource')) {
+                bundleName = className.replace('Resource', '').toLowerCase();
+              }
+              break;
+            }
+          }
+          
+          methods.push({ 
+            name: methodName, 
+            description, 
+            params,
+            bundle: bundleName 
           });
         }
       }
     }
-    
-    methods.push({ name: methodName, description, params });
   }
   
   return methods;
 }
 
 // Group methods by API bundle
-function groupByBundle(methods) {
+function groupByBundle(methods, isPython = false) {
   const bundles = {};
   
-  // Extract bundle names from the structure
-  const bundleNames = [
-    'vocabLinks', 'vocabLayers', 'relations', 'spanLayers', 'spans',
-    'tokenLayers', 'tokens', 'textLayers', 'texts', 'documents', 
-    'projects', 'users', 'audit'
-  ];
-  
-  // For this simple approach, we'll group by common prefixes
-  methods.forEach(method => {
-    let bundleName = 'misc';
-    
-    // Try to match method name to bundle
-    for (const bundle of bundleNames) {
-      if (method.name.toLowerCase().includes(bundle.toLowerCase().replace(/s$/, ''))) {
-        bundleName = bundle;
-        break;
+  if (isPython) {
+    // For Python, use the bundle info from the method
+    methods.forEach(method => {
+      const bundleName = method.bundle || 'misc';
+      
+      if (!bundles[bundleName]) {
+        bundles[bundleName] = [];
       }
-    }
+      bundles[bundleName].push(method);
+    });
+  } else {
+    // For JavaScript, group by common prefixes
+    const bundleNames = [
+      'vocabLinks', 'vocabLayers', 'relations', 'spanLayers', 'spans',
+      'tokenLayers', 'tokens', 'textLayers', 'texts', 'documents', 
+      'projects', 'users', 'audit'
+    ];
     
-    if (!bundles[bundleName]) {
-      bundles[bundleName] = [];
-    }
-    bundles[bundleName].push(method);
-  });
+    methods.forEach(method => {
+      let bundleName = 'misc';
+      
+      // Try to match method name to bundle
+      for (const bundle of bundleNames) {
+        if (method.name.toLowerCase().includes(bundle.toLowerCase().replace(/s$/, ''))) {
+          bundleName = bundle;
+          break;
+        }
+      }
+      
+      if (!bundles[bundleName]) {
+        bundles[bundleName] = [];
+      }
+      bundles[bundleName].push(method);
+    });
+  }
   
   return bundles;
 }
@@ -192,20 +255,25 @@ function main() {
   // Process JavaScript client
   const jsContent = fs.readFileSync(path.join(clientsDir, 'client.js'), 'utf8');
   const jsMethods = parseJSDoc(jsContent);
-  const jsBundles = groupByBundle(jsMethods);
+  const jsBundles = groupByBundle(jsMethods, false);
   const jsHTML = generateHTML('JavaScript API Documentation', jsBundles);
   fs.writeFileSync(path.join(outputDir, 'api-js.html'), jsHTML);
   
   // Process Python client
   const pyContent = fs.readFileSync(path.join(clientsDir, 'client.py'), 'utf8');
   const pyMethods = parsePythonDoc(pyContent);
-  const pyBundles = groupByBundle(pyMethods);
+  const pyBundles = groupByBundle(pyMethods, true);
   const pyHTML = generateHTML('Python API Documentation', pyBundles);
   fs.writeFileSync(path.join(outputDir, 'api-py.html'), pyHTML);
   
   console.log('API documentation generated successfully!');
   console.log(`- JavaScript: ${jsMethods.length} methods`);
   console.log(`- Python: ${pyMethods.length} methods`);
+  
+  // Debug: show first few Python methods
+  if (pyMethods.length > 0) {
+    console.log('First Python method:', pyMethods[0]);
+  }
 }
 
 if (require.main === module) {
