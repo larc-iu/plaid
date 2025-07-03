@@ -75,7 +75,9 @@
                                         (some? precedence) (assoc :token/precedence precedence))
                                 result (tok/create {:node xtdb} attrs user-id metadata)]
                             (if (:success result)
-                              {:status 201 :body {:id (:extra result)}}
+                              (prm/assoc-document-versions-in-header
+                                {:status 201 :body {:id (:extra result)}}
+                                result)
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
@@ -106,14 +108,16 @@
                                                                                :token/text text
                                                                                :token/begin begin
                                                                                :token/end end}
-                                                                        (some? precedence) (assoc :token/precedence precedence))]
+                                                                              (some? precedence) (assoc :token/precedence precedence))]
                                                             (if metadata
                                                               (assoc attrs :metadata metadata)
                                                               attrs)))
                                                         tokens)
                                      result (tok/bulk-create {:node xtdb} tokens-attrs user-id)]
                                  (if (:success result)
-                                   {:status 201 :body {:ids (:extra result)}}
+                                   (prm/assoc-document-versions-in-header
+                                     {:status 201 :body {:ids (:extra result)}}
+                                     result)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple tokens in a single operation. Provide an array of IDs."
                       :openapi {:x-client-method "bulkDelete"}
@@ -122,9 +126,11 @@
                       :parameters {:query [:map [:document-version {:optional true} :uuid]]
                                    :body [:sequential :uuid]}
                       :handler (fn [{{token-ids :body} :parameters xtdb :xtdb user-id :user/id}]
-                                 (let [{:keys [success code error]} (tok/bulk-delete {:node xtdb} token-ids user-id)]
+                                 (let [{:keys [success code error] :as result} (tok/bulk-delete {:node xtdb} token-ids user-id)]
                                    (if success
-                                     {:status 204}
+                                     (prm/assoc-document-versions-in-header
+                                       {:status 204}
+                                       result)
                                      {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
    ["/:token-id"
@@ -152,12 +158,14 @@
                                      [:precedence {:optional true} int?]]}
                  :handler (fn [{{{:keys [token-id]} :path {:keys [begin end precedence]} :body} :parameters xtdb :xtdb user-id :user/id}]
                             (let [raw-attrs (cond-> {}
-                                              (some? begin) (assoc :token/begin begin)
-                                              (some? end) (assoc :token/end end)
-                                              (some? precedence) (assoc :token/precedence precedence))
-                                  {success :success code :code error :error} (tok/merge {:node xtdb} token-id raw-attrs user-id)]
+                                                    (some? begin) (assoc :token/begin begin)
+                                                    (some? end) (assoc :token/end end)
+                                                    (some? precedence) (assoc :token/precedence precedence))
+                                  {success :success code :code error :error :as result} (tok/merge {:node xtdb} token-id raw-attrs user-id)]
                               (if success
-                                {:status 200 :body (tok/get xtdb token-id)}
+                                (prm/assoc-document-versions-in-header
+                                  {:status 200 :body (tok/get xtdb token-id)}
+                                  result)
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary (str "Delete a token and remove it from any spans. If this causes the span to have no "
                                 "remaining associated tokens, the span will also be deleted.")
@@ -165,9 +173,11 @@
                                [prm/wrap-document-version get-document-id]]
                   :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :handler (fn [{{{:keys [token-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error]} (tok/delete {:node xtdb} token-id user-id)]
+                             (let [{:keys [success code error] :as result} (tok/delete {:node xtdb} token-id user-id)]
                                (if success
-                                 {:status 204}
+                                 (prm/assoc-document-versions-in-header
+                                   {:status 204}
+                                   result)
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations

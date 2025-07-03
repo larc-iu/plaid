@@ -2257,13 +2257,13 @@
       ;; Add user2 as vocab maintainer but not project member
       (assert-no-content (add-vocab-maintainer admin-request vocab-id "user2@example.com"))
 
-      ;; User1 has project write but no vocab read - should fail
+      ;; User1 has project write but the vocab is not linked - should fail
       (assert-status 403 (create-vocab-link user1-request item-id [token1-id]))
 
       ;; User2 has vocab read but no project write - should fail
       (assert-status 403 (create-vocab-link user2-request item-id [token1-id]))
 
-      ;; Add vocab to project so user1 gets vocab read access
+      ;; Add vocab to project so user1 gets vocab access
       (let [update-proj-res (api-call admin-request {:method :post
                                                      :path (str "/api/v1/projects/" proj-id "/vocabs/" vocab-id)})]
         (assert-no-content update-proj-res))
@@ -2294,7 +2294,7 @@
     (testing "Vocab link edge cases"
       ;; Create link to non-existent vocab item
       (let [fake-item-id (java.util.UUID/randomUUID)]
-        (assert-status 403 (create-vocab-link admin-request fake-item-id [token1-id])))
+        (assert-bad-request (create-vocab-link admin-request fake-item-id [token1-id])))
 
       ;; Create link to non-existent token
       (let [fake-token-id (java.util.UUID/randomUUID)]

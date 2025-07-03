@@ -87,6 +87,14 @@
       first
       first))
 
+(defn get-vocab-layer [db-like id]
+  (ffirst (xt/q (pxc/->db db-like)
+                '{:find [?vlayer]
+                  :where [[?vi :vocab-item/layer ?vlayer]
+                          [?vl :vocab-link/vocab-item ?vi]]
+                  :in [?vl]}
+                id)))
+
 ;; writes --------------------------------------------------------------------------------
 (defn create*
   [{:keys [db]} attrs]
@@ -100,7 +108,7 @@
     (let [item (pxc/entity db vocab-item)]
       (when-not item
         (throw (ex-info (pxc/err-msg-not-found "Vocab item" vocab-item)
-                        {:code 404 :id vocab-item}))))
+                        {:code 400 :id vocab-item}))))
 
     ;; Validate 1 or more tokens referenced
     (when (or (empty? tokens)
@@ -113,7 +121,7 @@
       (doseq [[token-id token-record] (map vector tokens token-records)]
         (when-not token-record
           (throw (ex-info (pxc/err-msg-not-found "Token" token-id)
-                          {:code 404 :id token-id}))))
+                          {:code 400 :id token-id}))))
       ;; Validate tokens all belong to the same layer
       (when (> (->> token-records
                     (map :token/layer)

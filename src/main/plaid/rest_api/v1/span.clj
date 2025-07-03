@@ -81,8 +81,10 @@
                                        :span/value value}
                                 result (s/create {:node xtdb} attrs user-id metadata)]
                             (if (:success result)
-                              {:status 201 :body {:id (:extra result)}}
-                              {:status (or (:code result) 400) :body {:error (:error result)}})))}}]
+                              (prm/assoc-document-versions-in-header
+                                {:status 201 :body {:id (:extra result)}}
+                                result)
+                              {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
              :post {:summary (str "Create multiple spans in a single operation. Provide an array of objects whose keys"
@@ -113,7 +115,9 @@
                                                        spans)
                                      result (s/bulk-create {:node xtdb} spans-attrs user-id)]
                                  (if (:success result)
-                                   {:status 201 :body {:ids (:extra result)}}
+                                   (prm/assoc-document-versions-in-header
+                                     {:status 201 :body {:ids (:extra result)}}
+                                     result)
                                    {:status (or (:code result) 500)
                                     :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple spans in a single operation. Provide an array of IDs."
@@ -123,9 +127,11 @@
                       :parameters {:query [:map [:document-version {:optional true} :uuid]]
                                    :body [:sequential :uuid]}
                       :handler (fn [{{span-ids :body} :parameters xtdb :xtdb user-id :user/id}]
-                                 (let [{:keys [success code error]} (s/bulk-delete {:node xtdb} span-ids user-id)]
+                                 (let [{:keys [success code error] :as result} (s/bulk-delete {:node xtdb} span-ids user-id)]
                                    (if success
-                                     {:status 204}
+                                     (prm/assoc-document-versions-in-header
+                                       {:status 204}
+                                       result)
                                      {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
    ;; Operations on a single span
@@ -145,18 +151,22 @@
                               :body [:map
                                      [:value [:or string? number? boolean? nil?]]]}
                  :handler (fn [{{{:keys [span-id]} :path {:keys [value]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                            (let [{:keys [success code error]} (s/merge {:node xtdb} span-id {:span/value value} user-id)]
+                            (let [{:keys [success code error] :as result} (s/merge {:node xtdb} span-id {:span/value value} user-id)]
                               (if success
-                                {:status 200 :body (s/get xtdb span-id)}
+                                (prm/assoc-document-versions-in-header
+                                  {:status 200 :body (s/get xtdb span-id)}
+                                  result)
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a span."
                   :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
                   :handler (fn [{{{:keys [span-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error]} (s/delete {:node xtdb} span-id user-id)]
+                             (let [{:keys [success code error] :as result} (s/delete {:node xtdb} span-id user-id)]
                                (if success
-                                 {:status 204}
+                                 (prm/assoc-document-versions-in-header
+                                   {:status 204}
+                                   result)
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ;; Replace tokens on a span
@@ -167,9 +177,11 @@
                       :parameters {:body [:map [:tokens [:vector uuid?]]]
                                    :query [:map [:document-version {:optional true} :uuid]]}
                       :handler (fn [{{{:keys [span-id]} :path {:keys [tokens]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                                 (let [{:keys [success code error]} (s/set-tokens {:node xtdb} span-id tokens user-id)]
+                                 (let [{:keys [success code error] :as result} (s/set-tokens {:node xtdb} span-id tokens user-id)]
                                    (if success
-                                     {:status 200 :body (s/get xtdb span-id)}
+                                     (prm/assoc-document-versions-in-header
+                                       {:status 200 :body (s/get xtdb span-id)}
+                                       result)
                                      {:status (or code 400) :body {:error (or error "Failed to set span tokens")}})))}}]
 
     ;; Metadata operations

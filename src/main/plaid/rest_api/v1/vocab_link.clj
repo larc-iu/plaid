@@ -4,6 +4,7 @@
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
             [plaid.xtdb.vocab-link :as vocab-link]
+            [plaid.xtdb.vocab-item :as vocab-item]
             [plaid.xtdb.vocab-layer :as vocab-layer]
             [plaid.xtdb.user :as user]))
 
@@ -40,7 +41,7 @@
 (defn- user-can-access-vocab-item?
   "Check if user can access a vocab item (read access to its vocab layer)"
   [xtdb vocab-item-id user-id]
-  (let [vocab-item (plaid.xtdb.vocab-item/get xtdb vocab-item-id)]
+  (let [vocab-item (vocab-item/get xtdb vocab-item-id)]
     (when vocab-item
       (let [vocab-layer-id (:vocab-item/layer vocab-item)
             admin? (user/admin? (user/get xtdb user-id))
@@ -48,11 +49,18 @@
             accessible? (vocab-layer/accessible-through-project? xtdb vocab-layer-id user-id)]
         (or admin? maintainer? accessible?)))))
 
+(defn get-vocab-id-from-vocab-item-body [{:keys [db parameters]}]
+  (->> parameters :body :vocab-item-id (vocab-item/get db) :vocab-item/layer))
+
+(defn get-vocab-id-from-vocab-link-path [{:keys [db parameters]}]
+  (->> parameters :path :id (vocab-link/get-vocab-layer db)))
+
 (def vocab-link-routes
   ["/vocab-links"
    [""
     {:post {:summary "Create a new vocab link (link between tokens and vocab item)."
-            :middleware [[pra/wrap-writer-required get-project-id-from-tokens]
+            :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-vocab-item-body]
+                         [pra/wrap-writer-required get-project-id-from-tokens]
                          [prm/wrap-document-version get-document-id-from-tokens]]
             :parameters {:query [:map [:document-version {:optional true} :uuid]]
                          :body [:map
@@ -62,23 +70,22 @@
             :handler (fn [{{{:keys [vocab-item-id tokens metadata]} :body} :parameters
                            xtdb :xtdb
                            user-id :user/id :as req}]
-                       ;; Additional check: user must have read access to the vocab item
-                       (if (user-can-access-vocab-item? xtdb vocab-item-id user-id)
-                         (let [attrs {:vocab-link/vocab-item vocab-item-id
-                                      :vocab-link/tokens tokens}
-                               result (vocab-link/create {:node xtdb} attrs user-id metadata)]
-                           (if (:success result)
+                       (let [attrs {:vocab-link/vocab-item vocab-item-id
+                                    :vocab-link/tokens tokens}
+                             result (vocab-link/create {:node xtdb} attrs user-id metadata)]
+                         (if (:success result)
+                           (prm/assoc-document-versions-in-header
                              {:status 201
                               :body {:id (:extra result)}}
-                             {:status (or (:code result) 500)
-                              :body {:error (:error result)}}))
-                         {:status 403
-                          :body {:error "Insufficient privileges to access the specified vocab item"}}))}}]
+                             result)
+                           {:status (or (:code result) 500)
+                            :body {:error (:error result)}})))}}]
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}}
 
     ["" {:get {:summary "Get a vocab link by ID"
-               :middleware [[pra/wrap-reader-required get-project-id-from-vocab-link]]
+               :middleware [[pra/wrap-vocab-reader-required get-vocab-id-from-vocab-link-path]
+                            [pra/wrap-reader-required get-project-id-from-vocab-link]]
                :handler (fn [{{{:keys [id]} :path} :parameters
                               db :db :as req}]
                           (let [vocab-link-record (vocab-link/get db id)]
@@ -89,13 +96,18 @@
                                :body {:error "vocab link not found"}})))}
 
          :delete {:summary "Delete a vocab link"
-                  :middleware [[pra/wrap-writer-required get-project-id-from-vocab-link]]
+                  :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-vocab-link-path]
+                               [pra/wrap-writer-required get-project-id-from-vocab-link]
+                               [prm/wrap-document-version get-document-id-from-tokens]]
+                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :handler (fn [{{{:keys [id]} :path} :parameters
                                  xtdb :xtdb
                                  user-id :user/id :as req}]
-                             (let [{:keys [success code error]} (vocab-link/delete {:node xtdb} id user-id)]
+                             (let [{:keys [success code error] :as result} (vocab-link/delete {:node xtdb} id user-id)]
                                (if success
-                                 {:status 204}
+                                 (prm/assoc-document-versions-in-header
+                                   {:status 204}
+                                   result)
                                  {:status (or code 500)
                                   :body {:error (or error "Internal server error")}})))}}]
 

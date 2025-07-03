@@ -29,18 +29,22 @@
                           :body [:map-of string? any?]}
              :handler    (fn [{{path-params :path metadata :body} :parameters xtdb :xtdb user-id :user/id}]
                            (let [entity-id (get path-params entity-id-key)
-                                 {:keys [success code error]} (entity-set-metadata-fn {:node xtdb} entity-id metadata user-id)]
+                                 {:keys [success code error] :as result} (entity-set-metadata-fn {:node xtdb} entity-id metadata user-id)]
                              (if success
-                               {:status 200 :body (entity-get-fn xtdb entity-id)}
+                               (prm/assoc-document-versions-in-header
+                                 {:status 200 :body (entity-get-fn xtdb entity-id)}
+                                 result)
                                {:status (or code 500) :body {:error (or error "Internal server error")}})))}
-    :delete {:summary    (str "Remove all metadata from a " entity-type ".")
+    :delete {:summary (str "Remove all metadata from a " entity-type ".")
              :middleware [[pra/wrap-writer-required get-project-id-fn]
                           [prm/wrap-document-version get-document-id-fn]]
              :parameters {:query [:map [:document-version {:optional true} :uuid]]}
-             :openapi    {:x-client-method "delete-metadata"}
-             :handler    (fn [{{path-params :path} :parameters xtdb :xtdb user-id :user/id}]
-                           (let [entity-id (get path-params entity-id-key)
-                                 {:keys [success code error]} (entity-delete-metadata-fn {:node xtdb} entity-id user-id)]
-                             (if success
-                               {:status 200 :body (entity-get-fn xtdb entity-id)}
-                               {:status (or code 500) :body {:error (or error "Internal server error")}})))}}])
+             :openapi {:x-client-method "delete-metadata"}
+             :handler (fn [{{path-params :path} :parameters xtdb :xtdb user-id :user/id}]
+                        (let [entity-id (get path-params entity-id-key)
+                              {:keys [success code error] :as result} (entity-delete-metadata-fn {:node xtdb} entity-id user-id)]
+                          (if success
+                            (prm/assoc-document-versions-in-header
+                              {:status 200 :body (entity-get-fn xtdb entity-id)}
+                              result)
+                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}])
