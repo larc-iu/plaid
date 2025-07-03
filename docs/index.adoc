@@ -1,5 +1,4 @@
 = Plaid
-:author: Luke Gessler
 :lang: en
 :encoding: UTF-8
 :doctype: book
