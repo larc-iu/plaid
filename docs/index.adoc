@@ -17,6 +17,7 @@
 
 = Introduction
 
-Stub, link to link:book.adoc[book].
+Stub, link to link:book.html[book].
 
 
+ 
