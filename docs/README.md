@@ -72,6 +72,12 @@ The build script requires several tools to be installed:
 - Python 3.x (for Python docs)
 - Ruby gems: coderay (for syntax highlighting)
 
+### Environment Variables
+
+The build process supports the following environment variables:
+
+- `SKIP_ACCOUNT_CREATION_PROMPT`: Set to `"true"` to skip the interactive account creation prompt when starting the server. This is automatically set in the GitHub Actions workflow and local build script.
+
 ### Manual Build Steps
 
 If you need to build documentation manually or debug the process:

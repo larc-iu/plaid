@@ -86,8 +86,7 @@ jobs:
 
       - name: Install documentation dependencies
         run: |
-          npm install -g swagger-ui-cli
-          npm install -g @apidevtools/swagger-parser
+          # No npm packages needed - using CDN for Swagger UI
 
       - name: Setup Python for documentation tools
         uses: actions/setup-python@v4
@@ -118,7 +117,45 @@ jobs:
       - name: Generate API documentation
         run: |
           # Create API documentation from OpenAPI spec
-          swagger-ui-cli -f target/openapi.json -o docs-build/api/
+          mkdir -p docs-build/api/swagger-ui
+          
+          # Create a simple Swagger UI setup
+          cat > docs-build/api/swagger-ui/index.html << 'SWAGGEREOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Plaid API Documentation</title>
+            <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
+            <style>
+              html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+              *, *:before, *:after { box-sizing: inherit; }
+              body { margin:0; background: #fafafa; }
+            </style>
+          </head>
+          <body>
+            <div id="swagger-ui"></div>
+            <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+            <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
+            <script>
+              window.onload = function() {
+                const ui = SwaggerUIBundle({
+                  url: '../../openapi.json',
+                  dom_id: '#swagger-ui',
+                  deepLinking: true,
+                  presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                  ],
+                  plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                  ],
+                  layout: "StandaloneLayout"
+                });
+              };
+            </script>
+          </body>
+          </html>
+          SWAGGEREOF
           
           # Create a simple API index page
           cat > docs-build/api/index.html << 'EOF'
@@ -138,7 +175,7 @@ jobs:
             <div class="container">
               <h1>Plaid API Documentation</h1>
               <p>Interactive API documentation generated from the OpenAPI specification.</p>
-              <a href="swagger-ui.html" class="button">View Interactive API Docs</a>
+              <a href="swagger-ui/index.html" class="button">View Interactive API Docs</a>
             </div>
           </body>
           </html>
