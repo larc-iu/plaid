@@ -35,9 +35,9 @@
   "Enriches the request object with :db, which will hold either the current or an historical state of the database."
   [handler]
   (fn [request]
-    (let [as-of (get-in request [:parameters :as-of])
+    (let [as-of (get-in request [:parameters :query :as-of])
           db (if as-of
-               (xt/db (:xtdb request) (instant/read-instant-date as-of))
+               (xt/db (:xtdb request) as-of)
                (xt/db (:xtdb request)))]
 
       (cond
@@ -47,9 +47,6 @@
         ;; later on in the implementation of permissions checking, so we will just reject any write with an as-of.
         (and as-of (not= (:request-method request) :get))
         {:status 400 :body {:error "as-of query parameter is only allowed with GETs"}}
-
-        as-of
-        (handler (assoc request :db (xt/db (:xtdb request) (instant/read-instant-date as-of))))
 
         :else
         (handler (assoc request :db db))))))
