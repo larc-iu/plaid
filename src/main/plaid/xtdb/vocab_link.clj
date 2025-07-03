@@ -209,23 +209,6 @@
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
 
 ;; Metadata operations ----------------------------------------------------------------
-(defn set-metadata*
-  "Build transaction ops for replacing all metadata on a vocab-link"
-  [xt-map eid metadata]
-  (metadata/set-metadata-tx-ops* xt-map eid metadata "vocab-link"))
-
-(defn set-metadata-operation
-  "Build an operation for replacing all metadata on a vocab-link"
-  [xt-map eid metadata]
-  (letfn [(project-id-fn [db eid]
-            (let [vocab-link (pxc/entity db eid)
-                  first-token-id (first (:vocab-link/tokens vocab-link))]
-              (when first-token-id (project-id-from-token db first-token-id))))
-          (document-id-fn [db vocab-link]
-            (let [first-token-id (first (:vocab-link/tokens vocab-link))]
-              (when first-token-id (document-id-from-token db first-token-id))))]
-    (metadata/make-set-metadata-operation xt-map eid metadata "vocab-link" project-id-fn document-id-fn)))
-
 (defn set-metadata [xt-map eid metadata user-id]
   (letfn [(project-id-fn [db eid]
             (let [vocab-link (pxc/entity db eid)
@@ -235,23 +218,6 @@
             (let [first-token-id (first (:vocab-link/tokens vocab-link))]
               (when first-token-id (document-id-from-token db first-token-id))))]
     (metadata/set-metadata xt-map eid metadata user-id "vocab-link" project-id-fn document-id-fn)))
-
-(defn delete-metadata*
-  "Build transaction ops for removing all metadata from a vocab-link"
-  [xt-map eid]
-  (metadata/delete-metadata-tx-ops* xt-map eid "vocab-link"))
-
-(defn delete-metadata-operation
-  "Build an operation for removing all metadata from a vocab-link"
-  [xt-map eid]
-  (letfn [(project-id-fn [db eid]
-            (let [vocab-link (pxc/entity db eid)
-                  first-token-id (first (:vocab-link/tokens vocab-link))]
-              (when first-token-id (project-id-from-token db first-token-id))))
-          (document-id-fn [db vocab-link]
-            (let [first-token-id (first (:vocab-link/tokens vocab-link))]
-              (when first-token-id (document-id-from-token db first-token-id))))]
-    (metadata/make-delete-metadata-operation xt-map eid "vocab-link" project-id-fn document-id-fn)))
 
 (defn delete-metadata [xt-map eid user-id]
   (letfn [(project-id-fn [db eid]
