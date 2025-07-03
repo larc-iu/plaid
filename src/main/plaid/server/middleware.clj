@@ -64,7 +64,9 @@
                resources-path)
         (let [file-path (subs uri 1)
               ;; If URI ends with /, try to serve index.html from that directory
-              actual-path (if (or (= file-path "") (str/ends-with? file-path "/"))
+              actual-path (if (or (= file-path "")
+                                  (nil? file-path)
+                                  (str/ends-with? file-path "/"))
                             (str file-path "index.html")
                             file-path)
               file (io/file resources-path actual-path)]
