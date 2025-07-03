@@ -1525,6 +1525,15 @@
                         }
                     },
                     {
+                        "in": "query",
+                        "name": "document-version",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
                         "in": "path",
                         "name": "document-id",
                         "required": true,
@@ -1555,6 +1564,15 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "document-version",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
                         }
                     },
                     {
@@ -8245,6 +8263,15 @@
                         "schema": {
                             "type": "string",
                             "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "document-version",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
                         }
                     },
                     {

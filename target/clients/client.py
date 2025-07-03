@@ -1,11 +1,12 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Wed Jul 02 22:10:43 EDT 2025
+Generated on: Thu Jul 03 13:20:36 EDT 2025
 """
 
 import requests
 import aiohttp
+import json
 from typing import Any, Dict, List, Optional, Union, Callable
 
 
@@ -17,7 +18,7 @@ class VocabLinksResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def create(self, vocab_item_id: str, tokens: List[Any], metadata: Any = None, document_version: str = None) -> Any:
+    def create(self, vocab_item_id: str, tokens: List[Any], metadata: Any = None) -> Any:
         """
         Create a new vocab link (link between tokens and vocab item).
 
@@ -25,7 +26,6 @@ class VocabLinksResource:
             vocab_item_id: Required body parameter
             tokens: Required body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links"
         params = {}
@@ -47,6 +47,17 @@ class VocabLinksResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -62,12 +73,15 @@ class VocabLinksResource:
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, vocab_item_id: str, tokens: List[Any], metadata: Any = None, document_version: str = None) -> Any:
+    async def create_async(self, vocab_item_id: str, tokens: List[Any], metadata: Any = None) -> Any:
         """
         Create a new vocab link (link between tokens and vocab item).
 
@@ -75,7 +89,6 @@ class VocabLinksResource:
             vocab_item_id: Required body parameter
             tokens: Required body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links"
         params = {}
@@ -97,6 +110,17 @@ class VocabLinksResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -113,20 +137,22 @@ class VocabLinksResource:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def set_metadata(self, id: str, body: Any, document_version: str = None) -> Any:
+    def set_metadata(self, id: str, body: Any) -> Any:
         """
         Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
         params = {}
@@ -146,6 +172,17 @@ class VocabLinksResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -161,19 +198,21 @@ class VocabLinksResource:
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, id: str, body: Any, document_version: str = None) -> Any:
+    async def set_metadata_async(self, id: str, body: Any) -> Any:
         """
         Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
         params = {}
@@ -193,6 +232,17 @@ class VocabLinksResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -209,19 +259,21 @@ class VocabLinksResource:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, id: str, document_version: str = None) -> Any:
+    def delete_metadata(self, id: str) -> Any:
         """
         Remove all metadata from a vocab link.
 
         Args:
             id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
         params = {}
@@ -235,6 +287,17 @@ class VocabLinksResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -249,18 +312,20 @@ class VocabLinksResource:
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, id: str, document_version: str = None) -> Any:
+    async def delete_metadata_async(self, id: str) -> Any:
         """
         Remove all metadata from a vocab link.
 
         Args:
             id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
         params = {}
@@ -275,6 +340,17 @@ class VocabLinksResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -288,6 +364,9 @@ class VocabLinksResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -316,6 +395,17 @@ class VocabLinksResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -328,6 +418,9 @@ class VocabLinksResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -355,6 +448,17 @@ class VocabLinksResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -368,6 +472,9 @@ class VocabLinksResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -383,9 +490,28 @@ class VocabLinksResource:
             id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -400,6 +526,9 @@ class VocabLinksResource:
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
@@ -413,9 +542,28 @@ class VocabLinksResource:
             id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -430,6 +578,9 @@ class VocabLinksResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -470,6 +621,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -482,6 +644,9 @@ class VocabLayersResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -512,6 +677,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -525,6 +701,9 @@ class VocabLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -544,6 +723,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -556,6 +746,9 @@ class VocabLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -574,6 +767,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -587,6 +791,9 @@ class VocabLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -613,6 +820,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -626,6 +844,9 @@ class VocabLayersResource:
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -651,6 +872,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -665,6 +897,9 @@ class VocabLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -688,6 +923,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -701,6 +947,9 @@ class VocabLayersResource:
         
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -723,6 +972,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -737,6 +997,9 @@ class VocabLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -758,6 +1021,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -770,6 +1044,9 @@ class VocabLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -790,6 +1067,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -803,6 +1091,9 @@ class VocabLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -830,6 +1121,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -842,6 +1144,9 @@ class VocabLayersResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -868,6 +1173,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -881,6 +1197,9 @@ class VocabLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -906,6 +1225,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -919,6 +1249,9 @@ class VocabLayersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -943,6 +1276,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -957,6 +1301,9 @@ class VocabLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -977,6 +1324,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -989,6 +1347,9 @@ class VocabLayersResource:
         
         response = requests.post(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -1008,6 +1369,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -1021,6 +1393,9 @@ class VocabLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -1041,6 +1416,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -1053,6 +1439,9 @@ class VocabLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -1072,6 +1461,17 @@ class VocabLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -1085,6 +1485,9 @@ class VocabLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -1101,14 +1504,13 @@ class RelationsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def set_metadata(self, relation_id: str, body: Any, document_version: str = None) -> Any:
+    def set_metadata(self, relation_id: str, body: Any) -> Any:
         """
         Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             relation_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
         params = {}
@@ -1128,6 +1530,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1143,19 +1556,21 @@ class RelationsResource:
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, relation_id: str, body: Any, document_version: str = None) -> Any:
+    async def set_metadata_async(self, relation_id: str, body: Any) -> Any:
         """
         Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             relation_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
         params = {}
@@ -1175,6 +1590,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1191,19 +1617,21 @@ class RelationsResource:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, relation_id: str, document_version: str = None) -> Any:
+    def delete_metadata(self, relation_id: str) -> Any:
         """
         Remove all metadata from a relation.
 
         Args:
             relation_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
         params = {}
@@ -1217,6 +1645,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1231,18 +1670,20 @@ class RelationsResource:
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, relation_id: str, document_version: str = None) -> Any:
+    async def delete_metadata_async(self, relation_id: str) -> Any:
         """
         Remove all metadata from a relation.
 
         Args:
             relation_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
         params = {}
@@ -1256,6 +1697,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1271,20 +1723,22 @@ class RelationsResource:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def set_target(self, relation_id: str, span_id: str, document_version: str = None) -> Any:
+    def set_target(self, relation_id: str, span_id: str) -> Any:
         """
         Update the target span of a relation.
 
         Args:
             relation_id: Path parameter
             span_id: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/target"
         params = {}
@@ -1304,6 +1758,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1319,19 +1784,21 @@ class RelationsResource:
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def set_target_async(self, relation_id: str, span_id: str, document_version: str = None) -> Any:
+    async def set_target_async(self, relation_id: str, span_id: str) -> Any:
         """
         Update the target span of a relation.
 
         Args:
             relation_id: Path parameter
             span_id: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/target"
         params = {}
@@ -1352,6 +1819,17 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -1366,6 +1844,9 @@ class RelationsResource:
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -1394,6 +1875,17 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -1406,6 +1898,9 @@ class RelationsResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -1433,6 +1928,17 @@ class RelationsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -1447,19 +1953,21 @@ class RelationsResource:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete(self, relation_id: str, document_version: str = None) -> Any:
+    def delete(self, relation_id: str) -> Any:
         """
         Delete a relation.
 
         Args:
             relation_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
         params = {}
@@ -1473,6 +1981,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1487,18 +2006,20 @@ class RelationsResource:
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_async(self, relation_id: str, document_version: str = None) -> Any:
+    async def delete_async(self, relation_id: str) -> Any:
         """
         Delete a relation.
 
         Args:
             relation_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
         params = {}
@@ -1512,6 +2033,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1527,20 +2059,22 @@ class RelationsResource:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def update(self, relation_id: str, value: Any, document_version: str = None) -> Any:
+    def update(self, relation_id: str, value: Any) -> Any:
         """
         Update a relation's value.
 
         Args:
             relation_id: Path parameter
             value: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
         params = {}
@@ -1560,6 +2094,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1575,19 +2120,21 @@ class RelationsResource:
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def update_async(self, relation_id: str, value: Any, document_version: str = None) -> Any:
+    async def update_async(self, relation_id: str, value: Any) -> Any:
         """
         Update a relation's value.
 
         Args:
             relation_id: Path parameter
             value: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
         params = {}
@@ -1607,6 +2154,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1623,20 +2181,22 @@ class RelationsResource:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def set_source(self, relation_id: str, span_id: str, document_version: str = None) -> Any:
+    def set_source(self, relation_id: str, span_id: str) -> Any:
         """
         Update the source span of a relation.
 
         Args:
             relation_id: Path parameter
             span_id: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/source"
         params = {}
@@ -1656,6 +2216,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1671,19 +2242,21 @@ class RelationsResource:
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def set_source_async(self, relation_id: str, span_id: str, document_version: str = None) -> Any:
+    async def set_source_async(self, relation_id: str, span_id: str) -> Any:
         """
         Update the source span of a relation.
 
         Args:
             relation_id: Path parameter
             span_id: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/source"
         params = {}
@@ -1703,6 +2276,17 @@ class RelationsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1719,13 +2303,16 @@ class RelationsResource:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def create(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None, document_version: str = None) -> Any:
+    def create(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
         """
         Create a new relation. A relation is a directed edge between two spans with a value, useful for expressing phenomena such as syntactic or semantic relations. A relation must at all times have both a valid source and target span. These spans must also belong to a single span layer which is linked to the relation's relation layer.
 
@@ -1740,7 +2327,6 @@ target_id: the target span this relation goes to
             target_id: Required body parameter
             value: Required body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations"
         params = {}
@@ -1765,6 +2351,17 @@ target_id: the target span this relation goes to
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -1779,12 +2376,15 @@ target_id: the target span this relation goes to
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None, document_version: str = None) -> Any:
+    async def create_async(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
         """
         Create a new relation. A relation is a directed edge between two spans with a value, useful for expressing phenomena such as syntactic or semantic relations. A relation must at all times have both a valid source and target span. These spans must also belong to a single span layer which is linked to the relation's relation layer.
 
@@ -1799,7 +2399,6 @@ target_id: the target span this relation goes to
             target_id: Required body parameter
             value: Required body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations"
         params = {}
@@ -1824,6 +2423,17 @@ target_id: the target span this relation goes to
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -1839,13 +2449,16 @@ target_id: the target span this relation goes to
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_create(self, body: List[Any], document_version: str = None) -> Any:
+    def bulk_create(self, body: List[Any]) -> Any:
         """
         Create multiple relations in a single operation. Provide an array of objects whose keysare:
 relation_layer_id, the relation's layer
@@ -1856,7 +2469,6 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
         params = {}
@@ -1871,6 +2483,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1886,12 +2509,15 @@ metadata, an optional map of metadata
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_create_async(self, body: List[Any], document_version: str = None) -> Any:
+    async def bulk_create_async(self, body: List[Any]) -> Any:
         """
         Create multiple relations in a single operation. Provide an array of objects whose keysare:
 relation_layer_id, the relation's layer
@@ -1902,7 +2528,6 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
         params = {}
@@ -1917,6 +2542,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1933,19 +2569,21 @@ metadata, an optional map of metadata
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_delete(self, body: List[Any], document_version: str = None) -> Any:
+    def bulk_delete(self, body: List[Any]) -> Any:
         """
         Delete multiple relations in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
         params = {}
@@ -1960,6 +2598,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -1975,18 +2624,20 @@ metadata, an optional map of metadata
         response = requests.delete(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_delete_async(self, body: List[Any], document_version: str = None) -> Any:
+    async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
         Delete multiple relations in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/bulk"
         params = {}
@@ -2002,6 +2653,17 @@ metadata, an optional map of metadata
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2016,6 +2678,9 @@ metadata, an optional map of metadata
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -2048,6 +2713,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2061,6 +2737,9 @@ class SpanLayersResource:
         
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -2083,6 +2762,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2097,6 +2787,9 @@ class SpanLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -2118,6 +2811,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2130,6 +2834,9 @@ class SpanLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -2150,6 +2857,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2163,6 +2881,9 @@ class SpanLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -2191,6 +2912,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2203,6 +2935,9 @@ class SpanLayersResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -2230,6 +2965,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2243,6 +2989,9 @@ class SpanLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -2262,6 +3011,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2274,6 +3034,9 @@ class SpanLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -2292,6 +3055,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2305,6 +3079,9 @@ class SpanLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -2331,6 +3108,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2344,6 +3132,9 @@ class SpanLayersResource:
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -2369,6 +3160,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2383,6 +3185,9 @@ class SpanLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -2410,6 +3215,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2423,6 +3239,9 @@ class SpanLayersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -2449,6 +3268,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2463,6 +3293,9 @@ class SpanLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -2489,6 +3322,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2502,6 +3346,9 @@ class SpanLayersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -2527,6 +3374,17 @@ class SpanLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2541,6 +3399,9 @@ class SpanLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -2557,14 +3418,13 @@ class SpansResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def set_tokens(self, span_id: str, tokens: List[Any], document_version: str = None) -> Any:
+    def set_tokens(self, span_id: str, tokens: List[Any]) -> Any:
         """
         Replace tokens for a span.
 
         Args:
             span_id: Path parameter
             tokens: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/tokens"
         params = {}
@@ -2584,6 +3444,17 @@ class SpansResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -2599,19 +3470,21 @@ class SpansResource:
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def set_tokens_async(self, span_id: str, tokens: List[Any], document_version: str = None) -> Any:
+    async def set_tokens_async(self, span_id: str, tokens: List[Any]) -> Any:
         """
         Replace tokens for a span.
 
         Args:
             span_id: Path parameter
             tokens: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/tokens"
         params = {}
@@ -2631,6 +3504,17 @@ class SpansResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -2647,13 +3531,16 @@ class SpansResource:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def create(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None, document_version: str = None) -> Any:
+    def create(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
         """
         Create a new span. A span holds a primary atomic value and optional metadata, and must at all times be associated with one or more tokens.
 
@@ -2667,7 +3554,6 @@ metadata: optional key-value pairs for additional annotation data.
             tokens: Required body parameter
             value: Required body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans"
         params = {}
@@ -2690,6 +3576,17 @@ metadata: optional key-value pairs for additional annotation data.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -2705,12 +3602,15 @@ metadata: optional key-value pairs for additional annotation data.
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None, document_version: str = None) -> Any:
+    async def create_async(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
         """
         Create a new span. A span holds a primary atomic value and optional metadata, and must at all times be associated with one or more tokens.
 
@@ -2724,7 +3624,6 @@ metadata: optional key-value pairs for additional annotation data.
             tokens: Required body parameter
             value: Required body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans"
         params = {}
@@ -2748,6 +3647,17 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2762,6 +3672,9 @@ metadata: optional key-value pairs for additional annotation data.
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -2790,6 +3703,17 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2802,6 +3726,9 @@ metadata: optional key-value pairs for additional annotation data.
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -2829,6 +3756,17 @@ metadata: optional key-value pairs for additional annotation data.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -2843,19 +3781,21 @@ metadata: optional key-value pairs for additional annotation data.
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete(self, span_id: str, document_version: str = None) -> Any:
+    def delete(self, span_id: str) -> Any:
         """
         Delete a span.
 
         Args:
             span_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
         params = {}
@@ -2869,6 +3809,17 @@ metadata: optional key-value pairs for additional annotation data.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -2883,18 +3834,20 @@ metadata: optional key-value pairs for additional annotation data.
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_async(self, span_id: str, document_version: str = None) -> Any:
+    async def delete_async(self, span_id: str) -> Any:
         """
         Delete a span.
 
         Args:
             span_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
         params = {}
@@ -2908,6 +3861,17 @@ metadata: optional key-value pairs for additional annotation data.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -2923,20 +3887,22 @@ metadata: optional key-value pairs for additional annotation data.
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def update(self, span_id: str, value: Any, document_version: str = None) -> Any:
+    def update(self, span_id: str, value: Any) -> Any:
         """
         Update a span's value.
 
         Args:
             span_id: Path parameter
             value: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
         params = {}
@@ -2956,6 +3922,17 @@ metadata: optional key-value pairs for additional annotation data.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -2971,19 +3948,21 @@ metadata: optional key-value pairs for additional annotation data.
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def update_async(self, span_id: str, value: Any, document_version: str = None) -> Any:
+    async def update_async(self, span_id: str, value: Any) -> Any:
         """
         Update a span's value.
 
         Args:
             span_id: Path parameter
             value: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
         params = {}
@@ -3003,6 +3982,17 @@ metadata: optional key-value pairs for additional annotation data.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3019,13 +4009,16 @@ metadata: optional key-value pairs for additional annotation data.
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_create(self, body: List[Any], document_version: str = None) -> Any:
+    def bulk_create(self, body: List[Any]) -> Any:
         """
         Create multiple spans in a single operation. Provide an array of objects whose keysare:
 span_layer_id, the span's layer
@@ -3035,7 +4028,6 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
         params = {}
@@ -3050,6 +4042,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3065,12 +4068,15 @@ metadata, an optional map of metadata
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_create_async(self, body: List[Any], document_version: str = None) -> Any:
+    async def bulk_create_async(self, body: List[Any]) -> Any:
         """
         Create multiple spans in a single operation. Provide an array of objects whose keysare:
 span_layer_id, the span's layer
@@ -3080,7 +4086,6 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
         params = {}
@@ -3095,6 +4100,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3111,19 +4127,21 @@ metadata, an optional map of metadata
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_delete(self, body: List[Any], document_version: str = None) -> Any:
+    def bulk_delete(self, body: List[Any]) -> Any:
         """
         Delete multiple spans in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
         params = {}
@@ -3138,6 +4156,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3153,18 +4182,20 @@ metadata, an optional map of metadata
         response = requests.delete(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_delete_async(self, body: List[Any], document_version: str = None) -> Any:
+    async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
         Delete multiple spans in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/bulk"
         params = {}
@@ -3179,6 +4210,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3195,20 +4237,22 @@ metadata, an optional map of metadata
             async with session.delete(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def set_metadata(self, span_id: str, body: Any, document_version: str = None) -> Any:
+    def set_metadata(self, span_id: str, body: Any) -> Any:
         """
         Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             span_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
         params = {}
@@ -3228,6 +4272,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3243,19 +4298,21 @@ metadata, an optional map of metadata
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, span_id: str, body: Any, document_version: str = None) -> Any:
+    async def set_metadata_async(self, span_id: str, body: Any) -> Any:
         """
         Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             span_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
         params = {}
@@ -3275,6 +4332,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3291,19 +4359,21 @@ metadata, an optional map of metadata
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, span_id: str, document_version: str = None) -> Any:
+    def delete_metadata(self, span_id: str) -> Any:
         """
         Remove all metadata from a span.
 
         Args:
             span_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
         params = {}
@@ -3317,6 +4387,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3331,18 +4412,20 @@ metadata, an optional map of metadata
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, span_id: str, document_version: str = None) -> Any:
+    async def delete_metadata_async(self, span_id: str) -> Any:
         """
         Remove all metadata from a span.
 
         Args:
             span_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
         params = {}
@@ -3357,6 +4440,17 @@ metadata, an optional map of metadata
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -3370,6 +4464,9 @@ metadata, an optional map of metadata
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -3386,14 +4483,13 @@ class TextsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def set_metadata(self, text_id: str, body: Any, document_version: str = None) -> Any:
+    def set_metadata(self, text_id: str, body: Any) -> Any:
         """
         Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             text_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
         params = {}
@@ -3413,6 +4509,17 @@ class TextsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3428,19 +4535,21 @@ class TextsResource:
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, text_id: str, body: Any, document_version: str = None) -> Any:
+    async def set_metadata_async(self, text_id: str, body: Any) -> Any:
         """
         Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             text_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
         params = {}
@@ -3460,6 +4569,17 @@ class TextsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3476,19 +4596,21 @@ class TextsResource:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, text_id: str, document_version: str = None) -> Any:
+    def delete_metadata(self, text_id: str) -> Any:
         """
         Remove all metadata from a text.
 
         Args:
             text_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
         params = {}
@@ -3502,6 +4624,17 @@ class TextsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3516,18 +4649,20 @@ class TextsResource:
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, text_id: str, document_version: str = None) -> Any:
+    async def delete_metadata_async(self, text_id: str) -> Any:
         """
         Remove all metadata from a text.
 
         Args:
             text_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
         params = {}
@@ -3541,6 +4676,17 @@ class TextsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3556,13 +4702,16 @@ class TextsResource:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def create(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None, document_version: str = None) -> Any:
+    def create(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
         """
         Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
@@ -3575,7 +4724,6 @@ body: the string which is the content of this text.
             document_id: Required body parameter
             body: Required body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
         params = {}
@@ -3598,6 +4746,17 @@ body: the string which is the content of this text.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3613,12 +4772,15 @@ body: the string which is the content of this text.
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None, document_version: str = None) -> Any:
+    async def create_async(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
         """
         Create a new text in a document's text layer. A text is simply a container for one long string in body for a given layer.
 
@@ -3631,7 +4793,6 @@ body: the string which is the content of this text.
             document_id: Required body parameter
             body: Required body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts"
         params = {}
@@ -3655,6 +4816,17 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -3669,6 +4841,9 @@ body: the string which is the content of this text.
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -3697,6 +4872,17 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -3709,6 +4895,9 @@ body: the string which is the content of this text.
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -3736,6 +4925,17 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -3750,19 +4950,21 @@ body: the string which is the content of this text.
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete(self, text_id: str, document_version: str = None) -> Any:
+    def delete(self, text_id: str) -> Any:
         """
         Delete a text and all dependent data.
 
         Args:
             text_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
         params = {}
@@ -3776,6 +4978,17 @@ body: the string which is the content of this text.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3790,18 +5003,20 @@ body: the string which is the content of this text.
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_async(self, text_id: str, document_version: str = None) -> Any:
+    async def delete_async(self, text_id: str) -> Any:
         """
         Delete a text and all dependent data.
 
         Args:
             text_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
         params = {}
@@ -3815,6 +5030,17 @@ body: the string which is the content of this text.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3830,20 +5056,22 @@ body: the string which is the content of this text.
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def update(self, text_id: str, body: str, document_version: str = None) -> Any:
+    def update(self, text_id: str, body: str) -> Any:
         """
         Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
 
         Args:
             text_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
         params = {}
@@ -3863,6 +5091,17 @@ body: the string which is the content of this text.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -3878,19 +5117,21 @@ body: the string which is the content of this text.
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def update_async(self, text_id: str, body: str, document_version: str = None) -> Any:
+    async def update_async(self, text_id: str, body: str) -> Any:
         """
         Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
 
         Args:
             text_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
         params = {}
@@ -3911,6 +5152,17 @@ body: the string which is the content of this text.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -3925,6 +5177,9 @@ body: the string which is the content of this text.
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -3961,6 +5216,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -3973,6 +5239,9 @@ class UsersResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -3999,6 +5268,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4012,6 +5292,9 @@ class UsersResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4041,6 +5324,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4054,6 +5348,9 @@ class UsersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4082,6 +5379,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4096,6 +5404,9 @@ class UsersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4130,6 +5441,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4142,6 +5464,9 @@ class UsersResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4175,6 +5500,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4188,6 +5524,9 @@ class UsersResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4216,6 +5555,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4228,6 +5578,9 @@ class UsersResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4255,6 +5608,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4268,6 +5632,9 @@ class UsersResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4287,6 +5654,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4299,6 +5677,9 @@ class UsersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4317,6 +5698,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4330,6 +5722,9 @@ class UsersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4360,6 +5755,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4373,6 +5779,9 @@ class UsersResource:
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4402,6 +5811,17 @@ class UsersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4416,6 +5836,9 @@ class UsersResource:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4451,6 +5874,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4464,6 +5898,9 @@ class TokenLayersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4489,6 +5926,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4503,6 +5951,9 @@ class TokenLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4530,6 +5981,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4543,6 +6005,9 @@ class TokenLayersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4569,6 +6034,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4583,6 +6059,9 @@ class TokenLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4606,6 +6085,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4619,6 +6109,9 @@ class TokenLayersResource:
         
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4641,6 +6134,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4655,6 +6159,9 @@ class TokenLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4676,6 +6183,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4688,6 +6206,9 @@ class TokenLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4708,6 +6229,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4721,6 +6253,9 @@ class TokenLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4749,6 +6284,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4761,6 +6307,9 @@ class TokenLayersResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4788,6 +6337,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4801,6 +6361,9 @@ class TokenLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4820,6 +6383,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4832,6 +6406,9 @@ class TokenLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4850,6 +6427,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4863,6 +6451,9 @@ class TokenLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4889,6 +6480,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4902,6 +6504,9 @@ class TokenLayersResource:
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -4927,6 +6532,17 @@ class TokenLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -4941,6 +6557,9 @@ class TokenLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -4957,14 +6576,13 @@ class DocumentsResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def set_metadata(self, document_id: str, body: Any, document_version: str = None) -> Any:
+    def set_metadata(self, document_id: str, body: Any) -> Any:
         """
         Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             document_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
         params = {}
@@ -4984,6 +6602,17 @@ class DocumentsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -4999,19 +6628,21 @@ class DocumentsResource:
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, document_id: str, body: Any, document_version: str = None) -> Any:
+    async def set_metadata_async(self, document_id: str, body: Any) -> Any:
         """
         Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             document_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
         params = {}
@@ -5031,6 +6662,17 @@ class DocumentsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -5047,19 +6689,21 @@ class DocumentsResource:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, document_id: str, document_version: str = None) -> Any:
+    def delete_metadata(self, document_id: str) -> Any:
         """
         Remove all metadata from a document.
 
         Args:
             document_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
         params = {}
@@ -5073,6 +6717,17 @@ class DocumentsResource:
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -5087,18 +6742,20 @@ class DocumentsResource:
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, document_id: str, document_version: str = None) -> Any:
+    async def delete_metadata_async(self, document_id: str) -> Any:
         """
         Remove all metadata from a document.
 
         Args:
             document_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
         params = {}
@@ -5113,6 +6770,17 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5126,6 +6794,9 @@ class DocumentsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5160,6 +6831,17 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5172,6 +6854,9 @@ class DocumentsResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5205,6 +6890,17 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5218,6 +6914,9 @@ class DocumentsResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5249,6 +6948,17 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5261,6 +6971,9 @@ class DocumentsResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5291,6 +7004,17 @@ class DocumentsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5304,6 +7028,9 @@ class DocumentsResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5319,9 +7046,28 @@ class DocumentsResource:
             document_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -5336,6 +7082,9 @@ class DocumentsResource:
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
@@ -5349,9 +7098,28 @@ class DocumentsResource:
             document_id: Path parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -5366,6 +7134,9 @@ class DocumentsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5384,6 +7155,14 @@ name: update a document's name.
             name: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'name': name
         }
@@ -5393,6 +7172,17 @@ name: update a document's name.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -5407,6 +7197,9 @@ name: update a document's name.
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5424,6 +7217,14 @@ name: update a document's name.
             name: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
         body_dict = {
             'name': name
         }
@@ -5433,6 +7234,17 @@ name: update a document's name.
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -5448,6 +7260,9 @@ name: update a document's name.
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5477,6 +7292,17 @@ name: update a document's name.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5490,6 +7316,9 @@ name: update a document's name.
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5518,6 +7347,17 @@ name: update a document's name.
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5532,6 +7372,9 @@ name: update a document's name.
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5567,6 +7410,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5580,6 +7434,9 @@ class ProjectsResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5605,6 +7462,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5619,6 +7487,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5639,6 +7510,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5651,6 +7533,9 @@ class ProjectsResource:
         
         response = requests.post(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5670,6 +7555,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5683,6 +7579,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5703,6 +7602,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5715,6 +7625,9 @@ class ProjectsResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5734,6 +7647,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5747,6 +7671,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5767,6 +7694,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5779,6 +7717,9 @@ class ProjectsResource:
         
         response = requests.post(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5798,6 +7739,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5811,6 +7763,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5831,6 +7786,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5843,6 +7809,9 @@ class ProjectsResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5862,6 +7831,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5875,6 +7855,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -5901,6 +7884,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5914,6 +7908,9 @@ class ProjectsResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -5939,6 +7936,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -5953,6 +7961,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6106,6 +8117,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6119,6 +8141,9 @@ class ProjectsResource:
         
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6141,6 +8166,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6155,6 +8191,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6176,6 +8215,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6188,6 +8238,9 @@ class ProjectsResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6208,6 +8261,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6221,6 +8285,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6241,6 +8308,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6253,6 +8331,9 @@ class ProjectsResource:
         
         response = requests.post(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6272,6 +8353,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6285,6 +8377,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6305,6 +8400,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6317,6 +8423,9 @@ class ProjectsResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6336,6 +8445,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6349,6 +8469,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6383,6 +8506,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6395,6 +8529,9 @@ class ProjectsResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6428,6 +8565,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6441,6 +8589,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6461,6 +8612,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6473,6 +8635,9 @@ class ProjectsResource:
         
         response = requests.post(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6492,6 +8657,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6505,6 +8681,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6525,6 +8704,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6537,6 +8727,9 @@ class ProjectsResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6556,6 +8749,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6569,6 +8773,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6600,6 +8807,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6612,6 +8830,9 @@ class ProjectsResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6642,6 +8863,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6655,6 +8887,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6674,6 +8909,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6686,6 +8932,9 @@ class ProjectsResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6704,6 +8953,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6717,6 +8977,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6743,6 +9006,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6756,6 +9030,9 @@ class ProjectsResource:
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6781,6 +9058,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6795,6 +9083,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6822,6 +9113,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6834,6 +9136,9 @@ class ProjectsResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6860,6 +9165,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6873,6 +9189,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6898,6 +9217,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6911,6 +9241,9 @@ class ProjectsResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -6935,6 +9268,17 @@ class ProjectsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6949,6 +9293,9 @@ class ProjectsResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -6981,6 +9328,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -6994,6 +9352,9 @@ class TextLayersResource:
         
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7016,6 +9377,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7030,6 +9402,9 @@ class TextLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7051,6 +9426,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7063,6 +9449,9 @@ class TextLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7083,6 +9472,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7096,6 +9496,9 @@ class TextLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7124,6 +9527,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7136,6 +9550,9 @@ class TextLayersResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7163,6 +9580,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7176,6 +9604,9 @@ class TextLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7195,6 +9626,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7207,6 +9649,9 @@ class TextLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7225,6 +9670,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7238,6 +9694,9 @@ class TextLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7264,6 +9723,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7277,6 +9747,9 @@ class TextLayersResource:
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7302,6 +9775,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7316,6 +9800,9 @@ class TextLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7342,6 +9829,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7355,6 +9853,9 @@ class TextLayersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7380,6 +9881,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7394,6 +9906,9 @@ class TextLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7421,6 +9936,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7434,6 +9960,9 @@ class TextLayersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7460,6 +9989,17 @@ class TextLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7474,6 +10014,9 @@ class TextLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7509,6 +10052,17 @@ class LoginResource:
         
         headers = {'Content-Type': 'application/json'}
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7522,6 +10076,9 @@ class LoginResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7547,6 +10104,17 @@ class LoginResource:
         
         headers = {'Content-Type': 'application/json'}
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7561,6 +10129,9 @@ class LoginResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7590,6 +10161,17 @@ class BulkResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7603,6 +10185,9 @@ class BulkResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7622,6 +10207,17 @@ class BulkResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7636,6 +10232,9 @@ class BulkResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7671,6 +10270,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7684,6 +10294,9 @@ class VocabItemsResource:
         
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7709,6 +10322,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7723,6 +10347,9 @@ class VocabItemsResource:
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7742,6 +10369,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7754,6 +10392,9 @@ class VocabItemsResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7772,6 +10413,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7785,6 +10437,9 @@ class VocabItemsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7814,6 +10469,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7827,6 +10493,9 @@ class VocabItemsResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7855,6 +10524,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7869,6 +10549,9 @@ class VocabItemsResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7897,6 +10580,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7909,6 +10603,9 @@ class VocabItemsResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7936,6 +10633,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7949,6 +10657,9 @@ class VocabItemsResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -7968,6 +10679,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -7980,6 +10702,9 @@ class VocabItemsResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -7998,6 +10723,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8011,6 +10747,9 @@ class VocabItemsResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8037,6 +10776,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8050,6 +10800,9 @@ class VocabItemsResource:
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -8075,6 +10828,17 @@ class VocabItemsResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8089,6 +10853,9 @@ class VocabItemsResource:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8124,6 +10891,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8137,6 +10915,9 @@ class RelationLayersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -8162,6 +10943,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8176,6 +10968,9 @@ class RelationLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8203,6 +10998,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8216,6 +11022,9 @@ class RelationLayersResource:
         
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -8242,6 +11051,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8256,6 +11076,9 @@ class RelationLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8279,6 +11102,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8292,6 +11126,9 @@ class RelationLayersResource:
         
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -8314,6 +11151,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8328,6 +11176,9 @@ class RelationLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8349,6 +11200,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8361,6 +11223,9 @@ class RelationLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -8381,6 +11246,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8394,6 +11270,9 @@ class RelationLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8422,6 +11301,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8434,6 +11324,9 @@ class RelationLayersResource:
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -8461,6 +11354,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8474,6 +11378,9 @@ class RelationLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8493,6 +11400,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8505,6 +11423,9 @@ class RelationLayersResource:
         
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -8523,6 +11444,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8536,6 +11468,9 @@ class RelationLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8562,6 +11497,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8575,6 +11521,9 @@ class RelationLayersResource:
         
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -8600,6 +11549,17 @@ class RelationLayersResource:
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8614,6 +11574,9 @@ class RelationLayersResource:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8630,7 +11593,7 @@ class TokensResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def create(self, token_layer_id: str, text: str, begin: int, end: int, precedence: int = None, metadata: Any = None, document_version: str = None) -> Any:
+    def create(self, token_layer_id: str, text: str, begin: int, end: int, precedence: int = None, metadata: Any = None) -> Any:
         """
         Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
 
@@ -8647,7 +11610,6 @@ precedence: used for tokens with the same begin value in order to indicate their
             end: Required body parameter
             precedence: Optional body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens"
         params = {}
@@ -8672,6 +11634,17 @@ precedence: used for tokens with the same begin value in order to indicate their
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -8687,12 +11660,15 @@ precedence: used for tokens with the same begin value in order to indicate their
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, token_layer_id: str, text: str, begin: int, end: int, precedence: int = None, metadata: Any = None, document_version: str = None) -> Any:
+    async def create_async(self, token_layer_id: str, text: str, begin: int, end: int, precedence: int = None, metadata: Any = None) -> Any:
         """
         Create a new token in a token layer. Tokens define text substrings usingbegin and end offsets in the text. Tokens may be zero-width, and they may overlap with each other. For tokens which share the same begin, precedence may be used to indicate a preferred linear ordering, with tokens with lower precedence occurring earlier.
 
@@ -8709,7 +11685,6 @@ precedence: used for tokens with the same begin value in order to indicate their
             end: Required body parameter
             precedence: Optional body parameter
             metadata: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens"
         params = {}
@@ -8735,6 +11710,17 @@ precedence: used for tokens with the same begin value in order to indicate their
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8749,6 +11735,9 @@ precedence: used for tokens with the same begin value in order to indicate their
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -8777,6 +11766,17 @@ precedence: used for tokens with the same begin value in order to indicate their
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8789,6 +11789,9 @@ precedence: used for tokens with the same begin value in order to indicate their
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
         
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
@@ -8816,6 +11819,17 @@ precedence: used for tokens with the same begin value in order to indicate their
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -8830,19 +11844,21 @@ precedence: used for tokens with the same begin value in order to indicate their
             async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete(self, token_id: str, document_version: str = None) -> Any:
+    def delete(self, token_id: str) -> Any:
         """
         Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
 
         Args:
             token_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
         params = {}
@@ -8856,6 +11872,17 @@ precedence: used for tokens with the same begin value in order to indicate their
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -8870,18 +11897,20 @@ precedence: used for tokens with the same begin value in order to indicate their
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_async(self, token_id: str, document_version: str = None) -> Any:
+    async def delete_async(self, token_id: str) -> Any:
         """
         Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
 
         Args:
             token_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
         params = {}
@@ -8895,6 +11924,17 @@ precedence: used for tokens with the same begin value in order to indicate their
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -8910,13 +11950,16 @@ precedence: used for tokens with the same begin value in order to indicate their
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def update(self, token_id: str, begin: int = None, end: int = None, precedence: int = None, document_version: str = None) -> Any:
+    def update(self, token_id: str, begin: int = None, end: int = None, precedence: int = None) -> Any:
         """
         Update a token. Supported keys:
 
@@ -8929,7 +11972,6 @@ precedence: ordering value for the token relative to other tokens with the same 
             begin: Optional body parameter
             end: Optional body parameter
             precedence: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
         params = {}
@@ -8951,6 +11993,17 @@ precedence: ordering value for the token relative to other tokens with the same 
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -8966,12 +12019,15 @@ precedence: ordering value for the token relative to other tokens with the same 
         response = requests.patch(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def update_async(self, token_id: str, begin: int = None, end: int = None, precedence: int = None, document_version: str = None) -> Any:
+    async def update_async(self, token_id: str, begin: int = None, end: int = None, precedence: int = None) -> Any:
         """
         Update a token. Supported keys:
 
@@ -8984,7 +12040,6 @@ precedence: ordering value for the token relative to other tokens with the same 
             begin: Optional body parameter
             end: Optional body parameter
             precedence: Optional body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
         params = {}
@@ -9006,6 +12061,17 @@ precedence: ordering value for the token relative to other tokens with the same 
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PATCH' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -9022,13 +12088,16 @@ precedence: ordering value for the token relative to other tokens with the same 
             async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_create(self, body: List[Any], document_version: str = None) -> Any:
+    def bulk_create(self, body: List[Any]) -> Any:
         """
         Create multiple tokens in a single operation. Provide an array of objects whose keysare:
 token_layer_id, the token's layer
@@ -9040,7 +12109,6 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
         params = {}
@@ -9055,6 +12123,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -9070,12 +12149,15 @@ metadata, an optional map of metadata
         response = requests.post(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_create_async(self, body: List[Any], document_version: str = None) -> Any:
+    async def bulk_create_async(self, body: List[Any]) -> Any:
         """
         Create multiple tokens in a single operation. Provide an array of objects whose keysare:
 token_layer_id, the token's layer
@@ -9087,7 +12169,6 @@ metadata, an optional map of metadata
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
         params = {}
@@ -9102,6 +12183,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -9118,19 +12210,21 @@ metadata, an optional map of metadata
             async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def bulk_delete(self, body: List[Any], document_version: str = None) -> Any:
+    def bulk_delete(self, body: List[Any]) -> Any:
         """
         Delete multiple tokens in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
         params = {}
@@ -9145,6 +12239,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -9160,18 +12265,20 @@ metadata, an optional map of metadata
         response = requests.delete(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def bulk_delete_async(self, body: List[Any], document_version: str = None) -> Any:
+    async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
         Delete multiple tokens in a single operation. Provide an array of IDs.
 
         Args:
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/bulk"
         params = {}
@@ -9186,6 +12293,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -9202,20 +12320,22 @@ metadata, an optional map of metadata
             async with session.delete(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def set_metadata(self, token_id: str, body: Any, document_version: str = None) -> Any:
+    def set_metadata(self, token_id: str, body: Any) -> Any:
         """
         Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             token_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
         params = {}
@@ -9235,6 +12355,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -9250,19 +12381,21 @@ metadata, an optional map of metadata
         response = requests.put(url, json=body_data, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def set_metadata_async(self, token_id: str, body: Any, document_version: str = None) -> Any:
+    async def set_metadata_async(self, token_id: str, body: Any) -> Any:
         """
         Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
 
         Args:
             token_id: Path parameter
             body: Required body parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
         params = {}
@@ -9282,6 +12415,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -9298,19 +12442,21 @@ metadata, an optional map of metadata
             async with session.put(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
                     data = await response.json()
                     return self.client._transform_response(data)
                 return await response.text
 
-    def delete_metadata(self, token_id: str, document_version: str = None) -> Any:
+    def delete_metadata(self, token_id: str) -> Any:
         """
         Remove all metadata from a token.
 
         Args:
             token_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
         params = {}
@@ -9324,6 +12470,17 @@ metadata, an optional map of metadata
         
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
         
         # Check if we're in batch mode
         if self.client._is_batching:
@@ -9338,18 +12495,20 @@ metadata, an optional map of metadata
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
         
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
         if 'application/json' in response.headers.get('content-type', '').lower():
             data = response.json()
             return self.client._transform_response(data)
         return response.text
 
-    async def delete_metadata_async(self, token_id: str, document_version: str = None) -> Any:
+    async def delete_metadata_async(self, token_id: str) -> Any:
         """
         Remove all metadata from a token.
 
         Args:
             token_id: Path parameter
-            document_version: Optional query parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
         params = {}
@@ -9364,6 +12523,17 @@ metadata, an optional map of metadata
         headers = {'Content-Type': 'application/json'}
         headers['Authorization'] = f'Bearer {self.client.token}'
         
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
         # Check if we're in batch mode
         if self.client._is_batching:
             operation = {
@@ -9377,6 +12547,9 @@ metadata, an optional map of metadata
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
                 response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'application/json' in content_type:
@@ -9406,6 +12579,16 @@ class PlaidClient:
         await client.projects.create_async(name='Project 2')  # Gets queued
         results = await client.submit_batch_async()  # Executes all as one bulk request
     
+    Document version tracking:
+        # Enter strict mode for a specific document
+        client.enter_strict_mode(document_id)
+        
+        # All write operations will now include document version checks
+        # Operations will fail with 409 error if document has been modified
+        
+        # Exit strict mode when done
+        client.exit_strict_mode()
+    
     Example:
         # Authenticate
         client = PlaidClient.login('http://localhost:8085', 'user_id', 'password')
@@ -9431,6 +12614,10 @@ class PlaidClient:
         # Initialize batch state
         self._is_batching = False
         self._batch_operations = []
+        
+        # Initialize document version tracking
+        self._document_versions = {}  # Map of document-id -> version
+        self._strict_mode_document_id = None  # Document ID for strict mode
         
         # Initialize resource objects
         self.vocab_links = VocabLinksResource(self)
@@ -9461,6 +12648,18 @@ class PlaidClient:
     def _transform_key_from_snake(self, key: str) -> str:
         """Convert snake_case back to kebab-case"""
         return key.replace('_', '-')
+    
+    def _extract_document_versions(self, response_headers: Dict[str, str]) -> None:
+        """Extract and update document versions from response headers"""
+        doc_versions_header = response_headers.get('X-Document-Versions')
+        if doc_versions_header:
+            try:
+                versions_map = json.loads(doc_versions_header)
+                if isinstance(versions_map, dict):
+                    self._document_versions.update(versions_map)
+            except (json.JSONDecodeError, TypeError):
+                # Ignore malformed header
+                pass
     
     def _transform_request(self, obj: Any) -> Any:
         """Transform request data from Python conventions to API conventions"""
@@ -9604,6 +12803,25 @@ class PlaidClient:
             bool: True if batching is active
         """
         return self._is_batching
+    
+    def enter_strict_mode(self, document_id: str) -> None:
+        """
+        Enter strict mode for a specific document.
+        
+        When in strict mode, write operations will automatically include 
+        document-version parameters to prevent concurrent modifications. 
+        Operations on stale documents will fail with HTTP 409 errors.
+        
+        Args:
+            document_id: The ID of the document to track versions for
+        """
+        self._strict_mode_document_id = document_id
+    
+    def exit_strict_mode(self) -> None:
+        """
+        Exit strict mode and stop tracking document versions for writes.
+        """
+        self._strict_mode_document_id = None
     
     @classmethod
     def login(cls, base_url: str, user_id: str, password: str) -> 'PlaidClient':

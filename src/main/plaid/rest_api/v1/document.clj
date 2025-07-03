@@ -3,7 +3,8 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.xtdb.document :as doc]))
+            [plaid.xtdb.document :as doc]
+            [clojure.data.json :as json]))
 
 (defn get-project-id [{db :db params :parameters}]
   (let [prj-id (-> params :body :project-id)
@@ -51,7 +52,8 @@
                                            (doc/get db document-id))]
                             (if (some? document)
                               {:status 200
-                               :body document}
+                               :body document
+                               :headers {"X-Document-Versions" (json/write-str {(:document/id document) (:document/version document)})}}
                               {:status 404
                                :body {:error "Document not found"}})))}
          :patch {:summary "Update a document. Supported keys:\n\n<body>name</body>: update a document's name."

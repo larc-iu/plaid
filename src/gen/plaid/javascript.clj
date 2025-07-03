@@ -45,7 +45,7 @@
     }
 
     try {
-      const url = `${this.baseUrl}/api/v1/bulk`;
+      let url = `${this.baseUrl}/api/v1/bulk`;
       const body = this.batchOperations.map(op => ({
         path: op.path,
         method: op.method.toUpperCase(),
@@ -116,6 +116,24 @@
     return key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
   }
 
+  _extractDocumentVersions(responseHeaders) {
+    // Extract and update document versions from response headers
+    const docVersionsHeader = responseHeaders.get('X-Document-Versions');
+    if (docVersionsHeader) {
+      try {
+        const versionsMap = JSON.parse(docVersionsHeader);
+        if (typeof versionsMap === 'object' && versionsMap !== null) {
+          // Update internal document versions map
+          Object.entries(versionsMap).forEach(([docId, version]) => {
+            this.documentVersions.set(docId, version);
+          });
+        }
+      } catch (e) {
+        // Ignore malformed header
+      }
+    }
+  }
+
   _transformRequest(obj) {
     if (obj === null || obj === undefined) return obj;
     if (Array.isArray(obj)) return obj.map(item => this._transformRequest(item));
@@ -182,13 +200,14 @@
                                 (map #(str (transform-key-name (:name %)) " = undefined")
                                      optional-body-params)))
 
-            ;; Query parameters
+            ;; Query parameters (exclude document-version)
+            filtered-query-params (filter #(not= (:name %) "document-version") regular-query-params)
             query-param-names (map (fn [param]
                                      (let [param-name (transform-key-name (:name param))]
                                        (if (:required? param)
                                          param-name
                                          (str param-name " = undefined"))))
-                                   regular-query-params)
+                                   filtered-query-params)
 
             ;; asOf parameter (only for GET requests)
             as-of-param-name (when (and as-of-param (= http-method :get))
@@ -204,13 +223,13 @@
   "Generate JavaScript code to construct the URL with path parameters"
   [path path-params query-params http-method]
   (let [base-url (if (empty? path-params)
-                   (str "const url = `${this.baseUrl}" path "`;")
+                   (str "let url = `${this.baseUrl}" path "`;")
                    (let [js-path (reduce (fn [p param]
                                            (str/replace p (str "{" param "}")
                                                         (str "${" (kebab->camel param) "}")))
                                          path
                                          path-params)]
-                     (str "const url = `${this.baseUrl}" js-path "`;")))
+                     (str "let url = `${this.baseUrl}" js-path "`;")))
         ;; Generate query parameter construction using individual parameters
         query-construction (when (seq query-params)
                              (let [query-checks (map (fn [param]
@@ -356,7 +375,7 @@
          "    // Start the fetch streaming connection\n"
          "    (async () => {\n"
          "      try {\n"
-         "        const url = `${this.baseUrl}" js-path "`;\n"
+         "        let url = `${this.baseUrl}" js-path "`;\n"
          "        \n"
          "        const response = await fetch(url, {\n"
          "          method: 'GET',\n"
@@ -467,10 +486,13 @@
             ;; Generate method parameters
             method-params (generate-method-params-from-operation operation)
 
+            ;; Filter out document-version from query params for URL construction
+            filtered-query-params (filter #(not= (:name %) "document-version") regular-query-params)
+            all-filtered-params (concat filtered-query-params (when as-of-param [as-of-param]))
+
             ;; Generate URL construction
             url-construction (generate-url-construction path path-params
-                                                        (concat regular-query-params
-                                                                (when as-of-param [as-of-param]))
+                                                        all-filtered-params
                                                         http-method)
 
             ;; Generate body construction
@@ -495,7 +517,7 @@
             private-method-name (str "_" bundle-name (csk/->PascalCase transformed-method-name))
 
             ;; Determine URL variable name
-            url-var (if (or (seq regular-query-params) as-of-param) "finalUrl" "url")]
+            url-var (if (seq all-filtered-params) "finalUrl" "url")]
 
         (str "  /**\n"
              "   * " formatted-summary "\n"
@@ -504,10 +526,20 @@
              "    " url-construction "\n"
              (when body-construction (str "    " body-construction "\n"))
              "    \n"
+             "    // Add document-version parameter in strict mode for non-GET requests\n"
+             "    if (this.strictModeDocumentId && 'GET' !== '" (str/upper-case (name http-method)) "') {\n"
+             "      const docId = this.strictModeDocumentId;\n"
+             "      if (this.documentVersions.has(docId)) {\n"
+             "        const docVersion = this.documentVersions.get(docId);\n"
+             "        const separator = " url-var ".includes('?') ? '&' : '?';\n"
+             "        " url-var " += `${separator}document-version=${encodeURIComponent(docVersion)}`;\n"
+             "      }\n"
+             "    }\n"
+             "    \n"
              "    // Check if we're in batch mode\n"
              "    if (this.isBatching) {\n"
              "      const operation = {\n"
-             "        path: " (if (or (seq regular-query-params) as-of-param) "finalUrl.replace(this.baseUrl, '')" "url.replace(this.baseUrl, '')") ",\n"
+             "        path: " url-var ".replace(this.baseUrl, ''),\n"
              "        method: '" (str/upper-case (name http-method)) "'\n"
              (when has-body? "        , body: requestBody\n")
              "      };\n"
@@ -528,6 +560,9 @@
              "      error.responseBody = errorBody;\n"
              "      throw error;\n"
              "    }\n"
+             "    \n"
+             "    // Extract document versions from response headers\n"
+             "    this._extractDocumentVersions(response.headers);\n"
              "    \n"
              "    const contentType = response.headers.get('content-type');\n"
              "    if (contentType && contentType.includes('application/json')) {\n"
@@ -612,13 +647,14 @@
                                    (str ts-name "?: " ts-type)))
                                optional-body-params)))
 
-                       ;; Query parameters
-                       (map (fn [param]
-                              (let [param-name (transform-key-name (:name param))
-                                    param-type (openapi-type-to-ts (:schema param))
-                                    optional-marker (if (:required? param) "" "?")]
-                                (str param-name optional-marker ": " param-type)))
-                            regular-query-params)
+                       ;; Query parameters (exclude document-version)
+                       (let [filtered-query-params (filter #(not= (:name %) "document-version") regular-query-params)]
+                         (map (fn [param]
+                                (let [param-name (transform-key-name (:name param))
+                                      param-type (openapi-type-to-ts (:schema param))
+                                      optional-marker (if (:required? param) "" "?")]
+                                  (str param-name optional-marker ": " param-type)))
+                              filtered-query-params))
 
                        ;; asOf parameter at the end (only for GET requests)
                        (when (and as-of-param (= http-method :get))
@@ -637,7 +673,9 @@
         {:keys [required-body-params optional-body-params
                 regular-query-params as-of-param]} ordered-params
         {:keys [is-config?]} special-endpoints
-        all-query-params (concat regular-query-params (when as-of-param [as-of-param]))]
+        ;; Filter out document-version from query params
+        filtered-query-params (filter #(not= (:name %) "document-version") regular-query-params)
+        all-query-params (concat filtered-query-params (when as-of-param [as-of-param]))]
 
     ;; Special handling for SSE listen method
     (if (= method-name "listen")
@@ -684,7 +722,7 @@
                    (str " * @param {" js-type "} [" js-name "] - Optional. " (str/capitalize js-name))))
                optional-body-params)))
 
-        ;; Query parameters  
+        ;; Query parameters (excluding document-version)
        (map (fn [param]
               (let [param-name (transform-key-name (:name param))
                     param-type (case (get-in param [:schema "type"])
@@ -780,11 +818,35 @@
          "    this.isBatching = false;\n"
          "    this.batchOperations = [];\n"
          "    \n"
+         "    // Initialize document version tracking\n"
+         "    this.documentVersions = new Map(); // Map of document-id -> version\n"
+         "    this.strictModeDocumentId = null;  // Document ID for strict mode\n"
+         "    \n"
          "    // Initialize API bundles\n"
          bundle-initialization "\n"
          "  }\n"
          "\n"
          transformation-functions
+         "\n"
+         "  /**\n"
+         "   * Enter strict mode for a specific document.\n"
+         "   * \n"
+         "   * When in strict mode, write operations will automatically include \n"
+         "   * document-version parameters to prevent concurrent modifications.\n"
+         "   * Operations on stale documents will fail with HTTP 409 errors.\n"
+         "   * \n"
+         "   * @param {string} documentId - The ID of the document to track versions for\n"
+         "   */\n"
+         "  enterStrictMode(documentId) {\n"
+         "    this.strictModeDocumentId = documentId;\n"
+         "  }\n"
+         "\n"
+         "  /**\n"
+         "   * Exit strict mode and stop tracking document versions for writes.\n"
+         "   */\n"
+         "  exitStrictMode() {\n"
+         "    this.strictModeDocumentId = null;\n"
+         "  }\n"
          "\n"
          batch-methods
          "\n"
