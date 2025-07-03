@@ -21,7 +21,13 @@ This directory contains the documentation pipeline for Plaid, which compiles mul
 
 ### Production Deployment
 
-Documentation is automatically built and deployed to GitHub Pages when changes are pushed to the master branch. The workflow is defined in `.github/workflows/docs.yml`.
+Documentation is automatically built and deployed to GitHub Pages when changes are pushed to the master branch. The workflow:
+
+1. Builds the complete documentation site
+2. Pushes the generated content to the `gh-pages` branch
+3. GitHub Pages serves the content from the `gh-pages` branch
+
+The workflow is defined in `.github/workflows/docs.yml`.
 
 ## Structure
 
@@ -179,18 +185,18 @@ The documentation pipeline runs automatically on:
    - Cache dependencies for faster builds
 
 2. **Generate API Content:**
-   - Start Plaid server
+   - Start Plaid server (with account creation prompt skipped)
    - Download OpenAPI specification
    - Generate client libraries
 
 3. **Build Documentation:**
    - Create CSS and static assets
    - Compile AsciiDoc files to HTML
-   - Generate API and client documentation
+   - Generate API and client documentation with Swagger UI
 
 4. **Deploy to GitHub Pages:**
-   - Upload build artifacts
-   - Deploy to gh-pages branch (master/main only)
+   - Push generated content to `gh-pages` branch (master/main only)
+   - GitHub Pages automatically serves the updated content
 
 ### Customizing the Workflow
 

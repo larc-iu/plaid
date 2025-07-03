@@ -18,16 +18,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  contents: write
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -450,24 +444,11 @@ jobs:
           mkdir -p docs-build/manual
           asciidoctor -a stylesheet=../assets/style.css -o docs-build/manual/index.html docs/book.adoc
 
-      - name: Setup Pages
-        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./docs-build
-
-  deploy:
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
       - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs-build
+          publish_branch: gh-pages
+          force_orphan: true
