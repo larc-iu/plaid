@@ -1,0 +1,434 @@
+name: Documentation Pipeline
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+      - 'deps.edn'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+      - 'deps.edn'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Clojure
+        uses: DeLaGuardo/setup-clojure@12.7
+        with:
+          cli: 'latest'
+
+      - name: Cache Clojure dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+          key: ${{ runner.os }}-clojure-${{ hashFiles('deps.edn') }}
+          restore-keys: |
+            ${{ runner.os }}-clojure-
+
+      - name: Start server and generate OpenAPI spec
+        run: |
+          # Start the server in background
+          clojure -M:dev -e "(do (require '[user :as u]) (u/start) (Thread/sleep 5000))" &
+          SERVER_PID=$!
+          
+          # Wait for server to start
+          timeout 30 bash -c 'until curl -f http://localhost:8085/api/v1/openapi.json > /dev/null 2>&1; do sleep 1; done'
+          
+          # Download OpenAPI spec
+          curl -o target/openapi.json http://localhost:8085/api/v1/openapi.json
+          
+          # Stop server
+          kill $SERVER_PID || true
+
+      - name: Generate client libraries
+        run: |
+          mkdir -p target/clients
+          clojure -M:gen target/openapi.json target/clients/client.js js
+          clojure -M:gen target/openapi.json target/clients/client.py py
+
+      - name: Setup Node.js for documentation tools
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install documentation dependencies
+        run: |
+          npm install -g swagger-ui-cli
+          npm install -g @apidevtools/swagger-parser
+
+      - name: Setup Python for documentation tools
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Python documentation tools
+        run: |
+          pip install pydoc-markdown
+
+      - name: Setup Ruby for AsciiDoc
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.1'
+
+      - name: Install AsciiDoctor
+        run: |
+          gem install asciidoctor
+          gem install asciidoctor-diagram
+
+      - name: Create docs build directory
+        run: |
+          mkdir -p docs-build
+          mkdir -p docs-build/api
+          mkdir -p docs-build/clients
+          mkdir -p docs-build/assets
+
+      - name: Generate API documentation
+        run: |
+          # Create API documentation from OpenAPI spec
+          swagger-ui-cli -f target/openapi.json -o docs-build/api/
+          
+          # Create a simple API index page
+          cat > docs-build/api/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Plaid API Documentation</title>
+            <link rel="stylesheet" href="../assets/style.css">
+          </head>
+          <body>
+            <nav>
+              <a href="../index.html">Home</a>
+              <a href="../manual/index.html">Manual</a>
+              <a href="index.html">API</a>
+              <a href="../clients/index.html">Clients</a>
+            </nav>
+            <div class="container">
+              <h1>Plaid API Documentation</h1>
+              <p>Interactive API documentation generated from the OpenAPI specification.</p>
+              <a href="swagger-ui.html" class="button">View Interactive API Docs</a>
+            </div>
+          </body>
+          </html>
+          EOF
+
+      - name: Generate client documentation
+        run: |
+          # Create client documentation directory structure
+          mkdir -p docs-build/clients/javascript
+          mkdir -p docs-build/clients/python
+          
+          # Generate JavaScript client docs
+          cat > docs-build/clients/javascript/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>JavaScript Client - Plaid</title>
+            <link rel="stylesheet" href="../../assets/style.css">
+          </head>
+          <body>
+            <nav>
+              <a href="../../index.html">Home</a>
+              <a href="../../manual/index.html">Manual</a>
+              <a href="../../api/index.html">API</a>
+              <a href="../index.html">Clients</a>
+            </nav>
+            <div class="container">
+              <h1>JavaScript Client</h1>
+              <p>Auto-generated JavaScript client for the Plaid API.</p>
+              <h2>Installation</h2>
+              <pre><code>npm install plaid-client</code></pre>
+              <h2>Usage</h2>
+              <pre><code>const PlaidClient = require('plaid-client');
+          
+          const client = new PlaidClient('http://localhost:8085', 'your-token');
+          
+          // Example usage
+          const projects = await client.projects.list();
+          console.log(projects);</code></pre>
+            </div>
+          </body>
+          </html>
+          EOF
+          
+          # Generate Python client docs
+          cat > docs-build/clients/python/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Python Client - Plaid</title>
+            <link rel="stylesheet" href="../../assets/style.css">
+          </head>
+          <body>
+            <nav>
+              <a href="../../index.html">Home</a>
+              <a href="../../manual/index.html">Manual</a>
+              <a href="../../api/index.html">API</a>
+              <a href="../index.html">Clients</a>
+            </nav>
+            <div class="container">
+              <h1>Python Client</h1>
+              <p>Auto-generated Python client for the Plaid API.</p>
+              <h2>Installation</h2>
+              <pre><code>pip install plaid-client</code></pre>
+              <h2>Usage</h2>
+              <pre><code>from plaid_client import PlaidClient
+          
+          client = PlaidClient('http://localhost:8085', 'your-token')
+          
+          # Example usage
+          projects = client.projects.list()
+          print(projects)</code></pre>
+            </div>
+          </body>
+          </html>
+          EOF
+          
+          # Create clients index
+          cat > docs-build/clients/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Client Libraries - Plaid</title>
+            <link rel="stylesheet" href="../assets/style.css">
+          </head>
+          <body>
+            <nav>
+              <a href="../index.html">Home</a>
+              <a href="../manual/index.html">Manual</a>
+              <a href="../api/index.html">API</a>
+              <a href="index.html">Clients</a>
+            </nav>
+            <div class="container">
+              <h1>Client Libraries</h1>
+              <p>Auto-generated client libraries for the Plaid API.</p>
+              <div class="client-grid">
+                <div class="client-card">
+                  <h3>JavaScript</h3>
+                  <p>TypeScript-compatible client for Node.js and browsers</p>
+                  <a href="javascript/index.html" class="button">View Docs</a>
+                </div>
+                <div class="client-card">
+                  <h3>Python</h3>
+                  <p>Python client with type hints and async support</p>
+                  <a href="python/index.html" class="button">View Docs</a>
+                </div>
+              </div>
+            </div>
+          </body>
+          </html>
+          EOF
+
+      - name: Build documentation CSS
+        run: |
+          cat > docs-build/assets/style.css << 'EOF'
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+          }
+          
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+          }
+          
+          nav {
+            background: #2c3e50;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          }
+          
+          nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 2rem;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+          }
+          
+          nav a:hover {
+            background: rgba(255,255,255,0.1);
+          }
+          
+          .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+          }
+          
+          h1, h2, h3 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+          }
+          
+          h1 {
+            font-size: 2.5rem;
+            font-weight: 300;
+          }
+          
+          h2 {
+            font-size: 2rem;
+            margin-top: 2rem;
+          }
+          
+          h3 {
+            font-size: 1.5rem;
+            margin-top: 1.5rem;
+          }
+          
+          p {
+            margin-bottom: 1rem;
+          }
+          
+          .button {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+          }
+          
+          .button:hover {
+            background: #2980b9;
+          }
+          
+          .client-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+          }
+          
+          .client-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          }
+          
+          .client-card h3 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+          }
+          
+          .client-card p {
+            color: #666;
+            margin-bottom: 1.5rem;
+          }
+          
+          pre {
+            background: #f4f4f4;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 1rem 0;
+          }
+          
+          code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+          }
+          
+          .hero {
+            text-align: center;
+            padding: 4rem 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-bottom: 2rem;
+          }
+          
+          .hero h1 {
+            color: white;
+            font-size: 3rem;
+            margin-bottom: 1rem;
+          }
+          
+          .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+          }
+          
+          .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 4rem 0;
+          }
+          
+          .feature {
+            text-align: center;
+            padding: 2rem;
+          }
+          
+          .feature h3 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+          }
+          EOF
+
+      - name: Compile AsciiDoc files
+        run: |
+          # Compile landing page
+          asciidoctor -a stylesheet=assets/style.css -o docs-build/index.html docs/landing.adoc
+          
+          # Compile technical manual
+          mkdir -p docs-build/manual
+          asciidoctor -a stylesheet=../assets/style.css -o docs-build/manual/index.html docs/book.adoc
+
+      - name: Setup Pages
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs-build
+
+  deploy:
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,394 @@
+= Glam Manual
+:author: Luke Gessler
+:lang: en
+:encoding: UTF-8
+:doctype: book
+:toc: left
+:toclevels: 3
+:sectlinks:
+:sectanchors:
+:leveloffset: 1
+:sectnums:
+:imagesdir: img/src
+:imagesoutdir: img/out
+:favicon: favicon.ico
+:hide-uri-scheme: 1
+:source-highlighter: coderay
+
+= Introduction
+
+Glam is an app for linguistic annotation.
+While Glam is usable for many different kinds of annotation projects, it was originally developed to serve https://en.wikipedia.org/wiki/Language_documentation[**language documentation**] projects, and in pursuit of that, aims to achieve the following core goals:
+
+- **Flexible Data**: you should be able to record however much data and whatever kind of data you desire.
+Annotating anything from good old-fashioned https://en.wikipedia.org/wiki/Interlinear_gloss[interlinear glossed text] to more complicated formats like https://universaldependencies.org/format.html[Universal Dependencies] should be possible and easy.
+- **Seamless Collaboration**: working with others should be frictionless--you should be able to share data without even clicking a button, changes should be viewable by everyone in real time, and everyone should be able to pick the system up quickly.
+- **Durability**: data should never be lost--all past states of the database should be recorded and accessible.
+- **NLP Model Integration**: it should be easy to configure cutting-edge NLP models to provide best possible annotations to be corrected by humans, and have them train incrementally as new gold annotations become available.
+- **Pluggable UIs**: if you want to code new UIs for different kinds of annotation (e.g. entity recognition, syntax, and coreference), you should be able to do so just by writing JavaScript using the Glam API, with no backend changes required.
+
+= Core Concepts
+Glam allows different **users** to collaborate on different **projects**.
+Administrators may grant users read or write privileges on different projects, and projects are otherwise simply collections of **documents**.
+Documents may have different kinds of data, and a project's layer configuration determines what kind of data will be created for that project.
+
+
+== Layers
+At the heart of Glam is the concept of a **layer**.
+A layer represents a single kind of data that is to be captured in documents in a project.
+By the addition and combination of layers, different projects are able to record whatever data is most appropriate in their documents.
+Projects may have as many or as few of each layer as is appropriate.
+
+=== Text
+A text layer holds strings of text that form the foundation of documents.
+Most projects will only have one text layer, though it is possible to create more than one.
+(One such rare occasion might be when the same text has been given in two different languages, and both versions of the text need to be annotated.)
+
+There are no constraints on what texts can contain, except one: many of Glam's core interfaces assume that one line in the text will roughly correspond to something like a sentence.
+Texts should be edited accordingly, and very long lines should be avoided if possible.
+
+NOTE: Some things that you might feel like modeling with multiple text layers might actually be better modeled with other layers.
+For example, you might want to model different speakers in conversational texts with different text layers, but speakers are different and variable across documents, so this is actually better modeled by having a span layer for speakers.
+
+=== Token
+A token layer contains tokens, which are defined as non-overlapping, non-empty, continuous substrings of a text layer which the token layer depends on.
+Tokens provide basic units for further linguistic analysis, and will most commonly capture something like a morpheme or a word.
+It therefore may be desirable to have multiple token layers in some situations.
+
+=== Span
+A span layer contains spans and depends on a token layer.
+Spans are anchored to tokens from the token layer it depends on: each span must be linked to at least one token from that token layer.
+(Associated tokens do not need to be contiguous.)
+Spans may also have a **value**, which is either a plain text value or an entry in a vocabulary (see below).
+
+Many kinds of span layers will have spans which always span exactly one token--these might express common information such as grammatical category, or part of speech.
+Other span layers will have much wider spans, such as a translation span layer, whose spans would cover entire sentences.
+
+=== Relation
+A relation layer depends on a single span layer and holds edges between spans.
+These edges are directed (one span is the source, the other is the target), and must always connect exactly two spans from the span layer.
+The relation also has a value like spans do: either a plain text value, or an item from a vocabulary.
+Many projects will not need relation layers, but they are critical for expressing some kinds of data such as coreference links and syntax trees.
+
+NOTE: We are optimistic that a relation layer will only ever need to involve spans from a single span layer, but if you are in a situation where you feel that you need relations to connect spans from different layers, please https://github.com/lgessler/glam/discussions[discuss your situation] with us.
+
+=== Vocabulary
+A vocabulary is simply a list of items which have at minimum a **form**.
+A vocabulary may also specify additional fields that each item should have, which will be able to hold arbitrary text as information.
+Vocabularies may be **closed** or **open**: if a vocabulary is closed, then only administrators will be able to add more items, and if it is open, then regular users will be able to extend the vocabulary with new items during regular use.
+
+NOTE: For now, additional vocabulary fields will only be able to hold plain strings, but if you would like something beyond that, please https://github.com/lgessler/glam/discussions[describe your needs].
+
+Unlike the other layer types, vocabularies are **global** and are not associated with a project.
+Vocabularies come in two different varieties: if a vocabulary is to be used with a token layer, then it is an **alloformic vocabulary**, and if it is to be used with a span or relation layer, it is a **basic vocabulary**.
+
+.Basic Vocabulary
+In this kind of vocabulary, spans and relations whose values refer to a vocabulary item will have exactly that vocabulary item's form as its value.
+This is suitable for annotations like grammatical categories, POS tags, lemmas, and morphological features.
+
+.Alloformic Vocabulary
+Alloformic vocabularies are used with token layers, and help address the fact that formal units of linguistic analysis such as words of morphemes often do not surface in texts in their citation form: for example, the Turkish plural marker may surface as either _-lar_ or _-ler_ depending on vowel harmony, but we would like them both to correspond to a single vocabulary item for a morphemic analysis.
+An alloformic vocabulary therefore still requires that each item have a canonical **form** which is to serve as a citation form, but it relaxes the requirement that an instantiation of this item have exactly the canonical form.
+
+== Universality
+The five layer types described above are technically and conceptually simple.
+Recall that one of Glam's goals is to allow you to record any kind of data.
+Can we really expect to accommodate any kind of data using just the five layer types?
+
+Cautiously, we expect that the answer is yes.
+Researchers in https://aclanthology.org/2020.acl-main.192/[NLP] and https://corpus-tools.org/salt/[corpus linguistics], among others, have already described very similar data models and expressed faith (supported by experimental successes) in their ability to express almost any linguistic formalism.
+So, if there is some kind of data you wish to annotate, you can expect that Glam's layer system will be able to handle it.
+
+NOTE: If you're struggling to come up with a plan for your data, don't hesitate to make a post on the https://github.com/lgessler/glam/discussions[discussions page] so others can give you advice.
+
+However, what is not necessarily guaranteed is that Glam will provide you with an ergonomic interface for annotating documents in your layer system.
+Glam tries to provide sensible interfaces for the most common kinds of linguistic annotation (such as interlinear glossing), but if your needs are more complex (as they would be with something like constituency treebanking), Glam's interfaces may not be especially ergonomic, and you should consider developing your own UI.
+
+= User Workflows
+
+== Document Annotation
+Glam ships with a number of document-level editing interfaces to facilitate typical kinds of annotation.
+All of these interfaces will automatically update in real time if multiple users are editing the same document.
+
+=== Text
+The text editing interface (at `/document/:id?tab=text`) is used for editing the raw text that will be annotated in the document.
+
+.Raw text entry
+A text box allows for entry, and the default "save" action will save the text as it is entered.
+No tokens will be created--just the text will be saved.
+
+.Text entry with morpheme tokenization
+[#morphent]
+You will often want tokens that represent a morpheme rather than a whole word.
+To conveniently enter data like this, the text editing interface offers a "save with morpheme tokenization" action.
+Text that is entered and saved with this action will create tokens when the text is saved with explicit guidance from you in the form of `-` separators between morphemes.
+For example, consider the following raw text:
+
+```
+Ox-en plow-ing the field-s
+```
+
+When saved with morpheme tokenization mode, two things will happen: first, the `-` separators will be removed from the text's final form; second, tokens will be generated that will have boundaries at `-` separators as well as other heuristic boundaries, such as whitespace characters.
+The text above would therefore look like so, where the numbers under each character indicates the token it belongs to:
+
+```
+Oxen plowing the fields
+1122 3333444 555 666667
+```
+
+If you want to include a literal `-` in your text, simply repeat it:
+
+```
+The ice--cream melt-ed
+=>
+The ice-cream melted
+111 222344444 555566
+```
+
+=== Token
+
+The token editing interface (at `/document/:id?tab=token`) allows you to create and edit tokens.
+A token is visually represented in both this interface and the text interface with a black rounded box around its text.
+
+WARNING: Some of the actions described here are only guaranteed to work in Google Chrome. Avoid using other browsers at this time.
+
+.Bulk token creation
+Currently, only whitespace tokenization is supported for bulk token editing.
+It is recommended that you use text editing with morpheme tokenization if this is not suitable for you.
+In the future, it will be possible to use external tokenizers, such as SpaCy's.
+
+.Token deletion
+Simply click on a token's box to delete it.
+
+.Token creation
+Highlight a totally untokenized span of text, either by clicking and dragging your mouse over it or double clicking on a whole word.
+Creation will only succeed if all characters do not belong to any existing token.
+
+.Token editing
+To shift the boundaries of an existing token, hover over the token with your mouse and use the following keyboard commands:
+
+- `A` / `←`: expand token left
+- `SHIFT+A` / `SHIFT+←`: shrink token left
+- `D` / `→`: expand token right
+- `SHIFT+D` / `SHIFT+→`: shrink token right
+
+=== Interlinear
+The interlinear interface allows <<Project Configuration,properly configured span layers>> to be edited.
+For each token, each token-level span layer will have a single field, and for each sentence, each sentence-level span layer will also have a single field.
+Changes in the spans' values will be propagated to other users as soon as your cursor leaves a field.
+
+= Administrator Workflows
+Administrators are privileged users that can configure all aspects of a Glam instance.
+
+== User Management
+Administrators can create new users and manage existing users (`/admin/user`).
+
+== Project Configuration
+Each project has its own configuration of layers which will determine the structure of documents inside that project.
+Most projects will only need one text layer and one token layer, though one may want to have e.g. tokenizations at both the morpheme and the word level.
+Span layers will vary most across projects, as they contain the span-level linguistic annotations that will constitute the bulk of a document's linguistic annotations.
+
+.Span Configuration for Interlinear Editor
+The interlinear editor needs to know which span layers represent token-level information (e.g. a POS tag or a grammatical category), and which represent sentence-level information (e.g. a translation).
+Once you have configured your project's layers, go to the "Interfaces" tab of the admin's project management activity and configure the span layers you wish to use in the interlinear editor.
+
+.Read and Write Privileges
+By default, non-admin users are not allowed to view or edit any projects.
+To grant them access, navigate to a project in the Project Management admin activity, visit the "Access" tab, and grant each user the appropriate privileges.
+
+= Developer's Guide
+
+CAUTION: This section is intended only for people who want to extend Glam. You do not need to read this section in order to use Glam.
+
+== Code Atlas
+
+Glam's code is divided into https://clojure.org/reference/namespaces[Clojure namespaces].
+If you're not familiar, a Clojure namespace is like a Python module in that it is a contained unit of code that lives in a single file, and the path of the file (relative to the root directory) determines the name of the namespace.
+For example, a file at `glam/xtdb/span_layer.clj` holds code the for namespace `glam.xtdb.span-layer`.
+
+WARNING: Note that for historical reasons a `_` in the file name corresponds to a `-` in the namespace name and vice versa. Clojure will complain if this condition is not met.
+
+Most of Glam's code is in the `src/main` root directory.
+(There are two other root directories: `src/test`, which contains tests, and `src/dev`, which contains a small amount code that is only used during development.)
+Here is a high-level view of some important namespaces under `src/main`:
+
+.glam.server
+This namespace contains the heart of the backend.
+All the components of the backend that are stateful live here.
+These include:
+
+* `glam.server.main`: the programmatic entry point
+* `glam.server.config`: the object that holds the configuration object for the backend
+* `glam.server.http-server`: the HTTP server which serves the app and handles requests
+* `glam.server.pathom-parser`: the setup required for the https://blog.wsscode.com/pathom/v2/pathom/2.2.0/introduction.html[Pathom 2] resolvers defined in `glam.models` (see below)
+* `glam.server.xtdb`: the separate https://xtdb.com/[XTDB databases] that are used to manage session information and the rest of all the application's data
+* `glam.server.middleware`: the middleware that lets the HTTP server interact with the other major components of the application in order to fulfill requests, i.e. the Pathom parser, the database, and a couple other things.
+
+.glam.xtdb
+Each namespace under this one (aside from `access`, `common`, and `util`) contains functions which help you read from and write to the database for the entity whose name is on the namespace.
+Think of this as analogous to where your SQL queries would go if you were using a SQL database.
+Beware: these functions require you to have a more or less complete understanding of both Glam's data model and XTDB before you can write or modify them successfully.
+
+.glam.models
+This is perhaps a bit of an uninformative name.
+`glam.models` contains all the functions for the backend which clients invoke when they want to read or write data from the server.
+For example, `glam.models.span/create-span` is invoked by clients whenever a client wants to create a span on the server.
+Typically, each function under `glam.models` will correspond to a single function under the `glam.xtdb` namespace (e.g. `glam.xtdb.span/create`).
+
+Why have `glam.models`, then?
+Because `glam.models` is where validation happens: arguments are checked for validity, users are checked for proper authentication and authorization, and additionally, clients are given helpful error or success messages in response to the `glam.xtdb` function's success.
+`glam.xtdb` do not attempt to check any of these things before executing.
+
+Additionally, the `glam.models` namespace sometimes contains validation logic related to certain fields.
+For example, `glam.models.document` has a validation function that checks whether the name of the document is between 1 and 80 characters in length.
+For this reason, many of the files in this namespace end with the `.cljc` extension, which indicates to the Clojure[Script] compilers that the file can be read both as valid Clojure and ClojureScript.
+This helps us write validation logic exactly once, precluding inconsistency on client and server.
+
+.glam.client
+This is the namespace that almost all of the ClojureScript code lives under.
+The majority of this code by volume is under `glam.client.ui`, but the namespaces which are not under that contain important bureaucratic information, mostly for Fulcro (`glam.client.application`), but also for the router (`glam.client.router`).
+
+.glam.client.ui
+This is where all of the https://fulcro.fulcrologic.com/[Fulcro] components live.
+A Fulcro component is a React component with some extra bits specific to Fulcro.
+Fulcro is too much of a thing to even try to explain here, so consult the documents if you need to understand it.
+However, note that it is possible for this code to interoperate with plain React components written in JavaScript.
+As of the writing of this section, this has not been done yet, but this may change soon.
+
+.glam.algos
+There are some data operations that are quite complicated (e.g. taking two versions of a string and finding the shortest sequence of string edits that can produce one from the other) that have been separate out into this namespace to keep the places where they are consumed from being overrun by their length.
+This is where they live.
+
+== glam.xtdb
+
+Instead of a SQL database, Glam uses https://www.xtdb.com/[XTDB] for data persistence.
+XTDB has some unusual features.
+One very exciting one for us is that it is immutable, meaning that whenever a write happens, the previous state of the database is not overwritten.
+Because of this, every past state of the database is viewable.
+XTDB has other features which make it well suited to our task.
+
+In this section, we'll review how Glam implements its core data model using XTDB.
+This section assumes familiarity with the basics of XTDB and Glam's data model.
+Consult the https://www.xtdb.com/learn[XTDB learning materials] and the earlier sections of this document respectively before proceeding.
+
+=== Basics
+Just as you might expect the data for a document to be spread out across different tables for a SQL approach, in XTDB, we make a separate document for every different kind of data that makes up a project or a document.
+Every token, for example, will have its own document.
+Each document has attributes, which you can again think of as analogous to a SQL column.
+
+Let's consider an example. A `token` document has the following attributes:
+
+* `:token/id`: the ID of this token. Note this is also stored on `:xt/id`, which is a required property for all XTDB documents. The reason why we also have `:token/id` in addition to `:xt/id` even though their values are the same is that querying for `:token/id` will allow us to easily find documents that represent tokens. Every other document also has an `:x/id` attribute like this, e.g. `:project/id`.
+* `:token/layer`: the ID of the layer that this token belongs to, i.e. the `:token-layer/id` of the `token-layer` associated document. In SQL, this would be a foreign key that you could use to facilitate joins.
+* `:token/text`: the ID of the text that this token is a token of, i.e. the `:text/id` of the associated text.
+* `:token/begin`, `:token/end`: substring indices for the text which indicate the bounds of this token.
+
+Putting that all together (ignoring layers):
+
+[,clojure]
+----
+;; A text object
+{:xt/id      1
+ :text/id    1
+ :text/layer ...
+ :text/body  "Hello, world"}
+
+{:xt/id       2
+ :token/id    2
+ :token/layer ...
+ :token/text  1
+ :token/begin 0
+ :token/end   5}
+----
+
+The token represented by the second document captures the substring `"Hello"` in the text.
+
+=== Transaction Functions
+The data structures we just described are highly relational, and as such we need to take care to never allow an invalid state to occur.
+Every attribute which refers to another document with an ID must always be valid, or bad things will start happening.
+Consider, for example, what must happen when we delete a `text` object.
+If a `text` no longer exists, then we must be sure to delete all of the `token` objects that depend on it, and so on for dependents of `token` objects.
+And importantly, we must make sure that this deletion is an all-or-nothing affair: it would be bad if the deletion process succeeded only on some documents, or if database reads occurred while the deletion was in progress, yielding a view that would have invalid joins.
+
+XTDB has an elegant solution for this in the form of the https://www.xtdb.com/blog/xtdb-transaction-functions[transaction function].
+First of all, recall that all writes happen with XTDB's `submit-tx` function, which takes a vector of transaction operations which are executed in order.
+This alone isn't enough, since XTDB's primitive `:xtdb.api/delete` transaction operation isn't sufficiently expressive for the detailed behavior our data model requires.
+For example, when a token is deleted, a span that contains that token should be deleted if and only if the token was the only one contained in the span.
+This is where the transaction function comes in: it allows us to define our own transaction operations that have the freedom of arbitrary code and the guarantees associated with being executed within a transaction by XTDB.
+
+To make using transaction functions as convenient as possible, we define new transaction functions using `glam.xtdb.easy/deftx`.
+Consider an example: `glam.xtdb.token/delete`:
+
+[,clojure]
+----
+(gxe/deftx delete [node eid]
+  (let [spans (get-span-ids node eid)]
+    (into
+      (reduce into (map #(s/remove-token** node % eid) spans))
+      [(gxe/delete* eid)])))
+----
+
+This looks a lot like a normal function definition, but there are a few things to note about this.
+First of all, the first argument to the function must always be `node`, which will be bound to the XTDB node executing the function.
+Second, `deftx` actually defines _two_ things.
+There is an internal version of the function that is trailed with `pass:[**]`, and invoking this prepares an XTDB transaction which contains only the invocation of this transaction function.
+The normal version of this function without the `pass:[**]` at the end does the same but also invokes the transaction immediately.
+Having these two variants allows us to use the asterisk-less version whenever we're interested in that operation as our top-level goal, and the asterisk-ful version whenever we want to use that operation as a part of another operation.
+In the example above, we can see that this transaction function relies on another transaction function, `glam.xtdb.span/remove-token**`.
+
+NOTE: Throughout glam.xtdb, it is a convention that any function ending with `pass:[*]` will return a transaction operation, and any function ending with `pass:[**]` will return a transaction (i.e., a vector of transaction operations).
+
+Let's go through an example to make all of that concrete, continuing with `glam.xtdb.token/delete`.
+First, let's observe that this function is stored in the database:
+
+[,clojure]
+----
+(gxe/entity user/node :glam.xtdb.token/delete)
+=>
+{:xt/id :glam.xtdb.token/delete
+ :xt/fn
+ (clojure.core/fn
+  [node eid]
+  (let
+   [spans (glam.xtdb.token/get-span-ids node eid)]
+    (into
+     (reduce into (map (fn* [p1__98802#] (glam.xtdb.span/remove-token** node p1__98802# eid)) spans))
+     [(glam.xtdb.easy/delete* eid)]))))}
+----
+
+This code should look very familiar--it's what we saw above!
+(Don't worry about the minor differences on variable names--that's an implementation detail that you can safely ignore.)
+Now let's see what the result of invoking `delete**` is:
+
+[,clojure]
+----
+(glam.xtdb.token/delete** node 5)
+=> [[:xtdb.api/fn :glam.xtdb.token/delete 5]]
+----
+
+As you can see, not much happens: all this does is to prepare the transaction function's invocation by formatting it with its arguments.
+Nothing has happened to the database.
+Invoking `(glam.xtdb.token/delete node 5)`, on the other hand, would have submitted this to the database, equivalent to `(xtdb.api/submit-tx node (glam.xtdb.token/delete** node 5))`.
+
+=== Idents
+In most places in Glam, we will refer to an entity simply with its ID.
+This is true, for example, in all XTDB documents: `:token/text` has as its associated value the ID of the associated `text`.
+However, in some places, you will see idents, which are two-item vectors where the first value is a keyword like `:text/id` and the second value is the ID.
+This is called an *ident*, and it is another way of referring to an entity which encodes its type.
+We use idents because https://blog.wsscode.com/pathom/v2/pathom/2.2.0/introduction.html[Pathom] (the library we use for graph query processing) works in terms of them.
+For this reason, you will see that many namespaces have an `xt->pathom` function which will convert IDs to idents.
+
+=== Namespace Overview
+
+All namespaces under `glam.xtdb` are devoted to a particular data type, with the following exceptions:
+
+* `glam.xtdb.easy` has functions which offer a higher-level interface to XTDB.
+* `glam.xtdb.common` has mostly low-level helper functions which are used by other namespaces.
+* `glam.xtdb.access` contains the logic used in `glam.models` namespaces to determine whether a user is authorized to perform certain actions.
+
+
+// [,clojure]
+// ----
+// include::https://raw.githubusercontent.com/lgessler/glam/master/src/workspaces/glam/main_ws.cljs[lines=1..3]
+// ----
+
