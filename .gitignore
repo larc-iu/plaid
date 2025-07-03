@@ -38,3 +38,4 @@ Gemfile.lock
 __pycache__/
 .token
 dist/
+_site/
