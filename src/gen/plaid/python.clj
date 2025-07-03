@@ -107,7 +107,9 @@
   [operation]
   (let [{:keys [path path-params ordered-params]} operation
         {:keys [regular-query-params as-of-param]} ordered-params
-        all-query-params (concat regular-query-params (when as-of-param [as-of-param]))
+        ;; Filter out document-version from query params
+        filtered-query-params (filter #(not= (:name %) "document-version") regular-query-params)
+        all-query-params (concat filtered-query-params (when as-of-param [as-of-param]))
 
         ;; Build URL with path parameters
         url-construction (if (empty? path-params)
