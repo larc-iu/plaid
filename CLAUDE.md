@@ -14,12 +14,15 @@ Thanks to its immutable database, XTDB (v1), it is also able to offer a full his
 
 ## Code Organization
 ```
-src/main/plaid/
-├── server/          # HTTP server setup, middleware, XTDB configuration
-├── rest_api/v1/     # REST API endpoint handlers
-├── xtdb/            # Database layer (entity-specific namespaces)
-├── algos/           # Text processing algorithms
-└── config/          # Environment-specific configuration
+src/
+├── main/plaid/
+│   ├── server/          # HTTP server setup, middleware, XTDB configuration
+│   ├── rest_api/v1/     # REST API endpoint handlers
+│   ├── xtdb/            # Database layer (entity-specific namespaces)
+│   ├── algos/           # Text processing algorithms
+│   └── config/          # Environment-specific configuration
+├── gen/plaid/           # Client code generation utilities
+└── dev/                 # Development utilities and user namespace
 ```
 
 ## Data Model
@@ -29,10 +32,11 @@ src/main/plaid/
 User
 Project
 ├── Document
-└── TextLayer
-    └── TokenLayer
-        └── SpanLayer
-            └── RelationLayer
+├── TextLayer
+│   └── TokenLayer
+│       └── SpanLayer
+│           └── RelationLayer
+└── VocabLayer
 ```
 
 Each Layer type also holds corresponding annotations.
@@ -54,6 +58,9 @@ Each layer has a `:config` field for storing arbitrary data. This enables UI cus
 5. **Token**: Substring reference with begin/end indices into Text
 6. **Span**: Annotation over one or more Tokens with arbitrary value
 7. **Relation**: Directed edge between two Spans with arbitrary value
+8. **VocabLayer**: Vocabulary management layer across projects
+9. **VocabItem**: Individual vocabulary entries with metadata
+10. **VocabLink**: Links VocabItems with Tokens
 
 ### Access Control
 
@@ -124,7 +131,7 @@ Default port for development: `8085`.
 ### Endpoints
 - `POST /login` - Returns JWT token
 - `GET /openapi.json` - return an OpenAPI JSON describing the entire API.
-- CRUD operations for: users, projects, documents, layers, texts, tokens, spans, relations
+- CRUD operations for: users, projects, documents, layers, texts, tokens, spans, relations, vocab-layers, vocab-items, vocab-links
 
 ### as-of
 - The query parameter `:as-of` is available on all routes and must contain a valid ISO 8601 string if present.
