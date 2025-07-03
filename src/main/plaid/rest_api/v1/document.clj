@@ -30,8 +30,10 @@
                                        :document/name name}
                                 result (doc/create {:node xtdb} attrs user-id metadata)]
                             (if (:success result)
-                              {:status 201
-                               :body {:id (:extra result)}}
+                              (prm/assoc-document-versions-in-header
+                                {:status 201
+                                 :body {:id (:extra result)}}
+                                result)
                               {:status (or (:code result) 500)
                                :body {:error (:error result)}})))}}]
 
@@ -58,10 +60,12 @@
                  :parameters {:body [:map [:name :string]]
                               :query [:map [:document-version {:optional true} :uuid]]}
                  :handler (fn [{{{:keys [document-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                            (let [{:keys [success code error]} (doc/merge {:node xtdb} document-id {:document/name name} user-id)]
+                            (let [{:keys [success code error] :as result} (doc/merge {:node xtdb} document-id {:document/name name} user-id)]
                               (if success
-                                {:status 200
-                                 :body (doc/get xtdb document-id)}
+                                (prm/assoc-document-versions-in-header
+                                  {:status 200
+                                   :body (doc/get xtdb document-id)}
+                                  result)
                                 {:status (or code 500)
                                  :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a document and all data contained."
@@ -69,9 +73,11 @@
                                [prm/wrap-document-version get-document-id]]
                   :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :handler (fn [{{{:keys [document-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error]} (doc/delete {:node xtdb} document-id user-id)]
+                             (let [{:keys [success code error] :as result} (doc/delete {:node xtdb} document-id user-id)]
                                (if success
-                                 {:status 204}
+                                 (prm/assoc-document-versions-in-header
+                                   {:status 204}
+                                   result)
                                  {:status (or code 500)
                                   :body {:error (or error "Internal server error")}})))}}]
 

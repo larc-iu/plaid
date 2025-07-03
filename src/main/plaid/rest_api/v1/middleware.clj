@@ -3,7 +3,13 @@
             [plaid.xtdb.document :as doc]
             [taoensso.timbre :as log]
             [xtdb.api :as xt]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.data.json :as json]))
+
+(defn assoc-document-versions-in-header [response {:keys [success document-versions]}]
+  (-> response
+      (cond-> (and success (seq document-versions))
+              (assoc-in [:headers "X-Document-Versions"] document-versions))))
 
 (defn wrap-request-extras [handler xtdb secret-key]
   (fn [request]
