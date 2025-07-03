@@ -55,7 +55,8 @@
          :patch {:summary "Update a document. Supported keys:\n\n<body>name</body>: update a document's name."
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
-                 :parameters {:body [:map [:name :string]]}
+                 :parameters {:body [:map [:name :string]]
+                              :query [:map [:document-version {:optional true} :uuid]]}
                  :handler (fn [{{{:keys [document-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
                             (let [{:keys [success code error]} (doc/merge {:node xtdb} document-id {:document/name name} user-id)]
                               (if success
@@ -66,6 +67,7 @@
          :delete {:summary "Delete a document and all data contained."
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
+                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :handler (fn [{{{:keys [document-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                              (let [{:keys [success code error]} (doc/delete {:node xtdb} document-id user-id)]
                                (if success
