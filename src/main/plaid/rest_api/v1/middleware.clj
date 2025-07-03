@@ -9,7 +9,7 @@
 (defn assoc-document-versions-in-header [response {:keys [success document-versions]}]
   (-> response
       (cond-> (and success (seq document-versions))
-              (assoc-in [:headers "X-Document-Versions"] document-versions))))
+              (assoc-in [:headers "X-Document-Versions"] (json/write-str document-versions)))))
 
 (defn wrap-request-extras [handler xtdb secret-key]
   (fn [request]

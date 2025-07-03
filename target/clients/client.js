@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Wed Jul 02 22:10:41 EDT 2025
+ * Generated on: Thu Jul 03 13:20:34 EDT 2025
  */
 
 class PlaidClient {
@@ -18,6 +18,10 @@ class PlaidClient {
     this.isBatching = false;
     this.batchOperations = [];
     
+    // Initialize document version tracking
+    this.documentVersions = new Map(); // Map of document-id -> version
+    this.strictModeDocumentId = null;  // Document ID for strict mode
+    
     // Initialize API bundles
     this.vocabLinks = {
       /**
@@ -25,20 +29,17 @@ class PlaidClient {
  * @param {string} vocabItemId - Required. Vocabitemid
  * @param {Array} tokens - Required. Tokens
  * @param {any} [metadata] - Optional. Metadata
- * @param {string} [documentVersion] - Optional documentVersion
        */
       create: this._vocabLinksCreate.bind(this),
       /**
        * Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} id - Id identifier
  * @param {any} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._vocabLinksSetMetadata.bind(this),
       /**
        * Remove all metadata from a vocab link.
  * @param {string} id - Id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._vocabLinksDeleteMetadata.bind(this),
       /**
@@ -115,20 +116,17 @@ class PlaidClient {
        * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} relationId - Relation-id identifier
  * @param {any} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._relationsSetMetadata.bind(this),
       /**
        * Remove all metadata from a relation.
  * @param {string} relationId - Relation-id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._relationsDeleteMetadata.bind(this),
       /**
        * Update the target span of a relation.
  * @param {string} relationId - Relation-id identifier
  * @param {string} spanId - Required. Spanid
- * @param {string} [documentVersion] - Optional documentVersion
        */
       setTarget: this._relationsSetTarget.bind(this),
       /**
@@ -140,21 +138,18 @@ class PlaidClient {
       /**
        * Delete a relation.
  * @param {string} relationId - Relation-id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       delete: this._relationsDelete.bind(this),
       /**
        * Update a relation's value.
  * @param {string} relationId - Relation-id identifier
  * @param {any} value - Required. Value
- * @param {string} [documentVersion] - Optional documentVersion
        */
       update: this._relationsUpdate.bind(this),
       /**
        * Update the source span of a relation.
  * @param {string} relationId - Relation-id identifier
  * @param {string} spanId - Required. Spanid
- * @param {string} [documentVersion] - Optional documentVersion
        */
       setSource: this._relationsSetSource.bind(this),
       /**
@@ -169,7 +164,6 @@ targetId: the target span this relation goes to
  * @param {string} targetId - Required. Targetid
  * @param {any} value - Required. Value
  * @param {any} [metadata] - Optional. Metadata
- * @param {string} [documentVersion] - Optional documentVersion
        */
       create: this._relationsCreate.bind(this),
       /**
@@ -180,13 +174,11 @@ target, the span id of the relation's target
 value, the relation's value
 metadata, an optional map of metadata
  * @param {Array} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkCreate: this._relationsBulkCreate.bind(this),
       /**
        * Delete multiple relations in a single operation. Provide an array of IDs.
  * @param {Array} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkDelete: this._relationsBulkDelete.bind(this)
     };
@@ -241,7 +233,6 @@ metadata, an optional map of metadata
        * Replace tokens for a span.
  * @param {string} spanId - Span-id identifier
  * @param {Array} tokens - Required. Tokens
- * @param {string} [documentVersion] - Optional documentVersion
        */
       setTokens: this._spansSetTokens.bind(this),
       /**
@@ -255,7 +246,6 @@ metadata: optional key-value pairs for additional annotation data.
  * @param {Array} tokens - Required. Tokens
  * @param {any} value - Required. Value
  * @param {any} [metadata] - Optional. Metadata
- * @param {string} [documentVersion] - Optional documentVersion
        */
       create: this._spansCreate.bind(this),
       /**
@@ -267,14 +257,12 @@ metadata: optional key-value pairs for additional annotation data.
       /**
        * Delete a span.
  * @param {string} spanId - Span-id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       delete: this._spansDelete.bind(this),
       /**
        * Update a span's value.
  * @param {string} spanId - Span-id identifier
  * @param {any} value - Required. Value
- * @param {string} [documentVersion] - Optional documentVersion
        */
       update: this._spansUpdate.bind(this),
       /**
@@ -284,26 +272,22 @@ tokens, the IDs of the span's constituent tokens
 value, the relation's value
 metadata, an optional map of metadata
  * @param {Array} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkCreate: this._spansBulkCreate.bind(this),
       /**
        * Delete multiple spans in a single operation. Provide an array of IDs.
  * @param {Array} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkDelete: this._spansBulkDelete.bind(this),
       /**
        * Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} spanId - Span-id identifier
  * @param {any} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._spansSetMetadata.bind(this),
       /**
        * Remove all metadata from a span.
  * @param {string} spanId - Span-id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._spansDeleteMetadata.bind(this)
     };
@@ -312,13 +296,11 @@ metadata, an optional map of metadata
        * Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} textId - Text-id identifier
  * @param {any} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._textsSetMetadata.bind(this),
       /**
        * Remove all metadata from a text.
  * @param {string} textId - Text-id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._textsDeleteMetadata.bind(this),
       /**
@@ -331,7 +313,6 @@ body: the string which is the content of this text.
  * @param {string} documentId - Required. Documentid
  * @param {string} body - Required. Body
  * @param {any} [metadata] - Optional. Metadata
- * @param {string} [documentVersion] - Optional documentVersion
        */
       create: this._textsCreate.bind(this),
       /**
@@ -343,14 +324,12 @@ body: the string which is the content of this text.
       /**
        * Delete a text and all dependent data.
  * @param {string} textId - Text-id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       delete: this._textsDelete.bind(this),
       /**
        * Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
  * @param {string} textId - Text-id identifier
  * @param {string} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       update: this._textsUpdate.bind(this)
     };
@@ -446,13 +425,11 @@ body: the string which is the content of this text.
        * Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} documentId - Document-id identifier
  * @param {any} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._documentsSetMetadata.bind(this),
       /**
        * Remove all metadata from a document.
  * @param {string} documentId - Document-id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._documentsDeleteMetadata.bind(this),
       /**
@@ -770,7 +747,6 @@ precedence: used for tokens with the same begin value in order to indicate their
  * @param {number} end - Required. End
  * @param {number} [precedence] - Optional. Precedence
  * @param {any} [metadata] - Optional. Metadata
- * @param {string} [documentVersion] - Optional documentVersion
        */
       create: this._tokensCreate.bind(this),
       /**
@@ -782,7 +758,6 @@ precedence: used for tokens with the same begin value in order to indicate their
       /**
        * Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
  * @param {string} tokenId - Token-id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       delete: this._tokensDelete.bind(this),
       /**
@@ -795,7 +770,6 @@ precedence: ordering value for the token relative to other tokens with the same 
  * @param {number} [begin] - Optional. Begin
  * @param {number} [end] - Optional. End
  * @param {number} [precedence] - Optional. Precedence
- * @param {string} [documentVersion] - Optional documentVersion
        */
       update: this._tokensUpdate.bind(this),
       /**
@@ -807,26 +781,22 @@ end, the character index at which the token ends (exclusive)
 precedence, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same begin
 metadata, an optional map of metadata
  * @param {Array} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkCreate: this._tokensBulkCreate.bind(this),
       /**
        * Delete multiple tokens in a single operation. Provide an array of IDs.
  * @param {Array} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       bulkDelete: this._tokensBulkDelete.bind(this),
       /**
        * Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} tokenId - Token-id identifier
  * @param {any} body - Required. Body
- * @param {string} [documentVersion] - Optional documentVersion
        */
       setMetadata: this._tokensSetMetadata.bind(this),
       /**
        * Remove all metadata from a token.
  * @param {string} tokenId - Token-id identifier
- * @param {string} [documentVersion] - Optional documentVersion
        */
       deleteMetadata: this._tokensDeleteMetadata.bind(this)
     };
@@ -845,6 +815,24 @@ metadata, an optional map of metadata
     // Convert camelCase back to kebab-case
     // 'layerId' -> 'layer-id'
     return key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
+  }
+
+  _extractDocumentVersions(responseHeaders) {
+    // Extract and update document versions from response headers
+    const docVersionsHeader = responseHeaders.get('X-Document-Versions');
+    if (docVersionsHeader) {
+      try {
+        const versionsMap = JSON.parse(docVersionsHeader);
+        if (typeof versionsMap === 'object' && versionsMap !== null) {
+          // Update internal document versions map
+          Object.entries(versionsMap).forEach(([docId, version]) => {
+            this.documentVersions.set(docId, version);
+          });
+        }
+      } catch (e) {
+        // Ignore malformed header
+      }
+    }
   }
 
   _transformRequest(obj) {
@@ -885,6 +873,26 @@ metadata, an optional map of metadata
 
 
   /**
+   * Enter strict mode for a specific document.
+   * 
+   * When in strict mode, write operations will automatically include 
+   * document-version parameters to prevent concurrent modifications.
+   * Operations on stale documents will fail with HTTP 409 errors.
+   * 
+   * @param {string} documentId - The ID of the document to track versions for
+   */
+  enterStrictMode(documentId) {
+    this.strictModeDocumentId = documentId;
+  }
+
+  /**
+   * Exit strict mode and stop tracking document versions for writes.
+   */
+  exitStrictMode() {
+    this.strictModeDocumentId = null;
+  }
+
+  /**
    * Begin a batch of operations. All subsequent API calls will be queued instead of executed.
    * @returns {void}
    */
@@ -908,7 +916,7 @@ metadata, an optional map of metadata
     }
 
     try {
-      const url = `${this.baseUrl}/api/v1/bulk`;
+      let url = `${this.baseUrl}/api/v1/bulk`;
       const body = this.batchOperations.map(op => ({
         path: op.path,
         method: op.method.toUpperCase(),
@@ -963,14 +971,8 @@ metadata, an optional map of metadata
   /**
    * Create a new vocab link (link between tokens and vocab item).
    */
-  async _vocabLinksCreate(vocabItemId, tokens, metadata = undefined, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/vocab-links`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _vocabLinksCreate(vocabItemId, tokens, metadata = undefined) {
+    let url = `${this.baseUrl}/api/v1/vocab-links`;
     const bodyObj = {
       "vocab-item-id": vocabItemId,
       "tokens": tokens,
@@ -980,10 +982,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -1000,17 +1012,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1023,14 +1038,8 @@ metadata, an optional map of metadata
   /**
    * Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _vocabLinksSetMetadata(id, body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/vocab-links/${id}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _vocabLinksSetMetadata(id, body) {
+    let url = `${this.baseUrl}/api/v1/vocab-links/${id}/metadata`;
     const bodyObj = {
       "body": body
     };
@@ -1038,10 +1047,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -1058,17 +1077,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1081,19 +1103,23 @@ metadata, an optional map of metadata
   /**
    * Remove all metadata from a vocab link.
    */
-  async _vocabLinksDeleteMetadata(id, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/vocab-links/${id}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
+  async _vocabLinksDeleteMetadata(id) {
+    let url = `${this.baseUrl}/api/v1/vocab-links/${id}/metadata`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
     }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -1108,17 +1134,20 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1132,13 +1161,23 @@ metadata, an optional map of metadata
    * Get a vocab link by ID
    */
   async _vocabLinksGet(id, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/vocab-links/${id}`;
+    let url = `${this.baseUrl}/api/v1/vocab-links/${id}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1169,6 +1208,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1182,7 +1224,17 @@ metadata, an optional map of metadata
    * Delete a vocab link
    */
   async _vocabLinksDelete(id) {
-    const url = `${this.baseUrl}/api/v1/vocab-links/${id}`;
+    let url = `${this.baseUrl}/api/v1/vocab-links/${id}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1213,6 +1265,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1226,7 +1281,7 @@ metadata, an optional map of metadata
    * Get a vocab layer by ID
    */
   async _vocabLayersGet(id, includeItems = undefined, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}`;
+    let url = `${this.baseUrl}/api/v1/vocab-layers/${id}`;
     const queryParams = new URLSearchParams();
     if (includeItems !== undefined && includeItems !== null) {
       queryParams.append('include-items', includeItems);
@@ -1236,6 +1291,16 @@ metadata, an optional map of metadata
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1266,6 +1331,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1279,7 +1347,17 @@ metadata, an optional map of metadata
    * Delete a vocab layer.
    */
   async _vocabLayersDelete(id) {
-    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}`;
+    let url = `${this.baseUrl}/api/v1/vocab-layers/${id}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1310,6 +1388,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1323,13 +1404,23 @@ metadata, an optional map of metadata
    * Update a vocab layer's name.
    */
   async _vocabLayersUpdate(id, name) {
-    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}`;
+    let url = `${this.baseUrl}/api/v1/vocab-layers/${id}`;
     const bodyObj = {
       "name": name
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1362,6 +1453,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1375,8 +1469,18 @@ metadata, an optional map of metadata
    * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _vocabLayersSetConfig(id, namespace, configKey, configValue) {
-    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1409,6 +1513,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1422,7 +1529,17 @@ metadata, an optional map of metadata
    * Remove a configuration value for a layer.
    */
   async _vocabLayersDeleteConfig(id, namespace, configKey) {
-    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1453,6 +1570,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1466,13 +1586,23 @@ metadata, an optional map of metadata
    * List all vocab layers accessible to user
    */
   async _vocabLayersList(asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/vocab-layers`;
+    let url = `${this.baseUrl}/api/v1/vocab-layers`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1503,6 +1633,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1516,13 +1649,23 @@ metadata, an optional map of metadata
    * Create a new vocab layer. Note: this also registers the user as a maintainer.
    */
   async _vocabLayersCreate(name) {
-    const url = `${this.baseUrl}/api/v1/vocab-layers`;
+    let url = `${this.baseUrl}/api/v1/vocab-layers`;
     const bodyObj = {
       "name": name
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1555,6 +1698,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1568,7 +1714,17 @@ metadata, an optional map of metadata
    * Assign a user as a maintainer for this vocab layer.
    */
   async _vocabLayersAddMaintainer(id, userId) {
-    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}/maintainers/${userId}`;
+    let url = `${this.baseUrl}/api/v1/vocab-layers/${id}/maintainers/${userId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1600,6 +1756,9 @@ metadata, an optional map of metadata
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -1612,7 +1771,17 @@ metadata, an optional map of metadata
    * Remove a user's maintainer privileges for this vocab layer.
    */
   async _vocabLayersRemoveMaintainer(id, userId) {
-    const url = `${this.baseUrl}/api/v1/vocab-layers/${id}/maintainers/${userId}`;
+    let url = `${this.baseUrl}/api/v1/vocab-layers/${id}/maintainers/${userId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1644,6 +1813,9 @@ metadata, an optional map of metadata
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -1655,14 +1827,8 @@ metadata, an optional map of metadata
   /**
    * Replace all metadata for a relation. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _relationsSetMetadata(relationId, body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _relationsSetMetadata(relationId, body) {
+    let url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
     const bodyObj = {
       "body": body
     };
@@ -1670,10 +1836,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -1690,17 +1866,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1713,19 +1892,23 @@ metadata, an optional map of metadata
   /**
    * Remove all metadata from a relation.
    */
-  async _relationsDeleteMetadata(relationId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
+  async _relationsDeleteMetadata(relationId) {
+    let url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
     }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -1740,17 +1923,20 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1763,14 +1949,8 @@ metadata, an optional map of metadata
   /**
    * Update the target span of a relation.
    */
-  async _relationsSetTarget(relationId, spanId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations/${relationId}/target`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _relationsSetTarget(relationId, spanId) {
+    let url = `${this.baseUrl}/api/v1/relations/${relationId}/target`;
     const bodyObj = {
       "span-id": spanId
     };
@@ -1778,10 +1958,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -1798,17 +1988,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1822,13 +2015,23 @@ metadata, an optional map of metadata
    * Get a relation by ID.
    */
   async _relationsGet(relationId, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations/${relationId}`;
+    let url = `${this.baseUrl}/api/v1/relations/${relationId}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -1860,6 +2063,9 @@ metadata, an optional map of metadata
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -1871,19 +2077,23 @@ metadata, an optional map of metadata
   /**
    * Delete a relation.
    */
-  async _relationsDelete(relationId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations/${relationId}`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
+  async _relationsDelete(relationId) {
+    let url = `${this.baseUrl}/api/v1/relations/${relationId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
     }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -1898,17 +2108,20 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1921,14 +2134,8 @@ metadata, an optional map of metadata
   /**
    * Update a relation's value.
    */
-  async _relationsUpdate(relationId, value, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations/${relationId}`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _relationsUpdate(relationId, value) {
+    let url = `${this.baseUrl}/api/v1/relations/${relationId}`;
     const bodyObj = {
       "value": value
     };
@@ -1936,10 +2143,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PATCH'
         , body: requestBody
       };
@@ -1956,17 +2173,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -1979,14 +2199,8 @@ metadata, an optional map of metadata
   /**
    * Update the source span of a relation.
    */
-  async _relationsSetSource(relationId, spanId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations/${relationId}/source`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _relationsSetSource(relationId, spanId) {
+    let url = `${this.baseUrl}/api/v1/relations/${relationId}/source`;
     const bodyObj = {
       "span-id": spanId
     };
@@ -1994,10 +2208,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -2014,17 +2238,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2042,14 +2269,8 @@ sourceId: the source span this relation originates from
 targetId: the target span this relation goes to
 <body>value</value>: the label for the relation
    */
-  async _relationsCreate(layerId, sourceId, targetId, value, metadata = undefined, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _relationsCreate(layerId, sourceId, targetId, value, metadata = undefined) {
+    let url = `${this.baseUrl}/api/v1/relations`;
     const bodyObj = {
       "layer-id": layerId,
       "source-id": sourceId,
@@ -2061,10 +2282,20 @@ targetId: the target span this relation goes to
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -2081,17 +2312,20 @@ targetId: the target span this relation goes to
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2109,20 +2343,24 @@ target, the span id of the relation's target
 value, the relation's value
 metadata, an optional map of metadata
    */
-  async _relationsBulkCreate(body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations/bulk`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _relationsBulkCreate(body) {
+    let url = `${this.baseUrl}/api/v1/relations/bulk`;
     const requestBody = this._transformRequest(body);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -2139,17 +2377,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2162,20 +2403,24 @@ metadata, an optional map of metadata
   /**
    * Delete multiple relations in a single operation. Provide an array of IDs.
    */
-  async _relationsBulkDelete(body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/relations/bulk`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _relationsBulkDelete(body) {
+    let url = `${this.baseUrl}/api/v1/relations/bulk`;
     const requestBody = this._transformRequest(body);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
         , body: requestBody
       };
@@ -2192,17 +2437,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2216,8 +2464,18 @@ metadata, an optional map of metadata
    * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _spanLayersSetConfig(spanLayerId, namespace, configKey, configValue) {
-    const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -2251,6 +2509,9 @@ metadata, an optional map of metadata
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -2263,7 +2524,17 @@ metadata, an optional map of metadata
    * Remove a configuration value for a layer.
    */
   async _spanLayersDeleteConfig(spanLayerId, namespace, configKey) {
-    const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -2295,6 +2566,9 @@ metadata, an optional map of metadata
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -2307,13 +2581,23 @@ metadata, an optional map of metadata
    * Get a span layer by ID.
    */
   async _spanLayersGet(spanLayerId, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}`;
+    let url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -2345,6 +2629,9 @@ metadata, an optional map of metadata
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -2357,7 +2644,17 @@ metadata, an optional map of metadata
    * Delete a span layer.
    */
   async _spanLayersDelete(spanLayerId) {
-    const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}`;
+    let url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -2389,6 +2686,9 @@ metadata, an optional map of metadata
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -2401,13 +2701,23 @@ metadata, an optional map of metadata
    * Update a span layer's name.
    */
   async _spanLayersUpdate(spanLayerId, name) {
-    const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}`;
+    let url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}`;
     const bodyObj = {
       "name": name
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -2441,6 +2751,9 @@ metadata, an optional map of metadata
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -2453,7 +2766,7 @@ metadata, an optional map of metadata
    * Create a new span layer.
    */
   async _spanLayersCreate(tokenLayerId, name) {
-    const url = `${this.baseUrl}/api/v1/span-layers`;
+    let url = `${this.baseUrl}/api/v1/span-layers`;
     const bodyObj = {
       "token-layer-id": tokenLayerId,
       "name": name
@@ -2461,6 +2774,16 @@ metadata, an optional map of metadata
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -2493,6 +2816,9 @@ metadata, an optional map of metadata
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2506,13 +2832,23 @@ metadata, an optional map of metadata
    * Shift a span layer's order.
    */
   async _spanLayersShift(spanLayerId, direction) {
-    const url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/shift`;
+    let url = `${this.baseUrl}/api/v1/span-layers/${spanLayerId}/shift`;
     const bodyObj = {
       "direction": direction
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -2546,6 +2882,9 @@ metadata, an optional map of metadata
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -2557,14 +2896,8 @@ metadata, an optional map of metadata
   /**
    * Replace tokens for a span.
    */
-  async _spansSetTokens(spanId, tokens, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/spans/${spanId}/tokens`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _spansSetTokens(spanId, tokens) {
+    let url = `${this.baseUrl}/api/v1/spans/${spanId}/tokens`;
     const bodyObj = {
       "tokens": tokens
     };
@@ -2572,10 +2905,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -2592,17 +2935,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2620,14 +2966,8 @@ tokens: a list of tokens associated with this span. Must contain at least one to
 value: the primary value of the span (must be string, number, boolean, or null).
 metadata: optional key-value pairs for additional annotation data.
    */
-  async _spansCreate(spanLayerId, tokens, value, metadata = undefined, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/spans`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _spansCreate(spanLayerId, tokens, value, metadata = undefined) {
+    let url = `${this.baseUrl}/api/v1/spans`;
     const bodyObj = {
       "span-layer-id": spanLayerId,
       "tokens": tokens,
@@ -2638,10 +2978,20 @@ metadata: optional key-value pairs for additional annotation data.
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -2658,17 +3008,20 @@ metadata: optional key-value pairs for additional annotation data.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2682,13 +3035,23 @@ metadata: optional key-value pairs for additional annotation data.
    * Get a span by ID.
    */
   async _spansGet(spanId, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/spans/${spanId}`;
+    let url = `${this.baseUrl}/api/v1/spans/${spanId}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -2720,6 +3083,9 @@ metadata: optional key-value pairs for additional annotation data.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -2731,19 +3097,23 @@ metadata: optional key-value pairs for additional annotation data.
   /**
    * Delete a span.
    */
-  async _spansDelete(spanId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/spans/${spanId}`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
+  async _spansDelete(spanId) {
+    let url = `${this.baseUrl}/api/v1/spans/${spanId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
     }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -2758,17 +3128,20 @@ metadata: optional key-value pairs for additional annotation data.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2781,14 +3154,8 @@ metadata: optional key-value pairs for additional annotation data.
   /**
    * Update a span's value.
    */
-  async _spansUpdate(spanId, value, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/spans/${spanId}`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _spansUpdate(spanId, value) {
+    let url = `${this.baseUrl}/api/v1/spans/${spanId}`;
     const bodyObj = {
       "value": value
     };
@@ -2796,10 +3163,20 @@ metadata: optional key-value pairs for additional annotation data.
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PATCH'
         , body: requestBody
       };
@@ -2816,17 +3193,20 @@ metadata: optional key-value pairs for additional annotation data.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2843,20 +3223,24 @@ tokens, the IDs of the span's constituent tokens
 value, the relation's value
 metadata, an optional map of metadata
    */
-  async _spansBulkCreate(body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/spans/bulk`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _spansBulkCreate(body) {
+    let url = `${this.baseUrl}/api/v1/spans/bulk`;
     const requestBody = this._transformRequest(body);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -2873,17 +3257,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2896,20 +3283,24 @@ metadata, an optional map of metadata
   /**
    * Delete multiple spans in a single operation. Provide an array of IDs.
    */
-  async _spansBulkDelete(body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/spans/bulk`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _spansBulkDelete(body) {
+    let url = `${this.baseUrl}/api/v1/spans/bulk`;
     const requestBody = this._transformRequest(body);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
         , body: requestBody
       };
@@ -2926,17 +3317,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -2949,14 +3343,8 @@ metadata, an optional map of metadata
   /**
    * Replace all metadata for a span. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _spansSetMetadata(spanId, body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _spansSetMetadata(spanId, body) {
+    let url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
     const bodyObj = {
       "body": body
     };
@@ -2964,10 +3352,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -2984,17 +3382,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3007,19 +3408,23 @@ metadata, an optional map of metadata
   /**
    * Remove all metadata from a span.
    */
-  async _spansDeleteMetadata(spanId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
+  async _spansDeleteMetadata(spanId) {
+    let url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
     }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -3034,17 +3439,20 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3057,14 +3465,8 @@ metadata, an optional map of metadata
   /**
    * Replace all metadata for a text. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _textsSetMetadata(textId, body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _textsSetMetadata(textId, body) {
+    let url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
     const bodyObj = {
       "body": body
     };
@@ -3072,10 +3474,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -3092,17 +3504,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3115,19 +3530,23 @@ metadata, an optional map of metadata
   /**
    * Remove all metadata from a text.
    */
-  async _textsDeleteMetadata(textId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
+  async _textsDeleteMetadata(textId) {
+    let url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
     }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -3142,17 +3561,20 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3169,14 +3591,8 @@ textLayerId: the text's associated layer.
 documentId: the text's associated document.
 body: the string which is the content of this text.
    */
-  async _textsCreate(textLayerId, documentId, body, metadata = undefined, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/texts`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _textsCreate(textLayerId, documentId, body, metadata = undefined) {
+    let url = `${this.baseUrl}/api/v1/texts`;
     const bodyObj = {
       "text-layer-id": textLayerId,
       "document-id": documentId,
@@ -3187,10 +3603,20 @@ body: the string which is the content of this text.
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -3207,17 +3633,20 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3231,13 +3660,23 @@ body: the string which is the content of this text.
    * Get a text.
    */
   async _textsGet(textId, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/texts/${textId}`;
+    let url = `${this.baseUrl}/api/v1/texts/${textId}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3269,6 +3708,9 @@ body: the string which is the content of this text.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -3280,19 +3722,23 @@ body: the string which is the content of this text.
   /**
    * Delete a text and all dependent data.
    */
-  async _textsDelete(textId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/texts/${textId}`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
+  async _textsDelete(textId) {
+    let url = `${this.baseUrl}/api/v1/texts/${textId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
     }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -3307,17 +3753,20 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3330,14 +3779,8 @@ body: the string which is the content of this text.
   /**
    * Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
    */
-  async _textsUpdate(textId, body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/texts/${textId}`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _textsUpdate(textId, body) {
+    let url = `${this.baseUrl}/api/v1/texts/${textId}`;
     const bodyObj = {
       "body": body
     };
@@ -3345,10 +3788,20 @@ body: the string which is the content of this text.
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PATCH'
         , body: requestBody
       };
@@ -3365,17 +3818,20 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3389,13 +3845,23 @@ body: the string which is the content of this text.
    * List all users
    */
   async _usersList(asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/users`;
+    let url = `${this.baseUrl}/api/v1/users`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3426,6 +3892,9 @@ body: the string which is the content of this text.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3439,7 +3908,7 @@ body: the string which is the content of this text.
    * Create a new user
    */
   async _usersCreate(username, password, isAdmin) {
-    const url = `${this.baseUrl}/api/v1/users`;
+    let url = `${this.baseUrl}/api/v1/users`;
     const bodyObj = {
       "username": username,
       "password": password,
@@ -3448,6 +3917,16 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3480,6 +3959,9 @@ body: the string which is the content of this text.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3493,7 +3975,7 @@ body: the string which is the content of this text.
    * Get audit log for a user's actions
    */
   async _usersAudit(userId, startTime = undefined, endTime = undefined, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/users/${userId}/audit`;
+    let url = `${this.baseUrl}/api/v1/users/${userId}/audit`;
     const queryParams = new URLSearchParams();
     if (startTime !== undefined && startTime !== null) {
       queryParams.append('start-time', startTime);
@@ -3506,6 +3988,16 @@ body: the string which is the content of this text.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3536,6 +4028,9 @@ body: the string which is the content of this text.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3549,13 +4044,23 @@ body: the string which is the content of this text.
    * Get a user by ID
    */
   async _usersGet(id, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/users/${id}`;
+    let url = `${this.baseUrl}/api/v1/users/${id}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3586,6 +4091,9 @@ body: the string which is the content of this text.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3599,7 +4107,17 @@ body: the string which is the content of this text.
    * Delete a user
    */
   async _usersDelete(id) {
-    const url = `${this.baseUrl}/api/v1/users/${id}`;
+    let url = `${this.baseUrl}/api/v1/users/${id}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3630,6 +4148,9 @@ body: the string which is the content of this text.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3643,7 +4164,7 @@ body: the string which is the content of this text.
    * Modify a user. Admins may change the username, password, and admin status of any user. All other users may only modify their own username or password.
    */
   async _usersUpdate(id, password = undefined, username = undefined, isAdmin = undefined) {
-    const url = `${this.baseUrl}/api/v1/users/${id}`;
+    let url = `${this.baseUrl}/api/v1/users/${id}`;
     const bodyObj = {
       "password": password,
       "username": username,
@@ -3652,6 +4173,16 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3684,6 +4215,9 @@ body: the string which is the content of this text.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3697,13 +4231,23 @@ body: the string which is the content of this text.
    * Shift a token layer's order.
    */
   async _tokenLayersShift(tokenLayerId, direction) {
-    const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/shift`;
+    let url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/shift`;
     const bodyObj = {
       "direction": direction
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3736,6 +4280,9 @@ body: the string which is the content of this text.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -3749,7 +4296,7 @@ body: the string which is the content of this text.
    * Create a new token layer.
    */
   async _tokenLayersCreate(textLayerId, name) {
-    const url = `${this.baseUrl}/api/v1/token-layers`;
+    let url = `${this.baseUrl}/api/v1/token-layers`;
     const bodyObj = {
       "text-layer-id": textLayerId,
       "name": name
@@ -3757,6 +4304,16 @@ body: the string which is the content of this text.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3790,6 +4347,9 @@ body: the string which is the content of this text.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -3802,8 +4362,18 @@ body: the string which is the content of this text.
    * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _tokenLayersSetConfig(tokenLayerId, namespace, configKey, configValue) {
-    const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3837,6 +4407,9 @@ body: the string which is the content of this text.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -3849,7 +4422,17 @@ body: the string which is the content of this text.
    * Remove a configuration value for a layer.
    */
   async _tokenLayersDeleteConfig(tokenLayerId, namespace, configKey) {
-    const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3881,6 +4464,9 @@ body: the string which is the content of this text.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -3893,13 +4479,23 @@ body: the string which is the content of this text.
    * Get a token layer by ID.
    */
   async _tokenLayersGet(tokenLayerId, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}`;
+    let url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3931,6 +4527,9 @@ body: the string which is the content of this text.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -3943,7 +4542,17 @@ body: the string which is the content of this text.
    * Delete a token layer.
    */
   async _tokenLayersDelete(tokenLayerId) {
-    const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}`;
+    let url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -3975,6 +4584,9 @@ body: the string which is the content of this text.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -3987,13 +4599,23 @@ body: the string which is the content of this text.
    * Update a token layer's name.
    */
   async _tokenLayersUpdate(tokenLayerId, name) {
-    const url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}`;
+    let url = `${this.baseUrl}/api/v1/token-layers/${tokenLayerId}`;
     const bodyObj = {
       "name": name
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4027,6 +4649,9 @@ body: the string which is the content of this text.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -4038,14 +4663,8 @@ body: the string which is the content of this text.
   /**
    * Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _documentsSetMetadata(documentId, body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/documents/${documentId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _documentsSetMetadata(documentId, body) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}/metadata`;
     const bodyObj = {
       "body": body
     };
@@ -4053,10 +4672,20 @@ body: the string which is the content of this text.
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -4073,17 +4702,20 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -4096,167 +4728,18 @@ body: the string which is the content of this text.
   /**
    * Remove all metadata from a document.
    */
-  async _documentsDeleteMetadata(documentId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/documents/${documentId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _documentsDeleteMetadata(documentId) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}/metadata`;
     
-    // Check if we're in batch mode
-    if (this.isBatching) {
-      const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
-        method: 'DELETE'
-      };
-      this.batchOperations.push(operation);
-      return { batched: true }; // Return placeholder
-    }
-    
-    const fetchOptions = {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
-    };
-    
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
     }
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
-  }
-
-  /**
-   * Get audit log for a document
-   */
-  async _documentsAudit(documentId, startTime = undefined, endTime = undefined, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/documents/${documentId}/audit`;
-    const queryParams = new URLSearchParams();
-    if (startTime !== undefined && startTime !== null) {
-      queryParams.append('start-time', startTime);
-    }
-    if (endTime !== undefined && endTime !== null) {
-      queryParams.append('end-time', endTime);
-    }
-    if (asOf !== undefined && asOf !== null) {
-      queryParams.append('as-of', asOf);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
-    
-    // Check if we're in batch mode
-    if (this.isBatching) {
-      const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
-        method: 'GET'
-      };
-      this.batchOperations.push(operation);
-      return { batched: true }; // Return placeholder
-    }
-    
-    const fetchOptions = {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
-      }
-    };
-    
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
-    }
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
-  }
-
-  /**
-   * Get a document. Set includeBody to true in order to include all data contained in the document.
-   */
-  async _documentsGet(documentId, includeBody = undefined, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/documents/${documentId}`;
-    const queryParams = new URLSearchParams();
-    if (includeBody !== undefined && includeBody !== null) {
-      queryParams.append('include-body', includeBody);
-    }
-    if (asOf !== undefined && asOf !== null) {
-      queryParams.append('as-of', asOf);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
-    
-    // Check if we're in batch mode
-    if (this.isBatching) {
-      const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
-        method: 'GET'
-      };
-      this.batchOperations.push(operation);
-      return { batched: true }; // Return placeholder
-    }
-    
-    const fetchOptions = {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
-      }
-    };
-    
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
-    }
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
-  }
-
-  /**
-   * Delete a document and all data contained.
-   */
-  async _documentsDelete(documentId) {
-    const url = `${this.baseUrl}/api/v1/documents/${documentId}`;
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4287,6 +4770,201 @@ body: the string which is the content of this text.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Get audit log for a document
+   */
+  async _documentsAudit(documentId, startTime = undefined, endTime = undefined, asOf = undefined) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}/audit`;
+    const queryParams = new URLSearchParams();
+    if (startTime !== undefined && startTime !== null) {
+      queryParams.append('start-time', startTime);
+    }
+    if (endTime !== undefined && endTime !== null) {
+      queryParams.append('end-time', endTime);
+    }
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'GET';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Get a document. Set includeBody to true in order to include all data contained in the document.
+   */
+  async _documentsGet(documentId, includeBody = undefined, asOf = undefined) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}`;
+    const queryParams = new URLSearchParams();
+    if (includeBody !== undefined && includeBody !== null) {
+      queryParams.append('include-body', includeBody);
+    }
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'GET';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Delete a document and all data contained.
+   */
+  async _documentsDelete(documentId) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -4302,13 +4980,23 @@ body: the string which is the content of this text.
 name: update a document's name.
    */
   async _documentsUpdate(documentId, name) {
-    const url = `${this.baseUrl}/api/v1/documents/${documentId}`;
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}`;
     const bodyObj = {
       "name": name
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4342,6 +5030,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -4354,7 +5045,7 @@ name: update a document's name.
    * Create a new document in a project. Requires projectId and name.
    */
   async _documentsCreate(projectId, name, metadata = undefined) {
-    const url = `${this.baseUrl}/api/v1/documents`;
+    let url = `${this.baseUrl}/api/v1/documents`;
     const bodyObj = {
       "project-id": projectId,
       "name": name,
@@ -4363,6 +5054,16 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4395,6 +5096,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -4408,13 +5112,23 @@ name: update a document's name.
    * Send a message to all clients that are listening to a project. Useful for e.g. telling an NLP service to perform some work.
    */
   async _projectsSendMessage(id, body) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/message`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/message`;
     const bodyObj = {
       "body": body
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4447,6 +5161,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -4460,7 +5177,17 @@ name: update a document's name.
    * Set a user's access level to read and write for this project.
    */
   async _projectsAddWriter(id, userId) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/writers/${userId}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/writers/${userId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4491,6 +5218,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -4504,7 +5234,17 @@ name: update a document's name.
    * Remove a user's writer privileges for this project.
    */
   async _projectsRemoveWriter(id, userId) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/writers/${userId}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/writers/${userId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4536,6 +5276,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -4548,7 +5291,17 @@ name: update a document's name.
    * Set a user's access level to read-only for this project.
    */
   async _projectsAddReader(id, userId) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/readers/${userId}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/readers/${userId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4580,6 +5333,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -4592,7 +5348,17 @@ name: update a document's name.
    * Remove a user's reader privileges for this project.
    */
   async _projectsRemoveReader(id, userId) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/readers/${userId}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/readers/${userId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4624,6 +5390,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -4636,13 +5405,23 @@ name: update a document's name.
    * INTERNAL, do not use directly.
    */
   async _projectsHeartbeat(id, clientId) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/heartbeat`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/heartbeat`;
     const bodyObj = {
       "client-id": clientId
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4675,6 +5454,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -4751,7 +5533,7 @@ name: update a document's name.
     // Start the fetch streaming connection
     (async () => {
       try {
-        const url = `${this.baseUrl}/api/v1/projects/${id}/listen`;
+        let url = `${this.baseUrl}/api/v1/projects/${id}/listen`;
         
         const response = await fetch(url, {
           method: 'GET',
@@ -4846,8 +5628,18 @@ name: update a document's name.
    * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _projectsSetConfig(id, namespace, configKey, configValue) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4880,6 +5672,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -4893,7 +5688,17 @@ name: update a document's name.
    * Remove a configuration value for a layer.
    */
   async _projectsDeleteConfig(id, namespace, configKey) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/config/${namespace}/${configKey}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4924,6 +5729,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -4937,7 +5745,17 @@ name: update a document's name.
    * Assign a user as a maintainer for this project.
    */
   async _projectsAddMaintainer(id, userId) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/maintainers/${userId}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/maintainers/${userId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -4968,6 +5786,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -4981,7 +5802,17 @@ name: update a document's name.
    * Remove a user's maintainer privileges for this project.
    */
   async _projectsRemoveMaintainer(id, userId) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/maintainers/${userId}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/maintainers/${userId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5012,6 +5843,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5025,7 +5859,7 @@ name: update a document's name.
    * Get audit log for a project
    */
   async _projectsAudit(projectId, startTime = undefined, endTime = undefined, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/projects/${projectId}/audit`;
+    let url = `${this.baseUrl}/api/v1/projects/${projectId}/audit`;
     const queryParams = new URLSearchParams();
     if (startTime !== undefined && startTime !== null) {
       queryParams.append('start-time', startTime);
@@ -5039,6 +5873,16 @@ name: update a document's name.
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
@@ -5068,6 +5912,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5081,7 +5928,17 @@ name: update a document's name.
    * Link a vocabulary to a project.
    */
   async _projectsLinkVocab(id, vocabId) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/vocabs/${vocabId}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/vocabs/${vocabId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5112,6 +5969,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5125,7 +5985,17 @@ name: update a document's name.
    * Unlink a vocabulary to a project.
    */
   async _projectsUnlinkVocab(id, vocabId) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}/vocabs/${vocabId}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}/vocabs/${vocabId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5156,6 +6026,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5169,7 +6042,7 @@ name: update a document's name.
    * Get a project by ID. If includeDocuments is true, also include document IDs and names.
    */
   async _projectsGet(id, includeDocuments = undefined, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}`;
     const queryParams = new URLSearchParams();
     if (includeDocuments !== undefined && includeDocuments !== null) {
       queryParams.append('include-documents', includeDocuments);
@@ -5179,6 +6052,16 @@ name: update a document's name.
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5209,6 +6092,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5222,7 +6108,17 @@ name: update a document's name.
    * Delete a project.
    */
   async _projectsDelete(id) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5253,6 +6149,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5266,13 +6165,23 @@ name: update a document's name.
    * Update a project's name.
    */
   async _projectsUpdate(id, name) {
-    const url = `${this.baseUrl}/api/v1/projects/${id}`;
+    let url = `${this.baseUrl}/api/v1/projects/${id}`;
     const bodyObj = {
       "name": name
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5305,6 +6214,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5318,13 +6230,23 @@ name: update a document's name.
    * List all projects accessible to user
    */
   async _projectsList(asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/projects`;
+    let url = `${this.baseUrl}/api/v1/projects`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5355,6 +6277,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5368,13 +6293,23 @@ name: update a document's name.
    * Create a new project. Note: this also registers the user as a maintainer.
    */
   async _projectsCreate(name) {
-    const url = `${this.baseUrl}/api/v1/projects`;
+    let url = `${this.baseUrl}/api/v1/projects`;
     const bodyObj = {
       "name": name
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5407,6 +6342,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5420,8 +6358,18 @@ name: update a document's name.
    * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _textLayersSetConfig(textLayerId, namespace, configKey, configValue) {
-    const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5454,6 +6402,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5467,7 +6418,17 @@ name: update a document's name.
    * Remove a configuration value for a layer.
    */
   async _textLayersDeleteConfig(textLayerId, namespace, configKey) {
-    const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5498,6 +6459,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5511,13 +6475,23 @@ name: update a document's name.
    * Get a text layer by ID.
    */
   async _textLayersGet(textLayerId, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}`;
+    let url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5548,6 +6522,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5561,7 +6538,17 @@ name: update a document's name.
    * Delete a text layer.
    */
   async _textLayersDelete(textLayerId) {
-    const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}`;
+    let url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5592,6 +6579,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5605,13 +6595,23 @@ name: update a document's name.
    * Update a text layer's name.
    */
   async _textLayersUpdate(textLayerId, name) {
-    const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}`;
+    let url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}`;
     const bodyObj = {
       "name": name
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5644,6 +6644,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5657,13 +6660,23 @@ name: update a document's name.
    * Shift a text layer's order within the project.
    */
   async _textLayersShift(textLayerId, direction) {
-    const url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/shift`;
+    let url = `${this.baseUrl}/api/v1/text-layers/${textLayerId}/shift`;
     const bodyObj = {
       "direction": direction
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5696,6 +6709,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5709,7 +6725,7 @@ name: update a document's name.
    * Create a new text layer for a project.
    */
   async _textLayersCreate(projectId, name) {
-    const url = `${this.baseUrl}/api/v1/text-layers`;
+    let url = `${this.baseUrl}/api/v1/text-layers`;
     const bodyObj = {
       "project-id": projectId,
       "name": name
@@ -5717,6 +6733,16 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5749,6 +6775,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5762,7 +6791,7 @@ name: update a document's name.
    * Authenticate with a userId and password and get a JWT token. The token should be included in request headers under "Authorization: Bearer ..." in order to prove successful authentication to the server.
    */
   async _loginCreate(userId, password) {
-    const url = `${this.baseUrl}/api/v1/login`;
+    let url = `${this.baseUrl}/api/v1/login`;
     const bodyObj = {
       "user-id": userId,
       "password": password
@@ -5770,6 +6799,16 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5801,6 +6840,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5814,8 +6856,18 @@ name: update a document's name.
    * Execute multiple API operations in a single request.
    */
   async _bulkSubmit(body) {
-    const url = `${this.baseUrl}/api/v1/bulk`;
+    let url = `${this.baseUrl}/api/v1/bulk`;
     const requestBody = this._transformRequest(body);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5848,6 +6900,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5861,13 +6916,23 @@ name: update a document's name.
    * Replace all metadata for a vocab item. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
   async _vocabItemsSetMetadata(id, body) {
-    const url = `${this.baseUrl}/api/v1/vocab-items/${id}/metadata`;
+    let url = `${this.baseUrl}/api/v1/vocab-items/${id}/metadata`;
     const bodyObj = {
       "body": body
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5900,6 +6965,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -5913,7 +6981,17 @@ name: update a document's name.
    * Remove all metadata from a vocab item.
    */
   async _vocabItemsDeleteMetadata(id) {
-    const url = `${this.baseUrl}/api/v1/vocab-items/${id}/metadata`;
+    let url = `${this.baseUrl}/api/v1/vocab-items/${id}/metadata`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5945,6 +7023,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -5957,7 +7038,7 @@ name: update a document's name.
    * Create a new vocab item
    */
   async _vocabItemsCreate(vocabLayerId, form, metadata = undefined) {
-    const url = `${this.baseUrl}/api/v1/vocab-items`;
+    let url = `${this.baseUrl}/api/v1/vocab-items`;
     const bodyObj = {
       "vocab-layer-id": vocabLayerId,
       "form": form,
@@ -5966,6 +7047,16 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -5999,6 +7090,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6011,13 +7105,23 @@ name: update a document's name.
    * Get a vocab item by ID
    */
   async _vocabItemsGet(id, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/vocab-items/${id}`;
+    let url = `${this.baseUrl}/api/v1/vocab-items/${id}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6049,6 +7153,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6061,7 +7168,17 @@ name: update a document's name.
    * Delete a vocab item
    */
   async _vocabItemsDelete(id) {
-    const url = `${this.baseUrl}/api/v1/vocab-items/${id}`;
+    let url = `${this.baseUrl}/api/v1/vocab-items/${id}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6093,6 +7210,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6105,13 +7225,23 @@ name: update a document's name.
    * Update a vocab item's form
    */
   async _vocabItemsUpdate(id, form) {
-    const url = `${this.baseUrl}/api/v1/vocab-items/${id}`;
+    let url = `${this.baseUrl}/api/v1/vocab-items/${id}`;
     const bodyObj = {
       "form": form
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6145,6 +7275,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6157,13 +7290,23 @@ name: update a document's name.
    * Shift a relation layer's order.
    */
   async _relationLayersShift(relationLayerId, direction) {
-    const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/shift`;
+    let url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/shift`;
     const bodyObj = {
       "direction": direction
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6196,6 +7339,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -6209,7 +7355,7 @@ name: update a document's name.
    * Create a new relation layer.
    */
   async _relationLayersCreate(spanLayerId, name) {
-    const url = `${this.baseUrl}/api/v1/relation-layers`;
+    let url = `${this.baseUrl}/api/v1/relation-layers`;
     const bodyObj = {
       "span-layer-id": spanLayerId,
       "name": name
@@ -6217,6 +7363,16 @@ name: update a document's name.
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6250,6 +7406,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6262,8 +7421,18 @@ name: update a document's name.
    * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
    */
   async _relationLayersSetConfig(relationLayerId, namespace, configKey, configValue) {
-    const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`;
     const requestBody = configValue;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6297,6 +7466,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6309,7 +7481,17 @@ name: update a document's name.
    * Remove a configuration value for a layer.
    */
   async _relationLayersDeleteConfig(relationLayerId, namespace, configKey) {
-    const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`;
+    let url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6341,6 +7523,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6353,13 +7538,23 @@ name: update a document's name.
    * Get a relation layer by ID.
    */
   async _relationLayersGet(relationLayerId, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}`;
+    let url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6391,6 +7586,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6403,7 +7601,17 @@ name: update a document's name.
    * Delete a relation layer.
    */
   async _relationLayersDelete(relationLayerId) {
-    const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}`;
+    let url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6435,6 +7643,9 @@ name: update a document's name.
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6447,13 +7658,23 @@ name: update a document's name.
    * Update a relation layer's name.
    */
   async _relationLayersUpdate(relationLayerId, name) {
-    const url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}`;
+    let url = `${this.baseUrl}/api/v1/relation-layers/${relationLayerId}`;
     const bodyObj = {
       "name": name
     };
     // Filter out undefined optional parameters
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6486,6 +7707,9 @@ name: update a document's name.
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -6504,14 +7728,8 @@ begin: the inclusive character-based offset at which this token begins in the bo
 end: the exclusive character-based offset at which this token ends in the body of the text specified by text
 precedence: used for tokens with the same begin value in order to indicate their preferred linear order.
    */
-  async _tokensCreate(tokenLayerId, text, begin, end, precedence = undefined, metadata = undefined, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/tokens`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _tokensCreate(tokenLayerId, text, begin, end, precedence = undefined, metadata = undefined) {
+    let url = `${this.baseUrl}/api/v1/tokens`;
     const bodyObj = {
       "token-layer-id": tokenLayerId,
       "text": text,
@@ -6524,10 +7742,20 @@ precedence: used for tokens with the same begin value in order to indicate their
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -6544,17 +7772,20 @@ precedence: used for tokens with the same begin value in order to indicate their
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -6568,13 +7799,23 @@ precedence: used for tokens with the same begin value in order to indicate their
    * Get a token.
    */
   async _tokensGet(tokenId, asOf = undefined) {
-    const url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
+    let url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
     const queryParams = new URLSearchParams();
     if (asOf !== undefined && asOf !== null) {
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
     const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
@@ -6606,6 +7847,9 @@ precedence: used for tokens with the same begin value in order to indicate their
       throw error;
     }
     
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
@@ -6617,19 +7861,23 @@ precedence: used for tokens with the same begin value in order to indicate their
   /**
    * Delete a token and remove it from any spans. If this causes the span to have no remaining associated tokens, the span will also be deleted.
    */
-  async _tokensDelete(tokenId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
+  async _tokensDelete(tokenId) {
+    let url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
     }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -6644,17 +7892,20 @@ precedence: used for tokens with the same begin value in order to indicate their
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -6671,14 +7922,8 @@ begin: start index of the token
 end: end index of the token
 precedence: ordering value for the token relative to other tokens with the same begin--lower means earlier
    */
-  async _tokensUpdate(tokenId, begin = undefined, end = undefined, precedence = undefined, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _tokensUpdate(tokenId, begin = undefined, end = undefined, precedence = undefined) {
+    let url = `${this.baseUrl}/api/v1/tokens/${tokenId}`;
     const bodyObj = {
       "begin": begin,
       "end": end,
@@ -6688,10 +7933,20 @@ precedence: ordering value for the token relative to other tokens with the same 
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PATCH'
         , body: requestBody
       };
@@ -6708,17 +7963,20 @@ precedence: ordering value for the token relative to other tokens with the same 
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PATCH';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -6737,20 +7995,24 @@ end, the character index at which the token ends (exclusive)
 precedence, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same begin
 metadata, an optional map of metadata
    */
-  async _tokensBulkCreate(body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/tokens/bulk`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _tokensBulkCreate(body) {
+    let url = `${this.baseUrl}/api/v1/tokens/bulk`;
     const requestBody = this._transformRequest(body);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'POST'
         , body: requestBody
       };
@@ -6767,17 +8029,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -6790,20 +8055,24 @@ metadata, an optional map of metadata
   /**
    * Delete multiple tokens in a single operation. Provide an array of IDs.
    */
-  async _tokensBulkDelete(body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/tokens/bulk`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _tokensBulkDelete(body) {
+    let url = `${this.baseUrl}/api/v1/tokens/bulk`;
     const requestBody = this._transformRequest(body);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
         , body: requestBody
       };
@@ -6820,17 +8089,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -6843,14 +8115,8 @@ metadata, an optional map of metadata
   /**
    * Replace all metadata for a token. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
-  async _tokensSetMetadata(tokenId, body, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
-    }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+  async _tokensSetMetadata(tokenId, body) {
+    let url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
     const bodyObj = {
       "body": body
     };
@@ -6858,10 +8124,20 @@ metadata, an optional map of metadata
     Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
     const requestBody = this._transformRequest(bodyObj);
     
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'PUT'
         , body: requestBody
       };
@@ -6878,17 +8154,20 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'PUT';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
@@ -6901,19 +8180,23 @@ metadata, an optional map of metadata
   /**
    * Remove all metadata from a token.
    */
-  async _tokensDeleteMetadata(tokenId, documentVersion = undefined) {
-    const url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
-    const queryParams = new URLSearchParams();
-    if (documentVersion !== undefined && documentVersion !== null) {
-      queryParams.append('document-version', documentVersion);
+  async _tokensDeleteMetadata(tokenId) {
+    let url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
     }
-    const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Check if we're in batch mode
     if (this.isBatching) {
       const operation = {
-        path: finalUrl.replace(this.baseUrl, ''),
+        path: url.replace(this.baseUrl, ''),
         method: 'DELETE'
       };
       this.batchOperations.push(operation);
@@ -6928,17 +8211,20 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
       error.status = response.status;
       error.statusText = response.statusText;
-      error.url = finalUrl;
+      error.url = url;
       error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
     
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {

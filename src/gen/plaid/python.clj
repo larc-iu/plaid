@@ -82,13 +82,14 @@
                                     (str param-name ": " py-type " = None")))
                                 optional-body-params)))
 
-        ;; Query parameters
+        ;; Query parameters (exclude document-version)
+        filtered-query-params (filter #(not= (:name %) "document-version") regular-query-params)
         query-param-strs (map (fn [param]
                                 (let [param-name (transform-key-name-python (:name param))
                                       py-type (openapi-type-to-python (:schema param))
                                       optional-marker (if (:required? param) "" " = None")]
                                   (str param-name ": " py-type optional-marker)))
-                              regular-query-params)
+                              filtered-query-params)
 
         ;; asOf parameter (only for GET requests)
         as-of-param-strs (when (and as-of-param (= http-method :get))
@@ -369,13 +370,14 @@
                                      (let [param-name (transform-key-name-python name)]
                                        (str "            " param-name ": Optional body parameter")))
                                    optional-body-params)))
-                    ;; Query parameters
+                    ;; Query parameters (excluding document-version)
                            (let [{:keys [regular-query-params as-of-param]} ordered-params
-                                 all-query-params (concat regular-query-params (when as-of-param [as-of-param]))]
+                                 all-query-params (concat regular-query-params (when as-of-param [as-of-param]))
+                                 filtered-params (filter #(not= (:name %) "document-version") all-query-params)]
                              (map (fn [param]
                                     (str "            " (transform-key-name-python (:name param)) ": "
                                          (if (:required? param) "Required" "Optional") " query parameter"))
-                                  all-query-params))))
+                                  filtered-params))))
                 "\n"))
          "        \"\"\"\n"
          "        " url-construction "\n"
@@ -383,6 +385,17 @@
          "        \n"
          "        headers = {'Content-Type': 'application/json'}\n"
          auth-header
+         "        \n"
+         "        # Add document-version parameter in strict mode for non-GET requests\n"
+         "        if self.client._strict_mode_document_id and '" (str/upper-case (name http-method)) "' != 'GET':\n"
+         "            doc_id = self.client._strict_mode_document_id\n"
+         "            if doc_id in self.client._document_versions:\n"
+         "                if 'params' not in locals():\n"
+         "                    params = {}\n"
+         "                params['document-version'] = self.client._document_versions[doc_id]\n"
+         "                from urllib.parse import urlencode\n"
+         "                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}\n"
+         "                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})\n"
          "        \n"
          "        # Check if we're in batch mode\n"
          "        if self.client._is_batching:\n"
@@ -401,6 +414,9 @@
                 "(url" (when has-body? ", json=body_data") ", headers=headers)\n"
                 "        response.raise_for_status()\n"
                 "        \n"
+                "        # Extract document versions from response headers\n"
+                "        self.client._extract_document_versions(dict(response.headers))\n"
+                "        \n"
                 "        if 'application/json' in response.headers.get('content-type', '').lower():\n"
                 "            data = " response-json "\n"
                 "            return self.client._transform_response(data)\n"
@@ -410,6 +426,9 @@
                 "            async with session." (str/lower-case (name http-method))
                 "(url" (when has-body? ", json=body_data") ", headers=headers) as response:\n"
                 "                response.raise_for_status()\n"
+                "                \n"
+                "                # Extract document versions from response headers\n"
+                "                self.client._extract_document_versions(dict(response.headers))\n"
                 "                \n"
                 "                content_type = response.headers.get('content-type', '').lower()\n"
                 "                if 'application/json' in content_type:\n"
@@ -563,6 +582,18 @@
         \"\"\"Convert snake_case back to kebab-case\"\"\"
         return key.replace('_', '-')
     
+    def _extract_document_versions(self, response_headers: Dict[str, str]) -> None:
+        \"\"\"Extract and update document versions from response headers\"\"\"
+        doc_versions_header = response_headers.get('X-Document-Versions')
+        if doc_versions_header:
+            try:
+                versions_map = json.loads(doc_versions_header)
+                if isinstance(versions_map, dict):
+                    self._document_versions.update(versions_map)
+            except (json.JSONDecodeError, TypeError):
+                # Ignore malformed header
+                pass
+    
     def _transform_request(self, obj: Any) -> Any:
         \"\"\"Transform request data from Python conventions to API conventions\"\"\"
         if obj is None or isinstance(obj, (str, int, float, bool)):
@@ -688,6 +719,7 @@
          "\n"
          "import requests\n"
          "import aiohttp\n"
+         "import json\n"
          "from typing import Any, Dict, List, Optional, Union, Callable\n"
          "\n"
          "\n"
@@ -712,6 +744,16 @@
          "        await client.projects.create_async(name='Project 1')  # Gets queued\n"
          "        await client.projects.create_async(name='Project 2')  # Gets queued\n"
          "        results = await client.submit_batch_async()  # Executes all as one bulk request\n"
+         "    \n"
+         "    Document version tracking:\n"
+         "        # Enter strict mode for a specific document\n"
+         "        client.enter_strict_mode(document_id)\n"
+         "        \n"
+         "        # All write operations will now include document version checks\n"
+         "        # Operations will fail with 409 error if document has been modified\n"
+         "        \n"
+         "        # Exit strict mode when done\n"
+         "        client.exit_strict_mode()\n"
          "    \n"
          "    Example:\n"
          "        # Authenticate\n"
@@ -739,12 +781,35 @@
          "        self._is_batching = False\n"
          "        self._batch_operations = []\n"
          "        \n"
+         "        # Initialize document version tracking\n"
+         "        self._document_versions = {}  # Map of document-id -> version\n"
+         "        self._strict_mode_document_id = None  # Document ID for strict mode\n"
+         "        \n"
          "        # Initialize resource objects\n"
          resource-init "\n"
          "    \n"
          key-transformations "\n"
          "    \n"
          batch-methods "\n"
+         "    \n"
+         "    def enter_strict_mode(self, document_id: str) -> None:\n"
+         "        \"\"\"\n"
+         "        Enter strict mode for a specific document.\n"
+         "        \n"
+         "        When in strict mode, write operations will automatically include \n"
+         "        document-version parameters to prevent concurrent modifications. \n"
+         "        Operations on stale documents will fail with HTTP 409 errors.\n"
+         "        \n"
+         "        Args:\n"
+         "            document_id: The ID of the document to track versions for\n"
+         "        \"\"\"\n"
+         "        self._strict_mode_document_id = document_id\n"
+         "    \n"
+         "    def exit_strict_mode(self) -> None:\n"
+         "        \"\"\"\n"
+         "        Exit strict mode and stop tracking document versions for writes.\n"
+         "        \"\"\"\n"
+         "        self._strict_mode_document_id = None\n"
          "    \n"
          login-methods "\n")))
 

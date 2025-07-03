@@ -26,6 +26,7 @@ export const useDocumentData = (projectId, documentId) => {
       
       setProject(projectData);
       setDocument(documentData);
+      client.enterStrictMode(documentId)
       setError('');
     } catch (err) {
       if (err.status === 401) {
