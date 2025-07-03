@@ -6,17 +6,18 @@ const path = require('path');
 // Parse JavaScript JSDoc comments
 function parseJSDoc(content) {
   const methods = [];
-  const jsdocRegex = /\/\*\*\s*\n([\s\S]*?)\*\/\s*\n?\s*(\w+):/g;
-  let match;
   
-  while ((match = jsdocRegex.exec(content)) !== null) {
-    const [, docContent, methodName] = match;
+  // Look for constructor method
+  const constructorRegex = /\/\*\*\s*\n((?:\s*\*.*\n)*?)\s*\*\/\s*\n\s*constructor\s*\([^)]*\)/g;
+  let constructorMatch = constructorRegex.exec(content);
+  
+  if (constructorMatch) {
+    const [, docContent] = constructorMatch;
     
-    // Extract description (first line)
+    // Extract description and parameters
     const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
     const description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
     
-    // Extract parameters
     const params = [];
     const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
     let paramMatch;
@@ -31,7 +32,125 @@ function parseJSDoc(content) {
       });
     }
     
-    methods.push({ name: methodName, description, params });
+    methods.push({ 
+      name: 'constructor', 
+      description, 
+      params,
+      bundle: 'misc' 
+    });
+  }
+  
+  // Look for static methods
+  const staticRegex = /\/\*\*\s*\n((?:\s*\*.*\n)*?)\s*\*\/\s*\n\s*static\s+(?:async\s+)?(\w+)\s*\([^)]*\)/g;
+  let staticMatch;
+  
+  while ((staticMatch = staticRegex.exec(content)) !== null) {
+    const [, docContent, methodName] = staticMatch;
+    
+    // Extract description and parameters
+    const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
+    const description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
+    
+    const params = [];
+    const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
+    let paramMatch;
+    
+    while ((paramMatch = paramRegex.exec(docContent)) !== null) {
+      const [, type, name, desc] = paramMatch;
+      params.push({
+        name: name.replace(/[\[\]]/g, ''),
+        type: type,
+        optional: name.includes('['),
+        description: desc
+      });
+    }
+    
+    methods.push({ 
+      name: methodName, 
+      description, 
+      params,
+      bundle: 'misc',
+      isStatic: true
+    });
+  }
+  
+  // Look for specific instance methods that should be in misc
+  const miscMethods = ['enterStrictMode', 'exitStrictMode', 'beginBatch', 'submitBatch', 'abortBatch', 'isBatchMode'];
+  
+  for (const methodName of miscMethods) {
+    const instanceRegex = new RegExp(`\\/\\*\\*\\s*\\n((?:\\s*\\*.*\\n)*?)\\s*\\*\\/\\s*\\n\\s*(?:async\\s+)?${methodName}\\s*\\([^)]*\\)`, 'g');
+    let instanceMatch = instanceRegex.exec(content);
+    
+    if (instanceMatch) {
+      const [, docContent] = instanceMatch;
+      
+      // Extract description and parameters
+      const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
+      const description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
+      
+      const params = [];
+      const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
+      let paramMatch;
+      
+      while ((paramMatch = paramRegex.exec(docContent)) !== null) {
+        const [, type, name, desc] = paramMatch;
+        params.push({
+          name: name.replace(/[\[\]]/g, ''),
+          type: type,
+          optional: name.includes('['),
+          description: desc
+        });
+      }
+      
+      methods.push({ 
+        name: methodName, 
+        description, 
+        params,
+        bundle: 'misc'
+      });
+    }
+  }
+  
+  // Look for bundle assignments like this.vocabLinks = {
+  const bundleRegex = /this\.(\w+)\s*=\s*\{([\s\S]*?)\n\s*\};/g;
+  let bundleMatch;
+  
+  while ((bundleMatch = bundleRegex.exec(content)) !== null) {
+    const [, bundleName, bundleContent] = bundleMatch;
+    
+    // Look for method assignments within this bundle
+    const methodRegex = /\/\*\*\s*\n([\s\S]*?)\*\/\s*\n?\s*(\w+):\s*this\._/g;
+    let methodMatch;
+    
+    while ((methodMatch = methodRegex.exec(bundleContent)) !== null) {
+      const [, docContent, methodName] = methodMatch;
+      
+      // Extract description (first line that's not a param)
+      const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
+      const description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
+      
+      // Extract parameters
+      const params = [];
+      const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
+      let paramMatch;
+      
+      while ((paramMatch = paramRegex.exec(docContent)) !== null) {
+        const [, type, name, desc] = paramMatch;
+        params.push({
+          name: name.replace(/[\[\]]/g, ''),
+          type: type,
+          optional: name.includes('['),
+          description: desc
+        });
+      }
+      
+      methods.push({ 
+        name: methodName, 
+        description, 
+        params,
+        bundle: bundleName 
+      });
+    }
   }
   
   return methods;
@@ -49,8 +168,38 @@ function parsePythonDoc(content) {
     if (defMatch) {
       const methodName = defMatch[1];
       
-      if (methodName.startsWith('_') || methodName === '__init__') continue; // Skip private methods
+      // Skip private methods, but allow main PlaidClient.__init__
+      if (methodName.startsWith('_')) {
+        // Only allow the main PlaidClient.__init__ method
+        if (methodName === '__init__') {
+          // Check if this is in the main PlaidClient class (not a resource class)
+          let isMainClient = false;
+          for (let k = i - 1; k >= Math.max(0, i - 50); k--) {
+            if (lines[k].match(/^class PlaidClient:/)) {
+              isMainClient = true;
+              break;
+            }
+            if (lines[k].match(/^class \w+Resource:/)) {
+              break; // Found a resource class first, not main client
+            }
+          }
+          if (!isMainClient) continue;
+        } else {
+          continue; // Skip all other private methods
+        }
+      }
       if (line.includes('async def') || methodName.endsWith('_async')) continue; // Skip async duplicates
+      
+      // Check for decorators above the method
+      let decorators = [];
+      for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
+        const decoratorMatch = lines[j].trim().match(/^@(\w+)/);
+        if (decoratorMatch) {
+          decorators.unshift(decoratorMatch[1]); // Add to front to maintain order
+        } else if (lines[j].trim() && !lines[j].trim().startsWith('#')) {
+          break; // Stop if we hit non-decorator, non-comment line
+        }
+      }
       
       // Look for docstring on the next lines
       let docstringStart = -1;
@@ -105,15 +254,37 @@ function parsePythonDoc(content) {
           // Try to infer bundle from surrounding class context
           let bundleName = 'misc';
           
-          // Look backwards to find the class this method belongs to
-          for (let k = i - 1; k >= 0; k--) {
-            const classMatch = lines[k].match(/^class (\w+):/);
-            if (classMatch) {
-              const className = classMatch[1];
-              if (className.endsWith('Resource')) {
-                bundleName = className.replace('Resource', '').toLowerCase();
+          // Special handling for main PlaidClient.__init__
+          if (methodName === '__init__') {
+            // Check if this is the main PlaidClient class
+            let isMainClient = false;
+            for (let k = i - 1; k >= Math.max(0, i - 50); k--) {
+              if (lines[k].match(/^class PlaidClient:/)) {
+                isMainClient = true;
+                break;
               }
-              break;
+              if (lines[k].match(/^class \w+Resource:/)) {
+                break;
+              }
+            }
+            if (isMainClient) {
+              bundleName = 'misc';
+            }
+          } else {
+            // Look backwards to find the class this method belongs to
+            for (let k = i - 1; k >= 0; k--) {
+              const classMatch = lines[k].match(/^class (\w+):/);
+              if (classMatch) {
+                const className = classMatch[1];
+                if (className.endsWith('Resource')) {
+                  // Convert camelCase to snake_case
+                  bundleName = className.replace('Resource', '')
+                    .replace(/([A-Z])/g, '_$1')
+                    .toLowerCase()
+                    .replace(/^_/, '');
+                }
+                break;
+              }
             }
           }
           
@@ -121,7 +292,8 @@ function parsePythonDoc(content) {
             name: methodName, 
             description, 
             params,
-            bundle: bundleName 
+            bundle: bundleName,
+            decorators: decorators
           });
         }
       }
@@ -140,28 +312,24 @@ function groupByBundle(methods, isPython = false) {
     methods.forEach(method => {
       const bundleName = method.bundle || 'misc';
       
+      // Skip the login bundle since PlaidClient.login is the preferred method
+      if (bundleName === 'login') {
+        return;
+      }
+      
       if (!bundles[bundleName]) {
         bundles[bundleName] = [];
       }
       bundles[bundleName].push(method);
     });
   } else {
-    // For JavaScript, group by common prefixes
-    const bundleNames = [
-      'vocabLinks', 'vocabLayers', 'relations', 'spanLayers', 'spans',
-      'tokenLayers', 'tokens', 'textLayers', 'texts', 'documents', 
-      'projects', 'users', 'audit'
-    ];
-    
+    // For JavaScript, use the bundle info from the method
     methods.forEach(method => {
-      let bundleName = 'misc';
+      const bundleName = method.bundle || 'misc';
       
-      // Try to match method name to bundle
-      for (const bundle of bundleNames) {
-        if (method.name.toLowerCase().includes(bundle.toLowerCase().replace(/s$/, ''))) {
-          bundleName = bundle;
-          break;
-        }
+      // Skip the login bundle since authentication should use the main client
+      if (bundleName === 'login') {
+        return;
       }
       
       if (!bundles[bundleName]) {
@@ -178,6 +346,13 @@ function groupByBundle(methods, isPython = false) {
 function generateHTML(title, bundles) {
   const bundleKeys = Object.keys(bundles).sort();
   
+  // Move 'misc' to the front for both languages
+  if (bundleKeys.includes('misc')) {
+    const miscIndex = bundleKeys.indexOf('misc');
+    bundleKeys.splice(miscIndex, 1);
+    bundleKeys.unshift('misc');
+  }
+  
   const toc = bundleKeys.map(bundle => 
     `<li><a href="#${bundle}">${bundle}</a></li>`
   ).join('\n');
@@ -185,6 +360,18 @@ function generateHTML(title, bundles) {
   const content = bundleKeys.map(bundle => {
     const methods = bundles[bundle];
     const methodsHTML = methods.map(method => {
+      const decoratorsHTML = method.decorators && method.decorators.length > 0 ?
+        `<div class="decorators">
+           ${method.decorators.map(decorator => 
+             `<span class="decorator">@${decorator}</span>`
+           ).join(' ')}
+         </div>` : '';
+      
+      const staticHTML = method.isStatic ? 
+        `<div class="decorators">
+           <span class="decorator">static</span>
+         </div>` : '';
+      
       const paramsHTML = method.params.length > 0 ? 
         `<h4>Parameters</h4>
          <ul>
@@ -196,6 +383,7 @@ function generateHTML(title, bundles) {
       return `
         <div class="method">
           <h3><code>${method.name}</code></h3>
+          ${decoratorsHTML}${staticHTML}
           <p>${method.description}</p>
           ${paramsHTML}
         </div>
@@ -226,6 +414,8 @@ function generateHTML(title, bundles) {
     code { background: #f0f0f0; padding: 2px 4px; border-radius: 3px; }
     ul { margin: 10px 0; }
     li { margin: 5px 0; }
+    .decorators { margin: 5px 0; }
+    .decorator { background: #e8f4fd; color: #0366d6; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; margin-right: 5px; }
   </style>
 </head>
 <body>
@@ -267,13 +457,8 @@ function main() {
   fs.writeFileSync(path.join(outputDir, 'api-py.html'), pyHTML);
   
   console.log('API documentation generated successfully!');
-  console.log(`- JavaScript: ${jsMethods.length} methods`);
-  console.log(`- Python: ${pyMethods.length} methods`);
-  
-  // Debug: show first few Python methods
-  if (pyMethods.length > 0) {
-    console.log('First Python method:', pyMethods[0]);
-  }
+  console.log(`- JavaScript: ${jsMethods.length} methods in ${Object.keys(jsBundles).length} bundles`);
+  console.log(`- Python: ${pyMethods.length} methods in ${Object.keys(pyBundles).length} bundles`);
 }
 
 if (require.main === module) {
