@@ -56,15 +56,17 @@
   [handler]
   (let [resources-path (or (-> config :plaid.server/static-resources-path)
                            "resources")]
+    (log/info (format "Serving static files from `%s/`" resources-path))
     (fn [{:keys [uri request-method] :as request}]
       (if (and (= :get request-method)
                (not (str/starts-with? uri "/api/"))
-               (not (str/starts-with? uri "/_")))
+               (not (str/starts-with? uri "/_"))
+               resources-path)
         (let [file-path (subs uri 1)
               ;; If URI ends with /, try to serve index.html from that directory
-              actual-path (if (str/ends-with? file-path "/")
-                           (str file-path "index.html")
-                           file-path)
+              actual-path (if (or (= file-path "") (str/ends-with? file-path "/"))
+                            (str file-path "index.html")
+                            file-path)
               file (io/file resources-path actual-path)]
           (if (and (.exists file) 
                    (.isFile file)
