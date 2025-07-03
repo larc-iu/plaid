@@ -10,18 +10,19 @@
 (defn ^IXtdb start-lmdb-node [{:keys [db-dir use-inspector]}]
   (let [dirf #(str db-dir "/" %)]
     (xt/start-node
-      (-> {:xtdb/tx-log         {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "tx-log")}}
-           :xtdb/document-store {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "docs")}}
-           :xtdb/index-store    {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "indexes")}}}
-          (cond-> use-inspector (assoc :xtdb-inspector.metrics/reporter {}))))))
+     (-> {:xtdb/tx-log {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "tx-log")}}
+          :xtdb/document-store {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "docs")}}
+          :xtdb/index-store {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "indexes")}}}
+         (cond-> use-inspector (assoc :xtdb-inspector.metrics/reporter {}))))))
 
 (defn start-main-lmdb-node []
-  (start-lmdb-node {:db-dir           (-> config ::config :main-db-dir)
+  (start-lmdb-node {:db-dir (-> config ::config :main-db-dir)
                     :http-server-port (-> config ::config :http-server-port)}))
 
 (defstate xtdb-node
   :start (let [node (start-main-lmdb-node)]
-           (when (empty? (pxc/find-entities (xt/db node) [[:user/id '_]]))
+           (when (and (empty? (pxc/find-entities (xt/db node) [[:user/id '_]]))
+                      (not (System/getenv "SKIP_ACCOUNT_CREATION_PROMPT")))
              (log/warn "No users detected! Prompting you for credentials...")
              (if-let [console (System/console)]
                (let [_ (do (print "Enter email: ") (flush))
