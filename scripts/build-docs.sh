@@ -130,11 +130,10 @@ generate_clients() {
     print_success "Client libraries generated"
 }
 
-# Function to build CSS
+# Function to build CSS (now simplified - no custom CSS needed)
 build_css() {
-    print_status "Building CSS..."
-    
-    cat > "$BUILD_DIR/assets/style.css" << 'EOF'
+    print_status "Skipping CSS build - using AsciiDoctor defaults..."
+    print_success "CSS step completed"
 /* Plaid Documentation Styles */
 * {
     box-sizing: border-box;
@@ -236,6 +235,26 @@ a:hover {
     background: #2980b9;
     color: white;
     text-decoration: none;
+}
+
+/* Hero section */
+.hero {
+    text-align: center;
+    padding: 4rem 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    margin-bottom: 2rem;
+}
+
+.hero h1 {
+    color: white;
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.hero p {
+    font-size: 1.2rem;
+    margin-bottom: 2rem;
 }
 
 .button.secondary {
@@ -564,18 +583,18 @@ build_client_docs() {
 build_asciidoc() {
     print_status "Building AsciiDoc documentation..."
     
-    # Build landing page
+    # Build landing page with default AsciiDoctor styling
     if [[ -f "$DOCS_DIR/landing.adoc" ]]; then
-        asciidoctor -a stylesheet=assets/style.css -o "$BUILD_DIR/index.html" "$DOCS_DIR/landing.adoc"
+        asciidoctor -o "$BUILD_DIR/index.html" "$DOCS_DIR/landing.adoc"
         print_success "Landing page built"
     else
         print_error "Landing page not found: $DOCS_DIR/landing.adoc"
         exit 1
     fi
     
-    # Build technical manual
+    # Build technical manual with default AsciiDoctor styling
     if [[ -f "$DOCS_DIR/book.adoc" ]]; then
-        asciidoctor -a stylesheet=../assets/style.css -o "$BUILD_DIR/manual/index.html" "$DOCS_DIR/book.adoc"
+        asciidoctor -o "$BUILD_DIR/manual/index.html" "$DOCS_DIR/book.adoc"
         print_success "Technical manual built"
     else
         print_error "Technical manual not found: $DOCS_DIR/book.adoc"
