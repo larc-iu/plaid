@@ -1,5 +1,4 @@
 {:paths   ["src/main" "resources"]
-
  :deps    {org.clojure/clojure                 {:mvn/version "1.12.0"}
            org.clojure/spec.alpha              {:mvn/version "0.5.238"}
            org.clojure/core.async              {:mvn/version "1.8.741"}
