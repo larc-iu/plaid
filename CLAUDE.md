@@ -175,3 +175,4 @@ jq -r '.paths | to_entries[] | select(.value | to_entries[] | .value.security) |
 
 ## clojure-mcp
 When `clojure-mcp` is active, note that you can `user/start` and `user/stop` the web server. See @src/dev/user.clj.
+If `clojure-mcp` is active, you should **prefer to use its tools** to edit Clojure files, as this will help you keep parentheses balanced more easily.
