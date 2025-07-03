@@ -14,14 +14,12 @@
 :hide-uri-scheme: 1
 :source-highlighter: coderay
 
-++++
-<div class="hero">
-  <h1>Plaid</h1>
-  <p>A powerful platform for building linguistic annotation applications</p>
-  <a href="manual/index.html" class="button">Get Started</a>
-  <a href="api/index.html" class="button">API Docs</a>
-</div>
-++++
+[.text-center]
+--
+A powerful platform for building linguistic annotation applications
+
+link:manual/index.html[Get Started] | link:api/index.html[API Documentation]
+--
 
 == Overview
 
@@ -29,34 +27,23 @@ Plaid is a Clojure-based platform for building linguistic annotation application
 
 == Key Features
 
-++++
-<div class="features">
-  <div class="feature">
-    <h3>🔧 Flexible Data Model</h3>
-    <p>Configurable layer system allows you to model any linguistic annotation task, from simple part-of-speech tagging to complex syntactic structures.</p>
-  </div>
-  <div class="feature">
-    <h3>📚 Complete History</h3>
-    <p>Immutable database preserves all changes, allowing you to view any past state of your data and maintain detailed audit logs.</p>
-  </div>
-  <div class="feature">
-    <h3>🚀 REST API</h3>
-    <p>Comprehensive REST API with OpenAPI documentation enables easy integration with custom tools and applications.</p>
-  </div>
-  <div class="feature">
-    <h3>👥 Collaboration</h3>
-    <p>Built-in user management and project-based access control support seamless team collaboration.</p>
-  </div>
-  <div class="feature">
-    <h3>🎯 Type-Safe Clients</h3>
-    <p>Auto-generated client libraries for JavaScript and Python provide type safety and excellent developer experience.</p>
-  </div>
-  <div class="feature">
-    <h3>⚡ Real-time Updates</h3>
-    <p>Changes propagate in real-time across all connected clients for immediate collaboration feedback.</p>
-  </div>
-</div>
-++++
+🔧 **Flexible Data Model**::
+Configurable layer system allows you to model any linguistic annotation task, from simple part-of-speech tagging to complex syntactic structures.
+
+📚 **Complete History**::
+Immutable database preserves all changes, allowing you to view any past state of your data and maintain detailed audit logs.
+
+🚀 **REST API**::
+Comprehensive REST API with OpenAPI documentation enables easy integration with custom tools and applications.
+
+👥 **Collaboration**::
+Built-in user management and project-based access control support seamless team collaboration.
+
+🎯 **Type-Safe Clients**::
+Auto-generated client libraries for JavaScript and Python provide type safety and excellent developer experience.
+
+⚡ **Real-time Updates**::
+Changes propagate in real-time across all connected clients for immediate collaboration feedback.
 
 == Architecture
 
@@ -241,12 +228,11 @@ Ready to dive deeper? Here are some recommended next steps:
 3. **Download Clients**: Get started with the link:clients/index.html[client libraries]
 4. **Join the Community**: Connect with other users and contributors
 
-++++
-<div style="text-align: center; margin-top: 4rem; padding: 2rem; background: #f8f9fa;">
-  <h3>Ready to get started?</h3>
-  <p>Choose your preferred way to explore Plaid:</p>
-  <a href="manual/index.html" class="button">Read the Manual</a>
-  <a href="api/index.html" class="button">Explore the API</a>
-  <a href="clients/index.html" class="button">Get Client Libraries</a>
-</div>
-++++
+[.text-center]
+--
+**Ready to get started?**
+
+Choose your preferred way to explore Plaid:
+
+link:manual/index.html[Read the Manual] | link:api/index.html[Explore the API] | link:clients/index.html[Get Client Libraries]
+--
