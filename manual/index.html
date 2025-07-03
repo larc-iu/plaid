@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Asciidoctor 2.0.23">
+<meta name="author" content="Luke Gessler">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<title>Glam Manual</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700">
+<style>
+/*! Asciidoctor default stylesheet | MIT License | https://asciidoctor.org */
+/* Uncomment the following line when using as a custom stylesheet */
+/* @import "https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700"; */
+html{font-family:sans-serif;-webkit-text-size-adjust:100%}
+a{background:none}
+a:focus{outline:thin dotted}
+a:active,a:hover{outline:0}
+h1{font-size:2em;margin:.67em 0}
+b,strong{font-weight:bold}
+abbr{font-size:.9em}
+abbr[title]{cursor:help;border-bottom:1px dotted #dddddf;text-decoration:none}
+dfn{font-style:italic}
+hr{height:0}
+mark{background:#ff0;color:#000}
+code,kbd,pre,samp{font-family:monospace;font-size:1em}
+pre{white-space:pre-wrap}
+q{quotes:"\201C" "\201D" "\2018" "\2019"}
+small{font-size:80%}
+sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}
+sup{top:-.5em}
+sub{bottom:-.25em}
+img{border:0}
+svg:not(:root){overflow:hidden}
+figure{margin:0}
+audio,video{display:inline-block}
+audio:not([controls]){display:none;height:0}
+fieldset{border:1px solid silver;margin:0 2px;padding:.35em .625em .75em}
+legend{border:0;padding:0}
+button,input,select,textarea{font-family:inherit;font-size:100%;margin:0}
+button,input{line-height:normal}
+button,select{text-transform:none}
+button,html input[type=button],input[type=reset],input[type=submit]{-webkit-appearance:button;cursor:pointer}
+button[disabled],html input[disabled]{cursor:default}
+input[type=checkbox],input[type=radio]{padding:0}
+button::-moz-focus-inner,input::-moz-focus-inner{border:0;padding:0}
+textarea{overflow:auto;vertical-align:top}
+table{border-collapse:collapse;border-spacing:0}
+*,::before,::after{box-sizing:border-box}
+html,body{font-size:100%}
+body{background:#fff;color:rgba(0,0,0,.8);padding:0;margin:0;font-family:"Noto Serif","DejaVu Serif",serif;line-height:1;position:relative;cursor:auto;-moz-tab-size:4;-o-tab-size:4;tab-size:4;word-wrap:anywhere;-moz-osx-font-smoothing:grayscale;-webkit-font-smoothing:antialiased}
+a:hover{cursor:pointer}
+img,object,embed{max-width:100%;height:auto}
+object,embed{height:100%}
+img{-ms-interpolation-mode:bicubic}
+.left{float:left!important}
+.right{float:right!important}
+.text-left{text-align:left!important}
+.text-right{text-align:right!important}
+.text-center{text-align:center!important}
+.text-justify{text-align:justify!important}
+.hide{display:none}
+img,object,svg{display:inline-block;vertical-align:middle}
+textarea{height:auto;min-height:50px}
+select{width:100%}
+.subheader,.admonitionblock td.content>.title,.audioblock>.title,.exampleblock>.title,.imageblock>.title,.listingblock>.title,.literalblock>.title,.stemblock>.title,.openblock>.title,.paragraph>.title,.quoteblock>.title,table.tableblock>.title,.verseblock>.title,.videoblock>.title,.dlist>.title,.olist>.title,.ulist>.title,.qlist>.title,.hdlist>.title{line-height:1.45;color:#7a2518;font-weight:400;margin-top:0;margin-bottom:.25em}
+div,dl,dt,dd,ul,ol,li,h1,h2,h3,#toctitle,.sidebarblock>.content>.title,h4,h5,h6,pre,form,p,blockquote,th,td{margin:0;padding:0}
+a{color:#2156a5;text-decoration:underline;line-height:inherit}
+a:hover,a:focus{color:#1d4b8f}
+a img{border:0}
+p{line-height:1.6;margin-bottom:1.25em;text-rendering:optimizeLegibility}
+p aside{font-size:.875em;line-height:1.35;font-style:italic}
+h1,h2,h3,#toctitle,.sidebarblock>.content>.title,h4,h5,h6{font-family:"Open Sans","DejaVu Sans",sans-serif;font-weight:300;font-style:normal;color:#ba3925;text-rendering:optimizeLegibility;margin-top:1em;margin-bottom:.5em;line-height:1.0125em}
+h1 small,h2 small,h3 small,#toctitle small,.sidebarblock>.content>.title small,h4 small,h5 small,h6 small{font-size:60%;color:#e99b8f;line-height:0}
+h1{font-size:2.125em}
+h2{font-size:1.6875em}
+h3,#toctitle,.sidebarblock>.content>.title{font-size:1.375em}
+h4,h5{font-size:1.125em}
+h6{font-size:1em}
+hr{border:solid #dddddf;border-width:1px 0 0;clear:both;margin:1.25em 0 1.1875em}
+em,i{font-style:italic;line-height:inherit}
+strong,b{font-weight:bold;line-height:inherit}
+small{font-size:60%;line-height:inherit}
+code{font-family:"Droid Sans Mono","DejaVu Sans Mono",monospace;font-weight:400;color:rgba(0,0,0,.9)}
+ul,ol,dl{line-height:1.6;margin-bottom:1.25em;list-style-position:outside;font-family:inherit}
+ul,ol{margin-left:1.5em}
+ul li ul,ul li ol{margin-left:1.25em;margin-bottom:0}
+ul.circle{list-style-type:circle}
+ul.disc{list-style-type:disc}
+ul.square{list-style-type:square}
+ul.circle ul:not([class]),ul.disc ul:not([class]),ul.square ul:not([class]){list-style:inherit}
+ol li ul,ol li ol{margin-left:1.25em;margin-bottom:0}
+dl dt{margin-bottom:.3125em;font-weight:bold}
+dl dd{margin-bottom:1.25em}
+blockquote{margin:0 0 1.25em;padding:.5625em 1.25em 0 1.1875em;border-left:1px solid #ddd}
+blockquote,blockquote p{line-height:1.6;color:rgba(0,0,0,.85)}
+@media screen and (min-width:768px){h1,h2,h3,#toctitle,.sidebarblock>.content>.title,h4,h5,h6{line-height:1.2}
+h1{font-size:2.75em}
+h2{font-size:2.3125em}
+h3,#toctitle,.sidebarblock>.content>.title{font-size:1.6875em}
+h4{font-size:1.4375em}}
+table{background:#fff;margin-bottom:1.25em;border:1px solid #dedede;word-wrap:normal}
+table thead,table tfoot{background:#f7f8f7}
+table thead tr th,table thead tr td,table tfoot tr th,table tfoot tr td{padding:.5em .625em .625em;font-size:inherit;color:rgba(0,0,0,.8);text-align:left}
+table tr th,table tr td{padding:.5625em .625em;font-size:inherit;color:rgba(0,0,0,.8)}
+table tr.even,table tr.alt{background:#f8f8f7}
+table thead tr th,table tfoot tr th,table tbody tr td,table tr td,table tfoot tr td{line-height:1.6}
+h1,h2,h3,#toctitle,.sidebarblock>.content>.title,h4,h5,h6{line-height:1.2;word-spacing:-.05em}
+h1 strong,h2 strong,h3 strong,#toctitle strong,.sidebarblock>.content>.title strong,h4 strong,h5 strong,h6 strong{font-weight:400}
+.center{margin-left:auto;margin-right:auto}
+.stretch{width:100%}
+.clearfix::before,.clearfix::after,.float-group::before,.float-group::after{content:" ";display:table}
+.clearfix::after,.float-group::after{clear:both}
+:not(pre).nobreak{word-wrap:normal}
+:not(pre).nowrap{white-space:nowrap}
+:not(pre).pre-wrap{white-space:pre-wrap}
+:not(pre):not([class^=L])>code{font-size:.9375em;font-style:normal!important;letter-spacing:0;padding:.1em .5ex;word-spacing:-.15em;background:#f7f7f8;border-radius:4px;line-height:1.45;text-rendering:optimizeSpeed}
+pre{color:rgba(0,0,0,.9);font-family:"Droid Sans Mono","DejaVu Sans Mono",monospace;line-height:1.45;text-rendering:optimizeSpeed}
+pre code,pre pre{color:inherit;font-size:inherit;line-height:inherit}
+pre>code{display:block}
+pre.nowrap,pre.nowrap pre{white-space:pre;word-wrap:normal}
+em em{font-style:normal}
+strong strong{font-weight:400}
+.keyseq{color:rgba(51,51,51,.8)}
+kbd{font-family:"Droid Sans Mono","DejaVu Sans Mono",monospace;display:inline-block;color:rgba(0,0,0,.8);font-size:.65em;line-height:1.45;background:#f7f7f7;border:1px solid #ccc;border-radius:3px;box-shadow:0 1px 0 rgba(0,0,0,.2),inset 0 0 0 .1em #fff;margin:0 .15em;padding:.2em .5em;vertical-align:middle;position:relative;top:-.1em;white-space:nowrap}
+.keyseq kbd:first-child{margin-left:0}
+.keyseq kbd:last-child{margin-right:0}
+.menuseq,.menuref{color:#000}
+.menuseq b:not(.caret),.menuref{font-weight:inherit}
+.menuseq{word-spacing:-.02em}
+.menuseq b.caret{font-size:1.25em;line-height:.8}
+.menuseq i.caret{font-weight:bold;text-align:center;width:.45em}
+b.button::before,b.button::after{position:relative;top:-1px;font-weight:400}
+b.button::before{content:"[";padding:0 3px 0 2px}
+b.button::after{content:"]";padding:0 2px 0 3px}
+p a>code:hover{color:rgba(0,0,0,.9)}
+#header,#content,#footnotes,#footer{width:100%;margin:0 auto;max-width:62.5em;*zoom:1;position:relative;padding-left:.9375em;padding-right:.9375em}
+#header::before,#header::after,#content::before,#content::after,#footnotes::before,#footnotes::after,#footer::before,#footer::after{content:" ";display:table}
+#header::after,#content::after,#footnotes::after,#footer::after{clear:both}
+#content{margin-top:1.25em}
+#content::before{content:none}
+#header>h1:first-child{color:rgba(0,0,0,.85);margin-top:2.25rem;margin-bottom:0}
+#header>h1:first-child+#toc{margin-top:8px;border-top:1px solid #dddddf}
+#header>h1:only-child{border-bottom:1px solid #dddddf;padding-bottom:8px}
+#header .details{border-bottom:1px solid #dddddf;line-height:1.45;padding-top:.25em;padding-bottom:.25em;padding-left:.25em;color:rgba(0,0,0,.6);display:flex;flex-flow:row wrap}
+#header .details span:first-child{margin-left:-.125em}
+#header .details span.email a{color:rgba(0,0,0,.85)}
+#header .details br{display:none}
+#header .details br+span::before{content:"\00a0\2013\00a0"}
+#header .details br+span.author::before{content:"\00a0\22c5\00a0";color:rgba(0,0,0,.85)}
+#header .details br+span#revremark::before{content:"\00a0|\00a0"}
+#header #revnumber{text-transform:capitalize}
+#header #revnumber::after{content:"\00a0"}
+#content>h1:first-child:not([class]){color:rgba(0,0,0,.85);border-bottom:1px solid #dddddf;padding-bottom:8px;margin-top:0;padding-top:1rem;margin-bottom:1.25rem}
+#toc{border-bottom:1px solid #e7e7e9;padding-bottom:.5em}
+#toc>ul{margin-left:.125em}
+#toc ul.sectlevel0>li>a{font-style:italic}
+#toc ul.sectlevel0 ul.sectlevel1{margin:.5em 0}
+#toc ul{font-family:"Open Sans","DejaVu Sans",sans-serif;list-style-type:none}
+#toc li{line-height:1.3334;margin-top:.3334em}
+#toc a{text-decoration:none}
+#toc a:active{text-decoration:underline}
+#toctitle{color:#7a2518;font-size:1.2em}
+@media screen and (min-width:768px){#toctitle{font-size:1.375em}
+body.toc2{padding-left:15em;padding-right:0}
+body.toc2 #header>h1:nth-last-child(2){border-bottom:1px solid #dddddf;padding-bottom:8px}
+#toc.toc2{margin-top:0!important;background:#f8f8f7;position:fixed;width:15em;left:0;top:0;border-right:1px solid #e7e7e9;border-top-width:0!important;border-bottom-width:0!important;z-index:1000;padding:1.25em 1em;height:100%;overflow:auto}
+#toc.toc2 #toctitle{margin-top:0;margin-bottom:.8rem;font-size:1.2em}
+#toc.toc2>ul{font-size:.9em;margin-bottom:0}
+#toc.toc2 ul ul{margin-left:0;padding-left:1em}
+#toc.toc2 ul.sectlevel0 ul.sectlevel1{padding-left:0;margin-top:.5em;margin-bottom:.5em}
+body.toc2.toc-right{padding-left:0;padding-right:15em}
+body.toc2.toc-right #toc.toc2{border-right-width:0;border-left:1px solid #e7e7e9;left:auto;right:0}}
+@media screen and (min-width:1280px){body.toc2{padding-left:20em;padding-right:0}
+#toc.toc2{width:20em}
+#toc.toc2 #toctitle{font-size:1.375em}
+#toc.toc2>ul{font-size:.95em}
+#toc.toc2 ul ul{padding-left:1.25em}
+body.toc2.toc-right{padding-left:0;padding-right:20em}}
+#content #toc{border:1px solid #e0e0dc;margin-bottom:1.25em;padding:1.25em;background:#f8f8f7;border-radius:4px}
+#content #toc>:first-child{margin-top:0}
+#content #toc>:last-child{margin-bottom:0}
+#footer{max-width:none;background:rgba(0,0,0,.8);padding:1.25em}
+#footer-text{color:hsla(0,0%,100%,.8);line-height:1.44}
+#content{margin-bottom:.625em}
+.sect1{padding-bottom:.625em}
+@media screen and (min-width:768px){#content{margin-bottom:1.25em}
+.sect1{padding-bottom:1.25em}}
+.sect1:last-child{padding-bottom:0}
+.sect1+.sect1{border-top:1px solid #e7e7e9}
+#content h1>a.anchor,h2>a.anchor,h3>a.anchor,#toctitle>a.anchor,.sidebarblock>.content>.title>a.anchor,h4>a.anchor,h5>a.anchor,h6>a.anchor{position:absolute;z-index:1001;width:1.5ex;margin-left:-1.5ex;display:block;text-decoration:none!important;visibility:hidden;text-align:center;font-weight:400}
+#content h1>a.anchor::before,h2>a.anchor::before,h3>a.anchor::before,#toctitle>a.anchor::before,.sidebarblock>.content>.title>a.anchor::before,h4>a.anchor::before,h5>a.anchor::before,h6>a.anchor::before{content:"\00A7";font-size:.85em;display:block;padding-top:.1em}
+#content h1:hover>a.anchor,#content h1>a.anchor:hover,h2:hover>a.anchor,h2>a.anchor:hover,h3:hover>a.anchor,#toctitle:hover>a.anchor,.sidebarblock>.content>.title:hover>a.anchor,h3>a.anchor:hover,#toctitle>a.anchor:hover,.sidebarblock>.content>.title>a.anchor:hover,h4:hover>a.anchor,h4>a.anchor:hover,h5:hover>a.anchor,h5>a.anchor:hover,h6:hover>a.anchor,h6>a.anchor:hover{visibility:visible}
+#content h1>a.link,h2>a.link,h3>a.link,#toctitle>a.link,.sidebarblock>.content>.title>a.link,h4>a.link,h5>a.link,h6>a.link{color:#ba3925;text-decoration:none}
+#content h1>a.link:hover,h2>a.link:hover,h3>a.link:hover,#toctitle>a.link:hover,.sidebarblock>.content>.title>a.link:hover,h4>a.link:hover,h5>a.link:hover,h6>a.link:hover{color:#a53221}
+details,.audioblock,.imageblock,.literalblock,.listingblock,.stemblock,.videoblock{margin-bottom:1.25em}
+details{margin-left:1.25rem}
+details>summary{cursor:pointer;display:block;position:relative;line-height:1.6;margin-bottom:.625rem;outline:none;-webkit-tap-highlight-color:transparent}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"";border:solid transparent;border-left:solid;border-width:.3em 0 .3em .5em;position:absolute;top:.5em;left:-1.25rem;transform:translateX(15%)}
+details[open]>summary::before{border:solid transparent;border-top:solid;border-width:.5em .3em 0;transform:translateY(15%)}
+details>summary::after{content:"";width:1.25rem;height:1em;position:absolute;top:.3em;left:-1.25rem}
+.admonitionblock td.content>.title,.audioblock>.title,.exampleblock>.title,.imageblock>.title,.listingblock>.title,.literalblock>.title,.stemblock>.title,.openblock>.title,.paragraph>.title,.quoteblock>.title,table.tableblock>.title,.verseblock>.title,.videoblock>.title,.dlist>.title,.olist>.title,.ulist>.title,.qlist>.title,.hdlist>.title{text-rendering:optimizeLegibility;text-align:left;font-family:"Noto Serif","DejaVu Serif",serif;font-size:1rem;font-style:italic}
+table.tableblock.fit-content>caption.title{white-space:nowrap;width:0}
+.paragraph.lead>p,#preamble>.sectionbody>[class=paragraph]:first-of-type p{font-size:1.21875em;line-height:1.6;color:rgba(0,0,0,.85)}
+.admonitionblock>table{border-collapse:separate;border:0;background:none;width:100%}
+.admonitionblock>table td.icon{text-align:center;width:80px}
+.admonitionblock>table td.icon img{max-width:none}
+.admonitionblock>table td.icon .title{font-weight:bold;font-family:"Open Sans","DejaVu Sans",sans-serif;text-transform:uppercase}
+.admonitionblock>table td.content{padding-left:1.125em;padding-right:1.25em;border-left:1px solid #dddddf;color:rgba(0,0,0,.6);word-wrap:anywhere}
+.admonitionblock>table td.content>:last-child>:last-child{margin-bottom:0}
+.exampleblock>.content{border:1px solid #e6e6e6;margin-bottom:1.25em;padding:1.25em;background:#fff;border-radius:4px}
+.sidebarblock{border:1px solid #dbdbd6;margin-bottom:1.25em;padding:1.25em;background:#f3f3f2;border-radius:4px}
+.sidebarblock>.content>.title{color:#7a2518;margin-top:0;text-align:center}
+.exampleblock>.content>:first-child,.sidebarblock>.content>:first-child{margin-top:0}
+.exampleblock>.content>:last-child,.exampleblock>.content>:last-child>:last-child,.exampleblock>.content .olist>ol>li:last-child>:last-child,.exampleblock>.content .ulist>ul>li:last-child>:last-child,.exampleblock>.content .qlist>ol>li:last-child>:last-child,.sidebarblock>.content>:last-child,.sidebarblock>.content>:last-child>:last-child,.sidebarblock>.content .olist>ol>li:last-child>:last-child,.sidebarblock>.content .ulist>ul>li:last-child>:last-child,.sidebarblock>.content .qlist>ol>li:last-child>:last-child{margin-bottom:0}
+.literalblock pre,.listingblock>.content>pre{border-radius:4px;overflow-x:auto;padding:1em;font-size:.8125em}
+@media screen and (min-width:768px){.literalblock pre,.listingblock>.content>pre{font-size:.90625em}}
+@media screen and (min-width:1280px){.literalblock pre,.listingblock>.content>pre{font-size:1em}}
+.literalblock pre,.listingblock>.content>pre:not(.highlight),.listingblock>.content>pre[class=highlight],.listingblock>.content>pre[class^="highlight "]{background:#f7f7f8}
+.literalblock.output pre{color:#f7f7f8;background:rgba(0,0,0,.9)}
+.listingblock>.content{position:relative}
+.listingblock code[data-lang]::before{display:none;content:attr(data-lang);position:absolute;font-size:.75em;top:.425rem;right:.5rem;line-height:1;text-transform:uppercase;color:inherit;opacity:.5}
+.listingblock:hover code[data-lang]::before{display:block}
+.listingblock.terminal pre .command::before{content:attr(data-prompt);padding-right:.5em;color:inherit;opacity:.5}
+.listingblock.terminal pre .command:not([data-prompt])::before{content:"$"}
+.listingblock pre.highlightjs{padding:0}
+.listingblock pre.highlightjs>code{padding:1em;border-radius:4px}
+.listingblock pre.prettyprint{border-width:0}
+.prettyprint{background:#f7f7f8}
+pre.prettyprint .linenums{line-height:1.45;margin-left:2em}
+pre.prettyprint li{background:none;list-style-type:inherit;padding-left:0}
+pre.prettyprint li code[data-lang]::before{opacity:1}
+pre.prettyprint li:not(:first-child) code[data-lang]::before{display:none}
+table.linenotable{border-collapse:separate;border:0;margin-bottom:0;background:none}
+table.linenotable td[class]{color:inherit;vertical-align:top;padding:0;line-height:inherit;white-space:normal}
+table.linenotable td.code{padding-left:.75em}
+table.linenotable td.linenos,pre.pygments .linenos{border-right:1px solid;opacity:.35;padding-right:.5em;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}
+pre.pygments span.linenos{display:inline-block;margin-right:.75em}
+.quoteblock{margin:0 1em 1.25em 1.5em;display:table}
+.quoteblock:not(.excerpt)>.title{margin-left:-1.5em;margin-bottom:.75em}
+.quoteblock blockquote,.quoteblock p{color:rgba(0,0,0,.85);font-size:1.15rem;line-height:1.75;word-spacing:.1em;letter-spacing:0;font-style:italic;text-align:justify}
+.quoteblock blockquote{margin:0;padding:0;border:0}
+.quoteblock blockquote::before{content:"\201c";float:left;font-size:2.75em;font-weight:bold;line-height:.6em;margin-left:-.6em;color:#7a2518;text-shadow:0 1px 2px rgba(0,0,0,.1)}
+.quoteblock blockquote>.paragraph:last-child p{margin-bottom:0}
+.quoteblock .attribution{margin-top:.75em;margin-right:.5ex;text-align:right}
+.verseblock{margin:0 1em 1.25em}
+.verseblock pre{font-family:"Open Sans","DejaVu Sans",sans-serif;font-size:1.15rem;color:rgba(0,0,0,.85);font-weight:300;text-rendering:optimizeLegibility}
+.verseblock pre strong{font-weight:400}
+.verseblock .attribution{margin-top:1.25rem;margin-left:.5ex}
+.quoteblock .attribution,.verseblock .attribution{font-size:.9375em;line-height:1.45;font-style:italic}
+.quoteblock .attribution br,.verseblock .attribution br{display:none}
+.quoteblock .attribution cite,.verseblock .attribution cite{display:block;letter-spacing:-.025em;color:rgba(0,0,0,.6)}
+.quoteblock.abstract blockquote::before,.quoteblock.excerpt blockquote::before,.quoteblock .quoteblock blockquote::before{display:none}
+.quoteblock.abstract blockquote,.quoteblock.abstract p,.quoteblock.excerpt blockquote,.quoteblock.excerpt p,.quoteblock .quoteblock blockquote,.quoteblock .quoteblock p{line-height:1.6;word-spacing:0}
+.quoteblock.abstract{margin:0 1em 1.25em;display:block}
+.quoteblock.abstract>.title{margin:0 0 .375em;font-size:1.15em;text-align:center}
+.quoteblock.excerpt>blockquote,.quoteblock .quoteblock{padding:0 0 .25em 1em;border-left:.25em solid #dddddf}
+.quoteblock.excerpt,.quoteblock .quoteblock{margin-left:0}
+.quoteblock.excerpt blockquote,.quoteblock.excerpt p,.quoteblock .quoteblock blockquote,.quoteblock .quoteblock p{color:inherit;font-size:1.0625rem}
+.quoteblock.excerpt .attribution,.quoteblock .quoteblock .attribution{color:inherit;font-size:.85rem;text-align:left;margin-right:0}
+p.tableblock:last-child{margin-bottom:0}
+td.tableblock>.content{margin-bottom:1.25em;word-wrap:anywhere}
+td.tableblock>.content>:last-child{margin-bottom:-1.25em}
+table.tableblock,th.tableblock,td.tableblock{border:0 solid #dedede}
+table.grid-all>*>tr>*{border-width:1px}
+table.grid-cols>*>tr>*{border-width:0 1px}
+table.grid-rows>*>tr>*{border-width:1px 0}
+table.frame-all{border-width:1px}
+table.frame-ends{border-width:1px 0}
+table.frame-sides{border-width:0 1px}
+table.frame-none>colgroup+*>:first-child>*,table.frame-sides>colgroup+*>:first-child>*{border-top-width:0}
+table.frame-none>:last-child>:last-child>*,table.frame-sides>:last-child>:last-child>*{border-bottom-width:0}
+table.frame-none>*>tr>:first-child,table.frame-ends>*>tr>:first-child{border-left-width:0}
+table.frame-none>*>tr>:last-child,table.frame-ends>*>tr>:last-child{border-right-width:0}
+table.stripes-all>*>tr,table.stripes-odd>*>tr:nth-of-type(odd),table.stripes-even>*>tr:nth-of-type(even),table.stripes-hover>*>tr:hover{background:#f8f8f7}
+th.halign-left,td.halign-left{text-align:left}
+th.halign-right,td.halign-right{text-align:right}
+th.halign-center,td.halign-center{text-align:center}
+th.valign-top,td.valign-top{vertical-align:top}
+th.valign-bottom,td.valign-bottom{vertical-align:bottom}
+th.valign-middle,td.valign-middle{vertical-align:middle}
+table thead th,table tfoot th{font-weight:bold}
+tbody tr th{background:#f7f8f7}
+tbody tr th,tbody tr th p,tfoot tr th,tfoot tr th p{color:rgba(0,0,0,.8);font-weight:bold}
+p.tableblock>code:only-child{background:none;padding:0}
+p.tableblock{font-size:1em}
+ol{margin-left:1.75em}
+ul li ol{margin-left:1.5em}
+dl dd{margin-left:1.125em}
+dl dd:last-child,dl dd:last-child>:last-child{margin-bottom:0}
+li p,ul dd,ol dd,.olist .olist,.ulist .ulist,.ulist .olist,.olist .ulist{margin-bottom:.625em}
+ul.checklist,ul.none,ol.none,ul.no-bullet,ol.no-bullet,ol.unnumbered,ul.unstyled,ol.unstyled{list-style-type:none}
+ul.no-bullet,ol.no-bullet,ol.unnumbered{margin-left:.625em}
+ul.unstyled,ol.unstyled{margin-left:0}
+li>p:empty:only-child::before{content:"";display:inline-block}
+ul.checklist>li>p:first-child{margin-left:-1em}
+ul.checklist>li>p:first-child>.fa-square-o:first-child,ul.checklist>li>p:first-child>.fa-check-square-o:first-child{width:1.25em;font-size:.8em;position:relative;bottom:.125em}
+ul.checklist>li>p:first-child>input[type=checkbox]:first-child{margin-right:.25em}
+ul.inline{display:flex;flex-flow:row wrap;list-style:none;margin:0 0 .625em -1.25em}
+ul.inline>li{margin-left:1.25em}
+.unstyled dl dt{font-weight:400;font-style:normal}
+ol.arabic{list-style-type:decimal}
+ol.decimal{list-style-type:decimal-leading-zero}
+ol.loweralpha{list-style-type:lower-alpha}
+ol.upperalpha{list-style-type:upper-alpha}
+ol.lowerroman{list-style-type:lower-roman}
+ol.upperroman{list-style-type:upper-roman}
+ol.lowergreek{list-style-type:lower-greek}
+.hdlist>table,.colist>table{border:0;background:none}
+.hdlist>table>tbody>tr,.colist>table>tbody>tr{background:none}
+td.hdlist1,td.hdlist2{vertical-align:top;padding:0 .625em}
+td.hdlist1{font-weight:bold;padding-bottom:1.25em}
+td.hdlist2{word-wrap:anywhere}
+.literalblock+.colist,.listingblock+.colist{margin-top:-.5em}
+.colist td:not([class]):first-child{padding:.4em .75em 0;line-height:1;vertical-align:top}
+.colist td:not([class]):first-child img{max-width:none}
+.colist td:not([class]):last-child{padding:.25em 0}
+.thumb,.th{line-height:0;display:inline-block;border:4px solid #fff;box-shadow:0 0 0 1px #ddd}
+.imageblock.left{margin:.25em .625em 1.25em 0}
+.imageblock.right{margin:.25em 0 1.25em .625em}
+.imageblock>.title{margin-bottom:0}
+.imageblock.thumb,.imageblock.th{border-width:6px}
+.imageblock.thumb>.title,.imageblock.th>.title{padding:0 .125em}
+.image.left,.image.right{margin-top:.25em;margin-bottom:.25em;display:inline-block;line-height:0}
+.image.left{margin-right:.625em}
+.image.right{margin-left:.625em}
+a.image{text-decoration:none;display:inline-block}
+a.image object{pointer-events:none}
+sup.footnote,sup.footnoteref{font-size:.875em;position:static;vertical-align:super}
+sup.footnote a,sup.footnoteref a{text-decoration:none}
+sup.footnote a:active,sup.footnoteref a:active,#footnotes .footnote a:first-of-type:active{text-decoration:underline}
+#footnotes{padding-top:.75em;padding-bottom:.75em;margin-bottom:.625em}
+#footnotes hr{width:20%;min-width:6.25em;margin:-.25em 0 .75em;border-width:1px 0 0}
+#footnotes .footnote{padding:0 .375em 0 .225em;line-height:1.3334;font-size:.875em;margin-left:1.2em;margin-bottom:.2em}
+#footnotes .footnote a:first-of-type{font-weight:bold;text-decoration:none;margin-left:-1.05em}
+#footnotes .footnote:last-of-type{margin-bottom:0}
+#content #footnotes{margin-top:-.625em;margin-bottom:0;padding:.75em 0}
+div.unbreakable{page-break-inside:avoid}
+.big{font-size:larger}
+.small{font-size:smaller}
+.underline{text-decoration:underline}
+.overline{text-decoration:overline}
+.line-through{text-decoration:line-through}
+.aqua{color:#00bfbf}
+.aqua-background{background:#00fafa}
+.black{color:#000}
+.black-background{background:#000}
+.blue{color:#0000bf}
+.blue-background{background:#0000fa}
+.fuchsia{color:#bf00bf}
+.fuchsia-background{background:#fa00fa}
+.gray{color:#606060}
+.gray-background{background:#7d7d7d}
+.green{color:#006000}
+.green-background{background:#007d00}
+.lime{color:#00bf00}
+.lime-background{background:#00fa00}
+.maroon{color:#600000}
+.maroon-background{background:#7d0000}
+.navy{color:#000060}
+.navy-background{background:#00007d}
+.olive{color:#606000}
+.olive-background{background:#7d7d00}
+.purple{color:#600060}
+.purple-background{background:#7d007d}
+.red{color:#bf0000}
+.red-background{background:#fa0000}
+.silver{color:#909090}
+.silver-background{background:#bcbcbc}
+.teal{color:#006060}
+.teal-background{background:#007d7d}
+.white{color:#bfbfbf}
+.white-background{background:#fafafa}
+.yellow{color:#bfbf00}
+.yellow-background{background:#fafa00}
+span.icon>.fa{cursor:default}
+a span.icon>.fa{cursor:inherit}
+.admonitionblock td.icon [class^="fa icon-"]{font-size:2.5em;text-shadow:1px 1px 2px rgba(0,0,0,.5);cursor:default}
+.admonitionblock td.icon .icon-note::before{content:"\f05a";color:#19407c}
+.admonitionblock td.icon .icon-tip::before{content:"\f0eb";text-shadow:1px 1px 2px rgba(155,155,0,.8);color:#111}
+.admonitionblock td.icon .icon-warning::before{content:"\f071";color:#bf6900}
+.admonitionblock td.icon .icon-caution::before{content:"\f06d";color:#bf3400}
+.admonitionblock td.icon .icon-important::before{content:"\f06a";color:#bf0000}
+.conum[data-value]{display:inline-block;color:#fff!important;background:rgba(0,0,0,.8);border-radius:50%;text-align:center;font-size:.75em;width:1.67em;height:1.67em;line-height:1.67em;font-family:"Open Sans","DejaVu Sans",sans-serif;font-style:normal;font-weight:bold}
+.conum[data-value] *{color:#fff!important}
+.conum[data-value]+b{display:none}
+.conum[data-value]::after{content:attr(data-value)}
+pre .conum[data-value]{position:relative;top:-.125em}
+b.conum *{color:inherit!important}
+.conum:not([data-value]):empty{display:none}
+dt,th.tableblock,td.content,div.footnote{text-rendering:optimizeLegibility}
+h1,h2,p,td.content,span.alt,summary{letter-spacing:-.01em}
+p strong,td.content strong,div.footnote strong{letter-spacing:-.005em}
+p,blockquote,dt,td.content,td.hdlist1,span.alt,summary{font-size:1.0625rem}
+p{margin-bottom:1.25rem}
+.sidebarblock p,.sidebarblock dt,.sidebarblock td.content,p.tableblock{font-size:1em}
+.exampleblock>.content{background:#fffef7;border-color:#e0e0dc;box-shadow:0 1px 4px #e0e0dc}
+.print-only{display:none!important}
+@page{margin:1.25cm .75cm}
+@media print{*{box-shadow:none!important;text-shadow:none!important}
+html{font-size:80%}
+a{color:inherit!important;text-decoration:underline!important}
+a.bare,a[href^="#"],a[href^="mailto:"]{text-decoration:none!important}
+a[href^="http:"]:not(.bare)::after,a[href^="https:"]:not(.bare)::after{content:"(" attr(href) ")";display:inline-block;font-size:.875em;padding-left:.25em}
+abbr[title]{border-bottom:1px dotted}
+abbr[title]::after{content:" (" attr(title) ")"}
+pre,blockquote,tr,img,object,svg{page-break-inside:avoid}
+thead{display:table-header-group}
+svg{max-width:100%}
+p,blockquote,dt,td.content{font-size:1em;orphans:3;widows:3}
+h2,h3,#toctitle,.sidebarblock>.content>.title{page-break-after:avoid}
+#header,#content,#footnotes,#footer{max-width:none}
+#toc,.sidebarblock,.exampleblock>.content{background:none!important}
+#toc{border-bottom:1px solid #dddddf!important;padding-bottom:0!important}
+body.book #header{text-align:center}
+body.book #header>h1:first-child{border:0!important;margin:2.5em 0 1em}
+body.book #header .details{border:0!important;display:block;padding:0!important}
+body.book #header .details span:first-child{margin-left:0!important}
+body.book #header .details br{display:block}
+body.book #header .details br+span::before{content:none!important}
+body.book #toc{border:0!important;text-align:left!important;padding:0!important;margin:0!important}
+body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-break-before:always}
+.listingblock code[data-lang]::before{display:block}
+#footer{padding:0 .9375em}
+.hide-on-print{display:none!important}
+.print-only{display:block!important}
+.hide-for-print{display:none!important}
+.show-for-print{display:inherit!important}}
+@media amzn-kf8,print{#header>h1:first-child{margin-top:1.25rem}
+.sect1{padding:0!important}
+.sect1+.sect1{border:0}
+#footer{background:none}
+#footer-text{color:rgba(0,0,0,.6);font-size:.9em}}
+@media amzn-kf8{#header,#content,#footnotes,#footer{padding:0}}
+</style>
+</head>
+<body class="book toc2 toc-left">
+<div id="header">
+<h1>Glam Manual</h1>
+<div class="details">
+<span id="author" class="author">Luke Gessler</span><br>
+</div>
+<div id="toc" class="toc2">
+<div id="toctitle">Table of Contents</div>
+<ul class="sectlevel1">
+<li><a href="#_introduction">1. Introduction</a></li>
+<li><a href="#_core_concepts">2. Core Concepts</a>
+<ul class="sectlevel2">
+<li><a href="#_layers">2.1. Layers</a>
+<ul class="sectlevel3">
+<li><a href="#_text">2.1.1. Text</a></li>
+<li><a href="#_token">2.1.2. Token</a></li>
+<li><a href="#_span">2.1.3. Span</a></li>
+<li><a href="#_relation">2.1.4. Relation</a></li>
+<li><a href="#_vocabulary">2.1.5. Vocabulary</a></li>
+</ul>
+</li>
+<li><a href="#_universality">2.2. Universality</a></li>
+</ul>
+</li>
+<li><a href="#_user_workflows">3. User Workflows</a>
+<ul class="sectlevel2">
+<li><a href="#_document_annotation">3.1. Document Annotation</a>
+<ul class="sectlevel3">
+<li><a href="#_text_2">3.1.1. Text</a></li>
+<li><a href="#_token_2">3.1.2. Token</a></li>
+<li><a href="#_interlinear">3.1.3. Interlinear</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#_administrator_workflows">4. Administrator Workflows</a>
+<ul class="sectlevel2">
+<li><a href="#_user_management">4.1. User Management</a></li>
+<li><a href="#_project_configuration">4.2. Project Configuration</a></li>
+</ul>
+</li>
+<li><a href="#_developers_guide">5. Developer&#8217;s Guide</a>
+<ul class="sectlevel2">
+<li><a href="#_code_atlas">5.1. Code Atlas</a></li>
+<li><a href="#_glam_xtdb">5.2. glam.xtdb</a>
+<ul class="sectlevel3">
+<li><a href="#_basics">5.2.1. Basics</a></li>
+<li><a href="#_transaction_functions">5.2.2. Transaction Functions</a></li>
+<li><a href="#_idents">5.2.3. Idents</a></li>
+<li><a href="#_namespace_overview">5.2.4. Namespace Overview</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<div id="content">
+<div class="sect1">
+<h2 id="_introduction"><a class="anchor" href="#_introduction"></a><a class="link" href="#_introduction">1. Introduction</a></h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Glam is an app for linguistic annotation.
+While Glam is usable for many different kinds of annotation projects, it was originally developed to serve <a href="https://en.wikipedia.org/wiki/Language_documentation"><strong>language documentation</strong></a> projects, and in pursuit of that, aims to achieve the following core goals:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Flexible Data</strong>: you should be able to record however much data and whatever kind of data you desire.
+Annotating anything from good old-fashioned <a href="https://en.wikipedia.org/wiki/Interlinear_gloss">interlinear glossed text</a> to more complicated formats like <a href="https://universaldependencies.org/format.html">Universal Dependencies</a> should be possible and easy.</p>
+</li>
+<li>
+<p><strong>Seamless Collaboration</strong>: working with others should be frictionless&#8212;&#8203;you should be able to share data without even clicking a button, changes should be viewable by everyone in real time, and everyone should be able to pick the system up quickly.</p>
+</li>
+<li>
+<p><strong>Durability</strong>: data should never be lost&#8212;&#8203;all past states of the database should be recorded and accessible.</p>
+</li>
+<li>
+<p><strong>NLP Model Integration</strong>: it should be easy to configure cutting-edge NLP models to provide best possible annotations to be corrected by humans, and have them train incrementally as new gold annotations become available.</p>
+</li>
+<li>
+<p><strong>Pluggable UIs</strong>: if you want to code new UIs for different kinds of annotation (e.g. entity recognition, syntax, and coreference), you should be able to do so just by writing JavaScript using the Glam API, with no backend changes required.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_core_concepts"><a class="anchor" href="#_core_concepts"></a><a class="link" href="#_core_concepts">2. Core Concepts</a></h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Glam allows different <strong>users</strong> to collaborate on different <strong>projects</strong>.
+Administrators may grant users read or write privileges on different projects, and projects are otherwise simply collections of <strong>documents</strong>.
+Documents may have different kinds of data, and a project&#8217;s layer configuration determines what kind of data will be created for that project.</p>
+</div>
+<div class="sect2">
+<h3 id="_layers"><a class="anchor" href="#_layers"></a><a class="link" href="#_layers">2.1. Layers</a></h3>
+<div class="paragraph">
+<p>At the heart of Glam is the concept of a <strong>layer</strong>.
+A layer represents a single kind of data that is to be captured in documents in a project.
+By the addition and combination of layers, different projects are able to record whatever data is most appropriate in their documents.
+Projects may have as many or as few of each layer as is appropriate.</p>
+</div>
+<div class="sect3">
+<h4 id="_text"><a class="anchor" href="#_text"></a><a class="link" href="#_text">2.1.1. Text</a></h4>
+<div class="paragraph">
+<p>A text layer holds strings of text that form the foundation of documents.
+Most projects will only have one text layer, though it is possible to create more than one.
+(One such rare occasion might be when the same text has been given in two different languages, and both versions of the text need to be annotated.)</p>
+</div>
+<div class="paragraph">
+<p>There are no constraints on what texts can contain, except one: many of Glam&#8217;s core interfaces assume that one line in the text will roughly correspond to something like a sentence.
+Texts should be edited accordingly, and very long lines should be avoided if possible.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+Some things that you might feel like modeling with multiple text layers might actually be better modeled with other layers.
+For example, you might want to model different speakers in conversational texts with different text layers, but speakers are different and variable across documents, so this is actually better modeled by having a span layer for speakers.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_token"><a class="anchor" href="#_token"></a><a class="link" href="#_token">2.1.2. Token</a></h4>
+<div class="paragraph">
+<p>A token layer contains tokens, which are defined as non-overlapping, non-empty, continuous substrings of a text layer which the token layer depends on.
+Tokens provide basic units for further linguistic analysis, and will most commonly capture something like a morpheme or a word.
+It therefore may be desirable to have multiple token layers in some situations.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_span"><a class="anchor" href="#_span"></a><a class="link" href="#_span">2.1.3. Span</a></h4>
+<div class="paragraph">
+<p>A span layer contains spans and depends on a token layer.
+Spans are anchored to tokens from the token layer it depends on: each span must be linked to at least one token from that token layer.
+(Associated tokens do not need to be contiguous.)
+Spans may also have a <strong>value</strong>, which is either a plain text value or an entry in a vocabulary (see below).</p>
+</div>
+<div class="paragraph">
+<p>Many kinds of span layers will have spans which always span exactly one token&#8212;&#8203;these might express common information such as grammatical category, or part of speech.
+Other span layers will have much wider spans, such as a translation span layer, whose spans would cover entire sentences.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_relation"><a class="anchor" href="#_relation"></a><a class="link" href="#_relation">2.1.4. Relation</a></h4>
+<div class="paragraph">
+<p>A relation layer depends on a single span layer and holds edges between spans.
+These edges are directed (one span is the source, the other is the target), and must always connect exactly two spans from the span layer.
+The relation also has a value like spans do: either a plain text value, or an item from a vocabulary.
+Many projects will not need relation layers, but they are critical for expressing some kinds of data such as coreference links and syntax trees.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+We are optimistic that a relation layer will only ever need to involve spans from a single span layer, but if you are in a situation where you feel that you need relations to connect spans from different layers, please <a href="https://github.com/lgessler/glam/discussions">discuss your situation</a> with us.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_vocabulary"><a class="anchor" href="#_vocabulary"></a><a class="link" href="#_vocabulary">2.1.5. Vocabulary</a></h4>
+<div class="paragraph">
+<p>A vocabulary is simply a list of items which have at minimum a <strong>form</strong>.
+A vocabulary may also specify additional fields that each item should have, which will be able to hold arbitrary text as information.
+Vocabularies may be <strong>closed</strong> or <strong>open</strong>: if a vocabulary is closed, then only administrators will be able to add more items, and if it is open, then regular users will be able to extend the vocabulary with new items during regular use.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+For now, additional vocabulary fields will only be able to hold plain strings, but if you would like something beyond that, please <a href="https://github.com/lgessler/glam/discussions">describe your needs</a>.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Unlike the other layer types, vocabularies are <strong>global</strong> and are not associated with a project.
+Vocabularies come in two different varieties: if a vocabulary is to be used with a token layer, then it is an <strong>alloformic vocabulary</strong>, and if it is to be used with a span or relation layer, it is a <strong>basic vocabulary</strong>.</p>
+</div>
+<div class="paragraph">
+<div class="title">Basic Vocabulary</div>
+<p>In this kind of vocabulary, spans and relations whose values refer to a vocabulary item will have exactly that vocabulary item&#8217;s form as its value.
+This is suitable for annotations like grammatical categories, POS tags, lemmas, and morphological features.</p>
+</div>
+<div class="paragraph">
+<div class="title">Alloformic Vocabulary</div>
+<p>Alloformic vocabularies are used with token layers, and help address the fact that formal units of linguistic analysis such as words of morphemes often do not surface in texts in their citation form: for example, the Turkish plural marker may surface as either <em>-lar</em> or <em>-ler</em> depending on vowel harmony, but we would like them both to correspond to a single vocabulary item for a morphemic analysis.
+An alloformic vocabulary therefore still requires that each item have a canonical <strong>form</strong> which is to serve as a citation form, but it relaxes the requirement that an instantiation of this item have exactly the canonical form.</p>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_universality"><a class="anchor" href="#_universality"></a><a class="link" href="#_universality">2.2. Universality</a></h3>
+<div class="paragraph">
+<p>The five layer types described above are technically and conceptually simple.
+Recall that one of Glam&#8217;s goals is to allow you to record any kind of data.
+Can we really expect to accommodate any kind of data using just the five layer types?</p>
+</div>
+<div class="paragraph">
+<p>Cautiously, we expect that the answer is yes.
+Researchers in <a href="https://aclanthology.org/2020.acl-main.192/">NLP</a> and <a href="https://corpus-tools.org/salt/">corpus linguistics</a>, among others, have already described very similar data models and expressed faith (supported by experimental successes) in their ability to express almost any linguistic formalism.
+So, if there is some kind of data you wish to annotate, you can expect that Glam&#8217;s layer system will be able to handle it.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+If you&#8217;re struggling to come up with a plan for your data, don&#8217;t hesitate to make a post on the <a href="https://github.com/lgessler/glam/discussions">discussions page</a> so others can give you advice.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>However, what is not necessarily guaranteed is that Glam will provide you with an ergonomic interface for annotating documents in your layer system.
+Glam tries to provide sensible interfaces for the most common kinds of linguistic annotation (such as interlinear glossing), but if your needs are more complex (as they would be with something like constituency treebanking), Glam&#8217;s interfaces may not be especially ergonomic, and you should consider developing your own UI.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_user_workflows"><a class="anchor" href="#_user_workflows"></a><a class="link" href="#_user_workflows">3. User Workflows</a></h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_document_annotation"><a class="anchor" href="#_document_annotation"></a><a class="link" href="#_document_annotation">3.1. Document Annotation</a></h3>
+<div class="paragraph">
+<p>Glam ships with a number of document-level editing interfaces to facilitate typical kinds of annotation.
+All of these interfaces will automatically update in real time if multiple users are editing the same document.</p>
+</div>
+<div class="sect3">
+<h4 id="_text_2"><a class="anchor" href="#_text_2"></a><a class="link" href="#_text_2">3.1.1. Text</a></h4>
+<div class="paragraph">
+<p>The text editing interface (at <code>/document/:id?tab=text</code>) is used for editing the raw text that will be annotated in the document.</p>
+</div>
+<div class="paragraph">
+<div class="title">Raw text entry</div>
+<p>A text box allows for entry, and the default "save" action will save the text as it is entered.
+No tokens will be created&#8212;&#8203;just the text will be saved.</p>
+</div>
+<div id="morphent" class="paragraph">
+<div class="title">Text entry with morpheme tokenization</div>
+<p>You will often want tokens that represent a morpheme rather than a whole word.
+To conveniently enter data like this, the text editing interface offers a "save with morpheme tokenization" action.
+Text that is entered and saved with this action will create tokens when the text is saved with explicit guidance from you in the form of <code>-</code> separators between morphemes.
+For example, consider the following raw text:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code>Ox-en plow-ing the field-s</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>When saved with morpheme tokenization mode, two things will happen: first, the <code>-</code> separators will be removed from the text&#8217;s final form; second, tokens will be generated that will have boundaries at <code>-</code> separators as well as other heuristic boundaries, such as whitespace characters.
+The text above would therefore look like so, where the numbers under each character indicates the token it belongs to:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code>Oxen plowing the fields
+1122 3333444 555 666667</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If you want to include a literal <code>-</code> in your text, simply repeat it:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code>The ice--cream melt-ed
+=&gt;
+The ice-cream melted
+111 222344444 555566</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_token_2"><a class="anchor" href="#_token_2"></a><a class="link" href="#_token_2">3.1.2. Token</a></h4>
+<div class="paragraph">
+<p>The token editing interface (at <code>/document/:id?tab=token</code>) allows you to create and edit tokens.
+A token is visually represented in both this interface and the text interface with a black rounded box around its text.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Warning</div>
+</td>
+<td class="content">
+Some of the actions described here are only guaranteed to work in Google Chrome. Avoid using other browsers at this time.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<div class="title">Bulk token creation</div>
+<p>Currently, only whitespace tokenization is supported for bulk token editing.
+It is recommended that you use text editing with morpheme tokenization if this is not suitable for you.
+In the future, it will be possible to use external tokenizers, such as SpaCy&#8217;s.</p>
+</div>
+<div class="paragraph">
+<div class="title">Token deletion</div>
+<p>Simply click on a token&#8217;s box to delete it.</p>
+</div>
+<div class="paragraph">
+<div class="title">Token creation</div>
+<p>Highlight a totally untokenized span of text, either by clicking and dragging your mouse over it or double clicking on a whole word.
+Creation will only succeed if all characters do not belong to any existing token.</p>
+</div>
+<div class="paragraph">
+<div class="title">Token editing</div>
+<p>To shift the boundaries of an existing token, hover over the token with your mouse and use the following keyboard commands:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>A</code> / <code>←</code>: expand token left</p>
+</li>
+<li>
+<p><code>SHIFT+A</code> / <code>SHIFT+←</code>: shrink token left</p>
+</li>
+<li>
+<p><code>D</code> / <code>→</code>: expand token right</p>
+</li>
+<li>
+<p><code>SHIFT+D</code> / <code>SHIFT+→</code>: shrink token right</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_interlinear"><a class="anchor" href="#_interlinear"></a><a class="link" href="#_interlinear">3.1.3. Interlinear</a></h4>
+<div class="paragraph">
+<p>The interlinear interface allows <a href="#_project_configuration">properly configured span layers</a> to be edited.
+For each token, each token-level span layer will have a single field, and for each sentence, each sentence-level span layer will also have a single field.
+Changes in the spans' values will be propagated to other users as soon as your cursor leaves a field.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_administrator_workflows"><a class="anchor" href="#_administrator_workflows"></a><a class="link" href="#_administrator_workflows">4. Administrator Workflows</a></h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Administrators are privileged users that can configure all aspects of a Glam instance.</p>
+</div>
+<div class="sect2">
+<h3 id="_user_management"><a class="anchor" href="#_user_management"></a><a class="link" href="#_user_management">4.1. User Management</a></h3>
+<div class="paragraph">
+<p>Administrators can create new users and manage existing users (<code>/admin/user</code>).</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_project_configuration"><a class="anchor" href="#_project_configuration"></a><a class="link" href="#_project_configuration">4.2. Project Configuration</a></h3>
+<div class="paragraph">
+<p>Each project has its own configuration of layers which will determine the structure of documents inside that project.
+Most projects will only need one text layer and one token layer, though one may want to have e.g. tokenizations at both the morpheme and the word level.
+Span layers will vary most across projects, as they contain the span-level linguistic annotations that will constitute the bulk of a document&#8217;s linguistic annotations.</p>
+</div>
+<div class="paragraph">
+<div class="title">Span Configuration for Interlinear Editor</div>
+<p>The interlinear editor needs to know which span layers represent token-level information (e.g. a POS tag or a grammatical category), and which represent sentence-level information (e.g. a translation).
+Once you have configured your project&#8217;s layers, go to the "Interfaces" tab of the admin&#8217;s project management activity and configure the span layers you wish to use in the interlinear editor.</p>
+</div>
+<div class="paragraph">
+<div class="title">Read and Write Privileges</div>
+<p>By default, non-admin users are not allowed to view or edit any projects.
+To grant them access, navigate to a project in the Project Management admin activity, visit the "Access" tab, and grant each user the appropriate privileges.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_developers_guide"><a class="anchor" href="#_developers_guide"></a><a class="link" href="#_developers_guide">5. Developer&#8217;s Guide</a></h2>
+<div class="sectionbody">
+<div class="admonitionblock caution">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Caution</div>
+</td>
+<td class="content">
+This section is intended only for people who want to extend Glam. You do not need to read this section in order to use Glam.
+</td>
+</tr>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_code_atlas"><a class="anchor" href="#_code_atlas"></a><a class="link" href="#_code_atlas">5.1. Code Atlas</a></h3>
+<div class="paragraph">
+<p>Glam&#8217;s code is divided into <a href="https://clojure.org/reference/namespaces">Clojure namespaces</a>.
+If you&#8217;re not familiar, a Clojure namespace is like a Python module in that it is a contained unit of code that lives in a single file, and the path of the file (relative to the root directory) determines the name of the namespace.
+For example, a file at <code>glam/xtdb/span_layer.clj</code> holds code the for namespace <code>glam.xtdb.span-layer</code>.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Warning</div>
+</td>
+<td class="content">
+Note that for historical reasons a <code>_</code> in the file name corresponds to a <code>-</code> in the namespace name and vice versa. Clojure will complain if this condition is not met.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Most of Glam&#8217;s code is in the <code>src/main</code> root directory.
+(There are two other root directories: <code>src/test</code>, which contains tests, and <code>src/dev</code>, which contains a small amount code that is only used during development.)
+Here is a high-level view of some important namespaces under <code>src/main</code>:</p>
+</div>
+<div class="paragraph">
+<div class="title">glam.server</div>
+<p>This namespace contains the heart of the backend.
+All the components of the backend that are stateful live here.
+These include:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>glam.server.main</code>: the programmatic entry point</p>
+</li>
+<li>
+<p><code>glam.server.config</code>: the object that holds the configuration object for the backend</p>
+</li>
+<li>
+<p><code>glam.server.http-server</code>: the HTTP server which serves the app and handles requests</p>
+</li>
+<li>
+<p><code>glam.server.pathom-parser</code>: the setup required for the <a href="https://blog.wsscode.com/pathom/v2/pathom/2.2.0/introduction.html">Pathom 2</a> resolvers defined in <code>glam.models</code> (see below)</p>
+</li>
+<li>
+<p><code>glam.server.xtdb</code>: the separate <a href="https://xtdb.com/">XTDB databases</a> that are used to manage session information and the rest of all the application&#8217;s data</p>
+</li>
+<li>
+<p><code>glam.server.middleware</code>: the middleware that lets the HTTP server interact with the other major components of the application in order to fulfill requests, i.e. the Pathom parser, the database, and a couple other things.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<div class="title">glam.xtdb</div>
+<p>Each namespace under this one (aside from <code>access</code>, <code>common</code>, and <code>util</code>) contains functions which help you read from and write to the database for the entity whose name is on the namespace.
+Think of this as analogous to where your SQL queries would go if you were using a SQL database.
+Beware: these functions require you to have a more or less complete understanding of both Glam&#8217;s data model and XTDB before you can write or modify them successfully.</p>
+</div>
+<div class="paragraph">
+<div class="title">glam.models</div>
+<p>This is perhaps a bit of an uninformative name.
+<code>glam.models</code> contains all the functions for the backend which clients invoke when they want to read or write data from the server.
+For example, <code>glam.models.span/create-span</code> is invoked by clients whenever a client wants to create a span on the server.
+Typically, each function under <code>glam.models</code> will correspond to a single function under the <code>glam.xtdb</code> namespace (e.g. <code>glam.xtdb.span/create</code>).</p>
+</div>
+<div class="paragraph">
+<p>Why have <code>glam.models</code>, then?
+Because <code>glam.models</code> is where validation happens: arguments are checked for validity, users are checked for proper authentication and authorization, and additionally, clients are given helpful error or success messages in response to the <code>glam.xtdb</code> function&#8217;s success.
+<code>glam.xtdb</code> do not attempt to check any of these things before executing.</p>
+</div>
+<div class="paragraph">
+<p>Additionally, the <code>glam.models</code> namespace sometimes contains validation logic related to certain fields.
+For example, <code>glam.models.document</code> has a validation function that checks whether the name of the document is between 1 and 80 characters in length.
+For this reason, many of the files in this namespace end with the <code>.cljc</code> extension, which indicates to the Clojure[Script] compilers that the file can be read both as valid Clojure and ClojureScript.
+This helps us write validation logic exactly once, precluding inconsistency on client and server.</p>
+</div>
+<div class="paragraph">
+<div class="title">glam.client</div>
+<p>This is the namespace that almost all of the ClojureScript code lives under.
+The majority of this code by volume is under <code>glam.client.ui</code>, but the namespaces which are not under that contain important bureaucratic information, mostly for Fulcro (<code>glam.client.application</code>), but also for the router (<code>glam.client.router</code>).</p>
+</div>
+<div class="paragraph">
+<div class="title">glam.client.ui</div>
+<p>This is where all of the <a href="https://fulcro.fulcrologic.com/">Fulcro</a> components live.
+A Fulcro component is a React component with some extra bits specific to Fulcro.
+Fulcro is too much of a thing to even try to explain here, so consult the documents if you need to understand it.
+However, note that it is possible for this code to interoperate with plain React components written in JavaScript.
+As of the writing of this section, this has not been done yet, but this may change soon.</p>
+</div>
+<div class="paragraph">
+<div class="title">glam.algos</div>
+<p>There are some data operations that are quite complicated (e.g. taking two versions of a string and finding the shortest sequence of string edits that can produce one from the other) that have been separate out into this namespace to keep the places where they are consumed from being overrun by their length.
+This is where they live.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_glam_xtdb"><a class="anchor" href="#_glam_xtdb"></a><a class="link" href="#_glam_xtdb">5.2. glam.xtdb</a></h3>
+<div class="paragraph">
+<p>Instead of a SQL database, Glam uses <a href="https://www.xtdb.com/">XTDB</a> for data persistence.
+XTDB has some unusual features.
+One very exciting one for us is that it is immutable, meaning that whenever a write happens, the previous state of the database is not overwritten.
+Because of this, every past state of the database is viewable.
+XTDB has other features which make it well suited to our task.</p>
+</div>
+<div class="paragraph">
+<p>In this section, we&#8217;ll review how Glam implements its core data model using XTDB.
+This section assumes familiarity with the basics of XTDB and Glam&#8217;s data model.
+Consult the <a href="https://www.xtdb.com/learn">XTDB learning materials</a> and the earlier sections of this document respectively before proceeding.</p>
+</div>
+<div class="sect3">
+<h4 id="_basics"><a class="anchor" href="#_basics"></a><a class="link" href="#_basics">5.2.1. Basics</a></h4>
+<div class="paragraph">
+<p>Just as you might expect the data for a document to be spread out across different tables for a SQL approach, in XTDB, we make a separate document for every different kind of data that makes up a project or a document.
+Every token, for example, will have its own document.
+Each document has attributes, which you can again think of as analogous to a SQL column.</p>
+</div>
+<div class="paragraph">
+<p>Let&#8217;s consider an example. A <code>token</code> document has the following attributes:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>:token/id</code>: the ID of this token. Note this is also stored on <code>:xt/id</code>, which is a required property for all XTDB documents. The reason why we also have <code>:token/id</code> in addition to <code>:xt/id</code> even though their values are the same is that querying for <code>:token/id</code> will allow us to easily find documents that represent tokens. Every other document also has an <code>:x/id</code> attribute like this, e.g. <code>:project/id</code>.</p>
+</li>
+<li>
+<p><code>:token/layer</code>: the ID of the layer that this token belongs to, i.e. the <code>:token-layer/id</code> of the <code>token-layer</code> associated document. In SQL, this would be a foreign key that you could use to facilitate joins.</p>
+</li>
+<li>
+<p><code>:token/text</code>: the ID of the text that this token is a token of, i.e. the <code>:text/id</code> of the associated text.</p>
+</li>
+<li>
+<p><code>:token/begin</code>, <code>:token/end</code>: substring indices for the text which indicate the bounds of this token.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Putting that all together (ignoring layers):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="clojure">;; A text object
+{:xt/id      1
+ :text/id    1
+ :text/layer ...
+ :text/body  "Hello, world"}
+
+{:xt/id       2
+ :token/id    2
+ :token/layer ...
+ :token/text  1
+ :token/begin 0
+ :token/end   5}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The token represented by the second document captures the substring <code>"Hello"</code> in the text.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_transaction_functions"><a class="anchor" href="#_transaction_functions"></a><a class="link" href="#_transaction_functions">5.2.2. Transaction Functions</a></h4>
+<div class="paragraph">
+<p>The data structures we just described are highly relational, and as such we need to take care to never allow an invalid state to occur.
+Every attribute which refers to another document with an ID must always be valid, or bad things will start happening.
+Consider, for example, what must happen when we delete a <code>text</code> object.
+If a <code>text</code> no longer exists, then we must be sure to delete all of the <code>token</code> objects that depend on it, and so on for dependents of <code>token</code> objects.
+And importantly, we must make sure that this deletion is an all-or-nothing affair: it would be bad if the deletion process succeeded only on some documents, or if database reads occurred while the deletion was in progress, yielding a view that would have invalid joins.</p>
+</div>
+<div class="paragraph">
+<p>XTDB has an elegant solution for this in the form of the <a href="https://www.xtdb.com/blog/xtdb-transaction-functions">transaction function</a>.
+First of all, recall that all writes happen with XTDB&#8217;s <code>submit-tx</code> function, which takes a vector of transaction operations which are executed in order.
+This alone isn&#8217;t enough, since XTDB&#8217;s primitive <code>:xtdb.api/delete</code> transaction operation isn&#8217;t sufficiently expressive for the detailed behavior our data model requires.
+For example, when a token is deleted, a span that contains that token should be deleted if and only if the token was the only one contained in the span.
+This is where the transaction function comes in: it allows us to define our own transaction operations that have the freedom of arbitrary code and the guarantees associated with being executed within a transaction by XTDB.</p>
+</div>
+<div class="paragraph">
+<p>To make using transaction functions as convenient as possible, we define new transaction functions using <code>glam.xtdb.easy/deftx</code>.
+Consider an example: <code>glam.xtdb.token/delete</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="clojure">(gxe/deftx delete [node eid]
+  (let [spans (get-span-ids node eid)]
+    (into
+      (reduce into (map #(s/remove-token** node % eid) spans))
+      [(gxe/delete* eid)])))</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This looks a lot like a normal function definition, but there are a few things to note about this.
+First of all, the first argument to the function must always be <code>node</code>, which will be bound to the XTDB node executing the function.
+Second, <code>deftx</code> actually defines <em>two</em> things.
+There is an internal version of the function that is trailed with <code>**</code>, and invoking this prepares an XTDB transaction which contains only the invocation of this transaction function.
+The normal version of this function without the <code>**</code> at the end does the same but also invokes the transaction immediately.
+Having these two variants allows us to use the asterisk-less version whenever we&#8217;re interested in that operation as our top-level goal, and the asterisk-ful version whenever we want to use that operation as a part of another operation.
+In the example above, we can see that this transaction function relies on another transaction function, <code>glam.xtdb.span/remove-token**</code>.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+Throughout glam.xtdb, it is a convention that any function ending with <code>*</code> will return a transaction operation, and any function ending with <code>**</code> will return a transaction (i.e., a vector of transaction operations).
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Let&#8217;s go through an example to make all of that concrete, continuing with <code>glam.xtdb.token/delete</code>.
+First, let&#8217;s observe that this function is stored in the database:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="clojure">(gxe/entity user/node :glam.xtdb.token/delete)
+=&gt;
+{:xt/id :glam.xtdb.token/delete
+ :xt/fn
+ (clojure.core/fn
+  [node eid]
+  (let
+   [spans (glam.xtdb.token/get-span-ids node eid)]
+    (into
+     (reduce into (map (fn* [p1__98802#] (glam.xtdb.span/remove-token** node p1__98802# eid)) spans))
+     [(glam.xtdb.easy/delete* eid)]))))}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This code should look very familiar&#8212;&#8203;it&#8217;s what we saw above!
+(Don&#8217;t worry about the minor differences on variable names&#8212;&#8203;that&#8217;s an implementation detail that you can safely ignore.)
+Now let&#8217;s see what the result of invoking <code>delete**</code> is:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="clojure">(glam.xtdb.token/delete** node 5)
+=&gt; [[:xtdb.api/fn :glam.xtdb.token/delete 5]]</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>As you can see, not much happens: all this does is to prepare the transaction function&#8217;s invocation by formatting it with its arguments.
+Nothing has happened to the database.
+Invoking <code>(glam.xtdb.token/delete node 5)</code>, on the other hand, would have submitted this to the database, equivalent to <code>(xtdb.api/submit-tx node (glam.xtdb.token/delete** node 5))</code>.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_idents"><a class="anchor" href="#_idents"></a><a class="link" href="#_idents">5.2.3. Idents</a></h4>
+<div class="paragraph">
+<p>In most places in Glam, we will refer to an entity simply with its ID.
+This is true, for example, in all XTDB documents: <code>:token/text</code> has as its associated value the ID of the associated <code>text</code>.
+However, in some places, you will see idents, which are two-item vectors where the first value is a keyword like <code>:text/id</code> and the second value is the ID.
+This is called an <strong>ident</strong>, and it is another way of referring to an entity which encodes its type.
+We use idents because <a href="https://blog.wsscode.com/pathom/v2/pathom/2.2.0/introduction.html">Pathom</a> (the library we use for graph query processing) works in terms of them.
+For this reason, you will see that many namespaces have an <code>xt&#8594;pathom</code> function which will convert IDs to idents.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_namespace_overview"><a class="anchor" href="#_namespace_overview"></a><a class="link" href="#_namespace_overview">5.2.4. Namespace Overview</a></h4>
+<div class="paragraph">
+<p>All namespaces under <code>glam.xtdb</code> are devoted to a particular data type, with the following exceptions:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>glam.xtdb.easy</code> has functions which offer a higher-level interface to XTDB.</p>
+</li>
+<li>
+<p><code>glam.xtdb.common</code> has mostly low-level helper functions which are used by other namespaces.</p>
+</li>
+<li>
+<p><code>glam.xtdb.access</code> contains the logic used in <code>glam.models</code> namespaces to determine whether a user is authorized to perform certain actions.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div id="footer">
+<div id="footer-text">
+Last updated 2025-07-03 19:19:40 UTC
+</div>
+</div>
+</body>
+</html>
