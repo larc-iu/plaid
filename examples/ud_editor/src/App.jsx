@@ -21,16 +21,22 @@ function getBasename() {
     const src = script.getAttribute('src');
     // Look for the main bundle (usually contains 'main' or 'index' and ends with .js)
     if (src && (src.includes('main') || src.includes('index')) && src.endsWith('.js') && !src.startsWith('http')) {
+      // Handle relative paths like './assets/main.js'
+      if (src.startsWith('./')) {
+        return ''; // Root deployment with relative paths
+      }
+      
       // Extract the directory path from the script src
       const lastSlash = src.lastIndexOf('/');
       if (lastSlash > 0) {
         const scriptDir = src.substring(0, lastSlash);
-        // If script is in a subdirectory like '/app/assets/main.js', 
-        // the basename is likely '/app'
-        const segments = scriptDir.split('/').filter(Boolean);
+        // Filter out empty segments and dots
+        const segments = scriptDir.split('/').filter(seg => seg && seg !== '.');
+        
         if (segments.length > 0 && segments[segments.length - 1] === 'assets') {
           // Remove 'assets' directory to get app root
-          return '/' + segments.slice(0, -1).join('/');
+          const basePath = segments.slice(0, -1).join('/');
+          return basePath ? '/' + basePath : '';
         } else if (segments.length > 0) {
           // Script is directly in subdirectory
           return '/' + segments.join('/');
