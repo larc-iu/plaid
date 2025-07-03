@@ -49,9 +49,8 @@
            org.clojure/data.json               {:mvn/version "2.5.0"}
 
            ;; these are missing from xtdb-lmdb
-           ; org.lwjgl/lwjgl$natives-windows      {:mvn/version "3.3.6" :native-prefix ""}
-           ; org.lwjgl/lwjgl-lmdb$natives-windows {:mvn/version "3.3.6" :native-prefix ""}
-           }
+           org.lwjgl/lwjgl$natives-windows      {:mvn/version "3.3.1" :native-prefix ""}
+           org.lwjgl/lwjgl-lmdb$natives-windows {:mvn/version "3.3.1" :native-prefix ""}}
 
  :aliases {:outdated {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
                       :main-opts  ["-m" "antq.core"]}
