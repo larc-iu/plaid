@@ -1,4 +1,4 @@
-= Glam Manual
+= Plaid Manual
 :author: Luke Gessler
 :lang: en
 :encoding: UTF-8
@@ -9,28 +9,33 @@
 :sectanchors:
 :leveloffset: 1
 :sectnums:
-:imagesdir: img/src
-:imagesoutdir: img/out
 :favicon: favicon.ico
 :hide-uri-scheme: 1
 :source-highlighter: coderay
 
 = Introduction
+TODO
 
-Stub
 
-[,clojure]
+
+= Development
+
+* `clojure -X:dev`: start development server by typing `(start)`. See <http://localhost:8085>
+* `clojure -M:test`: run tests
+* `clojure -M:outdated`: find outdated dependencies
+* `clojure -X:uberjar`: compile to a single `.jar` for production
+* `clojure -M:gen target/openapi.json target/clients/client.py py`
+* `clojure -M:gen target/openapi.json target/clients/client.js js`
+
+== OpenAPI Support
+* See playground at <http://localhost:8085/api/v1/docs/index.html#/>
+* See JSON at <http://localhost:8085/api/v1/openapi.json>
+
+== XTDB Inspector
+Make sure that `XTDB_INSPECTOR_URI_PREFIX` is set to `/_inspector` if you want to use the web UI to inspect the database.
+
+[,bash]
 ----
-(gxe/entity user/node :glam.xtdb.token/delete)
-=>
-{:xt/id :glam.xtdb.token/delete
- :xt/fn
- (clojure.core/fn
-  [node eid]
-  (let
-   [spans (glam.xtdb.token/get-span-ids node eid)]
-    (into
-     (reduce into (map (fn* [p1__98802#] (glam.xtdb.span/remove-token** node p1__98802# eid)) spans))
-     [(glam.xtdb.easy/delete* eid)]))))}
+export XTDB_INSPECTOR_URI_PREFIX=/_inspector
 ----
-
+It will be visible at <http://localhost:8085/_inspector/attr>.
