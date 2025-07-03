@@ -80,8 +80,8 @@ generate_openapi() {
     else
         print_status "Starting server to generate OpenAPI spec..."
         
-        # Start server in background
-        clojure -M:dev -e "(do (require '[user :as u]) (u/start) (Thread/sleep 5000))" &
+        # Start server in background with environment variable to skip prompts
+        SKIP_ACCOUNT_CREATION_PROMPT=true clojure -M:dev -e "(do (require '[user :as u]) (u/start) (Thread/sleep 5000))" &
         SERVER_PID=$!
         
         # Wait for server to start
@@ -443,12 +443,47 @@ EOF
 build_api_docs() {
     print_status "Building API documentation..."
     
-    if command -v swagger-ui-cli &> /dev/null; then
-        swagger-ui-cli -f "$TARGET_DIR/openapi.json" -o "$BUILD_DIR/api/"
-        print_success "Interactive API documentation generated"
-    else
-        print_warning "swagger-ui-cli not found, creating basic API documentation"
-    fi
+    # Create Swagger UI using CDN (more reliable than CLI tools)
+    mkdir -p "$BUILD_DIR/api/swagger-ui"
+    
+    cat > "$BUILD_DIR/api/swagger-ui/index.html" << 'SWAGGEREOF'
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Plaid API Documentation</title>
+  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
+  <style>
+    html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin:0; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function() {
+      const ui = SwaggerUIBundle({
+        url: '../../openapi.json',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout"
+      });
+    };
+  </script>
+</body>
+</html>
+SWAGGEREOF
+    
+    print_success "Interactive API documentation generated"
     
     # Create API index page
     cat > "$BUILD_DIR/api/index.html" << 'EOF'
@@ -492,7 +527,7 @@ build_api_docs() {
         
         <h2>Interactive Documentation</h2>
         <p>For interactive API exploration, use the Swagger UI:</p>
-        <a href="swagger-ui.html" class="button">Open Interactive API Docs</a>
+        <a href="swagger-ui/index.html" class="button">Open Interactive API Docs</a>
         
         <h2>OpenAPI Specification</h2>
         <p>Download the complete OpenAPI specification:</p>
