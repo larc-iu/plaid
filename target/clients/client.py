@@ -1,12 +1,1096 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Mon Jun 30 17:10:35 EDT 2025
+Generated on: Wed Jul 02 22:10:43 EDT 2025
 """
 
 import requests
 import aiohttp
 from typing import Any, Dict, List, Optional, Union, Callable
+
+
+class VocabLinksResource:
+    """
+    Resource class for vocabLinks operations
+    """
+    
+    def __init__(self, client: 'PlaidClient'):
+        self.client = client
+
+    def create(self, vocab_item_id: str, tokens: List[Any], metadata: Any = None, document_version: str = None) -> Any:
+        """
+        Create a new vocab link (link between tokens and vocab item).
+
+        Args:
+            vocab_item_id: Required body parameter
+            tokens: Required body parameter
+            metadata: Optional body parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        body_dict = {
+            'vocab-item-id': vocab_item_id,
+            'tokens': tokens,
+            'metadata': metadata
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def create_async(self, vocab_item_id: str, tokens: List[Any], metadata: Any = None, document_version: str = None) -> Any:
+        """
+        Create a new vocab link (link between tokens and vocab item).
+
+        Args:
+            vocab_item_id: Required body parameter
+            tokens: Required body parameter
+            metadata: Optional body parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        body_dict = {
+            'vocab-item-id': vocab_item_id,
+            'tokens': tokens,
+            'metadata': metadata
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def set_metadata(self, id: str, body: Any, document_version: str = None) -> Any:
+        """
+        Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            id: Path parameter
+            body: Required body parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.put(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def set_metadata_async(self, id: str, body: Any, document_version: str = None) -> Any:
+        """
+        Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            id: Path parameter
+            body: Required body parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def delete_metadata(self, id: str, document_version: str = None) -> Any:
+        """
+        Remove all metadata from a vocab link.
+
+        Args:
+            id: Path parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def delete_metadata_async(self, id: str, document_version: str = None) -> Any:
+        """
+        Remove all metadata from a vocab link.
+
+        Args:
+            id: Path parameter
+            document_version: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
+        params = {}
+        if document_version is not None:
+            params['document-version'] = document_version
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def get(self, id: str, as_of: str = None) -> Any:
+        """
+        Get a vocab link by ID
+
+        Args:
+            id: Path parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def get_async(self, id: str, as_of: str = None) -> Any:
+        """
+        Get a vocab link by ID
+
+        Args:
+            id: Path parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def delete(self, id: str) -> Any:
+        """
+        Delete a vocab link
+
+        Args:
+            id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def delete_async(self, id: str) -> Any:
+        """
+        Delete a vocab link
+
+        Args:
+            id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+
+class VocabLayersResource:
+    """
+    Resource class for vocabLayers operations
+    """
+    
+    def __init__(self, client: 'PlaidClient'):
+        self.client = client
+
+    def get(self, id: str, include_items: bool = None, as_of: str = None) -> Any:
+        """
+        Get a vocab layer by ID
+
+        Args:
+            id: Path parameter
+            include_items: Optional query parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}"
+        params = {}
+        if include_items is not None:
+            params['include-items'] = include_items
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def get_async(self, id: str, include_items: bool = None, as_of: str = None) -> Any:
+        """
+        Get a vocab layer by ID
+
+        Args:
+            id: Path parameter
+            include_items: Optional query parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}"
+        params = {}
+        if include_items is not None:
+            params['include-items'] = include_items
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def delete(self, id: str) -> Any:
+        """
+        Delete a vocab layer.
+
+        Args:
+            id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def delete_async(self, id: str) -> Any:
+        """
+        Delete a vocab layer.
+
+        Args:
+            id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def update(self, id: str, name: str) -> Any:
+        """
+        Update a vocab layer's name.
+
+        Args:
+            id: Path parameter
+            name: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}"
+        body_dict = {
+            'name': name
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.patch(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def update_async(self, id: str, name: str) -> Any:
+        """
+        Update a vocab layer's name.
+
+        Args:
+            id: Path parameter
+            name: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}"
+        body_dict = {
+            'name': name
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+        """
+        Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
+
+        Args:
+            id: Path parameter
+            namespace: Path parameter
+            config_key: Path parameter
+            config_value: Configuration value to set
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}"
+        body_data = config_value
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.put(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def set_config_async(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+        """
+        Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
+
+        Args:
+            id: Path parameter
+            namespace: Path parameter
+            config_key: Path parameter
+            config_value: Configuration value to set
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}"
+        body_data = config_value
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def delete_config(self, id: str, namespace: str, config_key: str) -> Any:
+        """
+        Remove a configuration value for a layer.
+
+        Args:
+            id: Path parameter
+            namespace: Path parameter
+            config_key: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def delete_config_async(self, id: str, namespace: str, config_key: str) -> Any:
+        """
+        Remove a configuration value for a layer.
+
+        Args:
+            id: Path parameter
+            namespace: Path parameter
+            config_key: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def list(self, as_of: str = None) -> Any:
+        """
+        List all vocab layers accessible to user
+
+        Args:
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def list_async(self, as_of: str = None) -> Any:
+        """
+        List all vocab layers accessible to user
+
+        Args:
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def create(self, name: str) -> Any:
+        """
+        Create a new vocab layer. Note: this also registers the user as a maintainer.
+
+        Args:
+            name: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers"
+        body_dict = {
+            'name': name
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def create_async(self, name: str) -> Any:
+        """
+        Create a new vocab layer. Note: this also registers the user as a maintainer.
+
+        Args:
+            name: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers"
+        body_dict = {
+            'name': name
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def add_maintainer(self, id: str, user_id: str) -> Any:
+        """
+        Assign a user as a maintainer for this vocab layer.
+
+        Args:
+            id: Path parameter
+            user_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/maintainers/{user_id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def add_maintainer_async(self, id: str, user_id: str) -> Any:
+        """
+        Assign a user as a maintainer for this vocab layer.
+
+        Args:
+            id: Path parameter
+            user_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/maintainers/{user_id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def remove_maintainer(self, id: str, user_id: str) -> Any:
+        """
+        Remove a user's maintainer privileges for this vocab layer.
+
+        Args:
+            id: Path parameter
+            user_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/maintainers/{user_id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def remove_maintainer_async(self, id: str, user_id: str) -> Any:
+        """
+        Remove a user's maintainer privileges for this vocab layer.
+
+        Args:
+            id: Path parameter
+            user_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/maintainers/{user_id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
 
 
 class RelationsResource:
@@ -5364,6 +6448,134 @@ class ProjectsResource:
                     return self.client._transform_response(data)
                 return await response.text
 
+    def link_vocab(self, id: str, vocab_id: str) -> Any:
+        """
+        Link a vocabulary to a project.
+
+        Args:
+            id: Path parameter
+            vocab_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/vocabs/{vocab_id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def link_vocab_async(self, id: str, vocab_id: str) -> Any:
+        """
+        Link a vocabulary to a project.
+
+        Args:
+            id: Path parameter
+            vocab_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/vocabs/{vocab_id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def unlink_vocab(self, id: str, vocab_id: str) -> Any:
+        """
+        Unlink a vocabulary to a project.
+
+        Args:
+            id: Path parameter
+            vocab_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/vocabs/{vocab_id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def unlink_vocab_async(self, id: str, vocab_id: str) -> Any:
+        """
+        Unlink a vocabulary to a project.
+
+        Args:
+            id: Path parameter
+            vocab_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/vocabs/{vocab_id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
     def get(self, id: str, include_documents: bool = None, as_of: str = None) -> Any:
         """
         Get a project by ID. If include_documents is true, also include document IDs and names.
@@ -6423,6 +7635,459 @@ class BulkResource:
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+
+class VocabItemsResource:
+    """
+    Resource class for vocabItems operations
+    """
+    
+    def __init__(self, client: 'PlaidClient'):
+        self.client = client
+
+    def set_metadata(self, id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a vocab item. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.put(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def set_metadata_async(self, id: str, body: Any) -> Any:
+        """
+        Replace all metadata for a vocab item. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
+
+        Args:
+            id: Path parameter
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}/metadata"
+        body_dict = {
+            'body': body
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PUT'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def delete_metadata(self, id: str) -> Any:
+        """
+        Remove all metadata from a vocab item.
+
+        Args:
+            id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def delete_metadata_async(self, id: str) -> Any:
+        """
+        Remove all metadata from a vocab item.
+
+        Args:
+            id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}/metadata"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def create(self, vocab_layer_id: str, form: str, metadata: Any = None) -> Any:
+        """
+        Create a new vocab item
+
+        Args:
+            vocab_layer_id: Required body parameter
+            form: Required body parameter
+            metadata: Optional body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items"
+        body_dict = {
+            'vocab-layer-id': vocab_layer_id,
+            'form': form,
+            'metadata': metadata
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def create_async(self, vocab_layer_id: str, form: str, metadata: Any = None) -> Any:
+        """
+        Create a new vocab item
+
+        Args:
+            vocab_layer_id: Required body parameter
+            form: Required body parameter
+            metadata: Optional body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items"
+        body_dict = {
+            'vocab-layer-id': vocab_layer_id,
+            'form': form,
+            'metadata': metadata
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body_data, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def get(self, id: str, as_of: str = None) -> Any:
+        """
+        Get a vocab item by ID
+
+        Args:
+            id: Path parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def get_async(self, id: str, as_of: str = None) -> Any:
+        """
+        Get a vocab item by ID
+
+        Args:
+            id: Path parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def delete(self, id: str) -> Any:
+        """
+        Delete a vocab item
+
+        Args:
+            id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def delete_async(self, id: str) -> Any:
+        """
+        Delete a vocab item
+
+        Args:
+            id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def update(self, id: str, form: str) -> Any:
+        """
+        Update a vocab item's form
+
+        Args:
+            id: Path parameter
+            form: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}"
+        body_dict = {
+            'form': form
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.patch(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def update_async(self, id: str, form: str) -> Any:
+        """
+        Update a vocab item's form
+
+        Args:
+            id: Path parameter
+            form: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/vocab-items/{id}"
+        body_dict = {
+            'form': form
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'PATCH'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
                 content_type = response.headers.get('content-type', '').lower()
@@ -7768,6 +9433,8 @@ class PlaidClient:
         self._batch_operations = []
         
         # Initialize resource objects
+        self.vocab_links = VocabLinksResource(self)
+        self.vocab_layers = VocabLayersResource(self)
         self.relations = RelationsResource(self)
         self.span_layers = SpanLayersResource(self)
         self.spans = SpansResource(self)
@@ -7779,6 +9446,7 @@ class PlaidClient:
         self.text_layers = TextLayersResource(self)
         self.login = LoginResource(self)
         self.bulk = BulkResource(self)
+        self.vocab_items = VocabItemsResource(self)
         self.relation_layers = RelationLayersResource(self)
         self.tokens = TokensResource(self)
     
