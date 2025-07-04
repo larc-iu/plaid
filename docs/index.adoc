@@ -19,7 +19,7 @@ Some distinguishing features of Plaid:
 
 = Quick Start
 1. Find the latest release and download `plaid.jar`: <https://github.com/larc-iu/plaid/releases>
-2. With https://www.oracle.com/java/technologies/downloads/:[JDK 21 or later], use `java` to run the JAR: `java -jar plaid.jar`
+2. With https://www.oracle.com/java/technologies/downloads/[JDK 21 or later], use `java` to run the JAR: `java -jar plaid.jar`
 3. Enter an admin username and password when prompted.
 4. Visit <http://localhost:8080/api/v1/docs/> to ensure the server is running.
 5. Any files under `resources/` (a sister directory of `plaid.jar`) will be served: `resources/index.html`, for example, would be served at <http://localhost:8080/index.html>.
@@ -28,8 +28,8 @@ That's it!
 
 == Example App: UD Editor
 
-To get a feel for how to program an app with Plaid, it may be helpful to see https://drive.google.com/file/d/1Ld9tfHBqF4gwQTOn0mBtHVDllcHCUwdZ/view?usp=sharing:[an example app for UD editing].
-(Cf. https://github.com/larc-iu/plaid/tree/master/examples/ud_editor:[source code].)
+To get a feel for how to program an app with Plaid, it may be helpful to see https://drive.google.com/file/d/1Ld9tfHBqF4gwQTOn0mBtHVDllcHCUwdZ/view?usp=sharing[an example app for UD editing].
+(Cf. https://github.com/larc-iu/plaid/tree/master/examples/ud_editor[source code].)
 
 = Learn More
 See link:book.html[the docs] for comprehensive discussion of Plaid.
