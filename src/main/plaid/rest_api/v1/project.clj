@@ -268,7 +268,7 @@
                             body :body} :parameters
                            user-id :user/id
                            :as req}]
-                       (if (events/publish-message! id body user-id)
+                       (if (events/publish-message! id (:body body) user-id)
                          {:status 200
                           :body {:success true
                                  :message "Message sent to subscribers"}}
