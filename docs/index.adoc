@@ -2,22 +2,24 @@
 :lang: en
 :encoding: UTF-8
 :doctype: book
-:!toc:
 :hide-uri-scheme: 1
 :source-highlighter: coderay
 
-**Plaid** is a platform which gives you a solid foundation for quickly developing new apps for linguistic annotation.
-As a platform, it provides a comprehensive backend system which provides a user and permissions system, a flexible data model, and a lossless database.
-All you need to do is program your app!
++++<style>.sect1+.sect1{border-top: none !important;} #preamble{padding-bottom:2em;}</style>+++
+
+**Plaid** is a platform for developers of linguistic annotation apps.
+It provides many foundational backend systems, including a user system, a modular data model, and a lossless database.
+Plaid provides this common functionality so that you can focus on developing your app front-end in JavaScript or any other programming language of your choosing.
 
 Some distinguishing features of Plaid:
 
-* **Effortless Collaboration**: since Plaid is a web platform, all users can immediately see all changes. There is no need for manual synchronization or movement of data.
-* **Universal Data Model**: all common kinds of linguistic data can be gracefully expressed using _layers_, which allow you to tailor each project's data model to your needs.
-* **Time-traveling Database**: unlike with a traditional SQL server, Plaid's database is lossless ("immutable"), allowing you to **view every past state** your documents were ever in. Additionally, an audit log allows you to see every operation that has been performed
-* **AI Model Integration**: Plaid offers an expressive communication system which makes it easy to program powerful AI models to provide assistance with any kind of data analysis.
+* **Effortless Collaboration**: since Plaid is a web platform, all users read and write to a single database. There is no need for manual synchronization or movement of data.
+* **Customizable Data Model**: Plaid provides _layers_ which allow you to tailor the data model you use for an app on a per-project basis.
+* **Time-traveling Database**: unlike with a traditional SQL server, Plaid's database is lossless ("immutable"), allowing you to **view every past state** your documents were ever in. Additionally, an audit log allows you to see every operation that has been performed.
+* **AI Model Integration**: Plaid offers a powerful client-to-client communication system, making it easy to make apps which are deeply integrated with AI models.
 
-= Quick Start
+== Quick Start
+
 1. Find the latest release and download `plaid.jar`: <https://github.com/larc-iu/plaid/releases>
 2. With https://www.oracle.com/java/technologies/downloads/[JDK 21 or later], use `java` to run the JAR: `java -jar plaid.jar`
 3. Enter an admin username and password when prompted.
@@ -31,7 +33,8 @@ That's it!
 To get a feel for how to program an app with Plaid, it may be helpful to see https://drive.google.com/file/d/1Ld9tfHBqF4gwQTOn0mBtHVDllcHCUwdZ/view?usp=sharing[an example app for UD editing].
 (Cf. https://github.com/larc-iu/plaid/tree/master/examples/ud_editor[source code].)
 
-= Learn More
-See link:book.html[the docs] for comprehensive discussion of Plaid.
+== Learn More
+
+See link:manual.html[the manual] for a comprehensive introduction to Plaid.
 
 Also see https://github.com/larc-iu/plaid/tree/master/target/clients[clients for JavaScript and Python], as well as the API documentation for link:api-js.html[JavaScript] and link:api-py.html[Python].
