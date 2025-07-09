@@ -14,9 +14,29 @@
 :source-highlighter: coderay
 
 = Introduction
-TODO
 
+= Core Concepts
 
+== Layers
+== Texts
+== Tokens
+== Spans
+== Relations
+== Metadata and Config
+
+= An Example: Universal Dependencies
+
+= Clients
+
+= Advanced Topics
+
+== Universality
+
+== Optimistic Updates
+
+== Strict Mode
+
+== Batching
 
 = Development
 
@@ -39,3 +59,8 @@ Make sure that `XTDB_INSPECTOR_URI_PREFIX` is set to `/_inspector` if you want t
 export XTDB_INSPECTOR_URI_PREFIX=/_inspector
 ----
 It will be visible at <http://localhost:8085/_inspector/attr>.
+
+= Roadmap
+
+* Query system
+*
