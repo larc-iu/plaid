@@ -374,7 +374,7 @@ def main():
         
         if event_type == "message":
             # Handle messages from clients
-            message_body = event_data.get("data", {}).get("body", "")
+            message_body = event_data.get("data", {})
             project_id = event_data.get("project")
             
             if message_body == "nlp-wake-check":
