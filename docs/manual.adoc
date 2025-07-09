@@ -1,5 +1,4 @@
 = Plaid Manual
-:author: Luke Gessler
 :lang: en
 :encoding: UTF-8
 :doctype: book
@@ -9,58 +8,207 @@
 :sectanchors:
 :leveloffset: 1
 :sectnums:
-:favicon: favicon.ico
 :hide-uri-scheme: 1
 :source-highlighter: coderay
 
 = Introduction
 
-= Core Concepts
+**Plaid** is a **platform**, which means that it is not a complete app on its own.
+Rather, it provides an implementation of the "boring" parts of a linguistic annotation app, including a user system, a database layer, and more.
+Building an app with Plaid allows you to focus your attention on just the interesting parts of your App including the UI and logic which is specific to your annotation framework.
 
-== Layers
+= Key Concepts
+
+== Projects and Layers
+In Plaid a **project** is a collection of documents which all have the same data model.
+Plaid's data model is configurable on a per-project basis, allowing you to have as many or as few annotation types as you would like.
+For example, perhaps in one project you might only annotate a single part-of-speech tag per word, while in another you might want a POS tag, a lemma, and a gloss for each word.
+These projects would have different configurations in order to appropriately accommodate the annotation needs of each.
+
+The means by which this configuration is performed is the **layer**.
+(If you have used ELAN before, note that this is similar to ELAN's _tiers_.)
+Loosely speaking, a layer corresponds to a single "type" of annotation: for instance, in the example above where we want to collect a POS tag, lemma, and gloss for each word, we would have three span layers associated with the project.
+We will discuss layers more shortly.
+
+== Users and Permissions
+Plaid offers a built-in **user** system which allows individuals to log in with a password.
+By default, each project is private, and one of three permissions levels is needed in order to interact with one:
+
+* **Maintainers** have full privileges for working with projects: they may edit documents and also modify the project's configuration.
+* **Writers** may edit documents belonging to a project, but may not modify the project's configuration.
+* **Readers** may only read documents belonging to a project--they may not make any edits to the project's documents or configuration.
+
+Additionally, a global **admin** role exists, which allows the user to see and edit all data in the Plaid instance.
+
+== Clients
+Plaid's functionality is exposed for development as a REST API.
+This allows you to use Plaid from any programming language with an HTTP client library.
+
+Additionally, we provide https://github.com/larc-iu/plaid/tree/master/target/clients[official clients for two programming languages, Python and JavaScript].
+These clients provide an API for interacting with Plaid that is idiomatic for each programming language and frees you from concern about low-level details of HTTP requests.
+Here is an example of how to use the Python client:
+
+[,python]
+----
+client = PlaidClient("http://localhost:8085", "<SECRET_TOKEN>")
+
+projects = client.projects.list()
+print("Available projects:", projects)
+
+first_project_id = projects[0]["id"]
+first_project = client.projects.get(first_project_id, include_documents=True)
+print("First project:", first_project)
+
+first_document_id = first_project["documents"][0]["id"]
+first_document = client.documents.get(first_document_id, include_body=True)
+print("First document:", first_document)
+----
+
+The same, in JavaScript:
+
+[,javascript]
+----
+client = PlaidClient("http://localhost:8085", "<SECRET_TOKEN>")
+
+projects = client.projects.list()
+console.log("Available projects:", projects)
+
+firstProjectId = projects[0].id
+firstProject= client.projects.get(firstProjectId, true)
+console.log("First project:", firstProject)
+
+firstDocumentId = firstProject.documents[0].id
+firstDocument= client.documents.get(firstDocumentId, true)
+console.log("First document:", firstDocument)
+----
+
+== Time-traveling Database
+Plaid uses the database http://v1-docs.xtdb.com/[XTDB] to store data.
+An unusual feature of this database is that it is **immutable**.
+This means that whenever a value inside the database changes, the old value is not lost: rather, the old state of the database is still accessible for reading, even after a new version has been created.
+This allows Plaid to provide **time travel**, allowing you to access all historical states of your documents and projects.
+
+It is simple to make use of this in the client: simply include an ISO-8601 time as the final argument of any `.get` method.
+(In Python, you may also use the keyword argument `as_of`.)
+Consider a simple example where we are modifying the name of a document:
+
+[,python]
+----
+# Read original name
+client.documents.get(document_id)["name"]
+#=> "Old Name"
+
+# Update name
+client.documents.update(document_id, name="New Name")
+
+# Read current name
+client.documents.get(document_id)["name"]
+#=> "New Name"
+
+# Read old name by providing time in the past
+client.documents.get(document_id, "2025-07-08T09:00:00Z")["name"]
+#=> "Old Name"
+
+----
+
+Additionally, an **audit log** provides an account of who performed every write to the database:
+
+[,python]
+----
+for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
+    time = entry["time"]
+    username = entry["user"]["username"]
+    description = "; ".join([o["description"] for o in entry["ops"]])
+    print(f"{username}, {time}: {description}")
+
+# Output:
+# Luke G, 2025-07-05T09:13:39.614Z: Create document "Document 1" in project 0f0f0574-ae5a-4060-814c-c5bbdce14d67
+# Luke G, 2025-07-09T20:27:59.611Z: Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to "New Document Name"
+----
+
+== Listening
+Plaid offers a simple system for real-time communication on a per-project basis.
+This is intended to support two purposes:
+
+* Ad hoc client-to-client features which you will implement on top of this communication channel, such as chat between individual annotators or interaction with non-human clients such as AI models.
+* Audit log listening, allowing clients to receive immediate notice whenever a change has been made to any document in the project. (Note that these are sent automatically by Plaid.)
+
+This functionality is exposed in two simple functions in the client.
+The `send_message`/`sendMessage` function allows a client to broadcast a message to all clients in the project:
+
+[,python]
+----
+client.send_message(project_id, {"purpose": "ping", "message": "ping"})
+----
+
+Note that the second positional argument, the `body`, can be any JSON value.
+
+On the other end, a client may listen like so.
+Note that there are two arguments for the message.
+`event_type` is `"message"` for data sent via `send_message`/`sendMessage` by another client, and `"audit-log"` for audit log notifications.
+Consider an example of listener setup:
+
+[,python]
+----
+def on_event(event_type, event_data):
+    if event_type == "message":
+        sender = event_data["user"]
+        time = event_data["time"]
+        contents = event_data["data"]
+        print(f"User {sender} sent data `{contents}` at {time}")
+    elif event_type == "audit-log":
+        user = event_data["user"]
+        time = event_data["time"]
+        op = event_data["ops"][0]
+        op_type = op["type"]
+        document_id = op["document"]
+        description = op["description"]
+        print(f"User {user} performed operation `{op_type}` on document {document_id} at {time}: '{description}'")
+
+
+client.projects.listen(project_id, on_event)
+----
+
+After the `send_message` invocation we just saw, this `on_event` function would produce the following output:
+
+----
+User user1@example.com sent data `{'purpose': 'ping', 'message': 'ping'}` at 2025-07-09T20:14:36.168Z
+----
+
+And suppose that another client executed the following code:
+
+[,python]
+----
+client.documents.update("35424d64-a077-4a29-8006-5a0c3b76aedb", name="New Document Name")
+----
+
+The listener's code above would print this:
+
+----
+User user1@example.com performed operation `document:update` on document 35424d64-a077-4a29-8006-5a0c3b76aedb at 2025-07-09T20:27:59.616Z: 'Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to "New Document Name"'
+----
+
+= Layer Types
 == Texts
 == Tokens
 == Spans
 == Relations
 == Metadata and Config
+== Coda: Universality
 
 = An Example: Universal Dependencies
 
-= Clients
+= HTTP API and Clients
 
-= Advanced Topics
+== Batching
 
-== Universality
+= Ensuring Integrity
 
 == Optimistic Updates
 
 == Strict Mode
 
-== Batching
 
 = Development
 
-* `clojure -X:dev`: start development server by typing `(start)`. See <http://localhost:8085>
-* `clojure -M:test`: run tests
-* `clojure -M:outdated`: find outdated dependencies
-* `clojure -X:uberjar`: compile to a single `.jar` for production
-* `clojure -M:gen target/openapi.json target/clients/client.py py`
-* `clojure -M:gen target/openapi.json target/clients/client.js js`
-
-== OpenAPI Support
-* See playground at <http://localhost:8085/api/v1/docs/index.html#/>
-* See JSON at <http://localhost:8085/api/v1/openapi.json>
-
-== XTDB Inspector
-Make sure that `XTDB_INSPECTOR_URI_PREFIX` is set to `/_inspector` if you want to use the web UI to inspect the database.
-
-[,bash]
-----
-export XTDB_INSPECTOR_URI_PREFIX=/_inspector
-----
-It will be visible at <http://localhost:8085/_inspector/attr>.
-
-= Roadmap
-
-* Query system
-*
+For information on how to work on **Plaid itself** (not an app which uses Plaid), see link:dev.html[the development  guide].
