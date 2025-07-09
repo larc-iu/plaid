@@ -220,7 +220,7 @@
      {:type :document/update
       :project project-id
       :document eid
-      :description (str "Update document " eid (when (:document/name m) (str " to name \"" (:document/name m) "\"")))
+      :description (str "Update document " eid (when (:document/name m) (str " name to \"" (:document/name m) "\"")))
       :tx-ops tx-ops})))
 
 (defn merge
