@@ -40,8 +40,8 @@
 
 (defn- user-can-access-vocab-item?
   "Check if user can access a vocab item (read access to its vocab layer)"
-  [xtdb vocab-item-id user-id]
-  (let [vocab-item (vocab-item/get xtdb vocab-item-id)]
+  [xtdb vocab-item user-id]
+  (let [vocab-item (vocab-item/get xtdb vocab-item)]
     (when vocab-item
       (let [vocab-layer-id (:vocab-item/layer vocab-item)
             admin? (user/admin? (user/get xtdb user-id))
@@ -50,7 +50,7 @@
         (or admin? maintainer? accessible?)))))
 
 (defn get-vocab-id-from-vocab-item-body [{:keys [db parameters]}]
-  (->> parameters :body :vocab-item-id (vocab-item/get db) :vocab-item/layer))
+  (->> parameters :body :vocab-item (vocab-item/get db) :vocab-item/layer))
 
 (defn get-vocab-id-from-vocab-link-path [{:keys [db parameters]}]
   (->> parameters :path :id (vocab-link/get-vocab-layer db)))
@@ -64,13 +64,13 @@
                          [prm/wrap-document-version get-document-id-from-tokens]]
             :parameters {:query [:map [:document-version {:optional true} :uuid]]
                          :body [:map
-                                [:vocab-item-id :uuid]
+                                [:vocab-item :uuid]
                                 [:tokens [:vector :uuid]]
                                 [:metadata {:optional true} [:map-of string? any?]]]}
-            :handler (fn [{{{:keys [vocab-item-id tokens metadata]} :body} :parameters
+            :handler (fn [{{{:keys [vocab-item tokens metadata]} :body} :parameters
                            xtdb :xtdb
                            user-id :user/id :as req}]
-                       (let [attrs {:vocab-link/vocab-item vocab-item-id
+                       (let [attrs {:vocab-link/vocab-item vocab-item
                                     :vocab-link/tokens tokens}
                              result (vocab-link/create {:node xtdb} attrs user-id metadata)]
                          (if (:success result)

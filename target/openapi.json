@@ -8101,7 +8101,7 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "vocab-item-id": {
+                                    "vocab-item": {
                                         "type": "string",
                                         "format": "uuid"
                                     },
@@ -8118,7 +8118,7 @@
                                     }
                                 },
                                 "required": [
-                                    "vocab-item-id",
+                                    "vocab-item",
                                     "tokens"
                                 ],
                                 "additionalProperties": false
@@ -8128,7 +8128,7 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "vocab-item-id": {
+                                    "vocab-item": {
                                         "type": "string",
                                         "format": "uuid"
                                     },
@@ -8145,7 +8145,7 @@
                                     }
                                 },
                                 "required": [
-                                    "vocab-item-id",
+                                    "vocab-item",
                                     "tokens"
                                 ],
                                 "additionalProperties": false
@@ -8155,7 +8155,7 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "vocab-item-id": {
+                                    "vocab-item": {
                                         "type": "string",
                                         "format": "uuid"
                                     },
@@ -8172,7 +8172,7 @@
                                     }
                                 },
                                 "required": [
-                                    "vocab-item-id",
+                                    "vocab-item",
                                     "tokens"
                                 ],
                                 "additionalProperties": false
@@ -8182,7 +8182,7 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "vocab-item-id": {
+                                    "vocab-item": {
                                         "type": "string",
                                         "format": "uuid"
                                     },
@@ -8199,7 +8199,7 @@
                                     }
                                 },
                                 "required": [
-                                    "vocab-item-id",
+                                    "vocab-item",
                                     "tokens"
                                 ],
                                 "additionalProperties": false
