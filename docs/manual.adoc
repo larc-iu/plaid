@@ -126,7 +126,7 @@ for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
 # Luke G, 2025-07-09T20:27:59.611Z: Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to "New Document Name"
 ----
 
-== Listening
+== Real-time Messaging
 Plaid offers a simple system for real-time communication on a per-project basis.
 This is intended to support two purposes:
 
@@ -189,20 +189,226 @@ User user1@example.com performed operation `document:update` on document 35424d6
 ----
 
 = Layer Types
+
+Each project contains a configuration of **layer**s which define a schema for all documents in the project.
+Each layer holds a single kind of annotation, and each project may have any number of each kind of layer.
+For instance, you might have two span layers: one for POS tags, and another for lemmas.
+
+== An Example
+
+Suppose we're working on a project where all we are doing is POS-tagging.
+The configuration of the project's layers (in a simplified JSON representation) would look something like this:
+
+[,json]
+----
+{
+  "id": "1cce50df",
+  "name": "Example Project",
+  "textLayers": [
+    {
+      "id": "6283144f",
+      "name": "Text",
+      "tokenLayers": [
+        {
+          "id": "d1cc124f",
+          "name": "Words",
+          "spanLayers": [
+            {
+              "id": "ad0f5f2c",
+              "name": "POS tags"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+----
+
+This layer structure prescribes the structure of individual documents.
+Consider a document where we have POS tagged the sentence "Fido barks":
+
+[,json]
+----
+{
+  "id": "01d01a27",
+  "name": "Document 1",
+  "project": "1cce50df",
+  "textLayers": [
+    {
+      "id": "6283144f",
+      "name": "Text",
+      "text": { "id": "9cfafcc6", "document": "01d01a27", "body": "Fido barks" },
+      "tokenLayers": [
+        {
+          "id": "d1cc124f",
+          "name": "Words",
+          "tokens": [
+            { "id": "54383a26", "text": "9cfafcc6", "begin": 0, "end": 4 },
+            { "id": "a8758db2", "text": "9cfafcc6", "begin": 5, "end": 10 }
+          ],
+          "spanLayers": [
+            {
+              "id": "ad0f5f2c",
+              "name": "POS tags",
+              "spans": [
+                { "id": "4ed828ea", "value": "NOUN", "tokens": [ "54383a26" ] },
+                { "id": "b4ef8082", "value": "VERB", "tokens": [ "a8758db2" ] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+----
+
+Notice the following:
+
+* Each layer has a corresponding kind of data in the document: the text layer has a text, the token layer has tokens, and the span layer has spans.
+* The layers are dependent on each other: the text layer is a dependent of the project, the token layer is a dependent of the text layer, and the span layer is a dependent of the token layer. This is a reflection of conceptual dependencies: tokens are defined as atomized substrings of a text, and spans are defined as groupings of one or more tokens.
+* Each individual entity--whether it is a layer or some data within that layer--has a unique ID
+* Entities refer to others with these IDs--for instance, each span's `tokens` value has a list of tokens which constitute that span.
+
+We will continue discussing this example in more detail below.
+
+== Projects and Documents
+
+A project is the root of a layer configuration and has a name.
+
+[,js]
+----
+{
+  "id": "1cce50df",
+  "name": "Example Project",
+  "textLayers": [/* ... */]
+}
+----
+
+A project has many **documents**, and each has a name and a unique ID:
+
+[,json]
+----
+{ "id": "01d01a27", "name": "Document 1", "project": "1cce50df" }
+----
+
 == Texts
+
+For each **text layer**, each document may have at most one **text**, which consists of a single string.
+This string holds all the text which is to be analyzed in dependent layers.
+A text object looks something like this:
+
+[,json]
+----
+{ "id": "9cfafcc6", "document": "01d01a27", "body": "Fido barks" }
+----
+
 == Tokens
+
+For each **token layer**, each document may have many **token**s, which are defined as substrings of a text:
+
+[,js]
+----
+{ "id": "54383a26", "text": "9cfafcc6", "begin": 0, "end": 4 }
+{ "id": "a8758db2", "text": "9cfafcc6", "begin": 5, "end": 10 }
+----
+
+Note the following:
+
+1. `begin` and `end` must form valid substring indices for the given text.
+2. Zero-length tokens where `begin == end` are valid.
+3. Tokens may overlap.
+4. Plaid sorts tokens by `begin` when determining their linear order in the document. For tokens with identical `begin`, Plaid uses the optional `prevalence` value wherever available, such that tokens with lower precedence appear earlier in linear order.
+
+Tokens are intended to serve ast he basic units for further linguistic analysis using spans and relations.
+
 == Spans
+
+For each **span layer**, each document may have many **span**s, which are groupings of one or more tokens which have a single `value`:
+
+[,js]
+----
+{ "id": "4ed828ea", "value": "NOUN", "tokens": [ "54383a26" ] }
+{ "id": "b4ef8082", "value": "VERB", "tokens": [ "a8758db2" ] }
+----
+
+There are no restrictions on spans, other than that they must hold at _least_ one token.
+
 == Relations
+
+For each **relation layer**, each document may have many **relation**s, which are directed edges between two spans with a label.
+For example, if we wanted to extend the example above with a syntactic dependency relation between "Fido" and "barks" expressing that "Fido" is the subject, we could have a relation like this:
+
+[,js]
+----
+{ "id": "2f6080ff", "source": "b4ef8082", "target": "4ed828ea", "value": "nsubj" }
+----
+
+== Vocabs
+
+The four basic layer types (text, token, span, and relation) are all **project-specific** and cannot be used in more than one project.
+The fifth layer type, the **vocab layer**, can be used _across_ projects.
+As its name suggests, this layer is intended for recording occurrences of lexical entries.
+
+The vocab layer itself has a name:
+
+[,js]
+----
+{ "id": "2b75b0f9", "name": "English" }
+----
+
+The vocab layer has **vocab item**s, which represent lexical entries, each with a canonical form:
+
+[,js]
+----
+{ "id" : "da8d4549", "form": "Fido" }
+{ "id" : "b5c6e64c", "form": "bark" }
+----
+
+Finally, **vocab link**s are used to indicate occurrences of lexical entries.
+Recall the tokens from before:
+
+[,js]
+----
+// "Fido"
+{ "id": "54383a26", "text": "9cfafcc6", "begin": 0, "end": 4 }
+// "barks"
+{ "id": "a8758db2", "text": "9cfafcc6", "begin": 5, "end": 10 }
+----
+
+We can create links between them and the above vocab items with vocab links like so:
+
+[,js]
+----
+{ "vocabItem": "da8d4549", "tokens": [ "54383a26" ] }
+{ "vocabItem": "b5c6e64c", "tokens": [ "a8758db2" ] }
+----
+
+Notice that multiple tokens may be specified, allowing for multi-word and non-contiguous lexical items.
+
 == Metadata and Config
-== Coda: Universality
+
+It is often desirable to enrich an entity with additional information--for instance, you might want to record some information about the annotator's confidence in whether a certain span value is correct.
+Additionally, you might want to do the same with a layer in order to e.g. specify what values are acceptable for spans in a given layer.
+To accommodate this, Plaid allows arbitrary data to be stored in the `config` attribute for layer types (project, text layer, token layer, span layer, relation layer, vocab layer) and in the `metadata` attribute for data types (document, text, token, span, relation, vocab item, vocab link).
+
+= Working with Layers
+
+Plaid aims to
+
 
 = An Example: Universal Dependencies
+
 
 = HTTP API and Clients
 
 == Batching
 
-= Ensuring Integrity
+
+= Data Integrity
+
+== Layer Guarantees
 
 == Optimistic Updates
 
