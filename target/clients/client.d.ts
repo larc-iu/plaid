@@ -1,5 +1,5 @@
 interface VocabLinksBundle {
-  create(vocabItemId: string, tokens: any[], metadata?: any): Promise<any>;
+  create(vocabItem: string, tokens: any[], metadata?: any): Promise<any>;
   setMetadata(id: string, body: any): Promise<any>;
   deleteMetadata(id: string): Promise<any>;
   get(id: string, asOf?: string): Promise<any>;

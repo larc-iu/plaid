@@ -1840,11 +1840,11 @@
   ([user-request-fn vocab-item-id tokens]
    (api-call user-request-fn {:method :post
                               :path "/api/v1/vocab-links"
-                              :body {:vocab-item-id vocab-item-id :tokens tokens}}))
+                              :body {:vocab-item vocab-item-id :tokens tokens}}))
   ([user-request-fn vocab-item-id tokens metadata]
    (api-call user-request-fn {:method :post
                               :path "/api/v1/vocab-links"
-                              :body {:vocab-item-id vocab-item-id :tokens tokens :metadata metadata}})))
+                              :body {:vocab-item vocab-item-id :tokens tokens :metadata metadata}})))
 
 (defn- get-vocab-link [user-request-fn link-id]
   (api-call user-request-fn {:method :get
@@ -2794,7 +2794,7 @@
 
         (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
                                                                                  :path "/api/v1/vocab-links"
-                                                                                 :body {:vocab-item-id item-id}}))) ; Missing tokens
+                                                                                 :body {:vocab-item item-id}}))) ; Missing tokens
 
         (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
                                                                                  :path "/api/v1/vocab-links"
@@ -2802,7 +2802,7 @@
 
         (assert-bad-request (api-call admin-request {:method :post
                                                      :path "/api/v1/vocab-links"
-                                                     :body {:vocab-item-id item-id
+                                                     :body {:vocab-item item-id
                                                             :tokens []}})) ; Empty tokens array
 
         ;; Clean up

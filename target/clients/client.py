@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Thu Jul 03 14:01:39 EDT 2025
+Generated on: Thu Jul 10 17:14:45 GMT-05:00 2025
 """
 
 import requests
@@ -18,18 +18,18 @@ class VocabLinksResource:
     def __init__(self, client: 'PlaidClient'):
         self.client = client
 
-    def create(self, vocab_item_id: str, tokens: List[Any], metadata: Any = None) -> Any:
+    def create(self, vocab_item: str, tokens: List[Any], metadata: Any = None) -> Any:
         """
         Create a new vocab link (link between tokens and vocab item).
 
         Args:
-            vocab_item_id: Required body parameter
+            vocab_item: Required body parameter
             tokens: Required body parameter
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links"
         body_dict = {
-            'vocab-item-id': vocab_item_id,
+            'vocab-item': vocab_item,
             'tokens': tokens,
             'metadata': metadata
         }
@@ -73,18 +73,18 @@ class VocabLinksResource:
             return self.client._transform_response(data)
         return response.text
 
-    async def create_async(self, vocab_item_id: str, tokens: List[Any], metadata: Any = None) -> Any:
+    async def create_async(self, vocab_item: str, tokens: List[Any], metadata: Any = None) -> Any:
         """
         Create a new vocab link (link between tokens and vocab item).
 
         Args:
-            vocab_item_id: Required body parameter
+            vocab_item: Required body parameter
             tokens: Required body parameter
             metadata: Optional body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links"
         body_dict = {
-            'vocab-item-id': vocab_item_id,
+            'vocab-item': vocab_item,
             'tokens': tokens,
             'metadata': metadata
         }

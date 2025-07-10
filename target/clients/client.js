@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Thu Jul 03 13:20:34 EDT 2025
+ * Generated on: Thu Jul 10 17:14:46 GMT-05:00 2025
  */
 
 class PlaidClient {
@@ -26,7 +26,7 @@ class PlaidClient {
     this.vocabLinks = {
       /**
        * Create a new vocab link (link between tokens and vocab item).
- * @param {string} vocabItemId - Required. Vocabitemid
+ * @param {string} vocabItem - Required. Vocabitem
  * @param {Array} tokens - Required. Tokens
  * @param {any} [metadata] - Optional. Metadata
        */
@@ -971,10 +971,10 @@ metadata, an optional map of metadata
   /**
    * Create a new vocab link (link between tokens and vocab item).
    */
-  async _vocabLinksCreate(vocabItemId, tokens, metadata = undefined) {
+  async _vocabLinksCreate(vocabItem, tokens, metadata = undefined) {
     let url = `${this.baseUrl}/api/v1/vocab-links`;
     const bodyObj = {
-      "vocab-item-id": vocabItemId,
+      "vocab-item": vocabItem,
       "tokens": tokens,
       "metadata": metadata
     };
