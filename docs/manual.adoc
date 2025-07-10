@@ -199,23 +199,23 @@ For instance, you might have two span layers: one for POS tags, and another for 
 Suppose we're working on a project where all we are doing is POS-tagging.
 The configuration of the project's layers (in a simplified JSON representation) would look something like this:
 
-[,json]
+[,js]
 ----
 {
-  "id": "1cce50df",
-  "name": "Example Project",
-  "textLayers": [
+  id: "1cce50df",
+  name: "Example Project",
+  textLayers: [
     {
-      "id": "6283144f",
-      "name": "Text",
-      "tokenLayers": [
+      id: "6283144f",
+      name: "Text",
+      tokenLayers: [
         {
-          "id": "d1cc124f",
-          "name": "Words",
-          "spanLayers": [
+          id: "d1cc124f",
+          name: "Words",
+          spanLayers: [
             {
-              "id": "ad0f5f2c",
-              "name": "POS tags"
+              id: "ad0f5f2c",
+              name: "POS tags"
             }
           ]
         }
@@ -228,32 +228,32 @@ The configuration of the project's layers (in a simplified JSON representation) 
 This layer structure prescribes the structure of individual documents.
 Consider a document where we have POS tagged the sentence "Fido barks":
 
-[,json]
+[,js]
 ----
 {
-  "id": "01d01a27",
-  "name": "Document 1",
-  "project": "1cce50df",
-  "textLayers": [
+  id: "01d01a27",
+  name: "Document 1",
+  project: "1cce50df",
+  textLayers: [
     {
-      "id": "6283144f",
-      "name": "Text",
-      "text": { "id": "9cfafcc6", "document": "01d01a27", "body": "Fido barks" },
-      "tokenLayers": [
+      id: "6283144f",
+      name: "Text",
+      text: { id: "9cfafcc6", document: "01d01a27", body: "Fido barks" },
+      tokenLayers: [
         {
-          "id": "d1cc124f",
-          "name": "Words",
-          "tokens": [
-            { "id": "54383a26", "text": "9cfafcc6", "begin": 0, "end": 4 },
-            { "id": "a8758db2", "text": "9cfafcc6", "begin": 5, "end": 10 }
+          id: "d1cc124f",
+          name: "Words",
+          tokens: [
+            { id: "54383a26", text: "9cfafcc6", begin: 0, end: 4 },
+            { id: "a8758db2", text: "9cfafcc6", begin: 5, end: 10 }
           ],
-          "spanLayers": [
+          spanLayers: [
             {
-              "id": "ad0f5f2c",
-              "name": "POS tags",
-              "spans": [
-                { "id": "4ed828ea", "value": "NOUN", "tokens": [ "54383a26" ] },
-                { "id": "b4ef8082", "value": "VERB", "tokens": [ "a8758db2" ] }
+              id: "ad0f5f2c",
+              name: "POS tags",
+              spans: [
+                { id: "4ed828ea", value: "NOUN", tokens: [ "54383a26" ] },
+                { id: "b4ef8082", value: "VERB", tokens: [ "a8758db2" ] }
               ]
             }
           ]
@@ -280,17 +280,17 @@ A project is the root of a layer configuration and has a name.
 [,js]
 ----
 {
-  "id": "1cce50df",
-  "name": "Example Project",
-  "textLayers": [/* ... */]
+  id: "1cce50df",
+  name: "Example Project",
+  textLayers: [/* ... */]
 }
 ----
 
 A project has many **documents**, and each has a name and a unique ID:
 
-[,json]
+[,js]
 ----
-{ "id": "01d01a27", "name": "Document 1", "project": "1cce50df" }
+{ id: "01d01a27", name: "Document 1", project: "1cce50df" }
 ----
 
 == Texts
@@ -299,9 +299,9 @@ For each **text layer**, each document may have at most one **text**, which cons
 This string holds all the text which is to be analyzed in dependent layers.
 A text object looks something like this:
 
-[,json]
+[,js]
 ----
-{ "id": "9cfafcc6", "document": "01d01a27", "body": "Fido barks" }
+{ id: "9cfafcc6", document: "01d01a27", body: "Fido barks" }
 ----
 
 == Tokens
@@ -310,8 +310,8 @@ For each **token layer**, each document may have many **token**s, which are defi
 
 [,js]
 ----
-{ "id": "54383a26", "text": "9cfafcc6", "begin": 0, "end": 4 }
-{ "id": "a8758db2", "text": "9cfafcc6", "begin": 5, "end": 10 }
+{ id: "54383a26", text: "9cfafcc6", begin: 0, end: 4 }
+{ id: "a8758db2", text: "9cfafcc6", begin: 5, end: 10 }
 ----
 
 Note the following:
@@ -329,8 +329,8 @@ For each **span layer**, each document may have many **span**s, which are groupi
 
 [,js]
 ----
-{ "id": "4ed828ea", "value": "NOUN", "tokens": [ "54383a26" ] }
-{ "id": "b4ef8082", "value": "VERB", "tokens": [ "a8758db2" ] }
+{ id: "4ed828ea", value: "NOUN", tokens: [ "54383a26" ] }
+{ id: "b4ef8082", value: "VERB", tokens: [ "a8758db2" ] }
 ----
 
 There are no restrictions on spans, other than that they must hold at _least_ one token.
@@ -342,7 +342,7 @@ For example, if we wanted to extend the example above with a syntactic dependenc
 
 [,js]
 ----
-{ "id": "2f6080ff", "source": "b4ef8082", "target": "4ed828ea", "value": "nsubj" }
+{ id: "2f6080ff", source: "b4ef8082", target: "4ed828ea", value: "nsubj" }
 ----
 
 == Vocabs
@@ -355,15 +355,15 @@ The vocab layer itself has a name:
 
 [,js]
 ----
-{ "id": "2b75b0f9", "name": "English" }
+{ id: "2b75b0f9", name: "English" }
 ----
 
 The vocab layer has **vocab item**s, which represent lexical entries, each with a canonical form:
 
 [,js]
 ----
-{ "id" : "da8d4549", "form": "Fido" }
-{ "id" : "b5c6e64c", "form": "bark" }
+{ id: "da8d4549", form: "Fido" }
+{ id: "b5c6e64c", form: "bark" }
 ----
 
 Finally, **vocab link**s are used to indicate occurrences of lexical entries.
@@ -372,17 +372,17 @@ Recall the tokens from before:
 [,js]
 ----
 // "Fido"
-{ "id": "54383a26", "text": "9cfafcc6", "begin": 0, "end": 4 }
+{ id: "54383a26", text: "9cfafcc6", begin: 0, end: 4 }
 // "barks"
-{ "id": "a8758db2", "text": "9cfafcc6", "begin": 5, "end": 10 }
+{ id: "a8758db2", text: "9cfafcc6", begin: 5, end: 10 }
 ----
 
 We can create links between them and the above vocab items with vocab links like so:
 
 [,js]
 ----
-{ "vocabItem": "da8d4549", "tokens": [ "54383a26" ] }
-{ "vocabItem": "b5c6e64c", "tokens": [ "a8758db2" ] }
+{ vocabItem: "da8d4549", tokens: [ "54383a26" ] }
+{ vocabItem: "b5c6e64c", tokens: [ "a8758db2" ] }
 ----
 
 Notice that multiple tokens may be specified, allowing for multi-word and non-contiguous lexical items.
