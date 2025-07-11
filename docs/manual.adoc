@@ -474,7 +474,7 @@ client2.checkLock(documentId);
 ----
 
 Locks are useful for situations where a concurrent edit by another user could yield an invalid state with respect to data integrity constraints beyond what is enforced in Plaid's core.
-They should be used only where necessary in order to minimize contention between users.
+They should be used only where necessary in order to minimize the risk of invariant violations stemming from concurrent modifications.
 
 = Development
 
