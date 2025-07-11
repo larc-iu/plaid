@@ -167,6 +167,17 @@ interface TokensBundle {
 declare class PlaidClient {
   constructor(baseUrl: string, token: string);
   static login(baseUrl: string, userId: string, password: string): Promise<PlaidClient>;
+  
+  // Batch control methods
+  beginBatch(): void;
+  submitBatch(): Promise<any[]>;
+  abortBatch(): void;
+  isBatchMode(): boolean;
+  
+  // Strict mode methods
+  enterStrictMode(documentId: string): void;
+  exitStrictMode(): void;
+  
   vocabLinks: VocabLinksBundle;
   vocabLayers: VocabLayersBundle;
   relations: RelationsBundle;
