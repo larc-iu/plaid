@@ -333,11 +333,12 @@ For each **span layer**, each document may have many **span**s, which are groupi
 { id: "b4ef8082", value: "VERB", tokens: [ "a8758db2" ] }
 ----
 
-There are no restrictions on spans, other than that they must hold at _least_ one token.
+There are no restrictions on spans, other than that they must hold at _least_ one token, and that they all must belong to the span layer's parent token layer.
 
 == Relations
 
 For each **relation layer**, each document may have many **relation**s, which are directed edges between two spans with a label.
+Both spans must belong to the relation layer's parent span layer.
 For example, if we wanted to extend the example above with a syntactic dependency relation between "Fido" and "barks" expressing that "Fido" is the subject, we could have a relation like this:
 
 [,js]
@@ -395,7 +396,8 @@ To accommodate this, Plaid allows arbitrary data to be stored in the `config` at
 
 = Working with Layers
 
-Plaid aims to
+In the previous section, you may have noticed that layers have restrictions: each layer type has exactly one other layer type which must serve as its parent.
+Restrictions like these are necessary in order to keep Plaid efficient and easy to use, but in some cases, it may not be obvious 
 
 
 = An Example: Universal Dependencies
