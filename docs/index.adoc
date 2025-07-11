@@ -18,6 +18,8 @@ Some distinguishing features of Plaid:
 * **Time-traveling Database**: unlike with a traditional SQL server, Plaid's database is lossless ("immutable"), allowing you to **view every past state** your documents were ever in. Additionally, an audit log allows you to see every operation that has been performed.
 * **AI Model Integration**: Plaid offers a powerful client-to-client communication system, making it easy to make apps which are deeply integrated with AI models.
 
+See link:manual.html[the manual] for a comprehensive introduction to Plaid.
+
 == Quick Start
 
 1. Find the latest release and download `plaid.jar`: <https://github.com/larc-iu/plaid/releases>
