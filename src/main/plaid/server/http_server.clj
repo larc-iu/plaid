@@ -5,7 +5,6 @@
             [plaid.server.config :refer [config]]
             [plaid.server.middleware :refer [middleware]]
             [plaid.server.events] ; Start the events system
-            [plaid.server.locks] ; Start the lock cleanup thread
             [taoensso.timbre :as log]))
 
 ;; https://github.com/ptaoussanis/sente/blob/master/src/taoensso/sente/server_adapters/jetty9.clj
