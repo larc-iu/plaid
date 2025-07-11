@@ -1,9 +1,11 @@
 (ns plaid.server.locks
   "Document locking system for ensuring atomicity of batch operations"
-  (:require [clojure.tools.logging :as log])
+  (:require [clojure.tools.logging :as log]
+            [plaid.server.config :refer [config]])
   (:import [java.time Instant]))
 
-(def ^:private lock-expiration-ms (* 60 1000)) ; 60 seconds
+(def ^:private lock-expiration-ms
+  (get-in config [:plaid.server.locks/config :expiration-ms] 60000)) ; 60 seconds
 
 (def ^:private locks
   "Map of document-id -> {:user-id user-id :expires-at instant}"

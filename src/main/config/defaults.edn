@@ -34,4 +34,6 @@
                                    :access-control-allow-methods [:get :put :post :delete :options]
                                    :access-control-allow-headers ["Authorization" "Content-Type"]}
 
- :plaid.server/static-resources-path "resources"}
+ :plaid.server/static-resources-path "resources"
+
+ :plaid.server.locks/config          {:expiration-ms 60000}}
