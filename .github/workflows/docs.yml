@@ -31,8 +31,8 @@ jobs:
       with:
         node-version: '18'
         
-    - name: Install Asciidoctor
-      run: gem install asciidoctor
+    - name: Install Asciidoctor and CodeRay
+      run: gem install asciidoctor coderay
       
     - name: Build HTML
       run: |
