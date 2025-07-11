@@ -101,8 +101,8 @@
              :handler (fn [{{{:keys [document-id]} :path} :parameters user-id :user/id}]
                         (let [result (locks/acquire-lock! document-id user-id)]
                           (case result
-                            :acquired {:status 204}
-                            :refreshed {:status 204}
+                            :acquired {:status 200 :body (locks/get-lock-info document-id)}
+                            :refreshed {:status 200 :body (locks/get-lock-info document-id)}
                             :conflict {:status 409
                                        :body {:error "Document is locked by another user"
                                               :user-id (:user-id (locks/get-lock-info document-id))}})))}
