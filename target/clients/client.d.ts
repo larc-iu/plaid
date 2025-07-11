@@ -53,6 +53,10 @@ interface SpansBundle {
   deleteMetadata(spanId: string): Promise<any>;
 }
 
+interface BatchBundle {
+  submit(body: any[]): Promise<any>;
+}
+
 interface TextsBundle {
   setMetadata(textId: string, body: any): Promise<any>;
   deleteMetadata(textId: string): Promise<any>;
@@ -127,10 +131,6 @@ interface LoginBundle {
   create(userId: string, password: string): Promise<any>;
 }
 
-interface BulkBundle {
-  submit(body: any[]): Promise<any>;
-}
-
 interface VocabItemsBundle {
   setMetadata(id: string, body: any): Promise<any>;
   deleteMetadata(id: string): Promise<any>;
@@ -169,6 +169,7 @@ declare class PlaidClient {
   relations: RelationsBundle;
   spanLayers: SpanLayersBundle;
   spans: SpansBundle;
+  batch: BatchBundle;
   texts: TextsBundle;
   users: UsersBundle;
   tokenLayers: TokenLayersBundle;
@@ -176,7 +177,6 @@ declare class PlaidClient {
   projects: ProjectsBundle;
   textLayers: TextLayersBundle;
   login: LoginBundle;
-  bulk: BulkBundle;
   vocabItems: VocabItemsBundle;
   relationLayers: RelationLayersBundle;
   tokens: TokensBundle;

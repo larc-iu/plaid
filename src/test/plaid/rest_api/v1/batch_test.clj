@@ -1,4 +1,4 @@
-(ns plaid.rest-api.v1.bulk-test
+(ns plaid.rest-api.v1.batch-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string]
             [ring.mock.request :as mock]
@@ -13,14 +13,14 @@
 
 (use-fixtures :once with-xtdb with-rest-handler with-admin)
 
-(defn make-bulk-request [operations token]
-  (let [req (cond-> (mock/request :post "/api/v1/bulk")
+(defn make-batch-request [operations token]
+  (let [req (cond-> (mock/request :post "/api/v1/batch")
               true (mock/header "accept" "application/edn")
               true (mock/json-body operations)
               token (mock/header "authorization" (str "Bearer " token)))]
     (rest-handler req)))
 
-(deftest test-bulk-operations
+(deftest test-batch-operations
   (let [;; Create test project
         create-project-req (-> (admin-request :post "/api/v1/projects")
                               (mock/json-body {:name "Test Project"}))
@@ -30,7 +30,7 @@
     (testing "Multiple GET requests"
       (let [operations [{:path "/api/v1/users/admin@example.com" :method "get" :body nil}
                        {:path (str "/api/v1/projects/" project-id) :method "get" :body nil}]
-            response (make-bulk-request operations admin-token)
+            response (make-batch-request operations admin-token)
             response-body (parse-response-body response)]
         (is (= 200 (:status response)))
         (is (= 2 (count response-body)))
@@ -43,7 +43,7 @@
       (let [operations [{:path (str "/api/v1/projects/" project-id) :method "get" :body nil}
                        {:path "/api/v1/users/admin@example.com" :method "get" :body nil}
                        {:path (str "/api/v1/projects/" project-id) :method "get" :body nil}]
-            response (make-bulk-request operations admin-token)
+            response (make-batch-request operations admin-token)
             response-body (parse-response-body response)]
         (is (= 200 (:status response)))
         (is (= 3 (count response-body)))
@@ -61,7 +61,7 @@
       (let [operations [{:path "/api/v1/users/admin@example.com" :method "get" :body nil}
                        {:path "/api/v1/users/nonexistent@example.com" :method "get" :body nil}
                        {:path (str "/api/v1/projects/" project-id) :method "get" :body nil}]
-            response (make-bulk-request operations admin-token)
+            response (make-batch-request operations admin-token)
             response-body (parse-response-body response)]
         (is (= 200 (:status response)))
         (is (= 3 (count response-body)))
@@ -72,18 +72,18 @@
         ;; Third op succeeds
         (is (= 200 (get-in response-body [2 :status])))))
     
-    (testing "Empty bulk request"
-      (let [response (make-bulk-request [] admin-token)
+    (testing "Empty batch request"
+      (let [response (make-batch-request [] admin-token)
             response-body (parse-response-body response)]
         (is (= 200 (:status response)))
         (is (= [] response-body))))
     
     (testing "Invalid method"
       (let [operations [{:path "/api/v1/users/admin@example.com" :method "invalid" :body nil}]
-            response (make-bulk-request operations admin-token)]
+            response (make-batch-request operations admin-token)]
         (is (= 400 (:status response)))))
     
     (testing "Unauthenticated request"
       (let [operations [{:path "/api/v1/users/admin@example.com" :method "get" :body nil}]
-            response (make-bulk-request operations nil)]
+            response (make-batch-request operations nil)]
         (is (= 403 (:status response)))))))

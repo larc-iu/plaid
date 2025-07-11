@@ -1,4 +1,4 @@
-(ns plaid.rest-api.v1.bulk
+(ns plaid.rest-api.v1.batch
   (:require [clojure.string :as str]
             [clojure.edn :as edn]
             [ring.util.io :as ring-io]
@@ -25,7 +25,7 @@
       :else body-str)))
 
 (defn construct-request
-  "Build a Ring request map from a bulk operation spec and the original request"
+  "Build a Ring request map from a batch operation spec and the original request"
   [original-request operation]
   (let [{:keys [uri query-string]} (parse-path-and-query (:path operation))
         method (keyword (.toLowerCase (:method operation)))
@@ -51,8 +51,8 @@
       (when-let [body (:body operation)]
         {:body-params body}))))
 
-(defn process-bulk-operation
-  "Process a single bulk operation through the rest handler"
+(defn process-batch-operation
+  "Process a single batch operation through the rest handler"
   [rest-handler original-request operation]
   (try
     (let [request (construct-request original-request operation)
@@ -64,17 +64,17 @@
        :headers {}
        :body    {:error (.getMessage e)}})))
 
-(defn bulk-handler
+(defn batch-handler
   [{:keys [rest-handler parameters body-params] :as request}]
   (let [operations (:body parameters)
-        responses (mapv #(process-bulk-operation rest-handler request %) operations)]
+        responses (mapv #(process-batch-operation rest-handler request %) operations)]
     {:status 200
      :body   responses}))
 
-(def bulk-routes
-  ["/bulk"
+(def batch-routes
+  ["/batch"
    {:post {:summary    (str "Execute multiple API operations in a single request.")
-           :openapi    {:x-client-bundle "bulk"
+           :openapi    {:x-client-bundle "batch"
                         :x-client-method "submit"}
            :parameters {:body [:sequential
                                [:map
@@ -82,4 +82,4 @@
                                 [:method [:enum "get" "GET" "post" "POST" "put" "PUT" "patch" "PATCH" "delete" "DELETE"]]
                                 [:body {:optional true} any?]]]}
            :responses  {200 {:description "Array of responses for each operation"}}
-           :handler    bulk-handler}}])
+           :handler    batch-handler}}])

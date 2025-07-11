@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Thu Jul 10 17:14:45 GMT-05:00 2025
+Generated on: Fri Jul 11 12:02:42 EDT 2025
 """
 
 import requests
@@ -4127,6 +4127,109 @@ metadata, an optional map of metadata
         
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+
+class BatchResource:
+    """
+    Resource class for batch operations
+    """
+    
+    def __init__(self, client: 'PlaidClient'):
+        self.client = client
+
+    def submit(self, body: List[Any]) -> Any:
+        """
+        Execute multiple API operations in a single request.
+
+        Args:
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/batch"
+        body_data = self.client._transform_request(body)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, json=body_data, headers=headers)
+        response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def submit_async(self, body: List[Any]) -> Any:
+        """
+        Execute multiple API operations in a single request.
+
+        Args:
+            body: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/batch"
+        body_data = self.client._transform_request(body)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+                ,'body': body_data
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body_data, headers=headers) as response:
                 response.raise_for_status()
                 
                 # Extract document versions from response headers
@@ -9660,109 +9763,6 @@ class LoginResource:
                 return await response.text
 
 
-class BulkResource:
-    """
-    Resource class for bulk operations
-    """
-    
-    def __init__(self, client: 'PlaidClient'):
-        self.client = client
-
-    def submit(self, body: List[Any]) -> Any:
-        """
-        Execute multiple API operations in a single request.
-
-        Args:
-            body: Required body parameter
-        """
-        url = f"{self.client.base_url}/api/v1/bulk"
-        body_data = self.client._transform_request(body)
-        
-        headers = {'Content-Type': 'application/json'}
-        headers['Authorization'] = f'Bearer {self.client.token}'
-        
-        # Add document-version parameter in strict mode for non-GET requests
-        if self.client._strict_mode_document_id and 'POST' != 'GET':
-            doc_id = self.client._strict_mode_document_id
-            if doc_id in self.client._document_versions:
-                if 'params' not in locals():
-                    params = {}
-                params['document-version'] = self.client._document_versions[doc_id]
-                from urllib.parse import urlencode
-                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
-        
-        # Check if we're in batch mode
-        if self.client._is_batching:
-            operation = {
-                'path': url.replace(self.client.base_url, ''),
-                'method': 'POST'
-                ,'body': body_data
-            }
-            self.client._batch_operations.append(operation)
-            return {'batched': True}  # Return placeholder
-        
-        
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
-        
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
-
-    async def submit_async(self, body: List[Any]) -> Any:
-        """
-        Execute multiple API operations in a single request.
-
-        Args:
-            body: Required body parameter
-        """
-        url = f"{self.client.base_url}/api/v1/bulk"
-        body_data = self.client._transform_request(body)
-        
-        headers = {'Content-Type': 'application/json'}
-        headers['Authorization'] = f'Bearer {self.client.token}'
-        
-        # Add document-version parameter in strict mode for non-GET requests
-        if self.client._strict_mode_document_id and 'POST' != 'GET':
-            doc_id = self.client._strict_mode_document_id
-            if doc_id in self.client._document_versions:
-                if 'params' not in locals():
-                    params = {}
-                params['document-version'] = self.client._document_versions[doc_id]
-                from urllib.parse import urlencode
-                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
-        
-        # Check if we're in batch mode
-        if self.client._is_batching:
-            operation = {
-                'path': url.replace(self.client.base_url, ''),
-                'method': 'POST'
-                ,'body': body_data
-            }
-            self.client._batch_operations.append(operation)
-            return {'batched': True}  # Return placeholder
-        
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
-
-
 class VocabItemsResource:
     """
     Resource class for vocabItems operations
@@ -12033,6 +12033,7 @@ class PlaidClient:
         self.relations = RelationsResource(self)
         self.span_layers = SpanLayersResource(self)
         self.spans = SpansResource(self)
+        self.batch = BatchResource(self)
         self.texts = TextsResource(self)
         self.users = UsersResource(self)
         self.token_layers = TokenLayersResource(self)
@@ -12040,7 +12041,6 @@ class PlaidClient:
         self.projects = ProjectsResource(self)
         self.text_layers = TextLayersResource(self)
         self.login = LoginResource(self)
-        self.bulk = BulkResource(self)
         self.vocab_items = VocabItemsResource(self)
         self.relation_layers = RelationLayersResource(self)
         self.tokens = TokensResource(self)
