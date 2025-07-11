@@ -1658,6 +1658,110 @@
                 ]
             }
         },
+        "/api/v1/documents/{document-id}/lock": {
+            "get": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "document-id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Get information about a document lock",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ],
+                "x-client-method": "check-lock"
+            },
+            "post": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "document-id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Acquire or refresh a document lock",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ],
+                "x-client-method": "acquire-lock"
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "as-of",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "document-id",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Response"
+                    }
+                },
+                "summary": "Release a document lock",
+                "security": [
+                    {
+                        "auth": []
+                    }
+                ],
+                "x-client-method": "release-lock"
+            }
+        },
         "/api/v1/documents/{document-id}/metadata": {
             "put": {
                 "parameters": [

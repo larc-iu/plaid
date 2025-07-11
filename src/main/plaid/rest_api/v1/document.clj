@@ -2,6 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
+            [plaid.server.locks :as locks]
             [reitit.coercion.malli]
             [plaid.xtdb.document :as doc]
             [clojure.data.json :as json]))
@@ -82,6 +83,38 @@
                                    result)
                                  {:status (or code 500)
                                   :body {:error (or error "Internal server error")}})))}}]
+
+    ["/lock"
+     {:get {:summary "Get information about a document lock"
+            :middleware [[pra/wrap-reader-required get-project-id]]
+            :openapi {:x-client-method "check-lock"}
+            :handler (fn [{{{:keys [document-id]} :path} :parameters}]
+                       (if-let [lock-info (locks/get-lock-info document-id)]
+                         {:status 200
+                          :body {:user-id (:user-id lock-info)
+                                 :expires-at (:expires-at lock-info)}}
+                         {:status 204}))}
+
+      :post {:summary "Acquire or refresh a document lock"
+             :middleware [[pra/wrap-writer-required get-project-id]]
+             :openapi {:x-client-method "acquire-lock"}
+             :handler (fn [{{{:keys [document-id]} :path} :parameters user-id :user/id}]
+                        (let [result (locks/acquire-lock! document-id user-id)]
+                          (case result
+                            :acquired {:status 204}
+                            :refreshed {:status 204}
+                            :conflict {:status 409
+                                       :body {:error "Document is locked by another user"
+                                              :user-id (:user-id (locks/get-lock-info document-id))}})))}
+
+      :delete {:summary "Release a document lock"
+               :middleware [[pra/wrap-writer-required get-project-id]]
+               :openapi {:x-client-method "release-lock"}
+               :handler (fn [{{{:keys [document-id]} :path} :parameters user-id :user/id}]
+                          (let [result (locks/release-lock! document-id user-id)]
+                            (case result
+                              :released {:status 204}
+                              :not-held {:status 204})))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "document" :document-id get-project-id get-document-id doc/get doc/set-metadata doc/delete-metadata)]])

@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Fri Jul 11 12:02:42 EDT 2025
+Generated on: Fri Jul 11 13:48:26 EDT 2025
 """
 
 import requests
@@ -6262,6 +6262,294 @@ class DocumentsResource:
     
     def __init__(self, client: 'PlaidClient'):
         self.client = client
+
+    def check_lock(self, document_id: str, as_of: str = None) -> Any:
+        """
+        Get information about a document lock
+
+        Args:
+            document_id: Path parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def check_lock_async(self, document_id: str, as_of: str = None) -> Any:
+        """
+        Get information about a document lock
+
+        Args:
+            document_id: Path parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'GET'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def acquire_lock(self, document_id: str) -> Any:
+        """
+        Acquire or refresh a document lock
+
+        Args:
+            document_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.post(url, headers=headers)
+        response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def acquire_lock_async(self, document_id: str) -> Any:
+        """
+        Acquire or refresh a document lock
+
+        Args:
+            document_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'POST'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
+
+    def release_lock(self, document_id: str) -> Any:
+        """
+        Release a document lock
+
+        Args:
+            document_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        
+        # Extract document versions from response headers
+        self.client._extract_document_versions(dict(response.headers))
+        
+        if 'application/json' in response.headers.get('content-type', '').lower():
+            data = response.json()
+            return self.client._transform_response(data)
+        return response.text
+
+    async def release_lock_async(self, document_id: str) -> Any:
+        """
+        Release a document lock
+
+        Args:
+            document_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            operation = {
+                'path': url.replace(self.client.base_url, ''),
+                'method': 'DELETE'
+            }
+            self.client._batch_operations.append(operation)
+            return {'batched': True}  # Return placeholder
+        
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, headers=headers) as response:
+                response.raise_for_status()
+                
+                # Extract document versions from response headers
+                self.client._extract_document_versions(dict(response.headers))
+                
+                content_type = response.headers.get('content-type', '').lower()
+                if 'application/json' in content_type:
+                    data = await response.json()
+                    return self.client._transform_response(data)
+                return await response.text
 
     def set_metadata(self, document_id: str, body: Any) -> Any:
         """
