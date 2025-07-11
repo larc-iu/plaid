@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Thu Jul 10 17:14:46 GMT-05:00 2025
+ * Generated on: Fri Jul 11 12:02:41 EDT 2025
  */
 
 class PlaidClient {
@@ -290,6 +290,13 @@ metadata, an optional map of metadata
  * @param {string} spanId - Span-id identifier
        */
       deleteMetadata: this._spansDeleteMetadata.bind(this)
+    };
+    this.batch = {
+      /**
+       * Execute multiple API operations in a single request.
+ * @param {Array} body - Required. Body
+       */
+      submit: this._batchSubmit.bind(this)
     };
     this.texts = {
       /**
@@ -641,13 +648,6 @@ name: update a document's name.
  * @param {string} password - Required. Password
        */
       create: this._loginCreate.bind(this)
-    };
-    this.bulk = {
-      /**
-       * Execute multiple API operations in a single request.
- * @param {Array} body - Required. Body
-       */
-      submit: this._bulkSubmit.bind(this)
     };
     this.vocabItems = {
       /**
@@ -3447,6 +3447,66 @@ metadata, an optional map of metadata
       error.statusText = response.statusText;
       error.url = url;
       error.method = 'DELETE';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Execute multiple API operations in a single request.
+   */
+  async _batchSubmit(body) {
+    let url = `${this.baseUrl}/api/v1/batch`;
+    const requestBody = this._transformRequest(body);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+        , body: requestBody
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
       error.responseBody = errorBody;
       throw error;
     }
@@ -6824,66 +6884,6 @@ name: update a document's name.
     const fetchOptions = {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    };
-    
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
-    }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
-  }
-
-  /**
-   * Execute multiple API operations in a single request.
-   */
-  async _bulkSubmit(body) {
-    let url = `${this.baseUrl}/api/v1/bulk`;
-    const requestBody = this._transformRequest(body);
-    
-    // Add document-version parameter in strict mode for non-GET requests
-    if (this.strictModeDocumentId && 'GET' !== 'POST') {
-      const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
-        const separator = url.includes('?') ? '&' : '?';
-        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
-      }
-    }
-    
-    // Check if we're in batch mode
-    if (this.isBatching) {
-      const operation = {
-        path: url.replace(this.baseUrl, ''),
-        method: 'POST'
-        , body: requestBody
-      };
-      this.batchOperations.push(operation);
-      return { batched: true }; // Return placeholder
-    }
-    
-    const fetchOptions = {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(requestBody)

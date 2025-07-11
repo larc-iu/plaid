@@ -25,7 +25,7 @@
             [plaid.rest-api.v1.relation-layer :refer [relation-layer-routes]]
             [plaid.rest-api.v1.relation :refer [relation-routes]]
             [plaid.rest-api.v1.audit :refer [audit-routes]]
-            [plaid.rest-api.v1.bulk :refer [bulk-routes]]
+            [plaid.rest-api.v1.batch :refer [batch-routes]]
             [plaid.rest-api.v1.vocab-layer :refer [vocab-layer-routes]]
             [plaid.rest-api.v1.vocab-item :refer [vocab-item-routes]]
             [plaid.rest-api.v1.vocab-link :refer [vocab-link-routes]]))
@@ -78,7 +78,7 @@
      relation-routes
      relation-layer-routes
      audit-routes
-     bulk-routes
+     batch-routes
      vocab-layer-routes
      vocab-item-routes
      vocab-link-routes]]

@@ -7045,7 +7045,7 @@
                 ]
             }
         },
-        "/api/v1/bulk": {
+        "/api/v1/batch": {
             "post": {
                 "parameters": [
                     {
@@ -7209,7 +7209,7 @@
                         "auth": []
                     }
                 ],
-                "x-client-bundle": "bulk",
+                "x-client-bundle": "batch",
                 "x-client-method": "submit"
             }
         },
