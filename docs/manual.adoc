@@ -17,6 +17,9 @@
 Rather, it provides an implementation of the "boring" parts of a linguistic annotation app, including a user system, a database layer, and more.
 Building an app with Plaid allows you to focus your attention on just the interesting parts of your App including the UI and logic which is specific to your annotation framework.
 
+The purpose of this document is to teach you how to think about and use Plaid.
+If you'd rather just dive into a real app programmed with Plaid, check out the https://github.com/larc-iu/plaid/tree/master/examples/ud_editor[UD editor] example app.
+
 = Key Concepts
 
 == Projects and Layers
@@ -394,28 +397,84 @@ It is often desirable to enrich an entity with additional information--for insta
 Additionally, you might want to do the same with a layer in order to e.g. specify what values are acceptable for spans in a given layer.
 To accommodate this, Plaid allows arbitrary data to be stored in the `config` attribute for layer types (project, text layer, token layer, span layer, relation layer, vocab layer) and in the `metadata` attribute for data types (document, text, token, span, relation, vocab item, vocab link).
 
-= Working with Layers
-
-In the previous section, you may have noticed that layers have restrictions: each layer type has exactly one other layer type which must serve as its parent.
-Restrictions like these are necessary in order to keep Plaid efficient and easy to use, but in some cases, it may not be obvious 
-
-
-= An Example: Universal Dependencies
-
-
-= HTTP API and Clients
-
-== Batching
-
-
 = Data Integrity
 
-== Layer Guarantees
+In collaborative annotation projects, it is crucial to take steps to ensure that data never reaches an invalid state.
+Plaid provides a few different means for maintaining **data integrity**, so that you may have confidence that your data will never become corrupt.
 
-== Optimistic Updates
+== Core Data Integrity Constraints
+
+In the previous section, we noted the constraints which Plaid enforces on each data type.
+Plaid guarantees that the database will _never_ violate these, no matter what, by ensuring that invalid entities are never created, and often by deleting structures which are indirectly rendered invalid by another change.
+Consider these examples:
+
+* If a relation's source span is deleted, then Plaid deletes the relation as well, because a relation must have a span on either end in order to remain valid.
+* If a few characters are deleted in a text, then all token indexes are updated to maintain validity: tokens containing those characters will shrink or get deleted (if they turn into zero-length tokens), and not containing those characters which are anchored to subsequent text will have their indices decremented by the number of deleted tokens.
+* If a span's only token is deleted, then the span will deleted, along with any dependent relations.
+
+These invariants have been incorporated into Plaid because of their broad desirability in linguistic annotation.
+However, some invariants will vary by annotation framework.
+For example, it is quite common to want a span layer's spans to be in one-to-one correspondence with tokens in the parent token layer.
+This is not directly enforced by Plaid, but Plaid provides you with two mechanisms which allow you to enforce your own data integrity constraints.
 
 == Strict Mode
 
+Multiple users may edit the same document simultaneously, and in some cases, undesirable conflicts may occur as users fail to take into account each other's work.
+Suppose, for example, that one user is editing a sentence's lemmas, and the other is editing a sentence's POS tags.
+If the lemma editor doesn't know that a certain POS tag has changed, they might make the wrong decision about which lemma to assign.
+Plaid clients' optional **strict mode** causes edits to fail when someone other than the current user has made an edit.
+Consider this exact scenario in code:
+
+[,javascript]
+----
+client1.spans.update(lemmaSpanOneId, "lemmaOne")
+client2.spans.update(posTagSpanTwoId, "posTagTwo")
+// Works fine
+client1.spans.update(lemmaSpanTwoId, "lemmaTwo")
+
+----
+
+When client 1 executes the second lemma span's value, unless they happened to have loaded the document anew after client 2's change, they will not be aware of the new POS tag for the second word.
+
+Strict mode causes requests to fail when someone other than the user in strict mode has edited a document since strict mode began.
+If client 1 had initiated strict mode at the beginning, then the second request would have failed:
+
+[,javascript]
+----
+client1.enterStrictMode(documentId)
+client1.spans.update(lemmaSpanOneId, "lemmaOne")
+client2.spans.update(posTagSpanTwoId, "posTagTwo")
+// Fails with HTTP 409, since client 2 made a change
+client1.spans.update(lemmaSpanTwoId, "lemmaTwo")
+// Exit strict mode when desired
+client1.exitStrictMode()
+----
+
+This failure gives client 1 the opportunity to reload the document only when it is necessary, allowing them to reconsider the current state of the document before making changes.
+
+== Locking
+
+Sometimes a more heavyweight solution is needed, **locking**.
+A lock gives a user exclusive permission to write to a document, preventing all other users from changing its contents.
+Locks have a 60 second expiration timer by default, and they may be released early or renewed by either explicit renewal or any write to the locked document.
+Consider:
+
+[,js]
+----
+client2.checkLock(documentId);
+// => HTTP 204
+client1.acquireLock(documentId);
+// -> { userId: "client1", expiresAt: 1752260966446 }
+client2.checkLock(documentId);
+// -> { userId: "client1", expiresAt: 1752260966446 }
+client1.releaseLock(documentId);
+// -> HTTP 204
+client2.checkLock(documentId);
+// -> HTTP 204
+----
+
+Locks are useful for situations where a concurrent edit by another user could yield an invalid state with respect to data integrity constraints beyond what is enforced in Plaid's core.
+They should be used only where necessary in order to minimize contention between users.
 
 = Development
 
