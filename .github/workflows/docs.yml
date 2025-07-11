@@ -38,7 +38,8 @@ jobs:
       run: |
         mkdir -p _site
         asciidoctor -o _site/index.html docs/index.adoc
-        asciidoctor -o _site/book.html docs/book.adoc
+        asciidoctor -o _site/manual.html docs/manual.adoc
+        asciidoctor -o _site/dev.html docs/dev.adoc
         node docs/extract-api-docs.js
         
     - name: Upload artifact
