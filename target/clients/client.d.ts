@@ -86,6 +86,9 @@ interface TokenLayersBundle {
 }
 
 interface DocumentsBundle {
+  checkLock(documentId: string, asOf?: string): Promise<any>;
+  acquireLock(documentId: string): Promise<any>;
+  releaseLock(documentId: string): Promise<any>;
   setMetadata(documentId: string, body: any): Promise<any>;
   deleteMetadata(documentId: string): Promise<any>;
   audit(documentId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any>;

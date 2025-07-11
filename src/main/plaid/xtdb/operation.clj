@@ -1,7 +1,8 @@
 (ns plaid.xtdb.operation
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.server.events :as events]))
+            [plaid.server.events :as events]
+            [plaid.server.locks :as locks]))
 
 (defn make-operation
   "Create an operation data structure"
@@ -53,8 +54,21 @@
                                 (let [operations# ~operations-expr
                                       audit-txs# (store-operations xt-map# operations# ~user-id)
                                       all-tx-ops# (mapcat :op/tx-ops operations#)
-                                      audit-entry# (first (filter #(contains? % :audit/id) 
-                                                                  (map second audit-txs#)))]
+                                      audit-entry# (first (filter #(contains? % :audit/id)
+                                                                  (map second audit-txs#)))
+                                      ;; Check document locks before executing
+                                      affected-documents# (:audit/documents audit-entry#)
+                                      lock-check# (when (seq affected-documents#)
+                                                    (locks/check-document-locks affected-documents# ~user-id))]
+                                  ;; If there's a lock conflict, don't execute the transaction
+                                  (when (and lock-check# (not= lock-check# :ok))
+                                    (let [user-id# (:user-id lock-check#)
+                                          username# (:user/username (pxc/entity (xt/db node#) (:user-id lock-check#)))
+                                          locked-document-id# (:document-id lock-check#)]
+                                      (throw (ex-info (str "Document locked by another user: " username#)
+                                                      {:code 409
+                                                       :locked-document-id locked-document-id#
+                                                       :lock-holder user-id#}))))
                                   ;; Store for later use
                                   (vreset! operations-vol# operations#)
                                   (vreset! audit-entry-vol# audit-entry#)
@@ -64,15 +78,17 @@
          (let [operations# @operations-vol#
                audit-entry# @audit-entry-vol#]
            (when (and operations# audit-entry#)
-             (events/publish-audit-event! audit-entry# operations# ~user-id))))
+             (events/publish-audit-event! audit-entry# operations# ~user-id))
+           ;; Refresh locks for affected documents
+           (when (seq (:audit/documents audit-entry#))
+             (locks/refresh-locks! (:audit/documents audit-entry#) ~user-id))))
        (let [val# (deref audit-entry-vol#)]
          (-> result#
              ;; Include `:document-versions` for all affected documents, mapping document IDs to versions
              (cond-> (and (:audit/id val#)
                           (seq (:audit/documents val#)))
-                     (assoc :document-versions (into {} (for [doc-id# (:audit/documents val#)]
-                                                          [doc-id# (:audit/id val#)])))))))))
-
+               (assoc :document-versions (into {} (for [doc-id# (:audit/documents val#)]
+                                                    [doc-id# (:audit/id val#)])))))))))
 
 (defmacro submit-operations-with-extras!
   "Submit operations and return extra data from the transaction.
@@ -86,8 +102,21 @@
                                             (let [operations# ~operations-expr
                                                   audit-txs# (store-operations xt-map# operations# ~user-id)
                                                   all-tx-ops# (mapcat :op/tx-ops operations#)
-                                                  audit-entry# (first (filter #(contains? % :audit/id) 
-                                                                              (map second audit-txs#)))]
+                                                  audit-entry# (first (filter #(contains? % :audit/id)
+                                                                              (map second audit-txs#)))
+                                                  ;; Check document locks before executing
+                                                  affected-documents# (:audit/documents audit-entry#)
+                                                  lock-check# (when (seq affected-documents#)
+                                                                (locks/check-document-locks affected-documents# ~user-id))]
+                                              ;; If there's a lock conflict, don't execute the transaction
+                                              (when (and lock-check# (not= lock-check# :ok))
+                                                (let [user-id# (:user-id lock-check#)
+                                                      username# (:user/username (pxc/entity (xt/db node#) (:user-id lock-check#)))
+                                                      locked-document-id# (:document-id lock-check#)]
+                                                  (throw (ex-info (str "Document locked by another user: " username#)
+                                                                  {:code 409
+                                                                   :locked-document-id locked-document-id#
+                                                                   :lock-holder user-id#}))))
                                               ;; Store for later use
                                               (vreset! operations-vol# operations#)
                                               (vreset! audit-entry-vol# audit-entry#)
@@ -98,12 +127,15 @@
          (let [operations# @operations-vol#
                audit-entry# @audit-entry-vol#]
            (when (and operations# audit-entry#)
-             (events/publish-audit-event! audit-entry# operations# ~user-id))))
+             (events/publish-audit-event! audit-entry# operations# ~user-id))
+           ;; Refresh locks for affected documents
+           (when (seq (:audit/documents audit-entry#))
+             (locks/refresh-locks! (:audit/documents audit-entry#) ~user-id))))
 
        (let [val# (deref audit-entry-vol#)]
          (-> result#
              ;; Include `:document-versions` for all affected documents, mapping document IDs to versions
              (cond-> (and (:audit/id val#)
                           (seq (:audit/documents val#)))
-                     (assoc :document-versions (into {} (for [doc-id# (:audit/documents val#)]
-                                                          [doc-id# (:audit/id val#)])))))))))
+               (assoc :document-versions (into {} (for [doc-id# (:audit/documents val#)]
+                                                    [doc-id# (:audit/id val#)])))))))))

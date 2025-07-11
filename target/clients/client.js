@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Fri Jul 11 12:02:41 EDT 2025
+ * Generated on: Fri Jul 11 13:48:24 EDT 2025
  */
 
 class PlaidClient {
@@ -428,6 +428,22 @@ body: the string which is the content of this text.
       update: this._tokenLayersUpdate.bind(this)
     };
     this.documents = {
+      /**
+       * Get information about a document lock
+ * @param {string} documentId - Document-id identifier
+ * @param {string} [asOf] - Optional asOf
+       */
+      checkLock: this._documentsCheckLock.bind(this),
+      /**
+       * Acquire or refresh a document lock
+ * @param {string} documentId - Document-id identifier
+       */
+      acquireLock: this._documentsAcquireLock.bind(this),
+      /**
+       * Release a document lock
+ * @param {string} documentId - Document-id identifier
+       */
+      releaseLock: this._documentsReleaseLock.bind(this),
       /**
        * Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} documentId - Document-id identifier
@@ -4705,6 +4721,183 @@ body: the string which is the content of this text.
       error.statusText = response.statusText;
       error.url = url;
       error.method = 'PATCH';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Get information about a document lock
+   */
+  async _documentsCheckLock(documentId, asOf = undefined) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}/lock`;
+    const queryParams = new URLSearchParams();
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: finalUrl.replace(this.baseUrl, ''),
+        method: 'GET'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(finalUrl, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = finalUrl;
+      error.method = 'GET';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Acquire or refresh a document lock
+   */
+  async _documentsAcquireLock(documentId) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}/lock`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'POST'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'POST';
+      error.responseBody = errorBody;
+      throw error;
+    }
+    
+    // Extract document versions from response headers
+    this._extractDocumentVersions(response.headers);
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return this._transformResponse(data);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Release a document lock
+   */
+  async _documentsReleaseLock(documentId) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}/lock`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      const operation = {
+        path: url.replace(this.baseUrl, ''),
+        method: 'DELETE'
+      };
+      this.batchOperations.push(operation);
+      return { batched: true }; // Return placeholder
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unable to read error response');
+      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.url = url;
+      error.method = 'DELETE';
       error.responseBody = errorBody;
       throw error;
     }
