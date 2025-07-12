@@ -61,20 +61,41 @@
         body: JSON.stringify(body)
       };
 
-      const response = await fetch(url, fetchOptions);
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => 'Unable to read error response');
-        const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-        error.status = response.status;
-        error.statusText = response.statusText;
-        error.url = url;
-        error.method = 'POST';
-        error.responseBody = errorBody;
-        throw error;
-      }
+      try {
+        const response = await fetch(url, fetchOptions);
+        if (!response.ok) {
+          let errorData;
+          try {
+            errorData = await response.json();
+          } catch (parseError) {
+            errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+          }
+          
+          const serverMessage = errorData?.error || errorData?.message || response.statusText;
+          const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+          error.status = response.status;
+          error.statusText = response.statusText;
+          error.url = url;
+          error.method = 'POST';
+          error.responseData = errorData;
+          throw error;
+        }
 
-      const results = await response.json();
-      return results.map(result => this._transformResponse(result));
+        const results = await response.json();
+        return results.map(result => this._transformResponse(result));
+      } catch (error) {
+        // Check if it's already our formatted HTTP error
+        if (error.status) {
+          throw error; // Re-throw formatted HTTP error
+        }
+        // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+        const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+        fetchError.status = 0; // Indicate network error
+        fetchError.url = url;
+        fetchError.method = 'POST';
+        fetchError.originalError = error;
+        throw fetchError;
+      }
     } finally {
       this.isBatching = false;
       this.batchOperations = [];
@@ -549,27 +570,48 @@
              "    \n"
              "    " fetch-options "\n"
              "    \n"
-             "    const response = await fetch(" url-var ", fetchOptions);\n"
-             "    if (!response.ok) {\n"
-             "      const errorBody = await response.text().catch(() => 'Unable to read error response');\n"
-             "      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${" url-var "}`);\n"
-             "      error.status = response.status;\n"
-             "      error.statusText = response.statusText;\n"
-             "      error.url = " url-var ";\n"
-             "      error.method = '" (str/upper-case (name http-method)) "';\n"
-             "      error.responseBody = errorBody;\n"
-             "      throw error;\n"
+             "    try {\n"
+             "      const response = await fetch(" url-var ", fetchOptions);\n"
+             "      if (!response.ok) {\n"
+             "        let errorData;\n"
+             "        try {\n"
+             "          errorData = await response.json();\n"
+             "        } catch (parseError) {\n"
+             "          errorData = { message: await response.text().catch(() => 'Unable to read error response') };\n"
+             "        }\n"
+             "        \n"
+             "        const serverMessage = errorData?.error || errorData?.message || response.statusText;\n"
+             "        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${" url-var "}`);\n"
+             "        error.status = response.status;\n"
+             "        error.statusText = response.statusText;\n"
+             "        error.url = " url-var ";\n"
+             "        error.method = '" (str/upper-case (name http-method)) "';\n"
+             "        error.responseData = errorData;\n"
+             "        throw error;\n"
+             "      }\n"
+             "      \n"
+             "      // Extract document versions from response headers\n"
+             "      this._extractDocumentVersions(response.headers);\n"
+             "      \n"
+             "      const contentType = response.headers.get('content-type');\n"
+             "      if (contentType && contentType.includes('application/json')) {\n"
+             "        const data = await response.json();\n"
+             "        return this._transformResponse(data);\n"
+             "      }\n"
+             "      return await response.text();\n"
+             "    } catch (error) {\n"
+             "      // Check if it's already our formatted HTTP error\n"
+             "      if (error.status) {\n"
+             "        throw error; // Re-throw formatted HTTP error\n"
+             "      }\n"
+             "      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)\n"
+             "      const fetchError = new Error(`Network error: ${error.message} at ${" url-var "}`);\n"
+             "      fetchError.status = 0; // Indicate network error\n"
+             "      fetchError.url = " url-var ";\n"
+             "      fetchError.method = '" (str/upper-case (name http-method)) "';\n"
+             "      fetchError.originalError = error;\n"
+             "      throw fetchError;\n"
              "    }\n"
-             "    \n"
-             "    // Extract document versions from response headers\n"
-             "    this._extractDocumentVersions(response.headers);\n"
-             "    \n"
-             "    const contentType = response.headers.get('content-type');\n"
-             "    if (contentType && contentType.includes('application/json')) {\n"
-             "      const data = await response.json();\n"
-             "      return this._transformResponse(data);\n"
-             "    }\n"
-             "    return await response.text();\n"
              "  }\n")))))
 
 (defn- generate-bundle-methods
@@ -871,28 +913,49 @@
          "   * @returns {Promise<PlaidClient>} - Authenticated client instance\n"
          "   */\n"
          "  static async login(baseUrl, userId, password) {\n"
-         "    const response = await fetch(`${baseUrl}/api/v1/login`, {\n"
-         "      method: 'POST',\n"
-         "      headers: {\n"
-         "        'Content-Type': 'application/json'\n"
-         "      },\n"
-         "      body: JSON.stringify({ \"user-id\": userId, password })\n"
-         "    });\n"
-         "    \n"
-         "    if (!response.ok) {\n"
-         "      const errorBody = await response.text().catch(() => 'Unable to read error response');\n"
-         "      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${baseUrl}/api/v1/login`);\n"
-         "      error.status = response.status;\n"
-         "      error.statusText = response.statusText;\n"
-         "      error.url = `${baseUrl}/api/v1/login`;\n"
-         "      error.method = 'POST';\n"
-         "      error.responseBody = errorBody;\n"
-         "      throw error;\n"
+         "    try {\n"
+         "      const response = await fetch(`${baseUrl}/api/v1/login`, {\n"
+         "        method: 'POST',\n"
+         "        headers: {\n"
+         "          'Content-Type': 'application/json'\n"
+         "        },\n"
+         "        body: JSON.stringify({ \"user-id\": userId, password })\n"
+         "      });\n"
+         "      \n"
+         "      if (!response.ok) {\n"
+         "        let errorData;\n"
+         "        try {\n"
+         "          errorData = await response.json();\n"
+         "        } catch (parseError) {\n"
+         "          errorData = { message: await response.text().catch(() => 'Unable to read error response') };\n"
+         "        }\n"
+         "        \n"
+         "        const serverMessage = errorData?.error || errorData?.message || response.statusText;\n"
+         "        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${baseUrl}/api/v1/login`);\n"
+         "        error.status = response.status;\n"
+         "        error.statusText = response.statusText;\n"
+         "        error.url = `${baseUrl}/api/v1/login`;\n"
+         "        error.method = 'POST';\n"
+         "        error.responseData = errorData;\n"
+         "        throw error;\n"
+         "      }\n"
+         "      \n"
+         "      const data = await response.json();\n"
+         "      const token = data.token || '';\n"
+         "      return new PlaidClient(baseUrl, token);\n"
+         "    } catch (error) {\n"
+         "      // Check if it's already our formatted HTTP error\n"
+         "      if (error.status) {\n"
+         "        throw error; // Re-throw formatted HTTP error\n"
+         "      }\n"
+         "      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)\n"
+         "      const fetchError = new Error(`Network error: ${error.message} at ${baseUrl}/api/v1/login`);\n"
+         "      fetchError.status = 0; // Indicate network error\n"
+         "      fetchError.url = `${baseUrl}/api/v1/login`;\n"
+         "      fetchError.method = 'POST';\n"
+         "      fetchError.originalError = error;\n"
+         "      throw fetchError;\n"
          "    }\n"
-         "    \n"
-         "    const data = await response.json();\n"
-         "    const token = data.token || '';\n"
-         "    return new PlaidClient(baseUrl, token);\n"
          "  }\n"
          "}\n"
          "\n"

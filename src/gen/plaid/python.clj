@@ -412,31 +412,87 @@
          "        \n"
          (if sync?
            ;; Sync version using requests
-           (str "        response = requests." (str/lower-case (name http-method))
+           (str "        try:\n"
+                "            response = requests." (str/lower-case (name http-method))
                 "(url" (when has-body? ", json=body_data") ", headers=headers)\n"
-                "        response.raise_for_status()\n"
+                "            \n"
+                "            if not response.ok:\n"
+                "                # Parse error response\n"
+                "                try:\n"
+                "                    error_data = response.json()\n"
+                "                except requests.exceptions.JSONDecodeError:\n"
+                "                    error_data = {'message': response.text}\n"
+                "                \n"
+                "                server_message = error_data.get('error') or error_data.get('message') or response.reason\n"
+                "                raise PlaidAPIError(\n"
+                "                    f'HTTP {response.status_code} {server_message} at {url}',\n"
+                "                    response.status_code,\n"
+                "                    url,\n"
+                "                    '" (str/upper-case (name http-method)) "',\n"
+                "                    error_data\n"
+                "                )\n"
+                "            \n"
+                "            # Extract document versions from response headers\n"
+                "            self.client._extract_document_versions(dict(response.headers))\n"
+                "            \n"
+                "            if 'application/json' in response.headers.get('content-type', '').lower():\n"
+                "                data = " response-json "\n"
+                "                return self.client._transform_response(data)\n"
+                "            return " response-text "\n"
                 "        \n"
-                "        # Extract document versions from response headers\n"
-                "        self.client._extract_document_versions(dict(response.headers))\n"
-                "        \n"
-                "        if 'application/json' in response.headers.get('content-type', '').lower():\n"
-                "            data = " response-json "\n"
-                "            return self.client._transform_response(data)\n"
-                "        return " response-text "\n")
+                "        except requests.exceptions.RequestException as e:\n"
+                "            if hasattr(e, 'status'):\n"
+                "                raise e  # Re-raise our custom error\n"
+                "            # Handle network errors\n"
+                "            raise PlaidAPIError(\n"
+                "                f'Network error: {str(e)} at {url}',\n"
+                "                0,\n"
+                "                url,\n"
+                "                '" (str/upper-case (name http-method)) "',\n"
+                "                {'original_error': str(e)}\n"
+                "            )\n")
            ;; Async version using aiohttp
-           (str "        async with aiohttp.ClientSession() as session:\n"
-                "            async with session." (str/lower-case (name http-method))
+           (str "        try:\n"
+                "            async with aiohttp.ClientSession() as session:\n"
+                "                async with session." (str/lower-case (name http-method))
                 "(url" (when has-body? ", json=body_data") ", headers=headers) as response:\n"
-                "                response.raise_for_status()\n"
-                "                \n"
-                "                # Extract document versions from response headers\n"
-                "                self.client._extract_document_versions(dict(response.headers))\n"
-                "                \n"
-                "                content_type = response.headers.get('content-type', '').lower()\n"
-                "                if 'application/json' in content_type:\n"
-                "                    data = " response-json "\n"
-                "                    return self.client._transform_response(data)\n"
-                "                return " response-text "\n")))))
+                "                    \n"
+                "                    if not response.ok:\n"
+                "                        # Parse error response\n"
+                "                        try:\n"
+                "                            error_data = await response.json()\n"
+                "                        except aiohttp.ContentTypeError:\n"
+                "                            error_data = {'message': await response.text()}\n"
+                "                        \n"
+                "                        server_message = error_data.get('error') or error_data.get('message') or response.reason\n"
+                "                        raise PlaidAPIError(\n"
+                "                            f'HTTP {response.status} {server_message} at {url}',\n"
+                "                            response.status,\n"
+                "                            url,\n"
+                "                            '" (str/upper-case (name http-method)) "',\n"
+                "                            error_data\n"
+                "                        )\n"
+                "                    \n"
+                "                    # Extract document versions from response headers\n"
+                "                    self.client._extract_document_versions(dict(response.headers))\n"
+                "                    \n"
+                "                    content_type = response.headers.get('content-type', '').lower()\n"
+                "                    if 'application/json' in content_type:\n"
+                "                        data = " response-json "\n"
+                "                        return self.client._transform_response(data)\n"
+                "                    return " response-text "\n"
+                "        \n"
+                "        except aiohttp.ClientError as e:\n"
+                "            if hasattr(e, 'status'):\n"
+                "                raise e  # Re-raise our custom error\n"
+                "            # Handle network errors\n"
+                "            raise PlaidAPIError(\n"
+                "                f'Network error: {str(e)} at {url}',\n"
+                "                0,\n"
+                "                url,\n"
+                "                '" (str/upper-case (name http-method)) "',\n"
+                "                {'original_error': str(e)}\n"
+                "            )\n")))))
 
 (defn- generate-python-resource-class
   "Generate a Python resource class for a bundle"
@@ -504,7 +560,22 @@
             }
             
             response = requests.post(url, json=body, headers=headers)
-            response.raise_for_status()
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
             
             results = response.json()
             return [self._transform_response(result) for result in results]
@@ -546,7 +617,23 @@
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=body, headers=headers) as response:
-                    response.raise_for_status()
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
                     results = await response.json()
                     return [self._transform_response(result) for result in results]
         finally:
@@ -656,7 +743,23 @@
             json={'user-id': user_id, 'password': password},
             headers={'Content-Type': 'application/json'}
         )
-        response.raise_for_status()
+        
+        if not response.ok:
+            # Parse error response
+            try:
+                error_data = response.json()
+            except requests.exceptions.JSONDecodeError:
+                error_data = {'message': response.text}
+            
+            server_message = error_data.get('error') or error_data.get('message') or response.reason
+            raise PlaidAPIError(
+                f'HTTP {response.status_code} {server_message} at {base_url}/api/v1/login',
+                response.status_code,
+                f'{base_url}/api/v1/login',
+                'POST',
+                error_data
+            )
+        
         token = response.json().get('token', '')
         return cls(base_url, token)
     
@@ -679,7 +782,23 @@
                 json={'user-id': user_id, 'password': password},
                 headers={'Content-Type': 'application/json'}
             ) as response:
-                response.raise_for_status()
+                
+                if not response.ok:
+                    # Parse error response
+                    try:
+                        error_data = await response.json()
+                    except aiohttp.ContentTypeError:
+                        error_data = {'message': await response.text()}
+                    
+                    server_message = error_data.get('error') or error_data.get('message') or response.reason
+                    raise PlaidAPIError(
+                        f'HTTP {response.status} {server_message} at {base_url}/api/v1/login',
+                        response.status,
+                        f'{base_url}/api/v1/login',
+                        'POST',
+                        error_data
+                    )
+                
                 data = await response.json()
                 token = data.get('token', '')
                 return cls(base_url, token)")
@@ -723,6 +842,20 @@
          "import aiohttp\n"
          "import json\n"
          "from typing import Any, Dict, List, Optional, Union, Callable\n"
+         "\n"
+         "\n"
+         "class PlaidAPIError(Exception):\n"
+         "    \"\"\"Custom exception for Plaid API errors with consistent interface\"\"\"\n"
+         "    \n"
+         "    def __init__(self, message: str, status: int, url: str, method: str, response_data: Any = None):\n"
+         "        super().__init__(message)\n"
+         "        self.status = status\n"
+         "        self.url = url\n"
+         "        self.method = method\n"
+         "        self.response_data = response_data\n"
+         "    \n"
+         "    def __str__(self):\n"
+         "        return self.args[0] if self.args else f\"HTTP {self.status} at {self.url}\"\n"
          "\n"
          "\n"
          resource-classes "\n\n"
