@@ -103,7 +103,7 @@
                           (case result
                             :acquired {:status 200 :body (locks/get-lock-info document-id)}
                             :refreshed {:status 200 :body (locks/get-lock-info document-id)}
-                            :conflict {:status 409
+                            :conflict {:status 423
                                        :body {:error "Document is locked by another user"
                                               :user-id (:user-id (locks/get-lock-info document-id))}})))}
 
