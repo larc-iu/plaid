@@ -1,13 +1,27 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Sat Jul 12 09:31:57 EDT 2025
+Generated on: Sat Jul 12 15:29:44 EDT 2025
 """
 
 import requests
 import aiohttp
 import json
 from typing import Any, Dict, List, Optional, Union, Callable
+
+
+class PlaidAPIError(Exception):
+    """Custom exception for Plaid API errors with consistent interface"""
+    
+    def __init__(self, message: str, status: int, url: str, method: str, response_data: Any = None):
+        super().__init__(message)
+        self.status = status
+        self.url = url
+        self.method = method
+        self.response_data = response_data
+    
+    def __str__(self):
+        return self.args[0] if self.args else f"HTTP {self.status} at {self.url}"
 
 
 class VocabLinksResource:
@@ -62,16 +76,44 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, vocab_item: str, tokens: List[Any], metadata: Any = None) -> Any:
         """
@@ -117,18 +159,46 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def set_metadata(self, id: str, body: Any) -> Any:
         """
@@ -171,16 +241,44 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_metadata_async(self, id: str, body: Any) -> Any:
         """
@@ -223,18 +321,46 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_metadata(self, id: str) -> Any:
         """
@@ -269,16 +395,44 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_metadata_async(self, id: str) -> Any:
         """
@@ -313,18 +467,46 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def get(self, id: str, as_of: str = None) -> Any:
         """
@@ -368,16 +550,44 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, id: str, as_of: str = None) -> Any:
         """
@@ -421,18 +631,46 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, id: str) -> Any:
         """
@@ -467,16 +705,44 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, id: str) -> Any:
         """
@@ -511,18 +777,46 @@ class VocabLinksResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
 
 class VocabLayersResource:
@@ -578,16 +872,44 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, id: str, include_items: bool = None, as_of: str = None) -> Any:
         """
@@ -634,18 +956,46 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, id: str) -> Any:
         """
@@ -680,16 +1030,44 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, id: str) -> Any:
         """
@@ -724,18 +1102,46 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, id: str, name: str) -> Any:
         """
@@ -778,16 +1184,44 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, id: str, name: str) -> Any:
         """
@@ -830,18 +1264,46 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     def set_config(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -881,16 +1343,44 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_config_async(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -930,18 +1420,46 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_config(self, id: str, namespace: str, config_key: str) -> Any:
         """
@@ -978,16 +1496,44 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_config_async(self, id: str, namespace: str, config_key: str) -> Any:
         """
@@ -1024,18 +1570,46 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def list(self, as_of: str = None) -> Any:
         """
@@ -1078,16 +1652,44 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def list_async(self, as_of: str = None) -> Any:
         """
@@ -1130,18 +1732,46 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def create(self, name: str) -> Any:
         """
@@ -1183,16 +1813,44 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, name: str) -> Any:
         """
@@ -1234,18 +1892,46 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def add_maintainer(self, id: str, user_id: str) -> Any:
         """
@@ -1281,16 +1967,44 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def add_maintainer_async(self, id: str, user_id: str) -> Any:
         """
@@ -1326,18 +2040,46 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def remove_maintainer(self, id: str, user_id: str) -> Any:
         """
@@ -1373,16 +2115,44 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def remove_maintainer_async(self, id: str, user_id: str) -> Any:
         """
@@ -1418,18 +2188,46 @@ class VocabLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
 
 class RelationsResource:
@@ -1481,16 +2279,44 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_metadata_async(self, relation_id: str, body: Any) -> Any:
         """
@@ -1533,18 +2359,46 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_metadata(self, relation_id: str) -> Any:
         """
@@ -1579,16 +2433,44 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_metadata_async(self, relation_id: str) -> Any:
         """
@@ -1623,18 +2505,46 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def set_target(self, relation_id: str, span_id: str) -> Any:
         """
@@ -1677,16 +2587,44 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_target_async(self, relation_id: str, span_id: str) -> Any:
         """
@@ -1729,18 +2667,46 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def get(self, relation_id: str, as_of: str = None) -> Any:
         """
@@ -1784,16 +2750,44 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, relation_id: str, as_of: str = None) -> Any:
         """
@@ -1837,18 +2831,46 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, relation_id: str) -> Any:
         """
@@ -1883,16 +2905,44 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, relation_id: str) -> Any:
         """
@@ -1927,18 +2977,46 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, relation_id: str, value: Any) -> Any:
         """
@@ -1981,16 +3059,44 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, relation_id: str, value: Any) -> Any:
         """
@@ -2033,18 +3139,46 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     def set_source(self, relation_id: str, span_id: str) -> Any:
         """
@@ -2087,16 +3221,44 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_source_async(self, relation_id: str, span_id: str) -> Any:
         """
@@ -2139,18 +3301,46 @@ class RelationsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def create(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
         """
@@ -2205,16 +3395,44 @@ target_id: the target span this relation goes to
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, layer_id: str, source_id: str, target_id: str, value: Any, metadata: Any = None) -> Any:
         """
@@ -2269,18 +3487,46 @@ target_id: the target span this relation goes to
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def bulk_create(self, body: List[Any]) -> Any:
         """
@@ -2322,16 +3568,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def bulk_create_async(self, body: List[Any]) -> Any:
         """
@@ -2373,18 +3647,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def bulk_delete(self, body: List[Any]) -> Any:
         """
@@ -2421,16 +3723,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
@@ -2467,18 +3797,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
 
 class SpanLayersResource:
@@ -2527,16 +3885,44 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_config_async(self, span_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -2576,18 +3962,46 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_config(self, span_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -2624,16 +4038,44 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_config_async(self, span_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -2670,18 +4112,46 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def get(self, span_layer_id: str, as_of: str = None) -> Any:
         """
@@ -2725,16 +4195,44 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, span_layer_id: str, as_of: str = None) -> Any:
         """
@@ -2778,18 +4276,46 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, span_layer_id: str) -> Any:
         """
@@ -2824,16 +4350,44 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, span_layer_id: str) -> Any:
         """
@@ -2868,18 +4422,46 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, span_layer_id: str, name: str) -> Any:
         """
@@ -2922,16 +4504,44 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, span_layer_id: str, name: str) -> Any:
         """
@@ -2974,18 +4584,46 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     def create(self, token_layer_id: str, name: str) -> Any:
         """
@@ -3029,16 +4667,44 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, token_layer_id: str, name: str) -> Any:
         """
@@ -3082,18 +4748,46 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def shift(self, span_layer_id: str, direction: str) -> Any:
         """
@@ -3136,16 +4830,44 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def shift_async(self, span_layer_id: str, direction: str) -> Any:
         """
@@ -3188,18 +4910,46 @@ class SpanLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
 
 class SpansResource:
@@ -3251,16 +5001,44 @@ class SpansResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_tokens_async(self, span_id: str, tokens: List[Any]) -> Any:
         """
@@ -3303,18 +5081,46 @@ class SpansResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def create(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
         """
@@ -3367,16 +5173,44 @@ metadata: optional key-value pairs for additional annotation data.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, span_layer_id: str, tokens: List[Any], value: Any, metadata: Any = None) -> Any:
         """
@@ -3429,18 +5263,46 @@ metadata: optional key-value pairs for additional annotation data.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def get(self, span_id: str, as_of: str = None) -> Any:
         """
@@ -3484,16 +5346,44 @@ metadata: optional key-value pairs for additional annotation data.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, span_id: str, as_of: str = None) -> Any:
         """
@@ -3537,18 +5427,46 @@ metadata: optional key-value pairs for additional annotation data.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, span_id: str) -> Any:
         """
@@ -3583,16 +5501,44 @@ metadata: optional key-value pairs for additional annotation data.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, span_id: str) -> Any:
         """
@@ -3627,18 +5573,46 @@ metadata: optional key-value pairs for additional annotation data.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, span_id: str, value: Any) -> Any:
         """
@@ -3681,16 +5655,44 @@ metadata: optional key-value pairs for additional annotation data.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, span_id: str, value: Any) -> Any:
         """
@@ -3733,18 +5735,46 @@ metadata: optional key-value pairs for additional annotation data.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     def bulk_create(self, body: List[Any]) -> Any:
         """
@@ -3785,16 +5815,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def bulk_create_async(self, body: List[Any]) -> Any:
         """
@@ -3835,18 +5893,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def bulk_delete(self, body: List[Any]) -> Any:
         """
@@ -3883,16 +5969,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
@@ -3929,18 +6043,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def set_metadata(self, span_id: str, body: Any) -> Any:
         """
@@ -3983,16 +6125,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_metadata_async(self, span_id: str, body: Any) -> Any:
         """
@@ -4035,18 +6205,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_metadata(self, span_id: str) -> Any:
         """
@@ -4081,16 +6279,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_metadata_async(self, span_id: str) -> Any:
         """
@@ -4125,18 +6351,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
 
 class BatchResource:
@@ -4182,16 +6436,44 @@ class BatchResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def submit_async(self, body: List[Any]) -> Any:
         """
@@ -4228,18 +6510,46 @@ class BatchResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
 
 class TextsResource:
@@ -4291,16 +6601,44 @@ class TextsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_metadata_async(self, text_id: str, body: Any) -> Any:
         """
@@ -4343,18 +6681,46 @@ class TextsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_metadata(self, text_id: str) -> Any:
         """
@@ -4389,16 +6755,44 @@ class TextsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_metadata_async(self, text_id: str) -> Any:
         """
@@ -4433,18 +6827,46 @@ class TextsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def create(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
         """
@@ -4496,16 +6918,44 @@ body: the string which is the content of this text.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, text_layer_id: str, document_id: str, body: str, metadata: Any = None) -> Any:
         """
@@ -4557,18 +7007,46 @@ body: the string which is the content of this text.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def get(self, text_id: str, as_of: str = None) -> Any:
         """
@@ -4612,16 +7090,44 @@ body: the string which is the content of this text.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, text_id: str, as_of: str = None) -> Any:
         """
@@ -4665,18 +7171,46 @@ body: the string which is the content of this text.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, text_id: str) -> Any:
         """
@@ -4711,16 +7245,44 @@ body: the string which is the content of this text.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, text_id: str) -> Any:
         """
@@ -4755,18 +7317,46 @@ body: the string which is the content of this text.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, text_id: str, body: str) -> Any:
         """
@@ -4809,16 +7399,44 @@ body: the string which is the content of this text.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, text_id: str, body: str) -> Any:
         """
@@ -4861,18 +7479,46 @@ body: the string which is the content of this text.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
 
 class UsersResource:
@@ -4924,16 +7570,44 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def list_async(self, as_of: str = None) -> Any:
         """
@@ -4976,18 +7650,46 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def create(self, username: str, password: str, is_admin: bool) -> Any:
         """
@@ -5033,16 +7735,44 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, username: str, password: str, is_admin: bool) -> Any:
         """
@@ -5088,18 +7818,46 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def audit(self, user_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -5149,16 +7907,44 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def audit_async(self, user_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -5208,18 +7994,46 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def get(self, id: str, as_of: str = None) -> Any:
         """
@@ -5263,16 +8077,44 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, id: str, as_of: str = None) -> Any:
         """
@@ -5316,18 +8158,46 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, id: str) -> Any:
         """
@@ -5362,16 +8232,44 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, id: str) -> Any:
         """
@@ -5406,18 +8304,46 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, id: str, password: str = None, username: str = None, is_admin: bool = None) -> Any:
         """
@@ -5464,16 +8390,44 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, id: str, password: str = None, username: str = None, is_admin: bool = None) -> Any:
         """
@@ -5520,18 +8474,46 @@ class UsersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
 
 class TokenLayersResource:
@@ -5583,16 +8565,44 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def shift_async(self, token_layer_id: str, direction: str) -> Any:
         """
@@ -5635,18 +8645,46 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def create(self, text_layer_id: str, name: str) -> Any:
         """
@@ -5690,16 +8728,44 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, text_layer_id: str, name: str) -> Any:
         """
@@ -5743,18 +8809,46 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def set_config(self, token_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -5794,16 +8888,44 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_config_async(self, token_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -5843,18 +8965,46 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_config(self, token_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -5891,16 +9041,44 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_config_async(self, token_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -5937,18 +9115,46 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def get(self, token_layer_id: str, as_of: str = None) -> Any:
         """
@@ -5992,16 +9198,44 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, token_layer_id: str, as_of: str = None) -> Any:
         """
@@ -6045,18 +9279,46 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, token_layer_id: str) -> Any:
         """
@@ -6091,16 +9353,44 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, token_layer_id: str) -> Any:
         """
@@ -6135,18 +9425,46 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, token_layer_id: str, name: str) -> Any:
         """
@@ -6189,16 +9507,44 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, token_layer_id: str, name: str) -> Any:
         """
@@ -6241,18 +9587,46 @@ class TokenLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
 
 class DocumentsResource:
@@ -6305,16 +9679,44 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def check_lock_async(self, document_id: str, as_of: str = None) -> Any:
         """
@@ -6358,18 +9760,46 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def acquire_lock(self, document_id: str) -> Any:
         """
@@ -6404,16 +9834,44 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def acquire_lock_async(self, document_id: str) -> Any:
         """
@@ -6448,18 +9906,46 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def release_lock(self, document_id: str) -> Any:
         """
@@ -6494,16 +9980,44 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def release_lock_async(self, document_id: str) -> Any:
         """
@@ -6538,18 +10052,46 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def set_metadata(self, document_id: str, body: Any) -> Any:
         """
@@ -6592,16 +10134,44 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_metadata_async(self, document_id: str, body: Any) -> Any:
         """
@@ -6644,18 +10214,46 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_metadata(self, document_id: str) -> Any:
         """
@@ -6690,16 +10288,44 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_metadata_async(self, document_id: str) -> Any:
         """
@@ -6734,18 +10360,46 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def audit(self, document_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -6795,16 +10449,44 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def audit_async(self, document_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -6854,18 +10536,46 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def get(self, document_id: str, include_body: bool = None, as_of: str = None) -> Any:
         """
@@ -6912,16 +10622,44 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, document_id: str, include_body: bool = None, as_of: str = None) -> Any:
         """
@@ -6968,18 +10706,46 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, document_id: str) -> Any:
         """
@@ -7014,16 +10780,44 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, document_id: str) -> Any:
         """
@@ -7058,18 +10852,46 @@ class DocumentsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, document_id: str, name: str) -> Any:
         """
@@ -7114,16 +10936,44 @@ name: update a document's name.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, document_id: str, name: str) -> Any:
         """
@@ -7168,18 +11018,46 @@ name: update a document's name.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     def create(self, project_id: str, name: str, metadata: Any = None) -> Any:
         """
@@ -7225,16 +11103,44 @@ name: update a document's name.
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, project_id: str, name: str, metadata: Any = None) -> Any:
         """
@@ -7280,18 +11186,46 @@ name: update a document's name.
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
 
 class ProjectsResource:
@@ -7343,16 +11277,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def send_message_async(self, id: str, body: Any) -> Any:
         """
@@ -7395,18 +11357,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def add_writer(self, id: str, user_id: str) -> Any:
         """
@@ -7442,16 +11432,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def add_writer_async(self, id: str, user_id: str) -> Any:
         """
@@ -7487,18 +11505,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def remove_writer(self, id: str, user_id: str) -> Any:
         """
@@ -7534,16 +11580,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def remove_writer_async(self, id: str, user_id: str) -> Any:
         """
@@ -7579,18 +11653,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def add_reader(self, id: str, user_id: str) -> Any:
         """
@@ -7626,16 +11728,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def add_reader_async(self, id: str, user_id: str) -> Any:
         """
@@ -7671,18 +11801,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def remove_reader(self, id: str, user_id: str) -> Any:
         """
@@ -7718,16 +11876,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def remove_reader_async(self, id: str, user_id: str) -> Any:
         """
@@ -7763,18 +11949,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def heartbeat(self, id: str, client_id: str) -> Any:
         """
@@ -7817,16 +12031,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def heartbeat_async(self, id: str, client_id: str) -> Any:
         """
@@ -7869,18 +12111,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def listen(self, id: str, on_event: Callable[[str, Dict[str, Any]], None]) -> Dict[str, Any]:
         """
@@ -8050,16 +12320,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_config_async(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -8099,18 +12397,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_config(self, id: str, namespace: str, config_key: str) -> Any:
         """
@@ -8147,16 +12473,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_config_async(self, id: str, namespace: str, config_key: str) -> Any:
         """
@@ -8193,18 +12547,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def add_maintainer(self, id: str, user_id: str) -> Any:
         """
@@ -8240,16 +12622,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def add_maintainer_async(self, id: str, user_id: str) -> Any:
         """
@@ -8285,18 +12695,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def remove_maintainer(self, id: str, user_id: str) -> Any:
         """
@@ -8332,16 +12770,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def remove_maintainer_async(self, id: str, user_id: str) -> Any:
         """
@@ -8377,18 +12843,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def audit(self, project_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -8438,16 +12932,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def audit_async(self, project_id: str, start_time: str = None, end_time: str = None, as_of: str = None) -> Any:
         """
@@ -8497,18 +13019,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def link_vocab(self, id: str, vocab_id: str) -> Any:
         """
@@ -8544,16 +13094,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def link_vocab_async(self, id: str, vocab_id: str) -> Any:
         """
@@ -8589,18 +13167,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def unlink_vocab(self, id: str, vocab_id: str) -> Any:
         """
@@ -8636,16 +13242,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def unlink_vocab_async(self, id: str, vocab_id: str) -> Any:
         """
@@ -8681,18 +13315,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def get(self, id: str, include_documents: bool = None, as_of: str = None) -> Any:
         """
@@ -8739,16 +13401,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, id: str, include_documents: bool = None, as_of: str = None) -> Any:
         """
@@ -8795,18 +13485,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, id: str) -> Any:
         """
@@ -8841,16 +13559,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, id: str) -> Any:
         """
@@ -8885,18 +13631,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, id: str, name: str) -> Any:
         """
@@ -8939,16 +13713,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, id: str, name: str) -> Any:
         """
@@ -8991,18 +13793,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     def list(self, as_of: str = None) -> Any:
         """
@@ -9045,16 +13875,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def list_async(self, as_of: str = None) -> Any:
         """
@@ -9097,18 +13955,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def create(self, name: str) -> Any:
         """
@@ -9150,16 +14036,44 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, name: str) -> Any:
         """
@@ -9201,18 +14115,46 @@ class ProjectsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
 
 class TextLayersResource:
@@ -9261,16 +14203,44 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_config_async(self, text_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -9310,18 +14280,46 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_config(self, text_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -9358,16 +14356,44 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_config_async(self, text_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -9404,18 +14430,46 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def get(self, text_layer_id: str, as_of: str = None) -> Any:
         """
@@ -9459,16 +14513,44 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, text_layer_id: str, as_of: str = None) -> Any:
         """
@@ -9512,18 +14594,46 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, text_layer_id: str) -> Any:
         """
@@ -9558,16 +14668,44 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, text_layer_id: str) -> Any:
         """
@@ -9602,18 +14740,46 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, text_layer_id: str, name: str) -> Any:
         """
@@ -9656,16 +14822,44 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, text_layer_id: str, name: str) -> Any:
         """
@@ -9708,18 +14902,46 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     def shift(self, text_layer_id: str, direction: str) -> Any:
         """
@@ -9762,16 +14984,44 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def shift_async(self, text_layer_id: str, direction: str) -> Any:
         """
@@ -9814,18 +15064,46 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def create(self, project_id: str, name: str) -> Any:
         """
@@ -9869,16 +15147,44 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, project_id: str, name: str) -> Any:
         """
@@ -9922,18 +15228,46 @@ class TextLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
 
 class LoginResource:
@@ -9985,16 +15319,44 @@ class LoginResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, user_id: str, password: str) -> Any:
         """
@@ -10037,18 +15399,46 @@ class LoginResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
 
 class VocabItemsResource:
@@ -10100,16 +15490,44 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_metadata_async(self, id: str, body: Any) -> Any:
         """
@@ -10152,18 +15570,46 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_metadata(self, id: str) -> Any:
         """
@@ -10198,16 +15644,44 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_metadata_async(self, id: str) -> Any:
         """
@@ -10242,18 +15716,46 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def create(self, vocab_layer_id: str, form: str, metadata: Any = None) -> Any:
         """
@@ -10299,16 +15801,44 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, vocab_layer_id: str, form: str, metadata: Any = None) -> Any:
         """
@@ -10354,18 +15884,46 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def get(self, id: str, as_of: str = None) -> Any:
         """
@@ -10409,16 +15967,44 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, id: str, as_of: str = None) -> Any:
         """
@@ -10462,18 +16048,46 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, id: str) -> Any:
         """
@@ -10508,16 +16122,44 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, id: str) -> Any:
         """
@@ -10552,18 +16194,46 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, id: str, form: str) -> Any:
         """
@@ -10606,16 +16276,44 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, id: str, form: str) -> Any:
         """
@@ -10658,18 +16356,46 @@ class VocabItemsResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
 
 class RelationLayersResource:
@@ -10721,16 +16447,44 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def shift_async(self, relation_layer_id: str, direction: str) -> Any:
         """
@@ -10773,18 +16527,46 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def create(self, span_layer_id: str, name: str) -> Any:
         """
@@ -10828,16 +16610,44 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, span_layer_id: str, name: str) -> Any:
         """
@@ -10881,18 +16691,46 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def set_config(self, relation_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -10932,16 +16770,44 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_config_async(self, relation_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -10981,18 +16847,46 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_config(self, relation_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -11029,16 +16923,44 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_config_async(self, relation_layer_id: str, namespace: str, config_key: str) -> Any:
         """
@@ -11075,18 +16997,46 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def get(self, relation_layer_id: str, as_of: str = None) -> Any:
         """
@@ -11130,16 +17080,44 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, relation_layer_id: str, as_of: str = None) -> Any:
         """
@@ -11183,18 +17161,46 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, relation_layer_id: str) -> Any:
         """
@@ -11229,16 +17235,44 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, relation_layer_id: str) -> Any:
         """
@@ -11273,18 +17307,46 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, relation_layer_id: str, name: str) -> Any:
         """
@@ -11327,16 +17389,44 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, relation_layer_id: str, name: str) -> Any:
         """
@@ -11379,18 +17469,46 @@ class RelationLayersResource:
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
 
 class TokensResource:
@@ -11457,16 +17575,44 @@ precedence: used for tokens with the same begin value in order to indicate their
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def create_async(self, token_layer_id: str, text: str, begin: int, end: int, precedence: int = None, metadata: Any = None) -> Any:
         """
@@ -11524,18 +17670,46 @@ precedence: used for tokens with the same begin value in order to indicate their
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def get(self, token_id: str, as_of: str = None) -> Any:
         """
@@ -11579,16 +17753,44 @@ precedence: used for tokens with the same begin value in order to indicate their
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     async def get_async(self, token_id: str, as_of: str = None) -> Any:
         """
@@ -11632,18 +17834,46 @@ precedence: used for tokens with the same begin value in order to indicate their
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
 
     def delete(self, token_id: str) -> Any:
         """
@@ -11678,16 +17908,44 @@ precedence: used for tokens with the same begin value in order to indicate their
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_async(self, token_id: str) -> Any:
         """
@@ -11722,18 +17980,46 @@ precedence: used for tokens with the same begin value in order to indicate their
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def update(self, token_id: str, begin: int = None, end: int = None, precedence: int = None) -> Any:
         """
@@ -11784,16 +18070,44 @@ precedence: ordering value for the token relative to other tokens with the same 
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.patch(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.patch(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PATCH',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     async def update_async(self, token_id: str, begin: int = None, end: int = None, precedence: int = None) -> Any:
         """
@@ -11844,18 +18158,46 @@ precedence: ordering value for the token relative to other tokens with the same 
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PATCH',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PATCH',
+                {'original_error': str(e)}
+            )
 
     def bulk_create(self, body: List[Any]) -> Any:
         """
@@ -11898,16 +18240,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.post(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     async def bulk_create_async(self, body: List[Any]) -> Any:
         """
@@ -11950,18 +18320,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
 
     def bulk_delete(self, body: List[Any]) -> Any:
         """
@@ -11998,16 +18396,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def bulk_delete_async(self, body: List[Any]) -> Any:
         """
@@ -12044,18 +18470,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     def set_metadata(self, token_id: str, body: Any) -> Any:
         """
@@ -12098,16 +18552,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.put(url, json=body_data, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.put(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     async def set_metadata_async(self, token_id: str, body: Any) -> Any:
         """
@@ -12150,18 +18632,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.put(url, json=body_data, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
 
     def delete_metadata(self, token_id: str) -> Any:
         """
@@ -12196,16 +18706,44 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        response = requests.delete(url, headers=headers)
-        response.raise_for_status()
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
         
-        # Extract document versions from response headers
-        self.client._extract_document_versions(dict(response.headers))
-        
-        if 'application/json' in response.headers.get('content-type', '').lower():
-            data = response.json()
-            return self.client._transform_response(data)
-        return response.text
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
     async def delete_metadata_async(self, token_id: str) -> Any:
         """
@@ -12240,18 +18778,46 @@ metadata, an optional map of metadata
             return {'batched': True}  # Return placeholder
         
         
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, headers=headers) as response:
-                response.raise_for_status()
-                
-                # Extract document versions from response headers
-                self.client._extract_document_versions(dict(response.headers))
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if 'application/json' in content_type:
-                    data = await response.json()
-                    return self.client._transform_response(data)
-                return await response.text
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
 
 
 class PlaidClient:
@@ -12435,7 +19001,22 @@ class PlaidClient:
             }
             
             response = requests.post(url, json=body, headers=headers)
-            response.raise_for_status()
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
             
             results = response.json()
             return [self._transform_response(result) for result in results]
@@ -12477,7 +19058,23 @@ class PlaidClient:
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=body, headers=headers) as response:
-                    response.raise_for_status()
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
                     results = await response.json()
                     return [self._transform_response(result) for result in results]
         finally:
@@ -12538,7 +19135,23 @@ class PlaidClient:
             json={'user-id': user_id, 'password': password},
             headers={'Content-Type': 'application/json'}
         )
-        response.raise_for_status()
+        
+        if not response.ok:
+            # Parse error response
+            try:
+                error_data = response.json()
+            except requests.exceptions.JSONDecodeError:
+                error_data = {'message': response.text}
+            
+            server_message = error_data.get('error') or error_data.get('message') or response.reason
+            raise PlaidAPIError(
+                f'HTTP {response.status_code} {server_message} at {base_url}/api/v1/login',
+                response.status_code,
+                f'{base_url}/api/v1/login',
+                'POST',
+                error_data
+            )
+        
         token = response.json().get('token', '')
         return cls(base_url, token)
     
@@ -12561,7 +19174,23 @@ class PlaidClient:
                 json={'user-id': user_id, 'password': password},
                 headers={'Content-Type': 'application/json'}
             ) as response:
-                response.raise_for_status()
+                
+                if not response.ok:
+                    # Parse error response
+                    try:
+                        error_data = await response.json()
+                    except aiohttp.ContentTypeError:
+                        error_data = {'message': await response.text()}
+                    
+                    server_message = error_data.get('error') or error_data.get('message') or response.reason
+                    raise PlaidAPIError(
+                        f'HTTP {response.status} {server_message} at {base_url}/api/v1/login',
+                        response.status,
+                        f'{base_url}/api/v1/login',
+                        'POST',
+                        error_data
+                    )
+                
                 data = await response.json()
                 token = data.get('token', '')
                 return cls(base_url, token)

@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Sat Jul 12 15:01:25 EDT 2025
+ * Generated on: Sat Jul 12 15:29:42 EDT 2025
  */
 
 class PlaidClient {
@@ -948,20 +948,41 @@ metadata, an optional map of metadata
         body: JSON.stringify(body)
       };
 
-      const response = await fetch(url, fetchOptions);
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => 'Unable to read error response');
-        const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-        error.status = response.status;
-        error.statusText = response.statusText;
-        error.url = url;
-        error.method = 'POST';
-        error.responseBody = errorBody;
-        throw error;
-      }
+      try {
+        const response = await fetch(url, fetchOptions);
+        if (!response.ok) {
+          let errorData;
+          try {
+            errorData = await response.json();
+          } catch (parseError) {
+            errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+          }
+          
+          const serverMessage = errorData?.error || errorData?.message || response.statusText;
+          const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+          error.status = response.status;
+          error.statusText = response.statusText;
+          error.url = url;
+          error.method = 'POST';
+          error.responseData = errorData;
+          throw error;
+        }
 
-      const results = await response.json();
-      return results.map(result => this._transformResponse(result));
+        const results = await response.json();
+        return results.map(result => this._transformResponse(result));
+      } catch (error) {
+        // Check if it's already our formatted HTTP error
+        if (error.status) {
+          throw error; // Re-throw formatted HTTP error
+        }
+        // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+        const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+        fetchError.status = 0; // Indicate network error
+        fetchError.url = url;
+        fetchError.method = 'POST';
+        fetchError.originalError = error;
+        throw fetchError;
+      }
     } finally {
       this.isBatching = false;
       this.batchOperations = [];
@@ -1028,27 +1049,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1093,27 +1135,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1150,27 +1213,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1213,27 +1297,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1270,27 +1375,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1336,27 +1462,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1393,27 +1540,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1458,27 +1626,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1518,27 +1707,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1575,27 +1785,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1638,27 +1869,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1703,27 +1955,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1760,27 +2033,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1817,27 +2111,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1882,27 +2197,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -1939,27 +2275,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2004,27 +2361,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2067,27 +2445,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2124,27 +2523,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2189,27 +2609,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2254,27 +2695,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2328,27 +2790,48 @@ targetId: the target span this relation goes to
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2393,27 +2876,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2453,27 +2957,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2513,27 +3038,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2570,27 +3116,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2633,27 +3200,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2690,27 +3278,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2755,27 +3364,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2821,27 +3451,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2886,27 +3537,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -2951,27 +3623,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3024,27 +3717,48 @@ metadata: optional key-value pairs for additional annotation data.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3087,27 +3801,48 @@ metadata: optional key-value pairs for additional annotation data.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3144,27 +3879,48 @@ metadata: optional key-value pairs for additional annotation data.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3209,27 +3965,48 @@ metadata: optional key-value pairs for additional annotation data.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3273,27 +4050,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3333,27 +4131,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3398,27 +4217,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3455,27 +4295,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3515,27 +4376,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3580,27 +4462,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3637,27 +4540,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3709,27 +4633,48 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3772,27 +4717,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3829,27 +4795,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3894,27 +4881,48 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -3957,27 +4965,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4024,27 +5053,48 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4093,27 +5143,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4156,27 +5227,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4213,27 +5305,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4280,27 +5393,48 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4345,27 +5479,48 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4411,27 +5566,48 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4471,27 +5647,48 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4528,27 +5725,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4591,27 +5809,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4648,27 +5887,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4713,27 +5973,48 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4776,27 +6057,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4833,27 +6135,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4890,27 +6213,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -4955,27 +6299,48 @@ body: the string which is the content of this text.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5012,27 +6377,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5081,27 +6467,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5147,27 +6554,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5204,27 +6632,48 @@ body: the string which is the content of this text.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5271,27 +6720,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5338,27 +6808,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5403,27 +6894,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5460,27 +6972,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5517,27 +7050,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5574,27 +7128,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5631,27 +7206,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5696,27 +7292,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5914,27 +7531,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -5971,27 +7609,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6028,27 +7687,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6085,27 +7765,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6154,27 +7855,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6211,27 +7933,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6268,27 +8011,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6334,27 +8098,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6391,27 +8176,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6456,27 +8262,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6519,27 +8346,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6584,27 +8432,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6644,27 +8513,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6701,27 +8591,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6764,27 +8675,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6821,27 +8753,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6886,27 +8839,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -6951,27 +8925,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7017,27 +9012,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7082,27 +9098,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7147,27 +9184,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7204,27 +9262,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7271,27 +9350,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7334,27 +9434,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7391,27 +9512,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7456,27 +9598,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7521,27 +9684,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7587,27 +9771,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7647,27 +9852,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7704,27 +9930,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7767,27 +10014,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7824,27 +10092,48 @@ name: update a document's name.
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7889,27 +10178,48 @@ name: update a document's name.
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -7965,27 +10275,48 @@ precedence: used for tokens with the same begin value in order to indicate their
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -8028,27 +10359,48 @@ precedence: used for tokens with the same begin value in order to indicate their
       }
     };
     
-    const response = await fetch(finalUrl, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${finalUrl}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = finalUrl;
-      error.method = 'GET';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -8085,27 +10437,48 @@ precedence: used for tokens with the same begin value in order to indicate their
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -8156,27 +10529,48 @@ precedence: ordering value for the token relative to other tokens with the same 
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PATCH';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PATCH';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PATCH';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -8222,27 +10616,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -8282,27 +10697,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -8347,27 +10783,48 @@ metadata, an optional map of metadata
       body: JSON.stringify(requestBody)
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'PUT';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -8404,27 +10861,48 @@ metadata, an optional map of metadata
       }
     };
     
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = url;
-      error.method = 'DELETE';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    // Extract document versions from response headers
-    this._extractDocumentVersions(response.headers);
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
-      return this._transformResponse(data);
-    }
-    return await response.text();
   }
 
   /**
@@ -8435,28 +10913,49 @@ metadata, an optional map of metadata
    * @returns {Promise<PlaidClient>} - Authenticated client instance
    */
   static async login(baseUrl, userId, password) {
-    const response = await fetch(`${baseUrl}/api/v1/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ "user-id": userId, password })
-    });
-    
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Unable to read error response');
-      const error = new Error(`HTTP ${response.status} ${response.statusText} at ${baseUrl}/api/v1/login`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.url = `${baseUrl}/api/v1/login`;
-      error.method = 'POST';
-      error.responseBody = errorBody;
-      throw error;
+    try {
+      const response = await fetch(`${baseUrl}/api/v1/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ "user-id": userId, password })
+      });
+      
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${baseUrl}/api/v1/login`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = `${baseUrl}/api/v1/login`;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      const data = await response.json();
+      const token = data.token || '';
+      return new PlaidClient(baseUrl, token);
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${baseUrl}/api/v1/login`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = `${baseUrl}/api/v1/login`;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
     }
-    
-    const data = await response.json();
-    const token = data.token || '';
-    return new PlaidClient(baseUrl, token);
   }
 }
 
