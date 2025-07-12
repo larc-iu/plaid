@@ -215,10 +215,7 @@
         project-id (project-id db eid)
         tx-ops (do (when-let [name (:document/name m)]
                      (pxc/valid-name? name))
-                   (pxc/merge* xt-map eid (select-keys m [:document/name])))]
-
-    (when-not (:document/id document)
-      (throw (ex-info (str "Not a valid document ID: " eid) {:code 400 :id eid})))
+                   (pxc/merge* xt-map :document/id eid (select-keys m [:document/name])))]
 
     (op/make-operation
      {:type :document/update

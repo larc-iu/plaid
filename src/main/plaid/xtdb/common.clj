@@ -147,12 +147,15 @@
     (mapv (fn [id] [::xt/match id (entity db id)])
           ids)))
 
-(defn merge* [xt-map id attrs]
+(defn merge* [xt-map id-key id attrs]
   (let [{:keys [db] :as xt-map} (ensure-db xt-map)
         e (entity db id)]
     (cond
       (nil? e)
       (throw (ex-info (str "Record not found with ID " id) {:id id :code 404}))
+
+      (nil? (id-key e))
+      (throw (ex-info (str (namespace id-key) " not found with ID " id) {:id id :code 404}))
 
       :else
       [[::xt/match id e]

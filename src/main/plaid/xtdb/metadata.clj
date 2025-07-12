@@ -103,7 +103,7 @@
         new-metadata (transform-metadata-for-storage metadata entity-type)
         clear-old (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)
         final-updates (clojure.core/merge clear-old new-metadata)]
-    (pxc/merge* xt-map eid final-updates)))
+    (pxc/merge* xt-map (keyword entity-type "id") eid final-updates)))
 
 (defn delete-metadata-tx-ops*
   "Build transaction ops for removing all metadata from an entity.
@@ -120,7 +120,7 @@
         existing-entity (pxc/entity db eid)
         old-metadata-keys (find-existing-metadata-keys existing-entity entity-type)
         clear-updates (reduce (fn [m k] (assoc m k nil)) {} old-metadata-keys)]
-    (pxc/merge* xt-map eid clear-updates)))
+    (pxc/merge* xt-map (keyword entity-type "id") eid clear-updates)))
 
 ;; Generic operation builders ---------------------------------------------------
 

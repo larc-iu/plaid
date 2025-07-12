@@ -67,7 +67,7 @@
         attrs (-> attrs
                   (cond-> (some? (:user/username m)) (assoc :user/username (:user/username m)))
                   (cond-> (some? (:user/is-admin m)) (assoc :user/is-admin (:user/is-admin m))))]
-    (pxc/submit! node (pxc/merge* xt-map eid attrs))))
+    (pxc/submit! node (pxc/merge* xt-map :user/id eid attrs))))
 
 (defn delete* [xt-map eid]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)

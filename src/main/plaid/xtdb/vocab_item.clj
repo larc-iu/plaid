@@ -77,7 +77,7 @@
     (op/make-operation
       {:type :vocab-item/merge
        :description (format "Update vocab item '%s'" (:vocab-item/form current))
-       :tx-ops (pxc/merge* xt-map eid m)
+       :tx-ops (pxc/merge* xt-map :vocab-item/id eid m)
        :project nil
        :document nil})))
 

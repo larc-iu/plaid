@@ -222,7 +222,7 @@
         extent-attrs (set-extent xt-map eid (select-keys attrs [:token/begin :token/end]))
         precedence-attrs (set-precedence xt-map eid (:token/precedence (select-keys attrs [:token/precedence])))
         base (into [[::xt/match text-id (pxc/entity db text-id)]]
-                   (pxc/merge* xt-map eid (clojure.core/merge extent-attrs precedence-attrs)))]
+                   (pxc/merge* xt-map :token/id eid (clojure.core/merge extent-attrs precedence-attrs)))]
     (if (and (contains? attrs :token/precedence) (nil? (:token/precedence attrs)))
       (update-in base [2 1] dissoc :token/precedence)
       base)))
