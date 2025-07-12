@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Fri Jul 11 13:48:24 EDT 2025
+ * Generated on: Sat Jul 12 09:31:56 EDT 2025
  */
 
 class PlaidClient {
@@ -918,7 +918,7 @@ metadata, an optional map of metadata
   }
 
   /**
-   * Submit all queued batch operations as a single bulk request.
+   * Submit all queued batch operations as a single batch request.
    * @returns {Promise<Array>} Array of results corresponding to each operation
    */
   async submitBatch() {
@@ -932,7 +932,7 @@ metadata, an optional map of metadata
     }
 
     try {
-      let url = `${this.baseUrl}/api/v1/bulk`;
+      let url = `${this.baseUrl}/api/v1/batch`;
       const body = this.batchOperations.map(op => ({
         path: op.path,
         method: op.method.toUpperCase(),

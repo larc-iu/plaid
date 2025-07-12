@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Fri Jul 11 13:48:26 EDT 2025
+Generated on: Sat Jul 12 09:31:57 EDT 2025
 """
 
 import requests
@@ -12267,13 +12267,13 @@ class PlaidClient:
         client.begin_batch()
         client.projects.create(name='Project 1')  # Gets queued
         client.projects.create(name='Project 2')  # Gets queued
-        results = client.submit_batch()  # Executes all as one bulk request
+        results = client.submit_batch()  # Executes all as one batch request
         
         # Asynchronous batch
         client.begin_batch()
         await client.projects.create_async(name='Project 1')  # Gets queued
         await client.projects.create_async(name='Project 2')  # Gets queued
-        results = await client.submit_batch_async()  # Executes all as one bulk request
+        results = await client.submit_batch_async()  # Executes all as one batch request
     
     Document version tracking:
         # Enter strict mode for a specific document
@@ -12404,7 +12404,7 @@ class PlaidClient:
     
     def submit_batch(self) -> List[Any]:
         """
-        Submit all queued batch operations as a single bulk request (synchronous).
+        Submit all queued batch operations as a single batch request (synchronous).
         
         Returns:
             List[Any]: Array of results corresponding to each operation
@@ -12417,7 +12417,7 @@ class PlaidClient:
             return []
         
         try:
-            url = f"{self.base_url}/api/v1/bulk"
+            url = f"{self.base_url}/api/v1/batch"
             body = []
             
             for op in self._batch_operations:
@@ -12445,7 +12445,7 @@ class PlaidClient:
     
     async def submit_batch_async(self) -> List[Any]:
         """
-        Submit all queued batch operations as a single bulk request (asynchronous).
+        Submit all queued batch operations as a single batch request (asynchronous).
         
         Returns:
             List[Any]: Array of results corresponding to each operation
@@ -12458,7 +12458,7 @@ class PlaidClient:
             return []
         
         try:
-            url = f"{self.base_url}/api/v1/bulk"
+            url = f"{self.base_url}/api/v1/batch"
             body = []
             
             for op in self._batch_operations:
