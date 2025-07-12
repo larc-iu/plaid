@@ -31,7 +31,7 @@
   }
 
   /**
-   * Submit all queued batch operations as a single bulk request.
+   * Submit all queued batch operations as a single batch request.
    * @returns {Promise<Array>} Array of results corresponding to each operation
    */
   async submitBatch() {
@@ -45,7 +45,7 @@
     }
 
     try {
-      let url = `${this.baseUrl}/api/v1/bulk`;
+      let url = `${this.baseUrl}/api/v1/batch`;
       const body = this.batchOperations.map(op => ({
         path: op.path,
         method: op.method.toUpperCase(),
