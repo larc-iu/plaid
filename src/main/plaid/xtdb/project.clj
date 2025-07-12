@@ -34,9 +34,10 @@
   ([db-like id]
    (get db-like id false))
   ([db-like id include-documents]
-   (-> (pxc/find-entity (pxc/->db db-like) {:project/id id})
-       (dissoc :xt/id)
-       (cond-> include-documents (assoc :project/documents (get-documents db-like id))))))
+   (when-let [e (pxc/find-entity (pxc/->db db-like) {:project/id id})]
+     (-> e
+         (dissoc :xt/id)
+         (cond-> include-documents (assoc :project/documents (get-documents db-like id)))))))
 
 (defn reader-ids
   [db-like id]
