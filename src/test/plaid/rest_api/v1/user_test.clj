@@ -3,13 +3,14 @@
             [clojure.string]
             [ring.mock.request :as mock]
             [plaid.fixtures :refer [with-xtdb
+                                    with-mount-states
                                     with-rest-handler
                                     rest-handler
                                     with-admin
                                     admin-token
                                     admin-request]]))
 
-(use-fixtures :once with-xtdb with-rest-handler with-admin)
+(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin)
 
 (defn parse-response-body [response]
   (read-string (slurp (:body response))))

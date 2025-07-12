@@ -415,7 +415,7 @@ Consider these examples:
 These invariants have been incorporated into Plaid because of their broad desirability in linguistic annotation.
 However, some invariants will vary by annotation framework.
 For example, it is quite common to want a span layer's spans to be in one-to-one correspondence with tokens in the parent token layer.
-This is not directly enforced by Plaid, but Plaid provides you with two mechanisms which allow you to enforce your own data integrity constraints.
+This is not directly enforced by Plaid, but Plaid provides you with three mechanisms which allow you to enforce your own data integrity constraints.
 
 == Strict Mode
 
@@ -454,8 +454,8 @@ This failure gives client 1 the opportunity to reload the document only when it 
 
 == Locking
 
-Sometimes a more heavyweight solution is needed, **locking**.
-A lock gives a user exclusive permission to write to a document, preventing all other users from changing its contents.
+Sometimes a more heavyweight solution is needed.
+A **lock** gives a user exclusive permission to write to a document, preventing all other users from changing its contents.
 Locks have a 60 second expiration timer by default, and they may be released early or renewed by either explicit renewal or any write to the locked document.
 Consider:
 
@@ -475,6 +475,48 @@ client2.checkLock(documentId);
 
 Locks are useful for situations where a concurrent edit by another user could yield an invalid state with respect to data integrity constraints beyond what is enforced in Plaid's core.
 They should be used only where necessary in order to minimize the risk of invariant violations stemming from concurrent modifications.
+
+== Atomic Batches
+
+Finally, you may also submit multiple requests in **batch**es.
+Batches are **atomic** meaning that we guarantee that either they will all succeed or all fail.
+This is a very useful guarantee whenever you have sophisticated data integrity requirements that must be orchestrated using more than one request.
+
+Here is an example of how to submit a batch using the JavaScript client:
+
+[,js]
+----
+client.beginBatch();
+client.documents.update(documentIdOne, "New Name for Doc 1");
+client.documents.update(documentIdTwo, "New Name for Doc 2");
+try {
+    const result = await client.submitBatch();
+    console.log("Batch success!")
+    for (const response of result) {
+        console.log(response);
+    }
+} catch (e) {
+    console.error(`Batch failed: ${e}`)
+}
+----
+
+Or in Python:
+
+[,python]
+----
+client.begin_batch()
+client.documents.update(document_id_one, "New Name for Doc 1")
+client.documents.update(document_id_one, "New Name for Doc 2")
+try:
+    result = client.submit_batch()
+    print("Batch success!")
+    for response in result:
+        print(response)
+except Exception as e:
+    print(f"Batch failed: {e}")
+----
+
+Owing to some implementation details, no other writes may be executed while a batch is being processed, so only use them where necessary.
 
 = Development
 
