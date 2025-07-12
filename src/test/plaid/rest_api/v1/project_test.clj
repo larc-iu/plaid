@@ -3,6 +3,7 @@
             [clojure.string]
             [ring.mock.request :as mock]
             [plaid.fixtures :refer [with-xtdb
+                                    with-mount-states
                                     with-rest-handler
                                     rest-handler
                                     with-admin
@@ -26,92 +27,91 @@
                                     assert-forbidden
                                     assert-bad-request]]))
 
-(use-fixtures :once with-xtdb with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
 
 ;; Project API Endpoint Functions
-(defn create-project 
+(defn create-project
   "Create a new project"
   [user-request-fn project-data]
-  (api-call user-request-fn {:method :post 
-                             :path "/api/v1/projects" 
+  (api-call user-request-fn {:method :post
+                             :path "/api/v1/projects"
                              :body project-data}))
 
-(defn list-projects 
+(defn list-projects
   "List all projects"
   [user-request-fn]
-  (api-call user-request-fn {:method :get 
+  (api-call user-request-fn {:method :get
                              :path "/api/v1/projects"}))
 
-(defn get-project 
+(defn get-project
   "Get a project by ID"
   [user-request-fn project-id]
-  (api-call user-request-fn {:method :get 
+  (api-call user-request-fn {:method :get
                              :path (str "/api/v1/projects/" project-id)}))
 
-(defn update-project 
+(defn update-project
   "Update a project"
   [user-request-fn project-id project-data]
-  (api-call user-request-fn {:method :patch 
-                             :path (str "/api/v1/projects/" project-id) 
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/projects/" project-id)
                              :body project-data}))
 
-(defn delete-project 
+(defn delete-project
   "Delete a project"
   [user-request-fn project-id]
-  (api-call user-request-fn {:method :delete 
+  (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/projects/" project-id)}))
 
 ;; Project Access Management Functions
-(defn add-reader 
+(defn add-reader
   "Add reader access to a project"
   [user-request-fn project-id user-id]
-  (api-call user-request-fn {:method :post 
+  (api-call user-request-fn {:method :post
                              :path (str "/api/v1/projects/" project-id "/readers/" user-id)}))
 
-(defn remove-reader 
+(defn remove-reader
   "Remove reader access from a project"
   [user-request-fn project-id user-id]
-  (api-call user-request-fn {:method :delete 
+  (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/projects/" project-id "/readers/" user-id)}))
 
-(defn add-writer 
+(defn add-writer
   "Add writer access to a project"
   [user-request-fn project-id user-id]
-  (api-call user-request-fn {:method :post 
+  (api-call user-request-fn {:method :post
                              :path (str "/api/v1/projects/" project-id "/writers/" user-id)}))
 
-(defn remove-writer 
+(defn remove-writer
   "Remove writer access from a project"
   [user-request-fn project-id user-id]
-  (api-call user-request-fn {:method :delete 
+  (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/projects/" project-id "/writers/" user-id)}))
 
-(defn add-maintainer 
+(defn add-maintainer
   "Add maintainer access to a project"
   [user-request-fn project-id user-id]
-  (api-call user-request-fn {:method :post 
+  (api-call user-request-fn {:method :post
                              :path (str "/api/v1/projects/" project-id "/maintainers/" user-id)}))
 
-(defn remove-maintainer 
+(defn remove-maintainer
   "Remove maintainer access from a project"
   [user-request-fn project-id user-id]
-  (api-call user-request-fn {:method :delete 
+  (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/projects/" project-id "/maintainers/" user-id)}))
 
 ;; Layer Configuration Functions
-(defn set-layer-config 
+(defn set-layer-config
   "Set layer configuration"
   [user-request-fn layer-id editor key value]
-  (api-call user-request-fn {:method :put 
-                             :path (str "/api/v1/projects/layers/" layer-id "/config/" editor "/" key) 
+  (api-call user-request-fn {:method :put
+                             :path (str "/api/v1/projects/layers/" layer-id "/config/" editor "/" key)
                              :body value}))
 
-(defn remove-layer-config 
+(defn remove-layer-config
   "Remove layer configuration"
   [user-request-fn layer-id editor key]
-  (api-call user-request-fn {:method :delete 
+  (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/projects/layers/" layer-id "/config/" editor "/" key)}))
-
 
 (deftest project-crud-operations
   (testing "Project creation and retrieval"
@@ -148,8 +148,7 @@
             project-id (-> create-response :body :id)
             update-response (update-project admin-request project-id {:name "Updated Name"})]
         (assert-ok update-response)
-        #_
-        (is (= (-> update-response :body :project/name) "Updated Name"))))
+        #_(is (= (-> update-response :body :project/name) "Updated Name"))))
 
     (testing "Delete project"
       (let [create-response (create-project admin-request {:name "To Be Deleted"})

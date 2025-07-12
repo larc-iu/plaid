@@ -1,11 +1,12 @@
 (ns plaid.rest-api.v1.layers-test
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-xtdb with-rest-handler admin-request api-call
+            [plaid.fixtures :refer [with-xtdb
+                                    with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request
                                     with-admin with-test-users]]
             [ring.mock.request :as mock]))
 
-(use-fixtures :once with-xtdb with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
 
 ;; Helper to create a project for tests
 (defn- create-test-project [user-request-fn project-name]

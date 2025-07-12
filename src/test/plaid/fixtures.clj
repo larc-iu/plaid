@@ -2,10 +2,12 @@
   (:require [buddy.hashers :as hashers]
             [clojure.test :refer :all]
             [plaid.xtdb.user :as pxu]
+            [plaid.xtdb.operation] ; Load for defstate
             [ring.middleware.defaults :refer [wrap-defaults]]
             [ring.mock.request :as mock]
             [xtdb.api :as xt]
             [taoensso.timbre :as log]
+            [mount.core :as mount]
             [plaid.rest-api.v1.core :as rest]))
 
 (log/set-min-level! :info)
@@ -21,28 +23,36 @@
   (with-redefs [rest-handler
                 (-> (rest/rest-handler xtdb-node "fake-secret")
                     (wrap-defaults
-                      {:params    {:keywordize true
-                                   :multipart  true
-                                   :nested     true
-                                   :urlencoded true}
-                       :cookies   false
-                       :responses {:absolute-redirects     true
-                                   :content-types          true
-                                   :default-charset        "utf-8"
-                                   :not-modified-responses true}
-                       :static    {:resources "public"}
-                       :session   false
-                       :security  {:anti-forgery   false
-                                   :hsts           true
-                                   :ssl-redirect   false
-                                   :frame-options  :sameorigin
-                                   :xss-protection {:enable? true
-                                                    :mode    :block}}}))]
+                     {:params {:keywordize true
+                               :multipart true
+                               :nested true
+                               :urlencoded true}
+                      :cookies false
+                      :responses {:absolute-redirects true
+                                  :content-types true
+                                  :default-charset "utf-8"
+                                  :not-modified-responses true}
+                      :static {:resources "public"}
+                      :session false
+                      :security {:anti-forgery false
+                                 :hsts true
+                                 :ssl-redirect false
+                                 :frame-options :sameorigin
+                                 :xss-protection {:enable? true
+                                                  :mode :block}}}))]
     (f)))
 
 (defn with-xtdb [f]
   (with-redefs [xtdb-node (xt/start-node {})]
     (f)))
+
+(defn with-mount-states [f]
+  "Start mount states needed for testing"
+  (try
+    (mount/start #'plaid.xtdb.operation/operation-coordinator)
+    (f)
+    (finally
+      (mount/stop #'plaid.xtdb.operation/operation-coordinator))))
 
 (defn with-admin [f]
   (let [_ (pxu/create {:node xtdb-node} "admin@example.com" true "password")
@@ -86,7 +96,7 @@
       (mock/header "Authorization" (str "Bearer " user2-token))))
 
 ;; API Testing Helper Functions
-(defn parse-response-body 
+(defn parse-response-body
   "Parse the response body from EDN format"
   [response]
   (read-string (slurp (:body response))))
@@ -104,42 +114,42 @@
                (parse-response-body resp)))}))
 
 ;; Assertion Helpers
-(defn assert-status 
+(defn assert-status
   "Assert that response has expected status code"
   [expected-status response]
   (is (= expected-status (:status response))))
 
-(defn assert-success 
+(defn assert-success
   "Assert that response has 2xx status code"
   [response]
   (is (< 199 (:status response) 300)))
 
-(defn assert-created 
+(defn assert-created
   "Assert that response has 201 Created status"
   [response]
   (assert-status 201 response))
 
-(defn assert-ok 
+(defn assert-ok
   "Assert that response has 200 OK status"
   [response]
   (assert-status 200 response))
 
-(defn assert-no-content 
+(defn assert-no-content
   "Assert that response has 204 No Content status"
   [response]
   (assert-status 204 response))
 
-(defn assert-not-found 
+(defn assert-not-found
   "Assert that response has 404 Not Found status"
   [response]
   (assert-status 404 response))
 
-(defn assert-forbidden 
+(defn assert-forbidden
   "Assert that response has 403 Forbidden status"
   [response]
   (assert-status 403 response))
 
-(defn assert-bad-request 
+(defn assert-bad-request
   "Assert that response has 400 Bad Request status"
   [response]
   (assert-status 400 response))

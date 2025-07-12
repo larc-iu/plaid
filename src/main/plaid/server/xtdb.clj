@@ -4,7 +4,8 @@
             [mount.core :refer [defstate]]
             [plaid.xtdb.common :as pxc]
             [plaid.server.config :refer [config]]
-            [plaid.xtdb.user :as pxu])
+            [plaid.xtdb.user :as pxu]
+            [plaid.xtdb.operation :as pxo])
   (:import [xtdb.api IXtdb]))
 
 (defn ^IXtdb start-lmdb-node [{:keys [db-dir use-inspector]}]
@@ -19,33 +20,49 @@
   (start-lmdb-node {:db-dir (-> config ::config :main-db-dir)
                     :http-server-port (-> config ::config :http-server-port)}))
 
+(defn make-admin-user [node]
+  (log/warn "No users detected! Prompting you for credentials...")
+  (if-let [console (System/console)]
+    (let [_ (do (print "Enter email: ") (flush))
+          email (String. (.readLine console))
+          _ (do (print "Enter password: ") (flush))
+          password (String. (.readPassword console))
+          {:keys [success]} (pxu/create {:node node} email true password)]
+      (if success
+        (log/info (str "Admin user created with email " email ". To reset the server "
+                       "AND LOSE ALL DATA, you can remove all files at `"
+                       (-> config ::config :main-db-dir) "`."))
+        (do (log/error (str "Error creating first user!"))
+            (System/exit 1))))
+    (let [_ (do (print "Enter email: ") (flush))
+          email (read-line)
+          _ (do (print "Enter password: ") (flush))
+          password (read-line)
+          {:keys [success]} (pxu/create {:node node} email true password)]
+      (if success
+        (log/info (str "Admin user created with email " email ". To reset the server "
+                       "AND LOSE ALL DATA, you can remove all files at `"
+                       (-> config ::config :main-db-dir) "`."))
+        (do (log/error (str "Error creating first user!"))
+            (System/exit 1))))))
+
+(defn check-orphaned-batches
+  "Roll back any unfinished batch operations left over from unexpected shutdowns"
+  [node]
+  (log/debug "Checking for orphaned batch operations...")
+  (try
+    (pxo/recover-orphaned-batches! node)
+    (log/debug "Batch recovery check completed")
+    (catch Exception e
+      (log/error e "Error during batch recovery check"))))
+
 (defstate xtdb-node
   :start (let [node (start-main-lmdb-node)]
            (when (and (empty? (pxc/find-entities (xt/db node) [[:user/id '_]]))
                       (not (System/getenv "SKIP_ACCOUNT_CREATION_PROMPT")))
-             (log/warn "No users detected! Prompting you for credentials...")
-             (if-let [console (System/console)]
-               (let [_ (do (print "Enter email: ") (flush))
-                     email (String. (.readLine console))
-                     _ (do (print "Enter password: ") (flush))
-                     password (String. (.readPassword console))
-                     {:keys [success]} (pxu/create {:node node} email true password)]
-                 (if success
-                   (log/info (str "Admin user created with email " email ". To reset the server "
-                                  "AND LOSE ALL DATA, you can remove all files at `"
-                                  (-> config ::config :main-db-dir) "`."))
-                   (do (log/error (str "Error creating first user!"))
-                       (System/exit 1))))
-               (let [_ (do (print "Enter email: ") (flush))
-                     email (read-line)
-                     _ (do (print "Enter password: ") (flush))
-                     password (read-line)
-                     {:keys [success]} (pxu/create {:node node} email true password)]
-                 (if success
-                   (log/info (str "Admin user created with email " email ". To reset the server "
-                                  "AND LOSE ALL DATA, you can remove all files at `"
-                                  (-> config ::config :main-db-dir) "`."))
-                   (do (log/error (str "Error creating first user!"))
-                       (System/exit 1))))))
+             (make-admin-user node))
+
+           (check-orphaned-batches node)
+
            node)
   :stop (.close xtdb-node))
