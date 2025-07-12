@@ -7,12 +7,9 @@
             [plaid.javascript :as js]
             [plaid.python :as py]))
 
-
 ;; ============================================================================
 ;; Shared AST Parsing Functions  
 ;; ============================================================================
-
-
 
 (defn- parse-parameter
   "Parse an OpenAPI parameter into a normalized structure"
@@ -27,11 +24,12 @@
   "Parse an OpenAPI request body into a normalized structure"
   [request-body]
   (when request-body
-    (let [schema (common/extract-request-body-schema request-body)]
-      {:schema schema
-       :required? (get request-body "required" false)
-       :body-params (common/extract-body-params schema)})))
-
+    (let [schema-info (common/extract-request-body-schema request-body)]
+      (when schema-info
+        {:schema (:schema schema-info)
+         :content-type (:content-type schema-info)
+         :required? (get request-body "required" false)
+         :body-params (common/extract-body-params schema-info)}))))
 
 (defn- parse-operation
   "Parse an OpenAPI operation into a normalized AST node"
@@ -42,19 +40,19 @@
         request-body (parse-request-body (get operation "requestBody"))
         special-endpoints (common/detect-special-endpoints path)
         base-operation {:path path
-                       :http-method http-method
-                       :operation-id (get operation "operationId")
-                       :summary (get operation "summary")
-                       :description (get operation "description")
-                       :parameters {:path (map parse-parameter (filter #(= (get % "in") "path") parameters))
-                                   :query (map parse-parameter query-params)
-                                   :body request-body}
-                       :path-params path-params
-                       :bundle-name (common/get-bundle-name path operation)
-                       :method-name (common/get-method-name http-method path operation)
-                       :tags (get operation "tags" [])
-                       :raw-operation operation
-                       :special-endpoints special-endpoints}]
+                        :http-method http-method
+                        :operation-id (get operation "operationId")
+                        :summary (get operation "summary")
+                        :description (get operation "description")
+                        :parameters {:path (map parse-parameter (filter #(= (get % "in") "path") parameters))
+                                     :query (map parse-parameter query-params)
+                                     :body request-body}
+                        :path-params path-params
+                        :bundle-name (common/get-bundle-name path operation)
+                        :method-name (common/get-method-name http-method path operation)
+                        :tags (get operation "tags" [])
+                        :raw-operation operation
+                        :special-endpoints special-endpoints}]
     (assoc base-operation :ordered-params (common/order-parameters base-operation))))
 
 (defn parse-openapi-spec
@@ -122,11 +120,11 @@
         target-language (or (nth args 2 nil) "javascript")
         ;; Auto-detect language from output file extension if not specified
         detected-language (cond
-                           (and (= target-language "javascript") 
-                                (str/ends-with? output-file ".py")) "python"
-                           (and (= target-language "javascript") 
-                                (str/ends-with? output-file ".js")) "javascript"
-                           :else target-language)]
+                            (and (= target-language "javascript")
+                                 (str/ends-with? output-file ".py")) "python"
+                            (and (= target-language "javascript")
+                                 (str/ends-with? output-file ".js")) "javascript"
+                            :else target-language)]
     (println (str "🚀 Generating " detected-language " client from " input-file "..."))
     (generate-client input-file output-file detected-language)
     (println "🎉 Done!")))

@@ -278,6 +278,16 @@
       (let [param-name (transform-key-name (:name (first body-params)))]
         (str "const requestBody = this._transformRequest(" param-name ");"))
 
+      ;; Handle multipart/form-data with file uploads
+      (some :is-file? body-params)
+      (let [form-data-lines (map (fn [{:keys [name original-name is-file?]}]
+                                   (let [js-name (transform-key-name name)]
+                                     (str "    formData.append('" original-name "', " js-name ");")))
+                                 body-params)]
+        (str "const formData = new FormData();\n"
+             (str/join "\n" form-data-lines)
+             "\n    const requestBody = formData;"))
+
       ;; Regular case: object parameters
       :else
       (let [all-params (map (fn [{:keys [name original-name]}]
@@ -295,11 +305,24 @@
 
 (defn- generate-fetch-options
   "Generate JavaScript fetch options"
-  [method has-body? is-login?]
+  [method has-body? is-login? is-multipart?]
   (let [auth-header (if is-login?
                       ""
                       "        'Authorization': `Bearer ${this.token}`,\n")]
-    (if has-body?
+    (cond
+      ;; Multipart requests (FormData)
+      (and has-body? is-multipart?)
+      (str "const fetchOptions = {\n"
+           "      method: '" (str/upper-case (name method)) "',\n"
+           "      headers: {\n"
+           auth-header
+           "        // Content-Type will be set automatically by browser for FormData\n"
+           "      },\n"
+           "      body: requestBody\n"
+           "    };")
+
+      ;; JSON requests
+      has-body?
       (str "const fetchOptions = {\n"
            "      method: '" (str/upper-case (name method)) "',\n"
            "      headers: {\n"
@@ -308,6 +331,9 @@
            "      },\n"
            "      body: JSON.stringify(requestBody)\n"
            "    };")
+
+      ;; No body
+      :else
       (str "const fetchOptions = {\n"
            "      method: '" (str/upper-case (name method)) "',\n"
            "      headers: {\n"
@@ -528,7 +554,8 @@
                                 :else nil)
 
             ;; Generate fetch options
-            fetch-options (generate-fetch-options http-method has-body? is-login?)
+            is-multipart? (some :is-file? body-params)
+            fetch-options (generate-fetch-options http-method has-body? is-login? is-multipart?)
 
             ;; Format summary
             formatted-summary (transform-parameter-references (or summary ""))
@@ -559,13 +586,15 @@
              "    \n"
              "    // Check if we're in batch mode\n"
              "    if (this.isBatching) {\n"
-             "      const operation = {\n"
-             "        path: " url-var ".replace(this.baseUrl, ''),\n"
-             "        method: '" (str/upper-case (name http-method)) "'\n"
-             (when has-body? "        , body: requestBody\n")
-             "      };\n"
-             "      this.batchOperations.push(operation);\n"
-             "      return { batched: true }; // Return placeholder\n"
+             (if (:is-non-batchable? special-endpoints)
+               (str "      throw new Error('This endpoint cannot be used in batch mode: " path "');\n")
+               (str "      const operation = {\n"
+                    "        path: " url-var ".replace(this.baseUrl, ''),\n"
+                    "        method: '" (str/upper-case (name http-method)) "'\n"
+                    (when has-body? "        , body: requestBody\n")
+                    "      };\n"
+                    "      this.batchOperations.push(operation);\n"
+                    "      return { batched: true }; // Return placeholder\n"))
              "    }\n"
              "    \n"
              "    " fetch-options "\n"
@@ -593,12 +622,14 @@
              "      // Extract document versions from response headers\n"
              "      this._extractDocumentVersions(response.headers);\n"
              "      \n"
-             "      const contentType = response.headers.get('content-type');\n"
-             "      if (contentType && contentType.includes('application/json')) {\n"
-             "        const data = await response.json();\n"
-             "        return this._transformResponse(data);\n"
-             "      }\n"
-             "      return await response.text();\n"
+             (if (and (:is-binary-response? special-endpoints) (= http-method :get))
+               "      // Return raw binary content for media downloads\n      return await response.arrayBuffer();\n"
+               (str "      const contentType = response.headers.get('content-type');\n"
+                    "      if (contentType && contentType.includes('application/json')) {\n"
+                    "        const data = await response.json();\n"
+                    "        return this._transformResponse(data);\n"
+                    "      }\n"
+                    "      return await response.text();\n"))
              "    } catch (error) {\n"
              "      // Check if it's already our formatted HTTP error\n"
              "      if (error.status) {\n"
@@ -632,7 +663,7 @@
     (let [type (get schema "type")
           format (get schema "format")]
       (case type
-        "string" "string"
+        "string" (if (= format "binary") "File" "string")
         "integer" "number"
         "number" "number"
         "boolean" "boolean"
@@ -668,24 +699,28 @@
                        ;; Body parameters (unless config endpoint)
                        (when-not (and is-config? (= http-method :put))
                          (concat
-                          (map (fn [{:keys [name original-name type]}]
+                          (map (fn [{:keys [name original-name type is-file?]}]
                                  (let [ts-name (transform-key-name name)
-                                       ts-type (case type
-                                                 "string" "string"
-                                                 "integer" "number"
-                                                 "boolean" "boolean"
-                                                 "array" "any[]"
-                                                 "any")]
+                                       ts-type (if is-file?
+                                                 "File"
+                                                 (case type
+                                                   "string" "string"
+                                                   "integer" "number"
+                                                   "boolean" "boolean"
+                                                   "array" "any[]"
+                                                   "any"))]
                                    (str ts-name ": " ts-type)))
                                required-body-params)
-                          (map (fn [{:keys [name original-name type]}]
+                          (map (fn [{:keys [name original-name type is-file?]}]
                                  (let [ts-name (transform-key-name name)
-                                       ts-type (case type
-                                                 "string" "string"
-                                                 "integer" "number"
-                                                 "boolean" "boolean"
-                                                 "array" "any[]"
-                                                 "any")]
+                                       ts-type (if is-file?
+                                                 "File"
+                                                 (case type
+                                                   "string" "string"
+                                                   "integer" "number"
+                                                   "boolean" "boolean"
+                                                   "array" "any[]"
+                                                   "any"))]
                                    (str ts-name "?: " ts-type)))
                                optional-body-params)))
 

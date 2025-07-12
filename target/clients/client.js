@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Sat Jul 12 15:29:42 EDT 2025
+ * Generated on: Sat Jul 12 18:08:37 EDT 2025
  */
 
 class PlaidClient {
@@ -293,7 +293,7 @@ metadata, an optional map of metadata
     };
     this.batch = {
       /**
-       * Execute multiple API operations in a single request.
+       * Execute multiple API operations one after the other. If any operation fails (status >= 300), all changes are rolled back. Atomicity is guaranteed. On success, returns an array of each response associated with each submitted request in the batch. On failure, returns a single response map with the first failing response in the batch. 
  * @param {Array} body - Required. Body
        */
       submit: this._batchSubmit.bind(this)
@@ -444,6 +444,23 @@ body: the string which is the content of this text.
  * @param {string} documentId - Document-id identifier
        */
       releaseLock: this._documentsReleaseLock.bind(this),
+      /**
+       * Get media file for a document
+ * @param {string} documentId - Document-id identifier
+ * @param {string} [asOf] - Optional asOf
+       */
+      getMedia: this._documentsGetMedia.bind(this),
+      /**
+       * Upload a media file for a document. Uses Apache Tika for content validation.
+ * @param {string} documentId - Document-id identifier
+ * @param {string} file - Required. File
+       */
+      uploadMedia: this._documentsUploadMedia.bind(this),
+      /**
+       * Delete media file for a document
+ * @param {string} documentId - Document-id identifier
+       */
+      deleteMedia: this._documentsDeleteMedia.bind(this),
       /**
        * Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
  * @param {string} documentId - Document-id identifier
@@ -4340,7 +4357,7 @@ metadata, an optional map of metadata
   }
 
   /**
-   * Execute multiple API operations in a single request.
+   * Execute multiple API operations one after the other. If any operation fails (status >= 300), all changes are rolled back. Atomicity is guaranteed. On success, returns an array of each response associated with each submitted request in the batch. On failure, returns a single response map with the first failing response in the batch. 
    */
   async _batchSubmit(body) {
     let url = `${this.baseUrl}/api/v1/batch`;
@@ -4358,13 +4375,7 @@ metadata, an optional map of metadata
     
     // Check if we're in batch mode
     if (this.isBatching) {
-      const operation = {
-        path: url.replace(this.baseUrl, ''),
-        method: 'POST'
-        , body: requestBody
-      };
-      this.batchOperations.push(operation);
-      return { batched: true }; // Return placeholder
+      throw new Error('This endpoint cannot be used in batch mode: /api/v1/batch');
     }
     
     const fetchOptions = {
@@ -6258,6 +6269,231 @@ body: the string which is the content of this text.
   }
 
   /**
+   * Get media file for a document
+   */
+  async _documentsGetMedia(documentId, asOf = undefined) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}/media`;
+    const queryParams = new URLSearchParams();
+    if (asOf !== undefined && asOf !== null) {
+      queryParams.append('as-of', asOf);
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'GET') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      throw new Error('This endpoint cannot be used in batch mode: /api/v1/documents/{document-id}/media');
+    }
+    
+    const fetchOptions = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    try {
+      const response = await fetch(finalUrl, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${finalUrl}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = finalUrl;
+        error.method = 'GET';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      // Return raw binary content for media downloads
+      return await response.arrayBuffer();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${finalUrl}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = finalUrl;
+      fetchError.method = 'GET';
+      fetchError.originalError = error;
+      throw fetchError;
+    }
+  }
+
+  /**
+   * Upload a media file for a document. Uses Apache Tika for content validation.
+   */
+  async _documentsUploadMedia(documentId, file) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}/media`;
+    const formData = new FormData();
+    formData.append('file', file);
+    const requestBody = formData;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'PUT') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      throw new Error('This endpoint cannot be used in batch mode: /api/v1/documents/{document-id}/media');
+    }
+    
+    const fetchOptions = {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        // Content-Type will be set automatically by browser for FormData
+      },
+      body: requestBody
+    };
+    
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'PUT';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'PUT';
+      fetchError.originalError = error;
+      throw fetchError;
+    }
+  }
+
+  /**
+   * Delete media file for a document
+   */
+  async _documentsDeleteMedia(documentId) {
+    let url = `${this.baseUrl}/api/v1/documents/${documentId}/media`;
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      throw new Error('This endpoint cannot be used in batch mode: /api/v1/documents/{document-id}/media');
+    }
+    
+    const fetchOptions = {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'DELETE';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'DELETE';
+      fetchError.originalError = error;
+      throw fetchError;
+    }
+  }
+
+  /**
    * Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
    */
   async _documentsSetMetadata(documentId, body) {
@@ -7274,13 +7510,7 @@ name: update a document's name.
     
     // Check if we're in batch mode
     if (this.isBatching) {
-      const operation = {
-        path: url.replace(this.baseUrl, ''),
-        method: 'POST'
-        , body: requestBody
-      };
-      this.batchOperations.push(operation);
-      return { batched: true }; // Return placeholder
+      throw new Error('This endpoint cannot be used in batch mode: /api/v1/projects/{id}/heartbeat');
     }
     
     const fetchOptions = {

@@ -2,6 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
+            [plaid.rest-api.v1.media :as media]
             [plaid.server.locks :as locks]
             [reitit.coercion.malli]
             [plaid.xtdb.document :as doc]
@@ -33,9 +34,9 @@
                                 result (doc/create {:node xtdb} attrs user-id metadata)]
                             (if (:success result)
                               (prm/assoc-document-versions-in-header
-                                {:status 201
-                                 :body {:id (:extra result)}}
-                                result)
+                               {:status 201
+                                :body {:id (:extra result)}}
+                               result)
                               {:status (or (:code result) 500)
                                :body {:error (:error result)}})))}}]
 
@@ -66,9 +67,9 @@
                             (let [{:keys [success code error] :as result} (doc/merge {:node xtdb} document-id {:document/name name} user-id)]
                               (if success
                                 (prm/assoc-document-versions-in-header
-                                  {:status 200
-                                   :body (doc/get xtdb document-id)}
-                                  result)
+                                 {:status 200
+                                  :body (doc/get xtdb document-id)}
+                                 result)
                                 {:status (or code 500)
                                  :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a document and all data contained."
@@ -79,8 +80,8 @@
                              (let [{:keys [success code error] :as result} (doc/delete {:node xtdb} document-id user-id)]
                                (if success
                                  (prm/assoc-document-versions-in-header
-                                   {:status 204}
-                                   result)
+                                  {:status 204}
+                                  result)
                                  {:status (or code 500)
                                   :body {:error (or error "Internal server error")}})))}}]
 
@@ -115,6 +116,9 @@
                             (case result
                               :released {:status 204}
                               :not-held {:status 204})))}}]
+
+    ;; Media operations
+    media/media-routes
 
     ;; Metadata operations
     (metadata/metadata-routes "document" :document-id get-project-id get-document-id doc/get doc/set-metadata doc/delete-metadata)]])

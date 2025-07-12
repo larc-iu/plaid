@@ -1,39 +1,41 @@
-{:org.httpkit.server/config       {:port 8085}
+{:org.httpkit.server/config {:port 8085}
 
- :ring.middleware/defaults-config {:params    {:keywordize true
-                                               :multipart  true
-                                               :nested     true
-                                               :urlencoded true}
-                                   :cookies   false
-                                   :session   false
-                                   :responses {:absolute-redirects     true
-                                               :content-types          true
-                                               :default-charset        "utf-8"
+ :ring.middleware/defaults-config {:params {:keywordize true
+                                            :multipart true
+                                            :nested true
+                                            :urlencoded true}
+                                   :cookies false
+                                   :session false
+                                   :responses {:absolute-redirects true
+                                               :content-types true
+                                               :default-charset "utf-8"
                                                :not-modified-responses true}
-                                   :static    {:resources "public"}
-                                   :security  {:anti-forgery   false
-                                               :hsts           true
-                                               :ssl-redirect   false
-                                               :frame-options  nil
-                                               :xss-protection {:enable? false
-                                                                :mode    :block}}}
+                                   :static {:resources "public"}
+                                   :security {:anti-forgery false
+                                              :hsts true
+                                              :ssl-redirect false
+                                              :frame-options nil
+                                              :xss-protection {:enable? false
+                                                               :mode :block}}}
 
- :taoensso.timbre/logging-config  {:min-level    :info
-                                   :ns-whitelist []
-                                   :ns-blacklist []}
+ :taoensso.timbre/logging-config {:min-level :info
+                                  :ns-whitelist []
+                                  :ns-blacklist []}
 
- :plaid.server.xtdb/config        {:main-db-dir "data"}
+ :plaid.server.xtdb/config {:main-db-dir "data"}
 
- :plaid.xtdb.common/config        {:min-name-length 1
-                                   :max-name-length 500}
+ :plaid.xtdb.common/config {:min-name-length 1
+                            :max-name-length 500}
 
- :plaid.server.events/heartbeat   {:interval-ms 30000
-                                   :max-consecutive-misses 2}
+ :plaid.server.events/heartbeat {:interval-ms 30000
+                                 :max-consecutive-misses 2}
 
- :plaid.server/cors-config        {:access-control-allow-origin [".*"]
-                                   :access-control-allow-methods [:get :put :post :delete :options]
-                                   :access-control-allow-headers ["Authorization" "Content-Type"]}
+ :plaid.server/cors-config {:access-control-allow-origin [".*"]
+                            :access-control-allow-methods [:get :put :post :delete :options]
+                            :access-control-allow-headers ["Authorization" "Content-Type"]}
 
  :plaid.server/static-resources-path "resources"
 
- :plaid.server.locks/config          {:expiration-ms 60000}}
+ :plaid.server.locks/config {:expiration-ms 60000}
+
+ :plaid.media/config {:max-file-size-mb 100}}

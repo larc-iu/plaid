@@ -33,7 +33,7 @@
     (let [type (get schema "type")
           format (get schema "format")]
       (case type
-        "string" "str"
+        "string" (if (= format "binary") "Union[BinaryIO, str, Tuple[str, BinaryIO]]" "str")
         "integer" "int"
         "number" "float"
         "boolean" "bool"
@@ -61,24 +61,28 @@
         ;; Body parameters (skip if config endpoint)
         body-param-strs (when-not (and is-config? (= http-method :put))
                           (concat
-                           (map (fn [{:keys [name original-name type]}]
+                           (map (fn [{:keys [name original-name type is-file?]}]
                                   (let [param-name (transform-key-name-python name)
-                                        py-type (case type
-                                                  "string" "str"
-                                                  "integer" "int"
-                                                  "boolean" "bool"
-                                                  "array" "List[Any]"
-                                                  "Any")]
+                                        py-type (if is-file?
+                                                  "Union[BinaryIO, str, Tuple[str, BinaryIO]]"
+                                                  (case type
+                                                    "string" "str"
+                                                    "integer" "int"
+                                                    "boolean" "bool"
+                                                    "array" "List[Any]"
+                                                    "Any"))]
                                     (str param-name ": " py-type)))
                                 required-body-params)
-                           (map (fn [{:keys [name original-name type]}]
+                           (map (fn [{:keys [name original-name type is-file?]}]
                                   (let [param-name (transform-key-name-python name)
-                                        py-type (case type
-                                                  "string" "str"
-                                                  "integer" "int"
-                                                  "boolean" "bool"
-                                                  "array" "List[Any]"
-                                                  "Any")]
+                                        py-type (if is-file?
+                                                  "Union[BinaryIO, str, Tuple[str, BinaryIO]]"
+                                                  (case type
+                                                    "string" "str"
+                                                    "integer" "int"
+                                                    "boolean" "bool"
+                                                    "array" "List[Any]"
+                                                    "Any"))]
                                     (str param-name ": " py-type " = None")))
                                 optional-body-params)))
 
@@ -145,10 +149,23 @@
   (let [{:keys [ordered-params special-endpoints http-method]} operation
         {:keys [required-body-params optional-body-params]} ordered-params
         {:keys [is-config?]} special-endpoints
-        body-params (concat required-body-params optional-body-params)]
+        body-params (concat required-body-params optional-body-params)
+        has-files? (some :is-file? body-params)]
     (cond
       (and is-config? (= http-method :put))
       "        body_data = config_value"
+
+      ;; Handle multipart/form-data with files
+      has-files?
+      (let [files-dict-items (map (fn [{:keys [name original-name is-file?]}]
+                                    (let [param-name (transform-key-name-python name)]
+                                      (str "            '" original-name "': " param-name)))
+                                  body-params)]
+        (str "        files_dict = {\n"
+             (str/join ",\n" files-dict-items) "\n"
+             "        }\n"
+             "        # Filter out None values\n"
+             "        files_data = {k: v for k, v in files_dict.items() if v is not None}\n"))
 
       ;; Special case: single array parameter that represents the entire body
       (and (= (count body-params) 1)
@@ -333,6 +350,10 @@
         ;; Body construction
         body-construction (generate-python-body-construction operation)
 
+        ;; Check if we have file parameters
+        body-params (concat required-body-params optional-body-params)
+        has-files? (some :is-file? body-params)
+
         ;; Headers
         auth-header (if is-login?
                       ""
@@ -385,7 +406,9 @@
          "        " url-construction "\n"
          (when body-construction (str body-construction "\n"))
          "        \n"
-         "        headers = {'Content-Type': 'application/json'}\n"
+         (if has-files?
+           "        headers = {}  # Don't set Content-Type for multipart, let requests handle it\n"
+           "        headers = {'Content-Type': 'application/json'}\n")
          auth-header
          "        \n"
          "        # Add document-version parameter in strict mode for non-GET requests\n"
@@ -401,20 +424,27 @@
          "        \n"
          "        # Check if we're in batch mode\n"
          "        if self.client._is_batching:\n"
-         "            operation = {\n"
-         "                'path': url.replace(self.client.base_url, ''),\n"
-         "                'method': '" (str/upper-case (name http-method)) "'\n"
-         (when has-body? "                ,'body': body_data\n")
-         "            }\n"
-         "            self.client._batch_operations.append(operation)\n"
-         "            return {'batched': True}  # Return placeholder\n"
+         (if (:is-non-batchable? special-endpoints)
+           (str "            raise ValueError('This endpoint cannot be used in batch mode: " path "')\n")
+           (str "            operation = {\n"
+                "                'path': url.replace(self.client.base_url, ''),\n"
+                "                'method': '" (str/upper-case (name http-method)) "'\n"
+                (when has-body? "                ,'body': body_data\n")
+                "            }\n"
+                "            self.client._batch_operations.append(operation)\n"
+                "            return {'batched': True}  # Return placeholder\n"))
          "        \n"
          "        \n"
          (if sync?
            ;; Sync version using requests
            (str "        try:\n"
                 "            response = requests." (str/lower-case (name http-method))
-                "(url" (when has-body? ", json=body_data") ", headers=headers)\n"
+                "(url"
+                (cond
+                  (and has-body? has-files?) ", files=files_data"
+                  has-body? ", json=body_data"
+                  :else "")
+                ", headers=headers)\n"
                 "            \n"
                 "            if not response.ok:\n"
                 "                # Parse error response\n"
@@ -435,10 +465,12 @@
                 "            # Extract document versions from response headers\n"
                 "            self.client._extract_document_versions(dict(response.headers))\n"
                 "            \n"
-                "            if 'application/json' in response.headers.get('content-type', '').lower():\n"
-                "                data = " response-json "\n"
-                "                return self.client._transform_response(data)\n"
-                "            return " response-text "\n"
+                (if (and (:is-binary-response? special-endpoints) (= http-method :get))
+                  "            # Return raw binary content for media downloads\n            return response.content\n"
+                  (str "            if 'application/json' in response.headers.get('content-type', '').lower():\n"
+                       "                data = " response-json "\n"
+                       "                return self.client._transform_response(data)\n"
+                       "            return " response-text "\n"))
                 "        \n"
                 "        except requests.exceptions.RequestException as e:\n"
                 "            if hasattr(e, 'status'):\n"
@@ -455,7 +487,12 @@
            (str "        try:\n"
                 "            async with aiohttp.ClientSession() as session:\n"
                 "                async with session." (str/lower-case (name http-method))
-                "(url" (when has-body? ", json=body_data") ", headers=headers) as response:\n"
+                "(url"
+                (cond
+                  (and has-body? has-files?) ", data=files_data" ;; aiohttp uses data for files
+                  has-body? ", json=body_data"
+                  :else "")
+                ", headers=headers) as response:\n"
                 "                    \n"
                 "                    if not response.ok:\n"
                 "                        # Parse error response\n"
@@ -476,11 +513,13 @@
                 "                    # Extract document versions from response headers\n"
                 "                    self.client._extract_document_versions(dict(response.headers))\n"
                 "                    \n"
-                "                    content_type = response.headers.get('content-type', '').lower()\n"
-                "                    if 'application/json' in content_type:\n"
-                "                        data = " response-json "\n"
-                "                        return self.client._transform_response(data)\n"
-                "                    return " response-text "\n"
+                (if (and (:is-binary-response? special-endpoints) (= http-method :get))
+                  "                    # Return raw binary content for media downloads\n                    return await response.read()\n"
+                  (str "                    content_type = response.headers.get('content-type', '').lower()\n"
+                       "                    if 'application/json' in content_type:\n"
+                       "                        data = " response-json "\n"
+                       "                        return self.client._transform_response(data)\n"
+                       "                    return " response-text "\n"))
                 "        \n"
                 "        except aiohttp.ClientError as e:\n"
                 "            if hasattr(e, 'status'):\n"
@@ -841,7 +880,7 @@
          "import requests\n"
          "import aiohttp\n"
          "import json\n"
-         "from typing import Any, Dict, List, Optional, Union, Callable\n"
+         "from typing import Any, Dict, List, Optional, Union, Callable, Tuple, BinaryIO\n"
          "\n"
          "\n"
          "class PlaidAPIError(Exception):\n"
