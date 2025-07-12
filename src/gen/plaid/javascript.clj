@@ -62,19 +62,13 @@
       };
 
       const response = await fetch(url, fetchOptions);
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => 'Unable to read error response');
-        const error = new Error(`HTTP ${response.status} ${response.statusText} at ${url}`);
-        error.status = response.status;
-        error.statusText = response.statusText;
-        error.url = url;
-        error.method = 'POST';
-        error.responseBody = errorBody;
-        throw error;
-      }
 
       const results = await response.json();
-      return results.map(result => this._transformResponse(result));
+      if (!response.ok) {
+        return this._transformResponse(result);
+      } else {
+        return results.map(result => this._transformResponse(result));
+      }
     } finally {
       this.isBatching = false;
       this.batchOperations = [];
