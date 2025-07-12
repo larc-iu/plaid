@@ -180,7 +180,7 @@
       :project     project-id
       :document    doc-id
       :description (str "Update attributes of relation " eid)
-      :tx-ops      (pxc/merge* xt-map eid updates)})))
+      :tx-ops      (pxc/merge* xt-map :relation/id eid updates)})))
 
 (defn merge
   [{:keys [node db] :as xt-map} eid m user-id]

@@ -104,7 +104,7 @@
         project-id (project-id db eid)
         tx-ops (do (when-let [name (:token-layer/name m)]
                      (pxc/valid-name? name))
-                   (pxc/merge* xt-map eid (select-keys m [:token-layer/name])))]
+                   (pxc/merge* xt-map :token-layer/id eid (select-keys m [:token-layer/name])))]
     (op/make-operation
      {:type        :token-layer/update
       :project     project-id

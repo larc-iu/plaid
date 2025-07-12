@@ -140,7 +140,7 @@
     (op/make-operation
       {:type :vocab/update
        :description (format "Update vocab '%s'" (:vocab/name current))
-       :tx-ops (pxc/merge* xt-map eid m)
+       :tx-ops (pxc/merge* xt-map :vocab/id eid m)
        :project nil
        :document nil})))
 

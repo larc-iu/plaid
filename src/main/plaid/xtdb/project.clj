@@ -121,7 +121,8 @@
         project (pxc/entity db eid)
         tx-ops (do (when-let [name (:project/name m)]
                      (pxc/valid-name? name))
-                   (pxc/merge* xt-map eid (select-keys m [:project/name])))]
+                   (pxc/merge* xt-map :project/id eid (select-keys m [:project/name])))]
+
     (op/make-operation
      {:type :project/update
       :project eid

@@ -70,7 +70,7 @@
         project-id (project-id db eid)
         tx-ops (do (when-let [name (:text-layer/name m)]
                      (pxc/valid-name? name))
-                   (pxc/merge* xt-map eid (select-keys m [:text-layer/name])))]
+                   (pxc/merge* xt-map :text-layer/id eid (select-keys m [:text-layer/name])))]
     (op/make-operation
      {:type        :text-layer/update
       :project     project-id
