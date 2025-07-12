@@ -10,7 +10,8 @@
             [plaid.xtdb.metadata :as metadata]
             [plaid.xtdb.vocab-layer :as vocab-layer]
             [plaid.xtdb.vocab-item :as vocab-item]
-            [plaid.xtdb.vocab-link :as vocab-link])
+            [plaid.xtdb.vocab-link :as vocab-link]
+            [plaid.media.storage :as media])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:document/id
@@ -26,15 +27,19 @@
           core-attrs (select-keys document-entity attr-keys)
           ;; Get the latest audit ID for this document as version
           latest-audit-id (ffirst (xt/q db
-                                            '{:find     [?a s]
-                                              :where    [[?a :audit/documents ?doc]
-                                                         [(get-start-valid-time ?a) s]]
-                                              :order-by [[s :desc]]
-                                              :limit    1
-                                              :in       [?doc]}
-                                            id))
-          core-attrs-with-version (assoc core-attrs :document/version latest-audit-id)]
-      (metadata/add-metadata-to-response core-attrs-with-version document-entity "document"))))
+                                        '{:find [?a s]
+                                          :where [[?a :audit/documents ?doc]
+                                                  [(get-start-valid-time ?a) s]]
+                                          :order-by [[s :desc]]
+                                          :limit 1
+                                          :in [?doc]}
+                                        id))
+          core-attrs-with-version (assoc core-attrs :document/version latest-audit-id)
+          ;; Add media URL if media file exists
+          core-attrs-with-media (if (media/media-exists? id)
+                                  (assoc core-attrs-with-version :document/media-url (str "/api/v1/documents/" id "/media"))
+                                  core-attrs-with-version)]
+      (metadata/add-metadata-to-response core-attrs-with-media document-entity "document"))))
 
 (defn project-id [db-like id]
   (:document/project (pxc/entity (pxc/->db db-like) id)))
@@ -235,6 +240,10 @@
 
     (when-not (:document/id (pxc/entity db eid))
       (throw (ex-info (pxc/err-msg-not-found "Document" eid) {:code 404 :id eid})))
+
+    ;; Clean up media file if it exists
+    (when (media/media-exists? eid)
+      (media/delete-media-file! eid))
 
     (reduce into [text-deletes
                   [[::xt/match eid (pxc/entity db eid)]

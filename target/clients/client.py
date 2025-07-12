@@ -1,13 +1,13 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Sat Jul 12 15:29:44 EDT 2025
+Generated on: Sat Jul 12 18:08:39 EDT 2025
 """
 
 import requests
 import aiohttp
 import json
-from typing import Any, Dict, List, Optional, Union, Callable
+from typing import Any, Dict, List, Optional, Union, Callable, Tuple, BinaryIO
 
 
 class PlaidAPIError(Exception):
@@ -6403,7 +6403,7 @@ class BatchResource:
 
     def submit(self, body: List[Any]) -> Any:
         """
-        Execute multiple API operations in a single request.
+        Execute multiple API operations one after the other. If any operation fails (status >= 300), all changes are rolled back. Atomicity is guaranteed. On success, returns an array of each response associated with each submitted request in the batch. On failure, returns a single response map with the first failing response in the batch. 
 
         Args:
             body: Required body parameter
@@ -6427,13 +6427,7 @@ class BatchResource:
         
         # Check if we're in batch mode
         if self.client._is_batching:
-            operation = {
-                'path': url.replace(self.client.base_url, ''),
-                'method': 'POST'
-                ,'body': body_data
-            }
-            self.client._batch_operations.append(operation)
-            return {'batched': True}  # Return placeholder
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/batch')
         
         
         try:
@@ -6477,7 +6471,7 @@ class BatchResource:
 
     async def submit_async(self, body: List[Any]) -> Any:
         """
-        Execute multiple API operations in a single request.
+        Execute multiple API operations one after the other. If any operation fails (status >= 300), all changes are rolled back. Atomicity is guaranteed. On success, returns an array of each response associated with each submitted request in the batch. On failure, returns a single response map with the first failing response in the batch. 
 
         Args:
             body: Required body parameter
@@ -6501,13 +6495,7 @@ class BatchResource:
         
         # Check if we're in batch mode
         if self.client._is_batching:
-            operation = {
-                'path': url.replace(self.client.base_url, ''),
-                'method': 'POST'
-                ,'body': body_data
-            }
-            self.client._batch_operations.append(operation)
-            return {'batched': True}  # Return placeholder
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/batch')
         
         
         try:
@@ -10093,6 +10081,441 @@ class DocumentsResource:
                 {'original_error': str(e)}
             )
 
+    def get_media(self, document_id: str, as_of: str = None) -> Any:
+        """
+        Get media file for a document
+
+        Args:
+            document_id: Path parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/media"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/documents/{document-id}/media')
+        
+        
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'GET',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            # Return raw binary content for media downloads
+            return response.content
+        
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
+
+    async def get_media_async(self, document_id: str, as_of: str = None) -> Any:
+        """
+        Get media file for a document
+
+        Args:
+            document_id: Path parameter
+            as_of: Optional query parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/media"
+        params = {}
+        if as_of is not None:
+            params['as-of'] = as_of
+        if params:
+            from urllib.parse import urlencode
+            # Convert boolean values to lowercase strings
+            params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+            url += '?' + urlencode(params)
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'GET' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/documents/{document-id}/media')
+        
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'GET',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    # Return raw binary content for media downloads
+                    return await response.read()
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'GET',
+                {'original_error': str(e)}
+            )
+
+    def upload_media(self, document_id: str, file: Union[BinaryIO, str, Tuple[str, BinaryIO]]) -> Any:
+        """
+        Upload a media file for a document. Uses Apache Tika for content validation.
+
+        Args:
+            document_id: Path parameter
+            file: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/media"
+        files_dict = {
+            'file': file
+        }
+        # Filter out None values
+        files_data = {k: v for k, v in files_dict.items() if v is not None}
+
+        
+        headers = {}  # Don't set Content-Type for multipart, let requests handle it
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/documents/{document-id}/media')
+        
+        
+        try:
+            response = requests.put(url, files=files_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'PUT',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
+        
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
+
+    async def upload_media_async(self, document_id: str, file: Union[BinaryIO, str, Tuple[str, BinaryIO]]) -> Any:
+        """
+        Upload a media file for a document. Uses Apache Tika for content validation.
+
+        Args:
+            document_id: Path parameter
+            file: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/media"
+        files_dict = {
+            'file': file
+        }
+        # Filter out None values
+        files_data = {k: v for k, v in files_dict.items() if v is not None}
+
+        
+        headers = {}  # Don't set Content-Type for multipart, let requests handle it
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'PUT' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/documents/{document-id}/media')
+        
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(url, data=files_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'PUT',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'PUT',
+                {'original_error': str(e)}
+            )
+
+    def delete_media(self, document_id: str) -> Any:
+        """
+        Delete media file for a document
+
+        Args:
+            document_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/media"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/documents/{document-id}/media')
+        
+        
+        try:
+            response = requests.delete(url, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'DELETE',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
+        
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
+
+    async def delete_media_async(self, document_id: str) -> Any:
+        """
+        Delete media file for a document
+
+        Args:
+            document_id: Path parameter
+        """
+        url = f"{self.client.base_url}/api/v1/documents/{document_id}/media"
+        
+        headers = {'Content-Type': 'application/json'}
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'DELETE' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/documents/{document-id}/media')
+        
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'DELETE',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'DELETE',
+                {'original_error': str(e)}
+            )
+
     def set_metadata(self, document_id: str, body: Any) -> Any:
         """
         Replace all metadata for a document. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
@@ -12022,13 +12445,7 @@ class ProjectsResource:
         
         # Check if we're in batch mode
         if self.client._is_batching:
-            operation = {
-                'path': url.replace(self.client.base_url, ''),
-                'method': 'POST'
-                ,'body': body_data
-            }
-            self.client._batch_operations.append(operation)
-            return {'batched': True}  # Return placeholder
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/projects/{id}/heartbeat')
         
         
         try:
@@ -12102,13 +12519,7 @@ class ProjectsResource:
         
         # Check if we're in batch mode
         if self.client._is_batching:
-            operation = {
-                'path': url.replace(self.client.base_url, ''),
-                'method': 'POST'
-                ,'body': body_data
-            }
-            self.client._batch_operations.append(operation)
-            return {'batched': True}  # Return placeholder
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/projects/{id}/heartbeat')
         
         
         try:

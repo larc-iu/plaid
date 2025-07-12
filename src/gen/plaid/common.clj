@@ -25,11 +25,11 @@
    to the target format and removes the XML tags."
   [summary-text target-format]
   (-> summary-text
-      (str/replace #"<body>([^<]+)</body>" 
+      (str/replace #"<body>([^<]+)</body>"
                    (fn [[_ param-name]] (transform-key-name param-name target-format)))
-      (str/replace #"<query>([^<]+)</query>" 
+      (str/replace #"<query>([^<]+)</query>"
                    (fn [[_ param-name]] (transform-key-name param-name target-format)))
-      (str/replace #"<path>([^<]+)</path>" 
+      (str/replace #"<path>([^<]+)</path>"
                    (fn [[_ param-name]] (transform-key-name param-name target-format)))))
 
 (defn extract-path-params
@@ -67,21 +67,21 @@
       ;; Config routes: /layer/{id}/config/{namespace}/{key}
       (and is-config-route? (= http-method :put))
       "setConfig"
-      
+
       (and is-config-route? (= http-method :delete))
       "deleteConfig"
-      
+
       ;; User role management routes: /projects/{id}/readers/{user-id}
       (and user-role-route? (= http-method :post))
       (str "add" (csk/->PascalCase (str/replace role-type #"s$" "")))
-      
+
       (and user-role-route? (= http-method :delete))
       (str "remove" (csk/->PascalCase (str/replace role-type #"s$" "")))
-      
+
       ;; Special actions like /shift, /source, /target
       special-action?
       (csk/->camelCase last-part)
-      
+
       ;; Standard REST patterns
       (= http-method :get) (if has-id? "get" "list")
       (= http-method :post) (if has-id? (csk/->camelCase last-part) "create")
@@ -94,6 +94,7 @@
   "Get bundle name from operation metadata or infer from path"
   [path operation]
   (or (get operation "x-client-bundle")
+      (get-in operation ["openapi" "x-client-bundle"])
       (get-in operation ["x-openapi" "x-client-bundle"])
       (infer-bundle-name path)))
 
@@ -101,6 +102,7 @@
   "Get method name from operation metadata or infer from HTTP method and path"
   [http-method path operation]
   (or (get operation "x-client-method")
+      (get-in operation ["openapi" "x-client-method"])
       (get-in operation ["x-openapi" "x-client-method"])
       (infer-method-name http-method path)))
 
@@ -113,51 +115,107 @@
     method-name))
 
 (defn extract-request-body-schema
-  "Extract the JSON schema from a request body definition"
+  "Extract the schema from a request body definition, supporting both JSON and multipart"
   [request-body]
-  (get-in request-body ["content" "application/json" "schema"]))
+  (let [content (get request-body "content")]
+    (cond
+      ;; Check for multipart/form-data first
+      (get content "multipart/form-data")
+      (let [schema (get-in content ["multipart/form-data" "schema"])]
+        {:schema schema :content-type "multipart/form-data"})
+
+      ;; Fall back to application/json
+      (get content "application/json")
+      (let [schema (get-in content ["application/json" "schema"])]
+        {:schema schema :content-type "application/json"})
+
+      ;; No supported content type found
+      :else nil)))
 
 (defn extract-body-params
-  "Extract individual parameters from request body schema"
-  [request-body-schema]
-  (when request-body-schema
-    (let [schema-type (get request-body-schema "type")]
+  "Extract individual parameters from request body schema info"
+  [request-body-info]
+  (when request-body-info
+    ;; Handle both legacy direct schema and new schema+content-type structure
+    (let [schema (if (map? request-body-info)
+                   (or (:schema request-body-info) request-body-info)
+                   request-body-info)
+          content-type (when (map? request-body-info) (:content-type request-body-info))
+          schema-type (get schema "type")]
       (cond
-        ;; Handle object schemas with properties
+        ;; Handle multipart/form-data schemas with file parameters
+        (and (= content-type "multipart/form-data")
+             (= schema-type "object")
+             (get schema "properties"))
+        (let [properties (get schema "properties")
+              required-set (set (get schema "required" []))]
+          (map (fn [[k v]]
+                 (let [param-type (get v "type")
+                       param-format (get v "format")]
+                   {:name k
+                    :original-name k
+                    :required? (contains? required-set k)
+                    :type param-type
+                    :format param-format
+                    :is-file? (and (= param-type "string") (= param-format "binary"))
+                    :content-type content-type}))
+               properties))
+
+        ;; Handle object schemas with properties (JSON)
         (and (= schema-type "object")
-             (get request-body-schema "properties"))
-        (let [properties (get request-body-schema "properties")
-              required-set (set (get request-body-schema "required" []))]
+             (get schema "properties"))
+        (let [properties (get schema "properties")
+              required-set (set (get schema "required" []))]
           (map (fn [[k v]]
                  {:name k
                   :original-name k
                   :required? (contains? required-set k)
-                  :type (get v "type")})
+                  :type (get v "type")
+                  :content-type (or content-type "application/json")})
                properties))
-        
+
         ;; Handle array schemas at the top level
         (= schema-type "array")
         [{:name "body"
           :original-name "body"
           :required? true
-          :type "array"}]
-        
+          :type "array"
+          :content-type (or content-type "application/json")}]
+
         ;; Handle other schema types (fallback)
         :else
         [{:name "body"
           :original-name "body"
           :required? true
-          :type (or schema-type "Any")}]))))
+          :type (or schema-type "Any")
+          :content-type (or content-type "application/json")}]))))
 
 (defn detect-special-endpoints
   "Detect special endpoint types"
   [path]
-  {:is-config? (str/includes? path "/config/")
-   :is-login? (str/includes? path "/login")
-   :user-role-route? (some #(contains? #{"readers" "writers" "maintainers"} %) 
-                           (str/split path #"/"))
-   :role-type (first (filter #(contains? #{"readers" "writers" "maintainers"} %) 
-                             (str/split path #"/")))})
+  (let [;; Patterns for non-batchable endpoints
+        non-batchable-patterns [#"/media$" ; Media file operations
+                                #"/listen$" ; SSE endpoints
+                                #"/heartbeat$" ; Heartbeat endpoints
+                                #"/batch$"] ; Batch endpoints themselves
+
+        ;; Patterns for binary/streaming endpoints (return raw bytes, not JSON)
+        binary-response-patterns [#"/media$"] ; Media file downloads
+
+        ;; Check if path matches any non-batchable pattern
+        is-non-batchable? (some #(re-find % path) non-batchable-patterns)
+
+        ;; Check if path returns binary content
+        is-binary-response? (some #(re-find % path) binary-response-patterns)]
+
+    {:is-config? (str/includes? path "/config/")
+     :is-login? (str/includes? path "/login")
+     :is-non-batchable? is-non-batchable?
+     :is-binary-response? is-binary-response?
+     :user-role-route? (some #(contains? #{"readers" "writers" "maintainers"} %)
+                             (str/split path #"/"))
+     :role-type (first (filter #(contains? #{"readers" "writers" "maintainers"} %)
+                               (str/split path #"/")))}))
 
 (defn filter-query-params
   "Filter query parameters based on HTTP method"
@@ -174,25 +232,25 @@
         {:keys [query body]} parameters
         body-params (:body-params body)
         special-endpoints (detect-special-endpoints path)
-        
+
         ;; Separate required and optional body params
         required-body-params (filter :required? body-params)
         optional-body-params (remove :required? body-params)
-        
+
         ;; Filter query params based on HTTP method
         filtered-query-params (filter-query-params query http-method)
-        
+
         ;; Separate as-of parameter for special handling
         as-of-param (first (filter #(= (:name %) "as-of") filtered-query-params))
         regular-query-params (filter #(not= (:name %) "as-of") filtered-query-params)]
-    
+
     {:path-params path-params
      :required-body-params required-body-params
      :optional-body-params optional-body-params
      :regular-query-params regular-query-params
      :as-of-param as-of-param
-     :all-params (concat path-params 
-                        required-body-params 
-                        optional-body-params 
-                        regular-query-params
-                        (when as-of-param [as-of-param]))}))
+     :all-params (concat path-params
+                         required-body-params
+                         optional-body-params
+                         regular-query-params
+                         (when as-of-param [as-of-param]))}))
