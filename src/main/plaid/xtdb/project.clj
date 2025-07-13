@@ -2,7 +2,7 @@
   (:require [plaid.xtdb.user :as user]
             [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.operation :as op :refer [submit-operations!]]
             [plaid.xtdb.text-layer :as txtl])
   (:refer-clojure :exclude [get merge]))
 
@@ -113,7 +113,7 @@
       :tx-ops tx-ops})))
 
 (defn create [xt-map attrs user-id]
-  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
+  (submit-operations! xt-map [(create-operation xt-map attrs)] user-id #(-> % last last :xt/id)))
 
 (defn merge-operation
   "Build an operation for updating a project"

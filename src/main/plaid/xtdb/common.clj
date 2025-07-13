@@ -110,36 +110,26 @@
   If any write encounters a data model integrity error as it attempts to construct
   a transaction, it should (throw (ex-info ...)) so that this standard mechanism
   will report helpful information about the issue up the call chain. Note that
-  this is a macro because we want to defer the evaluation"
-  [node tx-expr]
-  `(try
-     (let [tx# ~tx-expr
-           tx-map# (xt/submit-tx ~node tx#)]
-       (xt/await-tx ~node tx-map#)
-       {:success (xt/tx-committed? ~node tx-map#)})
-     (catch clojure.lang.ExceptionInfo e#
-       (let [data# (ex-data e#)]
-         (log/warn "Transaction failed: " data#)
-         {:success false
-          :error   (ex-message e#)
-          :code    (:code data#)}))))
+  this is a macro because we want to defer the evaluation.
 
-(defmacro submit-with-extras!
-  "Like submit!, but with a callback on the tx vector whose result gets assoced at :extra
-  on success."
-  [node tx-expr get-extra]
-  `(try
-     (let [tx# ~tx-expr
-           tx-map# (xt/submit-tx ~node tx#)]
-       (xt/await-tx ~node tx-map#)
-       (cond-> {:success (xt/tx-committed? ~node tx-map#)}
-               ~get-extra (assoc :extra (~get-extra tx#))))
-     (catch clojure.lang.ExceptionInfo e#
-       (let [data# (ex-data e#)]
-         (log/warn (str "Transaction failed: " data# ". Full info: " e#))
-         {:success false
-          :error   (ex-message e#)
-          :code    (:code data#)}))))
+  If `get-extra` is supplied, the returned map on success will also contain the
+  result of `(get-extra tx-expr)` assoced to :extra."
+  ([node tx-expr]
+   `(submit! ~node ~tx-expr nil))
+  ([node tx-expr get-extra]
+   `(try
+      (let [tx# ~tx-expr
+            tx-map# (xt/submit-tx ~node tx#)
+            get-extra# ~get-extra]
+        (xt/await-tx ~node tx-map#)
+        (cond-> {:success (xt/tx-committed? ~node tx-map#)}
+                get-extra# (assoc :extra (get-extra# tx#))))
+      (catch clojure.lang.ExceptionInfo e#
+        (let [data# (ex-data e#)]
+          (log/warn "Transaction failed: " data#)
+          {:success false
+           :error (ex-message e#)
+           :code (:code data#)})))))
 
 ;; misc --------------------------------------------------------------------------------
 (defn match* [xt-map ids]

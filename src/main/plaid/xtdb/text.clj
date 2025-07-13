@@ -2,7 +2,7 @@
   (:require [xtdb.api :as xt]
             [plaid.algos.text :as ta]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.operation :as op :refer [submit-operations!]]
             [plaid.xtdb.token :as tok]
             [plaid.xtdb.span :as s]
             [plaid.xtdb.metadata :as metadata])
@@ -126,7 +126,7 @@
   ([xt-map attrs user-id]
    (create xt-map attrs user-id nil))
   ([xt-map attrs user-id metadata]
-   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
+   (submit-operations! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn update-body*
   "Change the textual content (:text/body) of a text item in a way that will also update tokens

@@ -1,7 +1,7 @@
 (ns plaid.xtdb.token-layer
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.operation :as op :refer [submit-operations!]]
             [plaid.xtdb.span-layer :as sl]
             [taoensso.timbre :as log]
             [plaid.algos.token :as toka])
@@ -95,7 +95,7 @@
       :tx-ops      tx-ops})))
 
 (defn create [xt-map attrs text-layer-id user-id]
-  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs text-layer-id)] user-id #(-> % last last :xt/id)))
+  (submit-operations! xt-map [(create-operation xt-map attrs text-layer-id)] user-id #(-> % last last :xt/id)))
 
 (defn merge-operation
   "Build an operation for updating a token layer"

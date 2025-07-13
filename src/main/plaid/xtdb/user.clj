@@ -51,7 +51,7 @@
       [match put])))
 
 (defn create [{:keys [node] :as xt-map} id is-admin password]
-  (pxc/submit-with-extras! node (create* xt-map id is-admin password) #(-> % last last :user/id)))
+  (pxc/submit! node (create* xt-map id is-admin password) #(-> % last last :user/id)))
 
 (defn merge
   [xt-map eid m]

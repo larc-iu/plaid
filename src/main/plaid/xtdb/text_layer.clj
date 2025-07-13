@@ -1,7 +1,7 @@
 (ns plaid.xtdb.text-layer
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.operation :as op :refer [submit-operations!]]
             [plaid.xtdb.token-layer :as tokl])
   (:refer-clojure :exclude [get merge]))
 
@@ -61,7 +61,7 @@
       :tx-ops      tx-ops})))
 
 (defn create [xt-map attrs project-id user-id]
-  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs project-id)] user-id #(-> % last last :xt/id)))
+  (submit-operations! xt-map [(create-operation xt-map attrs project-id)] user-id #(-> % last last :xt/id)))
 
 (defn merge-operation
   "Build an operation for updating a text layer"
