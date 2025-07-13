@@ -50,6 +50,8 @@
   "Start mount states needed for testing"
   (try
     (mount/start #'plaid.xtdb.operation/operation-coordinator)
+    ;; Small delay to ensure coordinator async thread is fully started
+    (Thread/sleep 100)
     (f)
     (finally
       (mount/stop #'plaid.xtdb.operation/operation-coordinator))))
