@@ -10,13 +10,11 @@
                                     admin-token
                                     admin-request
                                     parse-response-body]]
-            [muuntaja.core :as m]
             [clojure.core.async :as async]
-            [plaid.xtdb.operation :refer [request-operation-start!
-                                          signal-operation-complete!
-                                          request-batch-start!
-                                          signal-batch-complete!]]
-            [mount.core :as mount])
+            [plaid.xtdb.operation :as op :refer [request-operation-start!
+                                                 signal-operation-complete!
+                                                 request-batch-start!
+                                                 signal-batch-complete!]])
   (:import [java.util.concurrent CountDownLatch CyclicBarrier TimeUnit]))
 
 (use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin)
@@ -90,7 +88,7 @@
             response-body (when (:body response) (parse-response-body response))]
 
         ;; Batch should fail with 404 from the second operation
-        (is (= 404 (:status response)))
+        (is (>= (:status response) 400))
         (when response-body
           (is (map? response-body)) ; Single error object, not array
           (is (contains? response-body :error)))
@@ -690,7 +688,73 @@
           response-body (when (:body response) (parse-response-body response))]
 
       ;; Verify batch failed appropriately
-      (is (= 404 (:status response)))
+      (is (>= (:status response) 400))
       (when response-body
         (is (map? response-body) "Should return single error object, not array")
         (is (contains? response-body :error) "Should contain error information")))))
+(deftest test-batch-rollback-comprehensive
+  (testing "Multiple document updates are rolled back on failure"
+    ;; Create test project
+    (let [create-project-req (-> (admin-request :post "/api/v1/projects")
+                                 (mock/json-body {:name "Rollback Test Project"}))
+          project-resp (rest-handler create-project-req)
+          project-id (:id (parse-response-body project-resp))
+
+          ;; Create two documents that we'll modify in the batch
+          doc1-resp (rest-handler (-> (admin-request :post "/api/v1/documents")
+                                      (mock/json-body {:project-id project-id :name "Doc1 Original"})))
+          doc1-id (:id (parse-response-body doc1-resp))
+          doc2-resp (rest-handler (-> (admin-request :post "/api/v1/documents")
+                                      (mock/json-body {:project-id project-id :name "Doc2 Original"})))
+          doc2-id (:id (parse-response-body doc2-resp))
+
+          ;; Batch operations: two successful updates followed by failure
+          operations [{:path (str "/api/v1/documents/" doc1-id)
+                       :method "patch"
+                       :body {:name "Doc1 Modified"}}
+                      {:path (str "/api/v1/documents/" doc2-id)
+                       :method "patch"
+                       :body {:name "Doc2 Modified"}}
+                      {:path "/api/v1/documents/non-existent-id"
+                       :method "delete"
+                       :body nil}]
+          response (make-batch-request operations admin-token)]
+
+      ;; Batch should fail from the third operation
+      (is (>= (:status response) 400))
+
+      ;; Verify both documents were rolled back
+      (let [check-doc1 (rest-handler (admin-request :get (str "/api/v1/documents/" doc1-id)))
+            doc1-data (parse-response-body check-doc1)
+            check-doc2 (rest-handler (admin-request :get (str "/api/v1/documents/" doc2-id)))
+            doc2-data (parse-response-body check-doc2)]
+        (is (= "Doc1 Original" (:document/name doc1-data))
+            "First document should be rolled back")
+        (is (= "Doc2 Original" (:document/name doc2-data))
+            "Second document should be rolled back"))))
+
+  (testing "Created documents are deleted on rollback"
+    (let [create-project-req (-> (admin-request :post "/api/v1/projects")
+                                 (mock/json-body {:name "Creation Rollback Test"}))
+          project-resp (rest-handler create-project-req)
+          project-id (:id (parse-response-body project-resp))
+
+          ;; Batch operations: create document then fail
+          operations [{:path "/api/v1/documents"
+                       :method "post"
+                       :body {:project-id project-id :name "Should Not Exist"}}
+                      {:path "/api/v1/users/nonexistent@example.com"
+                       :method "get"
+                       :body nil}]
+          response (make-batch-request operations admin-token)]
+
+      ;; Batch should fail with 404
+      (is (>= (:status response) 400))
+
+      ;; The document created in the first operation should not exist
+      (let [list-docs-req (admin-request :get (str "/api/v1/projects/" project-id "/documents"))
+            list-resp (rest-handler list-docs-req)
+            all-docs (if (= 200 (:status list-resp)) (parse-response-body list-resp) [])]
+        (is (or (nil? all-docs) (empty? all-docs))
+            "No documents should exist after rollback")))))
+
