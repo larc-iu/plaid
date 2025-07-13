@@ -44,88 +44,184 @@
                              :audit/user user-id
                              :audit/projects affected-projects
                              :audit/documents affected-documents}
-                            *user-agent* (assoc :audit/user-agent *user-agent*))
+                      *user-agent* (assoc :audit/user-agent *user-agent*))
         audit-tx [::xt/put audit-entry]]
     (into op-put-txs [audit-tx])))
 
 ;; Begin machinery for atomic batch writing ------------------------------------------------------------
 (def ^:dynamic *in-batch-context* false)
 
-;; Operation coordinator using core.async which provides a global write mutex for batch operations
-;; The operation-coordinator is a coordinator that ensures database operations are executed without
-;; conflicts. It manages two types of operations:
-;; 1. Regular operations: Individual database writes that can run concurrently
-;; 2. Batch operations: Multi-step operations that require exclusive write access
+ ;; State machine predicate functions for readability
+(defn idle?
+  "True when no operations are running and no operations are queued"
+  [state]
+  (and (zero? (:active-ops state))
+       (not (:batch-in-progress? state))
+       (empty? (:queued-batches state))
+       (empty? (:queued-regulars state))))
+
+(defn batch-active?
+  "True when a batch operation is currently running"
+  [state]
+  (:batch-in-progress? state))
+
+(defn regulars-active?
+  "True when regular operations are currently running"
+  [state]
+  (pos? (:active-ops state)))
+
+(defn has-queued-regulars?
+  "True when regular operations are waiting in queue"
+  [state]
+  (seq (:queued-regulars state)))
+
+(defn has-queued-batches?
+  "True when batch operations are waiting in queue"
+  [state]
+  (seq (:queued-batches state)))
+
+(defn should-queue-regular?
+  "True when a regular operation should be queued (batch active or batches queued)"
+  [state]
+  (or (batch-active? state)
+      (has-queued-batches? state)))
+
+(defn should-queue-batch?
+  "True when a batch operation should be queued"
+  [state]
+  (or (batch-active? state)
+      (regulars-active? state)))
+
+(defn should-start-queued-batch?
+  "True when we should start the next queued batch"
+  [state]
+  (and (not (batch-active? state))
+       (not (regulars-active? state))
+       (has-queued-batches? state)))
+
+(defn current-state-name
+  "Returns a human-readable name for the current state (for logging/debugging)"
+  [state]
+  (cond
+    (idle? state) :idle
+    (and (batch-active? state) (has-queued-regulars? state)) :batch-active-regulars-queued
+    (and (batch-active? state) (has-queued-batches? state)) :batch-active-batches-queued
+    (batch-active? state) :batch-active
+    (and (regulars-active? state) (has-queued-batches? state)) :regulars-active-batches-queued
+    (regulars-active? state) :regulars-active
+    (has-queued-regulars? state) :regulars-queued
+    (has-queued-batches? state) :batches-queued
+    :else :unknown))
+
+(defn log-state-transition
+  "Log a state transition for debugging purposes"
+  [event-type old-state new-state]
+  (let [old-state-name (current-state-name old-state)
+        new-state-name (current-state-name new-state)]
+    (when (not= old-state-name new-state-name)
+      (log/debug "State transition:" event-type
+                 old-state-name "→" new-state-name
+                 {:active-ops (:active-ops new-state)
+                  :batch-in-progress? (:batch-in-progress? new-state)
+                  :queued-batches (count (:queued-batches new-state))
+                  :queued-regulars (count (:queued-regulars new-state))}))))
+
+;; ===================================================================================
+;; OPERATION COORDINATOR STATE MACHINE DOCUMENTATION
+;; ===================================================================================
 ;;
-;; The coordinator uses a core.async thread to maintain a global write mutex, ensuring that:
-;; - Only one batch operation can run at a time
-;; - Regular operations are queued while a batch is in progress
-;; - Batch operations wait for all active regular operations to complete before beginning
-;; - Proper cleanup occurs on timeout or shutdown
+;; The operation coordinator manages concurrent database operations using a finite state machine
+;; to prevent race conditions and maintain data integrity. It coordinates two types of operations:
 ;;
-;; This prevents race conditions and maintains data integrity.
+;; 1. REGULAR OPERATIONS: Individual database writes that can run concurrently
+;; 2. BATCH OPERATIONS: Multi-step operations requiring exclusive database access
+;;
+;; The coordinator maintains the following state variables:
+;; • active-ops: Number of currently running regular operations (0+)
+;; • batch-in-progress?: Boolean indicating if a batch is currently running
+;; • queued-batches: Vector of batch operations waiting to start
+;; • queued-regulars: Vector of regular operations waiting to start
+;;
+;; Key invariants:
+;; 1. Only one batch can be active at a time (batch-in-progress? = true)
+;; 2. Batches cannot start while regulars are active (active-ops > 0)
+;; 3. Regular operations have priority when a batch completes
+;; 4. Operations are processed in FIFO order within their type
+;;
+;; regular-start:
+;;   • can-start-regular? → increment active-ops, proceed
+;;   • should-queue-regular? → add to queued-regulars
 (defn- handle-regular-start [state request]
-  (let [{:keys [active-ops batch-in-progress? queued-batches queued-regulars]} state]
-    (if (or batch-in-progress? (seq queued-batches))
-      ;; Queue it until batch completes (either active batch or queued batches)
-      {:state (assoc state :queued-regulars (conj queued-regulars (:response-chan request)))
-       :responses []}
-      ;; Allow it to proceed
-      {:state (assoc state :active-ops (inc active-ops))
-       :responses [{:chan (:response-chan request) :response {:status :proceed}}]})))
+  (if (should-queue-regular? state)
+    ;; Queue it until batch completes (either active batch or queued batches)
+    {:state (assoc state :queued-regulars (conj (:queued-regulars state) (:response-chan request)))
+     :responses []}
+    ;; Allow it to proceed
+    {:state (assoc state :active-ops (inc (:active-ops state)))
+     :responses [{:chan (:response-chan request) :response {:status :proceed}}]}))
 
+;; regular-complete:
+;;   • decrement active-ops
+;;   • if active-ops=0 AND queued-batches → start next batch
 (defn- handle-regular-complete [state]
-  (let [{:keys [active-ops batch-in-progress? queued-batches queued-regulars]} state
-        new-active (max 0 (dec active-ops))]
-    (if (and (zero? new-active) (seq queued-batches) (not batch-in-progress?))
+  (let [new-active-ops (max 0 (dec (:active-ops state)))
+        new-state (assoc state :active-ops new-active-ops)]
+    (if (should-start-queued-batch? new-state)
       ;; No more active ops and batches are waiting - start next batch
-      (let [next-batch (first queued-batches)]
-        {:state (assoc state
-                  :active-ops 0
-                  :batch-in-progress? true
-                  :queued-batches (vec (rest queued-batches)))
+      (let [next-batch (first (:queued-batches new-state))]
+        {:state (assoc new-state
+                       :active-ops 0
+                       :batch-in-progress? true
+                       :queued-batches (vec (rest (:queued-batches new-state))))
          :responses [{:chan (:response-chan next-batch) :response {:status :proceed}}]})
-      {:state (assoc state :active-ops new-active)
+      ;; Just update the active ops count
+      {:state new-state
        :responses []})))
 
+;; batch-start:
+;;   • can-start-batch? → set batch-in-progress=true, proceed
+;;   • should-queue-batch? → add to queued-batches
 (defn- handle-batch-start [state request]
-  (let [{:keys [active-ops batch-in-progress? queued-batches]} state]
-    (if (or batch-in-progress? (pos? active-ops))
-      ;; Queue the batch request
-      {:state (assoc state :queued-batches (conj queued-batches request))
-       :responses []}
-      ;; Start batch immediately
-      {:state (assoc state :batch-in-progress? true)
-       :responses [{:chan (:response-chan request) :response {:status :proceed}}]})))
+  (if (should-queue-batch? state)
+    ;; Queue the batch request
+    {:state (assoc state :queued-batches (conj (:queued-batches state) request))
+     :responses []}
+    ;; Start batch immediately
+    {:state (assoc state :batch-in-progress? true)
+     :responses [{:chan (:response-chan request) :response {:status :proceed}}]}))
 
+;; batch-complete:
+;;   • has-queued-regulars? → release ALL queued regulars (priority)
+;;   • has-queued-batches? AND no-queued-regulars → start next batch
+;;   • else → return to idle state
 (defn- handle-batch-complete [state]
-  (let [{:keys [queued-batches queued-regulars]} state]
-    (cond
-      ;; If there are queued regulars, release them
-      (seq queued-regulars)
-      (let [regular-responses (mapv (fn [chan] {:chan chan :response {:status :proceed}}) queued-regulars)
-            new-active-ops (count queued-regulars)]
-        {:state (assoc state
-                  :active-ops new-active-ops
-                  :batch-in-progress? false
-                  :queued-regulars [])
-         :responses regular-responses})
-
-      ;; If there are queued batches but no queued regulars, start next batch
-      (and (seq queued-batches) (empty? queued-regulars))
-      (let [next-batch (first queued-batches)]
-        {:state (assoc state
-                  :active-ops 0
-                  :batch-in-progress? true
-                  :queued-batches (vec (rest queued-batches)))
-         :responses [{:chan (:response-chan next-batch) :response {:status :proceed}}]})
-
-      ;; No queued operations at all
-      :else
+  (cond
+    ;; If there are queued regulars, release them (priority)
+    (has-queued-regulars? state)
+    (let [regular-responses (mapv (fn [chan] {:chan chan :response {:status :proceed}})
+                                  (:queued-regulars state))
+          new-active-ops (count (:queued-regulars state))]
       {:state (assoc state
-                :active-ops 0
-                :batch-in-progress? false)
-       :responses []})))
+                     :active-ops new-active-ops
+                     :batch-in-progress? false
+                     :queued-regulars [])
+       :responses regular-responses})
+
+    ;; If there are queued batches but no queued regulars, start next batch
+    (has-queued-batches? state)
+    (let [next-batch (first (:queued-batches state))]
+      {:state (assoc state
+                     :active-ops 0
+                     :batch-in-progress? true
+                     :queued-batches (vec (rest (:queued-batches state))))
+       :responses [{:chan (:response-chan next-batch) :response {:status :proceed}}]})
+
+    ;; No queued operations at all - return to idle
+    :else
+    {:state (assoc state
+                   :active-ops 0
+                   :batch-in-progress? false)
+     :responses []}))
 
 (defstate operation-coordinator
   :start
@@ -181,6 +277,9 @@
 
                   new-state (:state transition-result)]
 
+              ;; Log state transition for debugging
+              (log-state-transition (:type request) current-state new-state)
+
               ;; Send all responses
               (doseq [{:keys [chan response]} (:responses transition-result)]
                 (async/>!! chan response))
@@ -201,29 +300,35 @@
 (defn request-operation-start!
   "Request permission to start a regular operation. Returns true if granted, false if timeout."
   []
-  (let [response-chan (async/chan)
-        request {:type :regular-start :response-chan response-chan}]
-    (async/>!! (:request-chan operation-coordinator) request)
-    (let [response (async/<!! response-chan)]
-      (= (:status response) :proceed))))
+  (if operation-coordinator
+    (let [response-chan (async/chan)
+          request {:type :regular-start :response-chan response-chan}]
+      (async/>!! (:request-chan operation-coordinator) request)
+      (let [response (async/<!! response-chan)]
+        (= (:status response) :proceed)))
+    false))
 
 (defn signal-operation-complete!
   "Signal that a regular operation has completed"
   []
-  (async/>!! (:request-chan operation-coordinator) {:type :regular-complete}))
+  (when operation-coordinator
+    (async/>!! (:request-chan operation-coordinator) {:type :regular-complete})))
 
 (defn request-batch-start!
   "Request permission to start a batch operation. Returns status map."
   [batch-id]
-  (let [response-chan (async/chan)
-        request {:type :batch-start :response-chan response-chan :batch-id batch-id}]
-    (async/>!! (:request-chan operation-coordinator) request)
-    (async/<!! response-chan)))
+  (if operation-coordinator
+    (let [response-chan (async/chan)
+          request {:type :batch-start :response-chan response-chan :batch-id batch-id}]
+      (async/>!! (:request-chan operation-coordinator) request)
+      (async/<!! response-chan))
+    {:status :error :message "Operation coordinator not available"}))
 
 (defn signal-batch-complete!
   "Signal that a batch operation has completed"
   []
-  (async/>!! (:request-chan operation-coordinator) {:type :batch-complete}))
+  (when operation-coordinator
+    (async/>!! (:request-chan operation-coordinator) {:type :batch-complete})))
 
 ;; Batch progress markers for crash recovery
 (defn create-batch-marker
@@ -376,8 +481,8 @@
           (let [val# @audit-entry-vol#]
             (-> result#
                 (cond-> (and (:audit/id val#) (seq (:audit/documents val#)))
-                        (assoc :document-versions (into {} (for [doc-id# (:audit/documents val#)]
-                                                             [doc-id# (:audit/id val#)])))))))
+                  (assoc :document-versions (into {} (for [doc-id# (:audit/documents val#)]
+                                                       [doc-id# (:audit/id val#)])))))))
 
         (finally
           (when-not *in-batch-context*
