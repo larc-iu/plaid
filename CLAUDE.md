@@ -146,6 +146,7 @@ Default port for development: `8085`.
 ## Testing
 Run tests with: `clojure -M:test`.
 To run a specific set of tests, you can use the `--namespace my.clojure.namespace` and `--var my.clojure.namespace/specific-test` arguments.
+Do not combine `--namespace` and `--var`, just use one or the other.
 
 Tests use a separate XTDB node configuration to avoid affecting development data.
 
