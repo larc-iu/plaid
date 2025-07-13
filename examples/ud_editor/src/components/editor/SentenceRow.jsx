@@ -3,6 +3,9 @@ import { DependencyTree } from './DependencyTree';
 import { useTokenPositions } from './hooks/useTokenPositions';
 import './editor.css';
 
+// Shared throttle for tab navigation across all EditableCell instances
+let lastGlobalTabPress = 0;
+
 // Editable cell component for annotation fields
 const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, columnWidth, onUpdate, isReadOnly }) => {
   const [localValue, setLocalValue] = useState(value || '');
@@ -36,6 +39,16 @@ const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, c
   };
 
   const handleKeyDown = (e) => {
+    // Throttle tab key presses to prevent browser hanging
+    if (e.key === 'Tab') {
+      const now = Date.now();
+      if (now - lastGlobalTabPress < 55) {
+        e.preventDefault();
+        return;
+      }
+      lastGlobalTabPress = now;
+    }
+    
     if (e.key === 'Enter') {
       e.preventDefault();
       inputRef.current?.blur();
@@ -61,7 +74,7 @@ const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, c
   return (
     <input
       ref={inputRef}
-      id={tabIndex}
+      id={`${tokenId}-${field}`}
       type="text"
       value={displayValue}
       onChange={handleChange}
