@@ -44,7 +44,7 @@
                              :audit/user user-id
                              :audit/projects affected-projects
                              :audit/documents affected-documents}
-                      *user-agent* (assoc :audit/user-agent *user-agent*))
+                            *user-agent* (assoc :audit/user-agent *user-agent*))
         audit-tx [::xt/put audit-entry]]
     (into op-put-txs [audit-tx])))
 
@@ -64,6 +64,82 @@
 ;; - Proper cleanup occurs on timeout or shutdown
 ;;
 ;; This prevents race conditions and maintains data integrity.
+(defn- handle-regular-start [state request]
+  (let [{:keys [active-ops batch-in-progress? queued-batches queued-regulars]} state]
+    (if (or batch-in-progress? (seq queued-batches))
+      ;; Queue it until batch completes (either active batch or queued batches)
+      {:state (assoc state :queued-regulars (conj queued-regulars (:response-chan request)))
+       :responses []}
+      ;; Allow it to proceed
+      {:state (assoc state :active-ops (inc active-ops))
+       :responses [{:chan (:response-chan request) :response {:status :proceed}}]})))
+
+(defn- handle-regular-complete [state]
+  (let [{:keys [active-ops batch-in-progress? queued-batches queued-regulars]} state
+        new-active (max 0 (dec active-ops))]
+    (if (and (zero? new-active) (seq queued-batches) (not batch-in-progress?))
+      ;; No more active ops and batches are waiting - start next batch
+      (let [next-batch (first queued-batches)]
+        {:state (assoc state
+                  :active-ops 0
+                  :batch-in-progress? true
+                  :queued-batches (vec (rest queued-batches)))
+         :responses [{:chan (:response-chan next-batch) :response {:status :proceed}}]})
+      {:state (assoc state :active-ops new-active)
+       :responses []})))
+
+(defn- handle-batch-start [state request]
+  (let [{:keys [active-ops batch-in-progress? queued-batches]} state]
+    (if (or batch-in-progress? (pos? active-ops))
+      ;; Queue the batch request
+      {:state (assoc state :queued-batches (conj queued-batches request))
+       :responses []}
+      ;; Start batch immediately
+      {:state (assoc state :batch-in-progress? true)
+       :responses [{:chan (:response-chan request) :response {:status :proceed}}]})))
+
+(defn- handle-batch-complete [state]
+  (let [{:keys [queued-batches queued-regulars]} state]
+    (cond
+      ;; If there are queued batches but no queued regulars, start next batch
+      (and (seq queued-batches) (empty? queued-regulars))
+      (let [next-batch (first queued-batches)]
+        {:state (assoc state
+                  :active-ops 0
+                  :batch-in-progress? true
+                  :queued-batches (vec (rest queued-batches)))
+         :responses [{:chan (:response-chan next-batch) :response {:status :proceed}}]})
+
+      ;; If there are queued regulars, release them and set up for potential batch start
+      (seq queued-regulars)
+      (let [regular-responses (mapv (fn [chan] {:chan chan :response {:status :proceed}}) queued-regulars)
+            new-active-ops (count queued-regulars)]
+        {:state (assoc state
+                  :active-ops new-active-ops
+                  :batch-in-progress? false
+                  :queued-regulars [])
+         :responses regular-responses
+         :internal-events (repeat new-active-ops {:type :regular-complete})})
+
+      ;; No queued operations at all
+      :else
+      {:state (assoc state
+                :active-ops 0
+                :batch-in-progress? false)
+       :responses []})))
+
+(defn- process-state-changes [initial-state initial-responses initial-events]
+  (loop [state initial-state
+         all-responses initial-responses
+         events (or initial-events [])]
+    (if-let [event (first events)]
+      (let [result (case (:type event)
+                     :regular-complete (handle-regular-complete state))]
+        (recur (:state result)
+               (into all-responses (:responses result))
+               (into (vec (rest events)) (:internal-events result))))
+      {:state state :responses all-responses})))
+
 (defstate operation-coordinator
   :start
   (let [request-chan (async/chan)
@@ -75,7 +151,11 @@
              queued-batches []
              queued-regulars []]
         (let [timeout-chan (async/timeout timeout-ms)
-              [request port] (async/alts!! [request-chan timeout-chan stop-chan])]
+              [request port] (async/alts!! [request-chan timeout-chan stop-chan])
+              current-state {:active-ops active-ops
+                             :batch-in-progress? batch-in-progress?
+                             :queued-batches queued-batches
+                             :queued-regulars queued-regulars}]
           (cond
             ;; Stop signal received
             (= port stop-chan)
@@ -97,52 +177,32 @@
 
             ;; Process the request
             :else
-            (case (:type request)
-              ;; Regular operation wants to start
-              :regular-start
-              (if batch-in-progress?
-                ;; Queue it until batch completes
-                (recur active-ops batch-in-progress? queued-batches
-                       (conj queued-regulars (:response-chan request)))
-                ;; Allow it to proceed
-                (do (async/>!! (:response-chan request) {:status :proceed})
-                    (recur (inc active-ops) batch-in-progress? queued-batches queued-regulars)))
+            (let [transition-result (case (:type request)
+                                      :regular-start (handle-regular-start current-state request)
+                                      :regular-complete (handle-regular-complete current-state)
+                                      :batch-start (handle-batch-start current-state request)
+                                      :batch-complete (handle-batch-complete current-state)
+                                      ;; Unknown request type
+                                      {:state current-state
+                                       :responses [{:chan (:response-chan request)
+                                                    :response {:status :error :message "Unknown request type"}}]})
 
-              ;; Regular operation completed
-              :regular-complete
-              (let [new-active (dec active-ops)]
-                (if (and (zero? new-active) (seq queued-batches))
-                  ;; No more active ops and batches are waiting - start next batch
-                  (let [next-batch (first queued-batches)]
-                    (async/>!! (:response-chan next-batch) {:status :proceed})
-                    (recur 0 true (rest queued-batches) queued-regulars))
-                  (recur new-active batch-in-progress? queued-batches queued-regulars)))
+                  final-result (process-state-changes
+                                 (:state transition-result)
+                                 (:responses transition-result)
+                                 (:internal-events transition-result))
 
-              ;; Batch wants to start
-              :batch-start
-              (if (or batch-in-progress? (pos? active-ops))
-                ;; Queue the batch request
-                (recur active-ops batch-in-progress? (conj queued-batches request) queued-regulars)
-                ;; Start batch immediately
-                (do (async/>!! (:response-chan request) {:status :proceed})
-                    (recur active-ops true queued-batches queued-regulars)))
+                  new-state (:state final-result)]
 
-              ;; Batch completed
-              :batch-complete
-              (if (seq queued-batches)
-                ;; Start the next queued batch
-                (let [next-batch (first queued-batches)]
-                  (async/>!! (:response-chan next-batch) {:status :proceed})
-                  (recur 0 true (rest queued-batches) queued-regulars))
-                ;; No more batches - release all queued regular operations
-                (do (doseq [resp-chan queued-regulars]
-                      (async/>!! resp-chan {:status :proceed}))
-                    (recur 0 false [] [])))
+              ;; Send all responses
+              (doseq [{:keys [chan response]} (:responses final-result)]
+                (async/>!! chan response))
 
-              ;; Unknown request type
-              (do (async/>!! (:response-chan request)
-                             {:status :error :message "Unknown request type"})
-                  (recur active-ops batch-in-progress? queued-batches queued-regulars)))))))
+              ;; Continue with new state
+              (recur (:active-ops new-state)
+                     (:batch-in-progress? new-state)
+                     (:queued-batches new-state)
+                     (:queued-regulars new-state)))))))
     {:request-chan request-chan
      :stop-chan stop-chan})
   :stop
