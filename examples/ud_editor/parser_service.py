@@ -357,6 +357,7 @@ def main():
         print("Usage: `python parser_service.py PROJECT_ID [URL]`", file=sys.stderr)
         sys.exit(1)
     client = get_client(sys.argv[2] if len(sys.argv) > 2 else "http://localhost:8085")
+    client.set_agent_name("Stanza Parser")
     target_project_id = sys.argv[1]
     try:
         client.projects.get(target_project_id)

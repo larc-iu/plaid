@@ -221,6 +221,9 @@
          "            'Cache-Control': 'no-cache',\n"
          "            'Connection': 'keep-alive'\n"
          "        }\n"
+         "        # Add user agent header if set\n"
+         "        if self.client.agent_name:\n"
+         "            headers['X-Agent-Name'] = self.client.agent_name\n"
          "        \n"
          "        session = requests.Session()\n"
          "        session.headers.update(headers)\n"
@@ -409,6 +412,9 @@
          (if has-files?
            "        headers = {}  # Don't set Content-Type for multipart, let requests handle it\n"
            "        headers = {'Content-Type': 'application/json'}\n")
+         "        # Add user agent header if set\n"
+         "        if self.client.agent_name:\n"
+         "            headers['X-Agent-Name'] = self.client.agent_name\n"
          auth-header
          "        \n"
          "        # Add document-version parameter in strict mode for non-GET requests\n"
@@ -950,6 +956,7 @@
          "        \"\"\"\n"
          "        self.base_url = base_url.rstrip('/')\n"
          "        self.token = token\n"
+         "        self.agent_name = None  # User agent name for audit logging\n"
          "        \n"
          "        # Initialize batch state\n"
          "        self._is_batching = False\n"
@@ -984,6 +991,18 @@
          "        Exit strict mode and stop tracking document versions for writes.\n"
          "        \"\"\"\n"
          "        self._strict_mode_document_id = None\n"
+         "    \n"
+         "    def set_agent_name(self, agent_name: str) -> None:\n"
+         "        \"\"\"\n"
+         "        Set the user agent name for audit logging.\n"
+         "        \n"
+         "        When set, the client will include an X-Agent-Name header in all requests\n"
+         "        to identify non-human clients in the audit log.\n"
+         "        \n"
+         "        Args:\n"
+         "            agent_name: Name to identify this client in audit logs\n"
+         "        \"\"\"\n"
+         "        self.agent_name = agent_name\n"
          "    \n"
          login-methods "\n")))
 

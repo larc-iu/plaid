@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.middleware
   (:require [clojure.instant :as instant]
             [plaid.xtdb.document :as doc]
+            [plaid.xtdb.operation :as op]
             [taoensso.timbre :as log]
             [xtdb.api :as xt]
             [clojure.string :as str]
@@ -9,7 +10,7 @@
 (defn assoc-document-versions-in-header [response {:keys [success document-versions]}]
   (-> response
       (cond-> (and success (seq document-versions))
-              (assoc-in [:headers "X-Document-Versions"] (json/write-str document-versions)))))
+        (assoc-in [:headers "X-Document-Versions"] (json/write-str document-versions)))))
 
 (defn wrap-request-extras [handler xtdb secret-key]
   (fn [request]
@@ -71,4 +72,12 @@
                :body {:error "Document version mismatch. The document has been modified since you last fetched it."}}
               (handler request)))
           {:status 400 :body {:error "document-version was provided but no document was found with the provided version."}})
+        (handler request)))))
+
+(defn wrap-user-agent
+  "Middleware that captures the X-Agent-Name header and binds it to the *user-agent* dynamic var"
+  [handler]
+  (fn [request]
+    (let [user-agent (get-in request [:headers "x-agent-name"])]
+      (binding [op/*user-agent* user-agent]
         (handler request)))))

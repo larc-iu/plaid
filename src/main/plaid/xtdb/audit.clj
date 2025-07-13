@@ -8,6 +8,7 @@
                  {:audit/user [:user/id :user/username]}
                  {:audit/projects [:project/name :project/id]}
                  {:audit/documents [:document/name :document/id]}
+                 :audit/user-agent
                  {:audit/ops [:op/id
                               :op/type
                               {:op/project [:project/id :project/name]}
@@ -30,9 +31,9 @@
   ([db project-id]
    (get-project-audit-log db project-id nil nil))
   ([db project-id start-time end-time]
-   (let [query {:find  [audit-pull]
+   (let [query {:find [audit-pull]
                 :where '[[?audit :audit/projects ?project]]
-                :in    '[?project]}
+                :in '[?project]}
          results (xt/q db query project-id)]
      (process-results results db start-time end-time))))
 
@@ -41,9 +42,9 @@
   ([db document-id]
    (get-document-audit-log db document-id nil nil))
   ([db document-id start-time end-time]
-   (let [query {:find  [audit-pull]
+   (let [query {:find [audit-pull]
                 :where '[[?audit :audit/documents ?document]]
-                :in    '[?document]}
+                :in '[?document]}
          results (xt/q db query document-id)]
      (process-results results db start-time end-time))))
 
@@ -52,8 +53,8 @@
   ([db user-id]
    (get-user-audit-log db user-id nil nil))
   ([db user-id start-time end-time]
-   (let [query {:find  [audit-pull]
+   (let [query {:find [audit-pull]
                 :where '[[?audit :audit/user ?user]]
-                :in    '[?user]}
+                :in '[?user]}
          results (xt/q db query user-id)]
      (process-results results db start-time end-time))))

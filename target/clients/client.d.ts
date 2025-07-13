@@ -181,6 +181,9 @@ declare class PlaidClient {
   enterStrictMode(documentId: string): void;
   exitStrictMode(): void;
   
+  // User agent methods
+  setAgentName(agentName: string): void;
+  
   vocabLinks: VocabLinksBundle;
   vocabLayers: VocabLayersBundle;
   relations: RelationsBundle;

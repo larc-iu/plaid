@@ -317,6 +317,7 @@
            "      headers: {\n"
            auth-header
            "        // Content-Type will be set automatically by browser for FormData\n"
+           "        ...(this.agentName && { 'X-Agent-Name': this.agentName })\n"
            "      },\n"
            "      body: requestBody\n"
            "    };")
@@ -327,7 +328,8 @@
            "      method: '" (str/upper-case (name method)) "',\n"
            "      headers: {\n"
            auth-header
-           "        'Content-Type': 'application/json'\n"
+           "        'Content-Type': 'application/json',\n"
+           "        ...(this.agentName && { 'X-Agent-Name': this.agentName })\n"
            "      },\n"
            "      body: JSON.stringify(requestBody)\n"
            "    };")
@@ -338,7 +340,8 @@
            "      method: '" (str/upper-case (name method)) "',\n"
            "      headers: {\n"
            auth-header
-           "        'Content-Type': 'application/json'\n"
+           "        'Content-Type': 'application/json',\n"
+           "        ...(this.agentName && { 'X-Agent-Name': this.agentName })\n"
            "      }\n"
            "    };"))))
 
@@ -429,7 +432,8 @@
          "          headers: {\n"
          "            'Authorization': `Bearer ${this.token}`,\n"
          "            'Accept': 'text/event-stream',\n"
-         "            'Cache-Control': 'no-cache'\n"
+         "            'Cache-Control': 'no-cache',\n"
+         "            ...(this.agentName && { 'X-Agent-Name': this.agentName })\n"
          "          },\n"
          "          signal: abortController.signal\n"
          "        });\n"
@@ -848,6 +852,9 @@
          "  enterStrictMode(documentId: string): void;\n"
          "  exitStrictMode(): void;\n"
          "  \n"
+         "  // User agent methods\n"
+         "  setAgentName(agentName: string): void;\n"
+         "  \n"
          main-interface "\n"
          "}\n\n"
          "declare const client: PlaidClient;\n")))
@@ -901,6 +908,7 @@
          "  constructor(baseUrl, token) {\n"
          "    this.baseUrl = baseUrl.replace(/\\/$/, ''); // Remove trailing slash\n"
          "    this.token = token;\n"
+         "    this.agentName = null; // User agent name for audit logging\n"
          "    \n"
          "    // Initialize batch state\n"
          "    this.isBatching = false;\n"
@@ -934,6 +942,18 @@
          "   */\n"
          "  exitStrictMode() {\n"
          "    this.strictModeDocumentId = null;\n"
+         "  }\n"
+         "\n"
+         "  /**\n"
+         "   * Set the user agent name for audit logging.\n"
+         "   * \n"
+         "   * When set, the client will include an X-Agent-Name header in all requests\n"
+         "   * to identify non-human clients in the audit log.\n"
+         "   * \n"
+         "   * @param {string} agentName - Name to identify this client in audit logs\n"
+         "   */\n"
+         "  setAgentName(agentName) {\n"
+         "    this.agentName = agentName;\n"
          "  }\n"
          "\n"
          batch-methods
