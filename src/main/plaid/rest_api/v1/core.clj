@@ -126,6 +126,7 @@
                                        pra/wrap-read-jwt
                                        prm/wrap-logging
                                        prm/wrap-as-of-db
+                                       prm/wrap-user-agent
                                        openapi/openapi-feature]}})
                  (ring/create-default-handler))]
     ;; Wrap handler to inject itself into requests for bulk operations

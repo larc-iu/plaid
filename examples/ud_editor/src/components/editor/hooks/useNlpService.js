@@ -39,7 +39,7 @@ export const useNlpService = (projectId, documentId) => {
       
       const connection = client.projects.listen(projectId, (eventType, eventData) => {
         if (eventType === 'message') {
-          const messageBody = eventData.data?.body || eventData.body;
+          const messageBody = eventData.data;
           
           if (messageBody === 'nlp-awake') {
             setIsAwake(true);

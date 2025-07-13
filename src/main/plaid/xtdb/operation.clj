@@ -7,6 +7,8 @@
             [mount.core :refer [defstate]]
             [taoensso.timbre :as log]))
 
+(def ^:dynamic *user-agent* nil)
+
 (defn make-operation
   "Create an operation data structure"
   [{:keys [type description tx-ops project document]}]
@@ -36,12 +38,14 @@
                                 (map :op/document)
                                 (filter some?)
                                 set)
-        audit-entry {:xt/id audit-id
-                     :audit/id audit-id
-                     :audit/ops op-ids
-                     :audit/user user-id
-                     :audit/projects affected-projects
-                     :audit/documents affected-documents}
+        audit-entry (cond-> {:xt/id audit-id
+                             :audit/id audit-id
+                             :audit/ops op-ids
+                             :audit/user user-id
+                             :audit/projects affected-projects
+                             :audit/documents affected-documents}
+                      *user-agent*
+                      (assoc :audit/user-agent *user-agent*))
         audit-tx [::xt/put audit-entry]]
     (into op-put-txs [audit-tx])))
 

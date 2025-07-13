@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Sat Jul 12 18:08:39 EDT 2025
+Generated on: Sat Jul 12 22:35:23 EDT 2025
 """
 
 import requests
@@ -52,6 +52,9 @@ class VocabLinksResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -135,6 +138,9 @@ class VocabLinksResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -217,6 +223,9 @@ class VocabLinksResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -297,6 +306,9 @@ class VocabLinksResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -372,6 +384,9 @@ class VocabLinksResource:
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -444,6 +459,9 @@ class VocabLinksResource:
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -527,6 +545,9 @@ class VocabLinksResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -608,6 +629,9 @@ class VocabLinksResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -682,6 +706,9 @@ class VocabLinksResource:
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -754,6 +781,9 @@ class VocabLinksResource:
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -849,6 +879,9 @@ class VocabLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -933,6 +966,9 @@ class VocabLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1007,6 +1043,9 @@ class VocabLayersResource:
         url = f"{self.client.base_url}/api/v1/vocab-layers/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1079,6 +1118,9 @@ class VocabLayersResource:
         url = f"{self.client.base_url}/api/v1/vocab-layers/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1160,6 +1202,9 @@ class VocabLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1240,6 +1285,9 @@ class VocabLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1319,6 +1367,9 @@ class VocabLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1396,6 +1447,9 @@ class VocabLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1473,6 +1527,9 @@ class VocabLayersResource:
         url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1547,6 +1604,9 @@ class VocabLayersResource:
         url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1629,6 +1689,9 @@ class VocabLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1709,6 +1772,9 @@ class VocabLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1789,6 +1855,9 @@ class VocabLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1868,6 +1937,9 @@ class VocabLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -1944,6 +2016,9 @@ class VocabLayersResource:
         url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/maintainers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2017,6 +2092,9 @@ class VocabLayersResource:
         url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/maintainers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2092,6 +2170,9 @@ class VocabLayersResource:
         url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/maintainers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2165,6 +2246,9 @@ class VocabLayersResource:
         url = f"{self.client.base_url}/api/v1/vocab-layers/{id}/maintainers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2255,6 +2339,9 @@ class RelationsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2335,6 +2422,9 @@ class RelationsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2410,6 +2500,9 @@ class RelationsResource:
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2482,6 +2575,9 @@ class RelationsResource:
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2563,6 +2659,9 @@ class RelationsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2643,6 +2742,9 @@ class RelationsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2727,6 +2829,9 @@ class RelationsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2808,6 +2913,9 @@ class RelationsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2882,6 +2990,9 @@ class RelationsResource:
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -2954,6 +3065,9 @@ class RelationsResource:
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3035,6 +3149,9 @@ class RelationsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3115,6 +3232,9 @@ class RelationsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3197,6 +3317,9 @@ class RelationsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3277,6 +3400,9 @@ class RelationsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3371,6 +3497,9 @@ target_id: the target span this relation goes to
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3463,6 +3592,9 @@ target_id: the target span this relation goes to
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3544,6 +3676,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3623,6 +3758,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3699,6 +3837,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3773,6 +3914,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3861,6 +4005,9 @@ class SpanLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -3938,6 +4085,9 @@ class SpanLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4015,6 +4165,9 @@ class SpanLayersResource:
         url = f"{self.client.base_url}/api/v1/span-layers/{span_layer_id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4089,6 +4242,9 @@ class SpanLayersResource:
         url = f"{self.client.base_url}/api/v1/span-layers/{span_layer_id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4172,6 +4328,9 @@ class SpanLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4253,6 +4412,9 @@ class SpanLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4327,6 +4489,9 @@ class SpanLayersResource:
         url = f"{self.client.base_url}/api/v1/span-layers/{span_layer_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4399,6 +4564,9 @@ class SpanLayersResource:
         url = f"{self.client.base_url}/api/v1/span-layers/{span_layer_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4480,6 +4648,9 @@ class SpanLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4560,6 +4731,9 @@ class SpanLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4643,6 +4817,9 @@ class SpanLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4724,6 +4901,9 @@ class SpanLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4806,6 +4986,9 @@ class SpanLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4886,6 +5069,9 @@ class SpanLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -4977,6 +5163,9 @@ class SpansResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5057,6 +5246,9 @@ class SpansResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5149,6 +5341,9 @@ metadata: optional key-value pairs for additional annotation data.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5239,6 +5434,9 @@ metadata: optional key-value pairs for additional annotation data.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5323,6 +5521,9 @@ metadata: optional key-value pairs for additional annotation data.
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5404,6 +5605,9 @@ metadata: optional key-value pairs for additional annotation data.
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5478,6 +5682,9 @@ metadata: optional key-value pairs for additional annotation data.
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5550,6 +5757,9 @@ metadata: optional key-value pairs for additional annotation data.
         url = f"{self.client.base_url}/api/v1/spans/{span_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5631,6 +5841,9 @@ metadata: optional key-value pairs for additional annotation data.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5711,6 +5924,9 @@ metadata: optional key-value pairs for additional annotation data.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5791,6 +6007,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5869,6 +6088,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -5945,6 +6167,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6019,6 +6244,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6101,6 +6329,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6181,6 +6412,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6256,6 +6490,9 @@ metadata, an optional map of metadata
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6328,6 +6565,9 @@ metadata, an optional map of metadata
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6412,6 +6652,9 @@ class BatchResource:
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6480,6 +6723,9 @@ class BatchResource:
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6565,6 +6811,9 @@ class TextsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6645,6 +6894,9 @@ class TextsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6720,6 +6972,9 @@ class TextsResource:
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6792,6 +7047,9 @@ class TextsResource:
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6882,6 +7140,9 @@ body: the string which is the content of this text.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -6971,6 +7232,9 @@ body: the string which is the content of this text.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7055,6 +7319,9 @@ body: the string which is the content of this text.
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7136,6 +7403,9 @@ body: the string which is the content of this text.
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7210,6 +7480,9 @@ body: the string which is the content of this text.
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7282,6 +7555,9 @@ body: the string which is the content of this text.
         url = f"{self.client.base_url}/api/v1/texts/{text_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7363,6 +7639,9 @@ body: the string which is the content of this text.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7443,6 +7722,9 @@ body: the string which is the content of this text.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7535,6 +7817,9 @@ class UsersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7615,6 +7900,9 @@ class UsersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7699,6 +7987,9 @@ class UsersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7782,6 +8073,9 @@ class UsersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7872,6 +8166,9 @@ class UsersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -7959,6 +8256,9 @@ class UsersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8042,6 +8342,9 @@ class UsersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8123,6 +8426,9 @@ class UsersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8197,6 +8503,9 @@ class UsersResource:
         url = f"{self.client.base_url}/api/v1/users/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8269,6 +8578,9 @@ class UsersResource:
         url = f"{self.client.base_url}/api/v1/users/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8354,6 +8666,9 @@ class UsersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8438,6 +8753,9 @@ class UsersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8529,6 +8847,9 @@ class TokenLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8609,6 +8930,9 @@ class TokenLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8692,6 +9016,9 @@ class TokenLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8773,6 +9100,9 @@ class TokenLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8852,6 +9182,9 @@ class TokenLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -8929,6 +9262,9 @@ class TokenLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9006,6 +9342,9 @@ class TokenLayersResource:
         url = f"{self.client.base_url}/api/v1/token-layers/{token_layer_id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9080,6 +9419,9 @@ class TokenLayersResource:
         url = f"{self.client.base_url}/api/v1/token-layers/{token_layer_id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9163,6 +9505,9 @@ class TokenLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9244,6 +9589,9 @@ class TokenLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9318,6 +9666,9 @@ class TokenLayersResource:
         url = f"{self.client.base_url}/api/v1/token-layers/{token_layer_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9390,6 +9741,9 @@ class TokenLayersResource:
         url = f"{self.client.base_url}/api/v1/token-layers/{token_layer_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9471,6 +9825,9 @@ class TokenLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9551,6 +9908,9 @@ class TokenLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9644,6 +10004,9 @@ class DocumentsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9725,6 +10088,9 @@ class DocumentsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9799,6 +10165,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9871,6 +10240,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -9945,6 +10317,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10017,6 +10392,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/lock"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10100,6 +10478,9 @@ class DocumentsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10174,6 +10555,9 @@ class DocumentsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10247,6 +10631,9 @@ class DocumentsResource:
 
         
         headers = {}  # Don't set Content-Type for multipart, let requests handle it
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10321,6 +10708,9 @@ class DocumentsResource:
 
         
         headers = {}  # Don't set Content-Type for multipart, let requests handle it
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10390,6 +10780,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/media"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10457,6 +10850,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/media"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10533,6 +10929,9 @@ class DocumentsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10613,6 +11012,9 @@ class DocumentsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10688,6 +11090,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10760,6 +11165,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10849,6 +11257,9 @@ class DocumentsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -10936,6 +11347,9 @@ class DocumentsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11022,6 +11436,9 @@ class DocumentsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11106,6 +11523,9 @@ class DocumentsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11180,6 +11600,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11252,6 +11675,9 @@ class DocumentsResource:
         url = f"{self.client.base_url}/api/v1/documents/{document_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11335,6 +11761,9 @@ name: update a document's name.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11417,6 +11846,9 @@ name: update a document's name.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11502,6 +11934,9 @@ name: update a document's name.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11585,6 +12020,9 @@ name: update a document's name.
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11676,6 +12114,9 @@ class ProjectsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11756,6 +12197,9 @@ class ProjectsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11832,6 +12276,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/writers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11905,6 +12352,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/writers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -11980,6 +12430,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/writers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12053,6 +12506,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/writers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12128,6 +12584,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/readers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12201,6 +12660,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/readers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12276,6 +12738,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/readers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12349,6 +12814,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/readers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12430,6 +12898,9 @@ class ProjectsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12504,6 +12975,9 @@ class ProjectsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12588,6 +13062,9 @@ class ProjectsResource:
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive'
         }
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         
         session = requests.Session()
         session.headers.update(headers)
@@ -12707,6 +13184,9 @@ class ProjectsResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12784,6 +13264,9 @@ class ProjectsResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12861,6 +13344,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -12935,6 +13421,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13010,6 +13499,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/maintainers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13083,6 +13575,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/maintainers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13158,6 +13653,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/maintainers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13231,6 +13729,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/maintainers/{user_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13320,6 +13821,9 @@ class ProjectsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13407,6 +13911,9 @@ class ProjectsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13482,6 +13989,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/vocabs/{vocab_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13555,6 +14065,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/vocabs/{vocab_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13630,6 +14143,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/vocabs/{vocab_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13703,6 +14219,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}/vocabs/{vocab_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13789,6 +14308,9 @@ class ProjectsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13873,6 +14395,9 @@ class ProjectsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -13947,6 +14472,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14019,6 +14547,9 @@ class ProjectsResource:
         url = f"{self.client.base_url}/api/v1/projects/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14100,6 +14631,9 @@ class ProjectsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14180,6 +14714,9 @@ class ProjectsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14263,6 +14800,9 @@ class ProjectsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14343,6 +14883,9 @@ class ProjectsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14423,6 +14966,9 @@ class ProjectsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14502,6 +15048,9 @@ class ProjectsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14590,6 +15139,9 @@ class TextLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14667,6 +15219,9 @@ class TextLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14744,6 +15299,9 @@ class TextLayersResource:
         url = f"{self.client.base_url}/api/v1/text-layers/{text_layer_id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14818,6 +15376,9 @@ class TextLayersResource:
         url = f"{self.client.base_url}/api/v1/text-layers/{text_layer_id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14901,6 +15462,9 @@ class TextLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -14982,6 +15546,9 @@ class TextLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15056,6 +15623,9 @@ class TextLayersResource:
         url = f"{self.client.base_url}/api/v1/text-layers/{text_layer_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15128,6 +15698,9 @@ class TextLayersResource:
         url = f"{self.client.base_url}/api/v1/text-layers/{text_layer_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15209,6 +15782,9 @@ class TextLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15289,6 +15865,9 @@ class TextLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15371,6 +15950,9 @@ class TextLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15451,6 +16033,9 @@ class TextLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15534,6 +16119,9 @@ class TextLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15615,6 +16203,9 @@ class TextLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15707,6 +16298,9 @@ class LoginResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         
         # Add document-version parameter in strict mode for non-GET requests
         if self.client._strict_mode_document_id and 'POST' != 'GET':
@@ -15787,6 +16381,9 @@ class LoginResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         
         # Add document-version parameter in strict mode for non-GET requests
         if self.client._strict_mode_document_id and 'POST' != 'GET':
@@ -15877,6 +16474,9 @@ class VocabItemsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -15957,6 +16557,9 @@ class VocabItemsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16032,6 +16635,9 @@ class VocabItemsResource:
         url = f"{self.client.base_url}/api/v1/vocab-items/{id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16104,6 +16710,9 @@ class VocabItemsResource:
         url = f"{self.client.base_url}/api/v1/vocab-items/{id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16188,6 +16797,9 @@ class VocabItemsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16271,6 +16883,9 @@ class VocabItemsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16355,6 +16970,9 @@ class VocabItemsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16436,6 +17054,9 @@ class VocabItemsResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16510,6 +17131,9 @@ class VocabItemsResource:
         url = f"{self.client.base_url}/api/v1/vocab-items/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16582,6 +17206,9 @@ class VocabItemsResource:
         url = f"{self.client.base_url}/api/v1/vocab-items/{id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16663,6 +17290,9 @@ class VocabItemsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16743,6 +17373,9 @@ class VocabItemsResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16834,6 +17467,9 @@ class RelationLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16914,6 +17550,9 @@ class RelationLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -16997,6 +17636,9 @@ class RelationLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17078,6 +17720,9 @@ class RelationLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17157,6 +17802,9 @@ class RelationLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17234,6 +17882,9 @@ class RelationLayersResource:
         body_data = config_value
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17311,6 +17962,9 @@ class RelationLayersResource:
         url = f"{self.client.base_url}/api/v1/relation-layers/{relation_layer_id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17385,6 +18039,9 @@ class RelationLayersResource:
         url = f"{self.client.base_url}/api/v1/relation-layers/{relation_layer_id}/config/{namespace}/{config_key}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17468,6 +18125,9 @@ class RelationLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17549,6 +18209,9 @@ class RelationLayersResource:
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17623,6 +18286,9 @@ class RelationLayersResource:
         url = f"{self.client.base_url}/api/v1/relation-layers/{relation_layer_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17695,6 +18361,9 @@ class RelationLayersResource:
         url = f"{self.client.base_url}/api/v1/relation-layers/{relation_layer_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17776,6 +18445,9 @@ class RelationLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17856,6 +18528,9 @@ class RelationLayersResource:
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -17962,6 +18637,9 @@ precedence: used for tokens with the same begin value in order to indicate their
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18057,6 +18735,9 @@ precedence: used for tokens with the same begin value in order to indicate their
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18141,6 +18822,9 @@ precedence: used for tokens with the same begin value in order to indicate their
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18222,6 +18906,9 @@ precedence: used for tokens with the same begin value in order to indicate their
             url += '?' + urlencode(params)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18296,6 +18983,9 @@ precedence: used for tokens with the same begin value in order to indicate their
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18368,6 +19058,9 @@ precedence: used for tokens with the same begin value in order to indicate their
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18457,6 +19150,9 @@ precedence: ordering value for the token relative to other tokens with the same 
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18545,6 +19241,9 @@ precedence: ordering value for the token relative to other tokens with the same 
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18627,6 +19326,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18707,6 +19409,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18783,6 +19488,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18857,6 +19565,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -18939,6 +19650,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -19019,6 +19733,9 @@ metadata, an optional map of metadata
         body_data = self.client._transform_request(body_dict)
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -19094,6 +19811,9 @@ metadata, an optional map of metadata
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -19166,6 +19886,9 @@ metadata, an optional map of metadata
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
         
         headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
         headers['Authorization'] = f'Bearer {self.client.token}'
         
         # Add document-version parameter in strict mode for non-GET requests
@@ -19283,6 +20006,7 @@ class PlaidClient:
         """
         self.base_url = base_url.rstrip('/')
         self.token = token
+        self.agent_name = None  # User agent name for audit logging
         
         # Initialize batch state
         self._is_batching = False
@@ -19526,6 +20250,18 @@ class PlaidClient:
         Exit strict mode and stop tracking document versions for writes.
         """
         self._strict_mode_document_id = None
+    
+    def set_agent_name(self, agent_name: str) -> None:
+        """
+        Set the user agent name for audit logging.
+        
+        When set, the client will include an X-Agent-Name header in all requests
+        to identify non-human clients in the audit log.
+        
+        Args:
+            agent_name: Name to identify this client in audit logs
+        """
+        self.agent_name = agent_name
     
     @classmethod
     def login(cls, base_url: str, user_id: str, password: str) -> 'PlaidClient':

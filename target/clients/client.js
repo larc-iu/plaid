@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Sat Jul 12 18:08:37 EDT 2025
+ * Generated on: Sat Jul 12 22:35:21 EDT 2025
  */
 
 class PlaidClient {
@@ -13,6 +13,7 @@ class PlaidClient {
   constructor(baseUrl, token) {
     this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash
     this.token = token;
+    this.agentName = null; // User agent name for audit logging
     
     // Initialize batch state
     this.isBatching = false;
@@ -926,6 +927,18 @@ metadata, an optional map of metadata
   }
 
   /**
+   * Set the user agent name for audit logging.
+   * 
+   * When set, the client will include an X-Agent-Name header in all requests
+   * to identify non-human clients in the audit log.
+   * 
+   * @param {string} agentName - Name to identify this client in audit logs
+   */
+  setAgentName(agentName) {
+    this.agentName = agentName;
+  }
+
+  /**
    * Begin a batch of operations. All subsequent API calls will be queued instead of executed.
    * @returns {void}
    */
@@ -1061,7 +1074,8 @@ metadata, an optional map of metadata
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -1147,7 +1161,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -1226,7 +1241,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -1310,7 +1326,8 @@ metadata, an optional map of metadata
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -1388,7 +1405,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -1475,7 +1493,8 @@ metadata, an optional map of metadata
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -1553,7 +1572,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -1638,7 +1658,8 @@ metadata, an optional map of metadata
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -1719,7 +1740,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -1798,7 +1820,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -1882,7 +1905,8 @@ metadata, an optional map of metadata
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -1967,7 +1991,8 @@ metadata, an optional map of metadata
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -2046,7 +2071,8 @@ metadata, an optional map of metadata
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -2124,7 +2150,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -2209,7 +2236,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -2288,7 +2316,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -2373,7 +2402,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -2458,7 +2488,8 @@ metadata, an optional map of metadata
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -2536,7 +2567,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -2621,7 +2653,8 @@ metadata, an optional map of metadata
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -2707,7 +2740,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -2802,7 +2836,8 @@ targetId: the target span this relation goes to
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -2888,7 +2923,8 @@ metadata, an optional map of metadata
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -2969,7 +3005,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -3050,7 +3087,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -3129,7 +3167,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -3213,7 +3252,8 @@ metadata, an optional map of metadata
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -3291,7 +3331,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -3376,7 +3417,8 @@ metadata, an optional map of metadata
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -3463,7 +3505,8 @@ metadata, an optional map of metadata
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -3549,7 +3592,8 @@ metadata, an optional map of metadata
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -3635,7 +3679,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -3729,7 +3774,8 @@ metadata: optional key-value pairs for additional annotation data.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -3814,7 +3860,8 @@ metadata: optional key-value pairs for additional annotation data.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -3892,7 +3939,8 @@ metadata: optional key-value pairs for additional annotation data.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -3977,7 +4025,8 @@ metadata: optional key-value pairs for additional annotation data.
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -4062,7 +4111,8 @@ metadata, an optional map of metadata
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -4143,7 +4193,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -4229,7 +4280,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -4308,7 +4360,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -4382,7 +4435,8 @@ metadata, an optional map of metadata
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -4468,7 +4522,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -4547,7 +4602,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -4639,7 +4695,8 @@ body: the string which is the content of this text.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -4724,7 +4781,8 @@ body: the string which is the content of this text.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -4802,7 +4860,8 @@ body: the string which is the content of this text.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -4887,7 +4946,8 @@ body: the string which is the content of this text.
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -4972,7 +5032,8 @@ body: the string which is the content of this text.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -5059,7 +5120,8 @@ body: the string which is the content of this text.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -5150,7 +5212,8 @@ body: the string which is the content of this text.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -5234,7 +5297,8 @@ body: the string which is the content of this text.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -5312,7 +5376,8 @@ body: the string which is the content of this text.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -5399,7 +5464,8 @@ body: the string which is the content of this text.
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -5485,7 +5551,8 @@ body: the string which is the content of this text.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -5572,7 +5639,8 @@ body: the string which is the content of this text.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -5653,7 +5721,8 @@ body: the string which is the content of this text.
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -5732,7 +5801,8 @@ body: the string which is the content of this text.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -5816,7 +5886,8 @@ body: the string which is the content of this text.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -5894,7 +5965,8 @@ body: the string which is the content of this text.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -5979,7 +6051,8 @@ body: the string which is the content of this text.
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -6064,7 +6137,8 @@ body: the string which is the content of this text.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -6142,7 +6216,8 @@ body: the string which is the content of this text.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -6220,7 +6295,8 @@ body: the string which is the content of this text.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -6299,7 +6375,8 @@ body: the string which is the content of this text.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -6372,6 +6449,7 @@ body: the string which is the content of this text.
       headers: {
         'Authorization': `Bearer ${this.token}`,
         // Content-Type will be set automatically by browser for FormData
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: requestBody
     };
@@ -6445,7 +6523,8 @@ body: the string which is the content of this text.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -6530,7 +6609,8 @@ body: the string which is the content of this text.
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -6609,7 +6689,8 @@ body: the string which is the content of this text.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -6699,7 +6780,8 @@ body: the string which is the content of this text.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -6786,7 +6868,8 @@ body: the string which is the content of this text.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -6864,7 +6947,8 @@ body: the string which is the content of this text.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -6951,7 +7035,8 @@ name: update a document's name.
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -7039,7 +7124,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -7125,7 +7211,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -7204,7 +7291,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -7282,7 +7370,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -7360,7 +7449,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -7438,7 +7528,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -7517,7 +7608,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -7640,7 +7732,8 @@ name: update a document's name.
           headers: {
             'Authorization': `Bearer ${this.token}`,
             'Accept': 'text/event-stream',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache',
+            ...(this.agentName && { 'X-Agent-Name': this.agentName })
           },
           signal: abortController.signal
         });
@@ -7756,7 +7849,8 @@ name: update a document's name.
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -7835,7 +7929,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -7913,7 +8008,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -7991,7 +8087,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -8081,7 +8178,8 @@ name: update a document's name.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -8159,7 +8257,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -8237,7 +8336,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -8324,7 +8424,8 @@ name: update a document's name.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -8402,7 +8503,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -8487,7 +8589,8 @@ name: update a document's name.
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -8572,7 +8675,8 @@ name: update a document's name.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -8657,7 +8761,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -8738,7 +8843,8 @@ name: update a document's name.
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -8817,7 +8923,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -8901,7 +9008,8 @@ name: update a document's name.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -8979,7 +9087,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -9064,7 +9173,8 @@ name: update a document's name.
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -9150,7 +9260,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -9237,7 +9348,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -9323,7 +9435,8 @@ name: update a document's name.
     const fetchOptions = {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -9409,7 +9522,8 @@ name: update a document's name.
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -9488,7 +9602,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -9575,7 +9690,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -9660,7 +9776,8 @@ name: update a document's name.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -9738,7 +9855,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -9823,7 +9941,8 @@ name: update a document's name.
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -9909,7 +10028,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -9996,7 +10116,8 @@ name: update a document's name.
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -10077,7 +10198,8 @@ name: update a document's name.
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -10156,7 +10278,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -10240,7 +10363,8 @@ name: update a document's name.
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -10318,7 +10442,8 @@ name: update a document's name.
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -10403,7 +10528,8 @@ name: update a document's name.
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -10500,7 +10626,8 @@ precedence: used for tokens with the same begin value in order to indicate their
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -10585,7 +10712,8 @@ precedence: used for tokens with the same begin value in order to indicate their
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -10663,7 +10791,8 @@ precedence: used for tokens with the same begin value in order to indicate their
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
@@ -10754,7 +10883,8 @@ precedence: ordering value for the token relative to other tokens with the same 
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -10841,7 +10971,8 @@ metadata, an optional map of metadata
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -10922,7 +11053,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -11008,7 +11140,8 @@ metadata, an optional map of metadata
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       },
       body: JSON.stringify(requestBody)
     };
@@ -11087,7 +11220,8 @@ metadata, an optional map of metadata
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
       }
     };
     
