@@ -36,22 +36,22 @@
                        (when (:body operation)
                          {"content-type" "application/json"}))]
     (merge
-     {:request-method method
-      :uri uri
-      :scheme (:scheme original-request)
-      :server-name (:server-name original-request)
-      :server-port (:server-port original-request)
-      :headers headers
+      {:request-method method
+       :uri uri
+       :scheme (:scheme original-request)
+       :server-name (:server-name original-request)
+       :server-port (:server-port original-request)
+       :headers headers
        ;; Preserve important context from original request
-      :rest-handler (:rest-handler original-request)
-      :xtdb (:xtdb original-request)
-      :db (:db original-request)
-      :jwt-data (:jwt-data original-request)
-      :secret-key (:secret-key original-request)}
-     (when query-string
-       {:query-string query-string})
-     (when-let [body (:body operation)]
-       {:body-params body}))))
+       :rest-handler (:rest-handler original-request)
+       :xtdb (:xtdb original-request)
+       :db (:db original-request)
+       :jwt-data (:jwt-data original-request)
+       :secret-key (:secret-key original-request)}
+      (when query-string
+        {:query-string query-string})
+      (when-let [body (:body operation)]
+        {:body-params body}))))
 
 (defn process-batch-operation
   "Process a single batch operation through the rest handler"
@@ -85,15 +85,13 @@
           :timeout (throw (ex-info "Timeout waiting for operations to complete"
                                    {:code 408 :batch-id batch-id}))))
 
-      ;; 2. Record starting transaction ID for potential rollback
-      (reset! start-tx-id (op/current-tx-id xtdb))
-      (log/debug "Starting batch" batch-id "from transaction ID" @start-tx-id)
+      ;; 2. Capture starting transaction ID and write batch marker
+      (let [current-tx (op/current-tx-id xtdb)]
+        (reset! start-tx-id current-tx)
+        (op/write-batch-marker! xtdb batch-id current-tx)
+        (log/debug "Starting batch" batch-id "from transaction ID" current-tx))
 
-      ;; 3. Create batch progress marker for crash recovery
-      (op/write-batch-marker! xtdb batch-id @start-tx-id)
-      (log/debug "Created batch progress marker for batch" batch-id)
-
-      ;; 4. Process operations sequentially until failure
+      ;; 3. Process operations sequentially until failure
       (loop [remaining-ops operations
              responses []]
         (if (empty? remaining-ops)
