@@ -44,7 +44,7 @@
                              :audit/user user-id
                              :audit/projects affected-projects
                              :audit/documents affected-documents}
-                            *user-agent* (assoc :audit/user-agent *user-agent*))
+                      *user-agent* (assoc :audit/user-agent *user-agent*))
         audit-tx [::xt/put audit-entry]]
     (into op-put-txs [audit-tx])))
 
@@ -52,6 +52,18 @@
 (def ^:dynamic *in-batch-context* false)
 
 ;; Operation coordinator using core.async which provides a global write mutex for batch operations
+;; The operation-coordinator is a coordinator that ensures database operations are executed without
+;; conflicts. It manages two types of operations:
+;; 1. Regular operations: Individual database writes that can run concurrently
+;; 2. Batch operations: Multi-step operations that require exclusive write access
+;;
+;; The coordinator uses a core.async thread to maintain a global write mutex, ensuring that:
+;; - Only one batch operation can run at a time
+;; - Regular operations are queued while a batch is in progress
+;; - Batch operations wait for all active regular operations to complete before beginning
+;; - Proper cleanup occurs on timeout or shutdown
+;;
+;; This prevents race conditions and maintains data integrity.
 (defstate operation-coordinator
   :start
   (let [request-chan (async/chan)
@@ -60,7 +72,7 @@
     (async/thread
       (loop [active-ops 0
              batch-in-progress? false
-             queued-batches [] ; Changed: queue multiple batches instead of just one
+             queued-batches []
              queued-regulars []]
         (let [timeout-chan (async/timeout timeout-ms)
               [request port] (async/alts!! [request-chan timeout-chan stop-chan])]
@@ -142,37 +154,29 @@
 (defn request-operation-start!
   "Request permission to start a regular operation. Returns true if granted, false if timeout."
   []
-  (when-let [coordinator operation-coordinator]
-    (when-let [request-chan (:request-chan coordinator)]
-      (let [response-chan (async/chan)
-            request {:type :regular-start :response-chan response-chan}]
-        (async/>!! request-chan request)
-        (let [response (async/<!! response-chan)]
-          (= (:status response) :proceed))))))
+  (let [response-chan (async/chan)
+        request {:type :regular-start :response-chan response-chan}]
+    (async/>!! (:request-chan operation-coordinator) request)
+    (let [response (async/<!! response-chan)]
+      (= (:status response) :proceed))))
 
 (defn signal-operation-complete!
   "Signal that a regular operation has completed"
   []
-  (when-let [coordinator operation-coordinator]
-    (when-let [request-chan (:request-chan coordinator)]
-      (async/>!! request-chan {:type :regular-complete}))))
+  (async/>!! (:request-chan operation-coordinator) {:type :regular-complete}))
 
 (defn request-batch-start!
   "Request permission to start a batch operation. Returns status map."
   [batch-id]
-  (when-let [coordinator operation-coordinator]
-    (when-let [request-chan (:request-chan coordinator)]
-      (let [response-chan (async/chan)
-            request {:type :batch-start :response-chan response-chan :batch-id batch-id}]
-        (async/>!! request-chan request)
-        (async/<!! response-chan)))))
+  (let [response-chan (async/chan)
+        request {:type :batch-start :response-chan response-chan :batch-id batch-id}]
+    (async/>!! (:request-chan operation-coordinator) request)
+    (async/<!! response-chan)))
 
 (defn signal-batch-complete!
   "Signal that a batch operation has completed"
   []
-  (when-let [coordinator operation-coordinator]
-    (when-let [request-chan (:request-chan coordinator)]
-      (async/>!! request-chan {:type :batch-complete}))))
+  (async/>!! (:request-chan operation-coordinator) {:type :batch-complete}))
 
 ;; Batch progress markers for crash recovery
 (defn create-batch-marker
