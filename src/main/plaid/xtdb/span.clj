@@ -1,7 +1,7 @@
 (ns plaid.xtdb.span
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.operation :as op :refer [submit-operations!]]
             [plaid.xtdb.relation :as r]
             [plaid.xtdb.metadata :as metadata]
             [clojure.string :as str])
@@ -171,7 +171,7 @@
   ([xt-map attrs user-id]
    (create xt-map attrs user-id nil))
   ([xt-map attrs user-id metadata]
-   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
+   (submit-operations! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn merge-operation
   "Build an operation for updating a span's attributes"
@@ -384,7 +384,7 @@
 (defn bulk-create
   "Create multiple spans in a single operation"
   [xt-map spans-attrs user-id]
-  (submit-operations-with-extras!
+  (submit-operations!
     xt-map
     [(bulk-create-operation xt-map spans-attrs)]
     user-id

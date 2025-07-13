@@ -1,7 +1,7 @@
 (ns plaid.xtdb.token
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.operation :as op :refer [submit-operations!]]
             [plaid.xtdb.span :as s]
             [plaid.xtdb.metadata :as metadata]
             [taoensso.timbre :as log])
@@ -185,7 +185,7 @@
   ([xt-map attrs user-id]
    (create xt-map attrs user-id nil))
   ([xt-map attrs user-id metadata]
-   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
+   (submit-operations! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn- set-extent [{:keys [node db] :as xt-map} eid {new-begin :token/begin new-end :token/end}]
   (let [{:token/keys [begin end text layer] :as token} (pxc/entity db eid)
@@ -312,7 +312,7 @@
 (defn bulk-create
   "Create multiple tokens in a single operation"
   [xt-map tokens-attrs user-id]
-  (submit-operations-with-extras!
+  (submit-operations!
     xt-map
     [(bulk-create-operation xt-map tokens-attrs)]
     user-id

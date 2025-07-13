@@ -1,7 +1,7 @@
 (ns plaid.xtdb.document
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.operation :as op :refer [submit-operations!]]
             [plaid.xtdb.text :as text]
             [plaid.xtdb.token :as token]
             [plaid.xtdb.token-layer :as tokl]
@@ -210,7 +210,7 @@
   ([xt-map attrs user-id]
    (create xt-map attrs user-id nil))
   ([xt-map attrs user-id metadata]
-   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
+   (submit-operations! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn merge-operation
   "Build an operation for updating a document"

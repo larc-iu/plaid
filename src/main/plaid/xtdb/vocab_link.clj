@@ -1,7 +1,7 @@
 (ns plaid.xtdb.vocab-link
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.operation :as op :refer [submit-operations!]]
             [plaid.xtdb.vocab-layer :as vl]
             [plaid.xtdb.vocab-item :as vi]
             [plaid.xtdb.user :as user]
@@ -186,7 +186,7 @@
   ([xt-map attrs user-id]
    (create xt-map attrs user-id nil))
   ([xt-map attrs user-id metadata]
-   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
+   (submit-operations! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn delete*
   [{:keys [db]} eid]

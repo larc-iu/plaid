@@ -1,7 +1,7 @@
 (ns plaid.xtdb.relation-layer
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]])
+            [plaid.xtdb.operation :as op :refer [submit-operations!]])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:relation-layer/id
@@ -80,7 +80,7 @@
       :tx-ops      tx-ops})))
 
 (defn create [xt-map attrs span-layer-id user-id]
-  (submit-operations-with-extras! xt-map [(create-operation xt-map attrs span-layer-id)] user-id #(-> % last last :xt/id)))
+  (submit-operations! xt-map [(create-operation xt-map attrs span-layer-id)] user-id #(-> % last last :xt/id)))
 
 (defn merge-operation
   "Build an operation for updating a relation layer"

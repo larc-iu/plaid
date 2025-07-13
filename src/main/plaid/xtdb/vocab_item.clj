@@ -1,7 +1,7 @@
 (ns plaid.xtdb.vocab-item
   (:require [xtdb.api :as xt]
             [plaid.xtdb.common :as pxc]
-            [plaid.xtdb.operation :as op :refer [submit-operations! submit-operations-with-extras!]]
+            [plaid.xtdb.operation :as op :refer [submit-operations!]]
             [plaid.xtdb.user :as user]
             [plaid.xtdb.metadata :as metadata]
             [taoensso.timbre :as log])
@@ -64,7 +64,7 @@
   ([xt-map attrs user-id]
    (create xt-map attrs user-id nil))
   ([xt-map attrs user-id metadata]
-   (submit-operations-with-extras! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
+   (submit-operations! xt-map [(create-operation xt-map attrs metadata)] user-id #(-> % last last :xt/id))))
 
 (defn merge-operation
   [xt-map eid m]
