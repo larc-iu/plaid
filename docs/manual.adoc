@@ -15,7 +15,7 @@
 
 **Plaid** is a **platform**, which means that it is not a complete app on its own.
 Rather, it provides an implementation of the "boring" parts of a linguistic annotation app, including a user system, a database layer, and more.
-Building an app with Plaid allows you to focus your attention on just the interesting parts of your App including the UI and logic which is specific to your annotation framework.
+Building an app with Plaid allows you to focus your attention on just the interesting parts of your app including the UI and logic which is specific to your annotation framework.
 
 The purpose of this document is to teach you how to think about and use Plaid.
 If you'd rather just dive into a real app programmed with Plaid, check out the https://github.com/larc-iu/plaid/tree/master/examples/ud_editor[UD editor] example app.
@@ -169,7 +169,7 @@ def on_event(event_type, event_data):
         print(f"User {user} performed operation `{op_type}` on document {document_id} at {time}: '{description}'")
 
 
-client.projects.listen(project_id, on_event)
+client.messages.listen(project_id, on_event)
 ----
 
 After the `send_message` invocation we just saw, this `on_event` function would produce the following output:
