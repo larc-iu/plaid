@@ -518,6 +518,16 @@ except Exception as e:
 
 Owing to some implementation details, no other writes may be executed while a batch is being processed, so only use them where necessary.
 
+== Trust
+
+For all constraints which you might attempt to enforce using the three mechanisms described above, there is, of course, nothing stopping a malicious user from circumventing them and submitting changes which invalidate your formalism-specific data integrity constraints.
+For example, if you have a document where you want all spans to be in one-to-one correspondence with tokens, a malicious user could simply circumvent your UI code entirely and craft a malicious request to e.g. create multiple spans associated with a single token.
+Since there is no server-side validation for this constraint, the server will happily execute it and advance into a database state that does not violate any core data integrity constraints but _does_ violate your formalism-specific constraints.
+
+This is a fundamental limitation of Plaid which was deliberately adopted in order to support frontend-only development.
+You therefore must only grant write privileges only to users who you trust not to circumvent client-side validation guardrails.
+Fortunately, we think this is not an onerous imposition in most real-world circumstances.
+
 = Development
 
 For information on how to work on **Plaid itself** (not an app which uses Plaid), see link:dev.html[the development  guide].
