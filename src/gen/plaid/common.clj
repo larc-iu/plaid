@@ -94,16 +94,12 @@
   "Get bundle name from operation metadata or infer from path"
   [path operation]
   (or (get operation "x-client-bundle")
-      (get-in operation ["openapi" "x-client-bundle"])
-      (get-in operation ["x-openapi" "x-client-bundle"])
       (infer-bundle-name path)))
 
 (defn get-method-name
   "Get method name from operation metadata or infer from HTTP method and path"
   [http-method path operation]
   (or (get operation "x-client-method")
-      (get-in operation ["openapi" "x-client-method"])
-      (get-in operation ["x-openapi" "x-client-method"])
       (infer-method-name http-method path)))
 
 (defn transform-method-name
