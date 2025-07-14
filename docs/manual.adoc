@@ -397,6 +397,48 @@ It is often desirable to enrich an entity with additional information--for insta
 Additionally, you might want to do the same with a layer in order to e.g. specify what values are acceptable for spans in a given layer.
 To accommodate this, Plaid allows arbitrary data to be stored in the `config` attribute for layer types (project, text layer, token layer, span layer, relation layer, vocab layer) and in the `metadata` attribute for data types (document, text, token, span, relation, vocab item, vocab link).
 
+You might use a config to store legal tags for a given layer:
+
+[,js]
+----
+{ id: "...", name: "POS Tags", config: { tags: ["NOUN", "VERB", /* ... */] } }
+----
+
+As for metadata, one use could be to store information about whether a human or an AI system produced the annotation, and in the latter case, store additional information about the system's predictions:
+
+[,js]
+----
+// Human-made POS tag
+{
+  id: "...",
+  tokens: [/*...*/],
+  value: "NOUN",
+  metadata: {
+    userId: "human-user-id"
+  }
+}
+// System-made POS tag
+{
+  id: "...",
+  tokens: [/*...*/],
+  value: "NOUN",
+  metadata: {
+    userId: "system-user-id",
+    systemName: "stanza==1.10.1",
+    tagProb: 0.8412,
+    tagProbs: {
+      NOUN: 0.8412,
+      PROPN: 0.0966,
+      ADJ: 0.00141,
+      /* ... */
+    }
+  }
+}
+----
+
+
+NOTE: Config and metadata values are schema-less, meaning that arbitrary values may be included on the fly. If you'd like to see schema support for either of these, please feel free to https://github.com/larc-iu/plaid/issues[open an issue].
+
 = Data Integrity
 
 In collaborative annotation projects, it is crucial to take steps to ensure that data never reaches an invalid state.
