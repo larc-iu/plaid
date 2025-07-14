@@ -120,7 +120,7 @@
                                      result)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple tokens in a single operation. Provide an array of IDs."
-                      :openapi {:x-client-method "bulkDelete"}
+                      :openapi {:x-client-method "bulk-delete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
                       :parameters {:query [:map [:document-version {:optional true} :uuid]]
