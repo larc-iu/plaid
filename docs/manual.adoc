@@ -437,7 +437,7 @@ As for metadata, one use could be to store information about whether a human or 
 ----
 
 
-NOTE: Config and metadata values are schema-less, meaning that arbitrary values may be included on the fly. If you'd like to see schema support for either of these, please feel free to https://github.com/larc-iu/plaid/issues[open an issue].
+NOTE: Config and metadata values are schema-less, meaning that keys and values are unconstrained. If you'd like to see schema support for either of these, please feel free to https://github.com/larc-iu/plaid/issues[open an issue].
 
 = Data Integrity
 
