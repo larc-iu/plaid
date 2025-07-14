@@ -141,7 +141,7 @@ The `send_message`/`sendMessage` function allows a client to broadcast a message
 
 [,python]
 ----
-client.send_message(project_id, {"purpose": "ping", "message": "ping"})
+client.messages.send_message(project_id, {"purpose": "ping", "message": "ping"})
 ----
 
 Note that the second positional argument, the `body`, can be any JSON value.
