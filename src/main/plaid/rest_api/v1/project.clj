@@ -246,8 +246,8 @@
    ["/:id/heartbeat"
     {:parameters {:path [:map [:id :uuid]]}
      :post {:summary "INTERNAL, do not use directly."
-            {:openapi {:x-client-bundle "messages"
-                       :x-client-method "_heartbeat"}}
+            :openapi {:x-client-bundle "messages"
+                      :x-client-method "_heartbeat"}
             :middleware [[pra/wrap-reader-required get-project-id]]
             :parameters {:body [:map [:client-id :string]]}
             :handler (fn [{{{:keys [id]} :path
