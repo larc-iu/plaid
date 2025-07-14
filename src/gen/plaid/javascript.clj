@@ -263,12 +263,12 @@
                                (str "\n    const queryParams = new URLSearchParams();\n"
                                     (str/join "\n" query-checks) "\n"
                                     "    const queryString = queryParams.toString();\n"
-                                    "    const finalUrl = queryString ? `${url}?${queryString}` : url;")))]
+                                    "    let finalUrl = queryString ? `${url}?${queryString}` : url;")))]
     (str base-url query-construction)))
 
 (defn- generate-body-construction
   "Generate JavaScript code to construct request body from individual parameters"
-  [body-params]
+  [operation body-params]
   (when (seq body-params)
     (cond
       ;; Special case: single array parameter that represents the entire body
@@ -277,6 +277,9 @@
            (= (:original-name (first body-params)) "body"))
       (let [param-name (transform-key-name (:name (first body-params)))]
         (str "const requestBody = this._transformRequest(" param-name ");"))
+
+      (= (:method-name operation) "send-message")
+      (str "const requestBody = { body };")
 
       ;; Handle multipart/form-data with file uploads
       (some :is-file? body-params)
@@ -553,7 +556,7 @@
                                 "const requestBody = configValue;"
 
                                 (seq body-params)
-                                (generate-body-construction body-params)
+                                (generate-body-construction operation body-params)
 
                                 :else nil)
 
@@ -649,13 +652,273 @@
              "    }\n"
              "  }\n")))))
 
+(defn- generate-messages-methods
+  "Generate the JavaScript messages bundle methods for service coordination"
+  []
+  (str "  // Message format utilities\n"
+       "  _generateRequestId() {\n"
+       "    return 'req_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();\n"
+       "  }\n"
+       "\n"
+       "  _createServiceMessage(type, data = {}) {\n"
+       "    return {\n"
+       "      type,\n"
+       "      timestamp: new Date().toISOString(),\n"
+       "      ...data\n"
+       "    };\n"
+       "  }\n"
+       "\n"
+       "  _isServiceMessage(data) {\n"
+       "    return data && data.type && data.timestamp;\n"
+       "  }\n"
+       "\n"
+       "  // Service discovery implementation\n"
+       "  _messagesDiscoverServices(projectId, timeout = 3000) {\n"
+       "    return new Promise((resolve, reject) => {\n"
+       "      const requestId = this._generateRequestId();\n"
+       "      const discoveredServices = [];\n"
+       "      let connection = null;\n"
+       "      \n"
+       "      const timer = setTimeout(() => {\n"
+       "        if (connection) connection.close();\n"
+       "        resolve(discoveredServices);\n"
+       "      }, timeout);\n"
+       "      \n"
+       "      try {\n"
+       "        connection = this._messagesListen(projectId, (eventType, eventData) => {\n"
+       "          if (eventType === 'message' && this._isServiceMessage(eventData.data)) {\n"
+       "            const message = eventData.data;\n"
+       "            \n"
+       "            if (message.type === 'service_registration' && message.requestId === requestId) {\n"
+       "              discoveredServices.push({\n"
+       "                serviceId: message.serviceId,\n"
+       "                serviceName: message.serviceName,\n"
+       "                description: message.description,\n"
+       "                timestamp: message.timestamp\n"
+       "              });\n"
+       "            }\n"
+       "          }\n"
+       "        });\n"
+       "        \n"
+       "        // Send discovery request\n"
+       "        const discoveryMessage = this._createServiceMessage('service_discovery', { requestId });\n"
+       "        try {\n"
+       "          this._messagesSendMessage(projectId, discoveryMessage);\n"
+       "        } catch (error) {\n"
+       "          clearTimeout(timer);\n"
+       "          if (connection) connection.close();\n"
+       "          reject(new Error(`Failed to send discovery message: ${error.message}`));\n"
+       "          return;\n"
+       "        }\n"
+       "        \n"
+       "      } catch (error) {\n"
+       "        clearTimeout(timer);\n"
+       "        if (connection) connection.close();\n"
+       "        reject(new Error(`Cannot establish SSE connection: ${error.message}`));\n"
+       "      }\n"
+       "    });\n"
+       "  }\n"
+       "\n"
+       "  // Service registration implementation\n"
+       "  _messagesServe(projectId, serviceInfo, onServiceRequest) {\n"
+       "    const { serviceId, serviceName, description } = serviceInfo;\n"
+       "    let connection = null;\n"
+       "    let isRunning = true;\n"
+       "    \n"
+       "    const serviceRegistration = {\n"
+       "      stop: () => {\n"
+       "        isRunning = false;\n"
+       "        if (connection) connection.close();\n"
+       "      },\n"
+       "      isRunning: () => isRunning,\n"
+       "      serviceInfo: { serviceId, serviceName, description }\n"
+       "    };\n"
+       "    \n"
+       "    try {\n"
+       "      connection = this._messagesListen(projectId, (eventType, eventData) => {\n"
+       "        if (!isRunning) return true; // Stop listening\n"
+       "        \n"
+       "        if (eventType === 'message' && this._isServiceMessage(eventData.data)) {\n"
+       "          const message = eventData.data;\n"
+       "          \n"
+       "          if (message.type === 'service_discovery') {\n"
+       "            // Respond to service discovery\n"
+       "            const registrationMessage = this._createServiceMessage('service_registration', {\n"
+       "              requestId: message.requestId,\n"
+       "              serviceId,\n"
+       "              serviceName,\n"
+       "              description\n"
+       "            });\n"
+       "            try {\n"
+       "              this._messagesSendMessage(projectId, registrationMessage);\n"
+       "            } catch (error) {\n"
+       "              // Ignore send failures during discovery\n"
+       "            }\n"
+       "          } else if (message.type === 'service_request' && message.serviceId === serviceId) {\n"
+       "            // Handle service request\n"
+       "            try {\n"
+       "              // Send acknowledgment\n"
+       "              const ackMessage = this._createServiceMessage('service_response', {\n"
+       "                requestId: message.requestId,\n"
+       "                status: 'received'\n"
+       "              });\n"
+       "              try {\n"
+       "                this._messagesSendMessage(projectId, ackMessage);\n"
+       "              } catch (error) {\n"
+       "                // Continue even if ack fails\n"
+       "              }\n"
+       "              \n"
+       "              // Create response helper\n"
+       "              const responseHelper = {\n"
+       "                progress: (percent, message) => {\n"
+       "                  const progressMessage = this._createServiceMessage('service_response', {\n"
+       "                    requestId: message.requestId,\n"
+       "                    status: 'progress',\n"
+       "                    progress: { percent, message }\n"
+       "                  });\n"
+       "                  try {\n"
+       "                    this._messagesSendMessage(projectId, progressMessage);\n"
+       "                  } catch (error) {\n"
+       "                    // Ignore send failures for progress updates\n"
+       "                  }\n"
+       "                },\n"
+       "                complete: (data) => {\n"
+       "                  const completionMessage = this._createServiceMessage('service_response', {\n"
+       "                    requestId: message.requestId,\n"
+       "                    status: 'completed',\n"
+       "                    data\n"
+       "                  });\n"
+       "                  try {\n"
+       "                    this._messagesSendMessage(projectId, completionMessage);\n"
+       "                  } catch (error) {\n"
+       "                    // Ignore send failures for completion\n"
+       "                  }\n"
+       "                },\n"
+       "                error: (error) => {\n"
+       "                  const errorMessage = this._createServiceMessage('service_response', {\n"
+       "                    requestId: message.requestId,\n"
+       "                    status: 'error',\n"
+       "                    data: { error: error.message || error }\n"
+       "                  });\n"
+       "                  try {\n"
+       "                    this._messagesSendMessage(projectId, errorMessage);\n"
+       "                  } catch (error) {\n"
+       "                    // Ignore send failures for errors\n"
+       "                  }\n"
+       "                }\n"
+       "              };\n"
+       "              \n"
+       "              // Call user handler\n"
+       "              try {\n"
+       "                onServiceRequest(message.data, responseHelper);\n"
+       "              } catch (error) {\n"
+       "                responseHelper.error(error.message || error);\n"
+       "              }\n"
+       "              \n"
+       "            } catch (error) {\n"
+       "              // Send error response\n"
+       "              const errorMessage = this._createServiceMessage('service_response', {\n"
+       "                requestId: message.requestId,\n"
+       "                status: 'error',\n"
+       "                data: { error: error.message || error }\n"
+       "              });\n"
+       "              try {\n"
+       "                this._messagesSendMessage(projectId, errorMessage);\n"
+       "              } catch (sendError) {\n"
+       "                // Ignore errors when sending error responses\n"
+       "              }\n"
+       "            }\n"
+       "          }\n"
+       "        }\n"
+       "      });\n"
+       "      \n"
+       "    } catch (error) {\n"
+       "      throw new Error(`Failed to start service: ${error.message}`);\n"
+       "    }\n"
+       "    \n"
+       "    return serviceRegistration;\n"
+       "  }\n"
+       "\n"
+       "  // Service request implementation\n"
+       "  _messagesRequestService(projectId, serviceId, data, timeout = 10000) {\n"
+       "    return new Promise((resolve, reject) => {\n"
+       "      const requestId = this._generateRequestId();\n"
+       "      let connection = null;\n"
+       "      let isResolved = false;\n"
+       "      \n"
+       "      const timer = setTimeout(() => {\n"
+       "        if (!isResolved) {\n"
+       "          isResolved = true;\n"
+       "          if (connection) connection.close();\n"
+       "          reject(new Error(`Service request timed out after ${timeout}ms`));\n"
+       "        }\n"
+       "      }, timeout);\n"
+       "      \n"
+       "      try {\n"
+       "        connection = this._messagesListen(projectId, (eventType, eventData) => {\n"
+       "          if (eventType === 'message' && this._isServiceMessage(eventData.data)) {\n"
+       "            const message = eventData.data;\n"
+       "            \n"
+       "            if (message.type === 'service_response' && message.requestId === requestId) {\n"
+       "              if (message.status === 'completed') {\n"
+       "                if (!isResolved) {\n"
+       "                  isResolved = true;\n"
+       "                  clearTimeout(timer);\n"
+       "                  connection.close();\n"
+       "                  resolve(message.data);\n"
+       "                }\n"
+       "              } else if (message.status === 'error') {\n"
+       "                if (!isResolved) {\n"
+       "                  isResolved = true;\n"
+       "                  clearTimeout(timer);\n"
+       "                  connection.close();\n"
+       "                  reject(new Error(message.data?.error || 'Service request failed'));\n"
+       "                }\n"
+       "              }\n"
+       "              // Ignore 'received' and 'progress' status messages for now\n"
+       "            }\n"
+       "          }\n"
+       "        });\n"
+       "        \n"
+       "        // Send service request\n"
+       "        const requestMessage = this._createServiceMessage('service_request', {\n"
+       "          requestId,\n"
+       "          serviceId,\n"
+       "          data\n"
+       "        });\n"
+       "        try {\n"
+       "          this._messagesSendMessage(projectId, requestMessage);\n"
+       "        } catch (error) {\n"
+       "          if (!isResolved) {\n"
+       "            isResolved = true;\n"
+       "            clearTimeout(timer);\n"
+       "            if (connection) connection.close();\n"
+       "            reject(new Error(`Failed to send service request: ${error.message}`));\n"
+       "          }\n"
+       "        }\n"
+       "        \n"
+       "      } catch (error) {\n"
+       "        if (!isResolved) {\n"
+       "          isResolved = true;\n"
+       "          clearTimeout(timer);\n"
+       "          if (connection) connection.close();\n"
+       "          reject(new Error(`Cannot establish SSE connection: ${error.message}`));\n"
+       "        }\n"
+       "      }\n"
+       "    });\n"
+       "  }\n"))
+
 (defn- generate-bundle-methods
   "Generate all private methods for the PlaidClient class"
   [bundles]
-  (->> bundles
-       (mapcat (fn [[bundle-name operations]]
-                 (map generate-private-method-from-ast operations)))
-       (str/join "\n")))
+  (let [regular-methods (->> bundles
+                             (mapcat (fn [[bundle-name operations]]
+                                       (map generate-private-method-from-ast operations))))
+
+        ;; Add messages bundle methods
+        messages-methods (generate-messages-methods)]
+
+    (str (str/join "\n" regular-methods) "\n\n" messages-methods)))
 
 (defn- openapi-type-to-ts
   "Convert OpenAPI type to TypeScript type"
@@ -829,15 +1092,50 @@
 (defn- generate-ts-definitions
   "Generate complete TypeScript definitions for the client"
   [bundles]
-  (let [bundle-interfaces (->> bundles
+  (let [;; Add service coordination interfaces at the top
+        service-interfaces (str "interface ServiceInfo {\n"
+                                "  serviceId: string;\n"
+                                "  serviceName: string;\n"
+                                "  description: string;\n"
+                                "}\n\n"
+                                "interface DiscoveredService {\n"
+                                "  serviceId: string;\n"
+                                "  serviceName: string;\n"
+                                "  description: string;\n"
+                                "  timestamp: string;\n"
+                                "}\n\n"
+                                "interface ServiceRegistration {\n"
+                                "  stop(): void;\n"
+                                "  isRunning(): boolean;\n"
+                                "  serviceInfo: ServiceInfo;\n"
+                                "}\n\n"
+                                "interface ResponseHelper {\n"
+                                "  progress(percent: number, message: string): void;\n"
+                                "  complete(data: any): void;\n"
+                                "  error(error: string | Error): void;\n"
+                                "}\n\n")
+
+        bundle-interfaces (->> bundles
                                (map (fn [[bundle-name operations]]
-                                      (generate-ts-bundle-interface bundle-name operations)))
+                                      (if (= bundle-name "messages")
+                                        ;; Special handling for messages bundle with service coordination
+                                        (str "interface MessagesBundle {\n"
+                                             "  sendMessage(id: string, body: any): Promise<any>;\n"
+                                             "  heartbeat(id: string, clientId: string): Promise<any>;\n"
+                                             "  listen(id: string, onEvent: (eventType: string, data: any) => void): { close(): void; getStats(): any; readyState: number; };\n"
+                                             "  discoverServices(projectId: string, timeout?: number): Promise<DiscoveredService[]>;\n"
+                                             "  serve(projectId: string, serviceInfo: ServiceInfo, onServiceRequest: (data: any, responseHelper: ResponseHelper) => void): ServiceRegistration;\n"
+                                             "  requestService(projectId: string, serviceId: string, data: any, timeout?: number): Promise<any>;\n"
+                                             "}")
+                                        ;; Regular bundle generation
+                                        (generate-ts-bundle-interface bundle-name operations))))
                                (str/join "\n\n"))
         main-interface (->> bundles
                             (map (fn [[bundle-name _]]
                                    (str "  " bundle-name ": " (csk/->PascalCase bundle-name) "Bundle;")))
                             (str/join "\n"))]
-    (str bundle-interfaces "\n\n"
+    (str service-interfaces
+         bundle-interfaces "\n\n"
          "declare class PlaidClient {\n"
          "  constructor(baseUrl: string, token: string);\n"
          "  static login(baseUrl: string, userId: string, password: string): Promise<PlaidClient>;\n"
@@ -859,29 +1157,83 @@
          "}\n\n"
          "declare const client: PlaidClient;\n")))
 
+(defn- generate-messages-bundle-initialization
+  "Generate the JavaScript messages bundle initialization code"
+  []
+  (str "    this.messages = {\n"
+       "      /**\n"
+       "       * Listen for project events including service coordination messages\n"
+       "       * @param {string} projectId - The UUID of the project to listen to\n"
+       "       * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.\n"
+       "       * @returns {Object} SSE connection object with .close() and .getStats() methods\n"
+       "       */\n"
+       "      listen: this._messagesListen.bind(this),\n"
+       "      \n"
+       "      /**\n"
+       "       * Send a message to project listeners\n"
+       "       * @param {string} projectId - The UUID of the project to send to\n"
+       "       * @param {any} data - The message data to send\n"
+       "       * @returns {Promise<any>} Response from the send operation\n"
+       "       */\n"
+       "      sendMessage: this._messagesSendMessage.bind(this),\n"
+       "      \n"
+       "      /**\n"
+       "       * Discover available services in a project\n"
+       "       * @param {string} projectId - The UUID of the project to query\n"
+       "       * @param {number} timeout - Timeout in milliseconds (default: 3000)\n"
+       "       * @returns {Promise<Array>} Array of discovered service information\n"
+       "       */\n"
+       "      discoverServices: this._messagesDiscoverServices.bind(this),\n"
+       "      \n"
+       "      /**\n"
+       "       * Register as a service and handle incoming requests\n"
+       "       * @param {string} projectId - The UUID of the project to serve\n"
+       "       * @param {Object} serviceInfo - Service information {serviceId, serviceName, description}\n"
+       "       * @param {function} onServiceRequest - Callback to handle service requests\n"
+       "       * @returns {Object} Service registration object with .stop() method\n"
+       "       */\n"
+       "      serve: this._messagesServe.bind(this),\n"
+       "      \n"
+       "      /**\n"
+       "       * Request a service to perform work\n"
+       "       * @param {string} projectId - The UUID of the project\n"
+       "       * @param {string} serviceId - The ID of the service to request\n"
+       "       * @param {any} data - The request data\n"
+       "       * @param {number} timeout - Timeout in milliseconds (default: 10000)\n"
+       "       * @returns {Promise<any>} Service response\n"
+       "       */\n"
+       "      requestService: this._messagesRequestService.bind(this)\n"
+       "    };"))
+
 (defn- generate-bundle-initialization
   "Generate bundle initialization code for the constructor"
   [bundles]
-  (->> bundles
-       (map (fn [[bundle-name operations]]
-              (let [methods (->> operations
-                                 (map (fn [operation]
-                                        (let [{:keys [method-name bundle-name summary path]} operation
-                                              transformed-method-name (common/transform-method-name method-name :camelCase)
-                                              private-method-name (str "_" bundle-name (csk/->PascalCase transformed-method-name))
-                                              formatted-summary (transform-parameter-references (or summary ""))
-                                              jsdoc-params (generate-jsdoc-params operation)
-                                              jsdoc-comment (when (or formatted-summary (seq jsdoc-params))
-                                                              (str "      /**\n"
-                                                                   (when formatted-summary (str "       * " formatted-summary "\n"))
-                                                                   (str/join "\n" jsdoc-params)
-                                                                   (when (seq jsdoc-params) "\n")
-                                                                   "       */\n"))]
-                                          (str jsdoc-comment
-                                               "      " transformed-method-name ": this." private-method-name ".bind(this)"))))
-                                 (str/join ",\n"))]
-                (str "    this." bundle-name " = {\n" methods "\n    };"))))
-       (str/join "\n")))
+  (let [regular-bundles (->> bundles
+                             (filter #(not= (first %) "messages"))
+                             (map (fn [[bundle-name operations]]
+                                    (let [methods (->> operations
+                                                       (map (fn [operation]
+                                                              (let [{:keys [method-name bundle-name summary path]} operation
+                                                                    transformed-method-name (common/transform-method-name method-name :camelCase)
+                                                                    private-method-name (str "_" bundle-name (csk/->PascalCase transformed-method-name))
+                                                                    formatted-summary (transform-parameter-references (or summary ""))
+                                                                    jsdoc-params (generate-jsdoc-params operation)
+                                                                    jsdoc-comment (when (or formatted-summary (seq jsdoc-params))
+                                                                                    (str "      /**\n"
+                                                                                         (when formatted-summary (str "       * " formatted-summary "\n"))
+                                                                                         (str/join "\n" jsdoc-params)
+                                                                                         (when (seq jsdoc-params) "\n")
+                                                                                         "       */\n"))]
+                                                                (str jsdoc-comment
+                                                                     "      " transformed-method-name ": this." private-method-name ".bind(this)"))))
+                                                       (str/join ",\n"))]
+                                      (str "    this." bundle-name " = {\n" methods "\n    };"))))
+                             (str/join "\n"))
+
+        ;; Add messages bundle with service coordination methods
+        messages-bundle (generate-messages-bundle-initialization)]
+
+    (str regular-bundles "\n" messages-bundle)))
 
 (defn generate-js-client
   "Generate the complete JavaScript client class"
@@ -1025,7 +1377,32 @@
          "}\n")))
 
 (defn generate-javascript-client
-  "Generate a JavaScript client from an OpenAPI AST"
+  "Generate a JavaScript client from an OpenAPI AST and write it to files.
+  
+  This function creates a complete JavaScript client library with the following features:
+  - Promise-based HTTP methods for all API endpoints
+  - Automatic parameter transformation (kebab-case to camelCase)
+  - Structured service coordination system for inter-service communication
+  - Batch operations support for efficient bulk API calls
+  - Document version tracking for optimistic concurrency control
+  - Comprehensive error handling with custom PlaidAPIError exceptions
+  - TypeScript definitions for full type safety and IDE support
+  
+  Args:
+    ast: OpenAPI AST containing parsed API specification with bundled operations
+    output-file: Path where the generated JavaScript client will be written
+    
+  Generated files:
+    - .js file: Complete JavaScript client implementation
+    - .d.ts file: TypeScript definitions for type safety
+    
+  Generated client includes:
+    - Resource classes for each API bundle (projects, documents, tokens, etc.)
+    - MessagesBundle for service coordination and real-time messaging
+    - PlaidClient main class with configuration and batch management
+    - Authentication methods (login/loginAsync)
+    - Key transformation utilities for API compatibility
+    - Document version extraction for concurrent modification detection"
   [ast output-file]
   (let [js-client (generate-js-client ast)
         ts-definitions (generate-ts-definitions (:bundles ast))

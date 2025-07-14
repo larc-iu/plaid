@@ -15,6 +15,7 @@
             [plaid.rest-api.v1.auth :as pra :refer [authentication-routes]]
             [plaid.rest-api.v1.user :refer [user-routes]]
             [plaid.rest-api.v1.project :refer [project-routes]]
+            [plaid.rest-api.v1.message :refer [message-routes]]
             [plaid.rest-api.v1.document :refer [document-routes]]
             [plaid.rest-api.v1.text :refer [text-routes]]
             [plaid.rest-api.v1.text-layer :refer [text-layer-routes]]
@@ -68,6 +69,7 @@
      {:parameters {:query [:map [:as-of {:optional true} inst?]]}}
      user-routes
      project-routes
+     message-routes
      document-routes
      text-routes
      text-layer-routes

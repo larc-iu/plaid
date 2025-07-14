@@ -1,12 +1,13 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Sat Jul 12 22:35:23 EDT 2025
+Generated on: Mon Jul 14 19:39:02 EDT 2025
 """
 
 import requests
 import aiohttp
 import json
+import time
 from typing import Any, Dict, List, Optional, Union, Callable, Tuple, BinaryIO
 
 
@@ -12089,9 +12090,9 @@ name: update a document's name.
             )
 
 
-class ProjectsResource:
+class MessagesResource:
     """
-    Resource class for projects operations
+    Resource class for messages operations
     """
     
     def __init__(self, client: 'PlaidClient'):
@@ -12106,12 +12107,7 @@ class ProjectsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/projects/{id}/message"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = {'body': body}
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -12189,12 +12185,7 @@ class ProjectsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/projects/{id}/message"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = {'body': body}
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -12264,6 +12255,674 @@ class ProjectsResource:
                 'POST',
                 {'original_error': str(e)}
             )
+
+    def heartbeat(self, id: str, client_id: str) -> Any:
+        """
+        INTERNAL, do not use directly.
+
+        Args:
+            id: Path parameter
+            client_id: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/heartbeat"
+        body_dict = {
+            'client-id': client_id
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/projects/{id}/heartbeat')
+        
+        
+        try:
+            response = requests.post(url, json=body_data, headers=headers)
+            
+            if not response.ok:
+                # Parse error response
+                try:
+                    error_data = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_data = {'message': response.text}
+                
+                server_message = error_data.get('error') or error_data.get('message') or response.reason
+                raise PlaidAPIError(
+                    f'HTTP {response.status_code} {server_message} at {url}',
+                    response.status_code,
+                    url,
+                    'POST',
+                    error_data
+                )
+            
+            # Extract document versions from response headers
+            self.client._extract_document_versions(dict(response.headers))
+            
+            if 'application/json' in response.headers.get('content-type', '').lower():
+                data = response.json()
+                return self.client._transform_response(data)
+            return response.text
+        
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
+
+    async def heartbeat_async(self, id: str, client_id: str) -> Any:
+        """
+        INTERNAL, do not use directly.
+
+        Args:
+            id: Path parameter
+            client_id: Required body parameter
+        """
+        url = f"{self.client.base_url}/api/v1/projects/{id}/heartbeat"
+        body_dict = {
+            'client-id': client_id
+        }
+        # Filter out None values
+        body_dict = {k: v for k, v in body_dict.items() if v is not None}
+        body_data = self.client._transform_request(body_dict)
+        
+        headers = {'Content-Type': 'application/json'}
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
+        headers['Authorization'] = f'Bearer {self.client.token}'
+        
+        # Add document-version parameter in strict mode for non-GET requests
+        if self.client._strict_mode_document_id and 'POST' != 'GET':
+            doc_id = self.client._strict_mode_document_id
+            if doc_id in self.client._document_versions:
+                if 'params' not in locals():
+                    params = {}
+                params['document-version'] = self.client._document_versions[doc_id]
+                from urllib.parse import urlencode
+                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
+                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
+        
+        # Check if we're in batch mode
+        if self.client._is_batching:
+            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/projects/{id}/heartbeat')
+        
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body_data, headers=headers) as response:
+                    
+                    if not response.ok:
+                        # Parse error response
+                        try:
+                            error_data = await response.json()
+                        except aiohttp.ContentTypeError:
+                            error_data = {'message': await response.text()}
+                        
+                        server_message = error_data.get('error') or error_data.get('message') or response.reason
+                        raise PlaidAPIError(
+                            f'HTTP {response.status} {server_message} at {url}',
+                            response.status,
+                            url,
+                            'POST',
+                            error_data
+                        )
+                    
+                    # Extract document versions from response headers
+                    self.client._extract_document_versions(dict(response.headers))
+                    
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        data = await response.json()
+                        return self.client._transform_response(data)
+                    return await response.text
+        
+        except aiohttp.ClientError as e:
+            if hasattr(e, 'status'):
+                raise e  # Re-raise our custom error
+            # Handle network errors
+            raise PlaidAPIError(
+                f'Network error: {str(e)} at {url}',
+                0,
+                url,
+                'POST',
+                {'original_error': str(e)}
+            )
+
+    def listen(self, id: str, on_event: Callable[[str, Dict[str, Any]], Optional[bool]]) -> Dict[str, Any]:
+        """
+        Listen to audit log events and messages for a project via Server-Sent Events (with enhanced connection management)
+        
+        Args:
+            id: The UUID of the project to listen to
+            on_event: Callback function that receives (event_type: str, data: dict). 
+                     Returns True to stop listening, False/None to continue.
+                     Heartbeat events are automatically handled.
+            
+        Returns:
+            Dict[str, Any]: Connection statistics and session summary
+        """
+        import requests
+        import json
+        import time
+        import threading
+        
+        url = f"{self.client.base_url}/api/v1/projects/{id}/listen"
+        headers = {
+            'Authorization': f'Bearer {self.client.token}',
+            'Accept': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+        }
+        # Add user agent header if set
+        if self.client.agent_name:
+            headers['X-Agent-Name'] = self.client.agent_name
+        
+        session = requests.Session()
+        session.headers.update(headers)
+        
+        # Connection state tracking (similar to JavaScript implementation)
+        start_time = time.time()
+        is_connected = False
+        is_closed = False
+        client_id = None
+        
+        # Event statistics (comprehensive like JavaScript)
+        event_stats = {
+            'audit-log': 0,
+            'message': 0,
+            'heartbeat': 0,
+            'connected': 0,
+            'other': 0
+        }
+        
+        # Heartbeat tracking
+        heartbeat_confirmations_sent = 0
+        last_heartbeat = start_time
+        
+        def send_heartbeat_confirmation(client_id: str):
+            """Send heartbeat confirmation to server (thread-safe)"""
+            nonlocal heartbeat_confirmations_sent
+            try:
+                heartbeat_url = f"{self.client.base_url}/api/v1/projects/{id}/heartbeat"
+                heartbeat_response = session.post(
+                    heartbeat_url,
+                    json={'client-id': client_id},
+                    headers={'Content-Type': 'application/json'},
+                    timeout=5.0  # Short timeout for heartbeat
+                )
+                if heartbeat_response.status_code == 200:
+                    heartbeat_confirmations_sent += 1
+            except Exception:
+                # Silently ignore heartbeat confirmation failures
+                pass
+        
+        def get_connection_stats():
+            """Get real-time connection statistics (similar to JavaScript getStats())"""
+            return {
+                'duration_seconds': time.time() - start_time,
+                'is_connected': is_connected,
+                'is_closed': is_closed,
+                'client_id': client_id,
+                'events': event_stats.copy(),
+                'heartbeat_confirmations_sent': heartbeat_confirmations_sent,
+                'last_heartbeat_seconds_ago': time.time() - last_heartbeat if event_stats['heartbeat'] > 0 else None,
+                'connection_state': 'closed' if is_closed else ('connected' if is_connected else 'connecting')
+            }
+        
+        try:
+            with session.get(url, stream=True, timeout=None) as response:
+                response.raise_for_status()
+                
+                is_connected = True
+                
+                # Parse SSE stream with enhanced error handling
+                event_type = None
+                data_buffer = ''
+                
+                for line in response.iter_lines(decode_unicode=True, chunk_size=None):
+                    if is_closed:
+                        break
+                    
+                    if line is not None:  # Handle None lines from iter_lines
+                        line = line.strip()
+                        
+                        if line.startswith('event: '):
+                            event_type = line[7:].strip()
+                        elif line.startswith('data: '):
+                            data_buffer = line[6:].strip()
+                        elif line == '' and event_type and data_buffer:
+                            # Complete SSE message received
+                            try:
+                                # Track event statistics
+                                event_stats[event_type] = event_stats.get(event_type, 0) + 1
+                                if event_type not in event_stats:
+                                    event_stats['other'] += 1
+                                
+                                # Parse JSON data only if it looks like JSON
+                                if (data_buffer and 
+                                    (data_buffer.startswith('{') or 
+                                     data_buffer.startswith('[') or 
+                                     data_buffer.startswith('"'))):
+                                    
+                                    data = json.loads(data_buffer)
+                                    
+                                    # Handle specific event types
+                                    if event_type == 'connected':
+                                        client_id = data.get('client-id') or data.get('clientId')
+                                    elif event_type == 'heartbeat':
+                                        last_heartbeat = time.time()
+                                        if client_id:
+                                            # Send heartbeat confirmation in background thread
+                                            threading.Thread(
+                                                target=send_heartbeat_confirmation,
+                                                args=(client_id,),
+                                                daemon=True
+                                            ).start()
+                                    else:
+                                        # Pass event to user callback (audit-log, message, etc.)
+                                        transformed_data = self.client._transform_response(data)
+                                        try:
+                                            should_stop = on_event(event_type, transformed_data)
+                                            if should_stop is True:
+                                                is_closed = True
+                                                break
+                                        except Exception:
+                                            # Continue listening even if callback fails
+                                            pass
+                                else:
+                                    # Skip non-JSON data or malformed content
+                                    pass
+                                    
+                            except json.JSONDecodeError:
+                                # Skip malformed JSON data
+                                pass
+                            except Exception:
+                                # Skip any other parsing errors
+                                pass
+                            finally:
+                                # Reset for next message
+                                event_type = None
+                                data_buffer = ''
+        
+        except requests.exceptions.RequestException:
+            # Connection errors are expected when closing/timing out
+            pass
+        except Exception:
+            # Any other unexpected errors
+            pass
+        finally:
+            is_connected = False
+            is_closed = True
+            session.close()
+        
+        # Return comprehensive session summary
+        return get_connection_stats()
+    def _generate_request_id(self) -> str:
+        """Generate a unique request ID for tracking service coordination"""
+        import uuid
+        import time
+        return f"req_{uuid.uuid4().hex[:8]}_{int(time.time() * 1000)}"
+    
+    def _create_service_message(self, msg_type: str, **data) -> Dict[str, Any]:
+        """Create a structured service message with timestamp"""
+        from datetime import datetime
+        return {
+            'type': msg_type,
+            'timestamp': f"{datetime.utcnow().isoformat()}Z",
+            **data
+        }
+    
+    def _is_service_message(self, data: Any) -> bool:
+        """Check if data is a structured service message"""
+        return (isinstance(data, dict) and 
+                'type' in data and 
+                'timestamp' in data)
+    
+    def discover_services(self, project_id: str, timeout: int = 3000) -> List[Dict[str, Any]]:
+        """
+        Discover available services in a project
+        
+        Sends a service discovery request and collects responses from all
+        registered services within the timeout period.
+        
+        Args:
+            project_id: The UUID of the project to query
+            timeout: Timeout in milliseconds (default: 3000)
+            
+        Returns:
+            List of discovered service information dictionaries
+        """
+        import threading
+        import time
+        
+        request_id = self._generate_request_id()
+        discovered_services = []
+        discovery_complete = threading.Event()
+        connection_active = threading.Event()
+        
+        def on_event(event_type: str, event_data: Dict[str, Any]) -> Optional[bool]:
+            if event_type == 'message' and self._is_service_message(event_data.get('data')):
+                message = event_data['data']
+                
+                if (message.get('type') == 'service_registration' and 
+                    message.get('requestId') == request_id):
+                    discovered_services.append({
+                        'service_id': message.get('serviceId'),
+                        'service_name': message.get('serviceName'),
+                        'description': message.get('description'),
+                        'timestamp': message.get('timestamp')
+                    })
+            
+            # Check if we should stop listening
+            if discovery_complete.is_set():
+                return True
+            return None
+        
+        # Start listening in a separate thread
+        def listen_thread():
+            try:
+                connection_active.set()
+                self.listen(project_id, on_event)
+            except Exception as e:
+                # Connection errors are expected when timing out
+                pass
+        
+        thread = threading.Thread(target=listen_thread, daemon=True)
+        thread.start()
+        
+        # Wait for connection to be established
+        connection_active.wait(timeout=1.0)
+        
+        if connection_active.is_set():
+            # Send discovery request
+            discovery_message = self._create_service_message('service_discovery', requestId=request_id)
+            try:
+                self.send_message(project_id, discovery_message)
+            except Exception as e:
+                # If send fails, mark discovery as complete
+                discovery_complete.set()
+                raise RuntimeError(f'Failed to send discovery message: {str(e)}')
+        else:
+            raise RuntimeError('Failed to establish SSE connection for service discovery')
+        
+        # Wait for timeout
+        time.sleep(timeout / 1000.0)
+        discovery_complete.set()
+        
+        return discovered_services
+    
+    def serve(self, project_id: str, service_info: Dict[str, str], on_service_request: Callable[[Dict[str, Any], Any], None]) -> Dict[str, Any]:
+        """
+        Register as a service and handle incoming requests
+        
+        Starts a service that responds to discovery requests and handles
+        service requests with the provided callback function.
+        
+        Args:
+            project_id: The UUID of the project to serve
+            service_info: Dict with serviceId, serviceName, description
+            on_service_request: Callback to handle service requests (data, response_helper)
+            
+        Returns:
+            Service registration object with stop(), is_running(), service_info
+        """
+        import threading
+        
+        service_id = service_info['serviceId']
+        service_name = service_info['serviceName']
+        description = service_info['description']
+        
+        is_running = threading.Event()
+        is_running.set()
+        
+        class ResponseHelper:
+            """Helper class for sending service responses"""
+            def __init__(self, request_id: str, messages_client, project_id: str):
+                self.request_id = request_id
+                self.messages_client = messages_client
+                self.project_id = project_id
+            
+            def progress(self, percent: int, message: str):
+                """Send progress update"""
+                progress_msg = self.messages_client._create_service_message('service_response',
+                    requestId=self.request_id,
+                    status='progress',
+                    progress={'percent': percent, 'message': message}
+                )
+                try:
+                    self.messages_client.send_message(self.project_id, progress_msg)
+                except Exception:
+                    # Ignore send failures for progress updates
+                    pass
+            
+            def complete(self, data: Any):
+                """Send completion response with result data"""
+                completion_msg = self.messages_client._create_service_message('service_response',
+                    requestId=self.request_id,
+                    status='completed',
+                    data=data
+                )
+                try:
+                    self.messages_client.send_message(self.project_id, completion_msg)
+                except Exception:
+                    # Ignore send failures for completion
+                    pass
+            
+            def error(self, error: str):
+                """Send error response"""
+                error_msg = self.messages_client._create_service_message('service_response',
+                    requestId=self.request_id,
+                    status='error',
+                    data={'error': error}
+                )
+                try:
+                    self.messages_client.send_message(self.project_id, error_msg)
+                except Exception:
+                    # Ignore send failures for errors
+                    pass
+        
+        def on_event(event_type: str, event_data: Dict[str, Any]) -> Optional[bool]:
+            if not is_running.is_set():
+                return True  # Stop listening
+            
+            if event_type == 'message' and self._is_service_message(event_data.get('data')):
+                message = event_data['data']
+                
+                if message.get('type') == 'service_discovery':
+                    # Respond to service discovery
+                    registration_msg = self._create_service_message('service_registration',
+                        requestId=message.get('requestId'),
+                        serviceId=service_id,
+                        serviceName=service_name,
+                        description=description
+                    )
+                    try:
+                        self.send_message(project_id, registration_msg)
+                    except Exception:
+                        # Ignore send failures during discovery
+                        pass
+                
+                elif (message.get('type') == 'service_request' and 
+                      message.get('serviceId') == service_id):
+                    # Handle service request
+                    try:
+                        # Send acknowledgment
+                        ack_msg = self._create_service_message('service_response',
+                            requestId=message.get('requestId'),
+                            status='received'
+                        )
+                        try:
+                            self.send_message(project_id, ack_msg)
+                        except Exception:
+                            # Continue even if ack fails
+                            pass
+                        
+                        # Create response helper
+                        response_helper = ResponseHelper(message.get('requestId'), self, project_id)
+                        
+                        # Call user handler in a separate thread to avoid blocking
+                        def handle_request():
+                            try:
+                                on_service_request(message.get('data'), response_helper)
+                            except Exception as e:
+                                response_helper.error(str(e))
+                        
+                        handler_thread = threading.Thread(target=handle_request, daemon=True)
+                        handler_thread.start()
+                        
+                    except Exception as e:
+                        # Send error response
+                        try:
+                            error_msg = self._create_service_message('service_response',
+                                requestId=message.get('requestId'),
+                                status='error',
+                                data={'error': str(e)}
+                            )
+                            self.send_message(project_id, error_msg)
+                        except Exception:
+                            # Ignore errors when sending error responses
+                            pass
+        
+        # Start service in a separate thread
+        def service_thread():
+            self.listen(project_id, on_event)
+        
+        thread = threading.Thread(target=service_thread, daemon=True)
+        thread.start()
+        
+        service_registration = {
+            'stop': lambda: is_running.clear(),
+            'is_running': lambda: is_running.is_set(),
+            'service_info': {
+                'service_id': service_id, 
+                'service_name': service_name, 
+                'description': description
+            }
+        }
+        
+        return service_registration
+    
+    def request_service(self, project_id: str, service_id: str, data: Any, timeout: int = 10000) -> Any:
+        """
+        Request a service to perform work
+        
+        Sends a service request and waits for completion or error response.
+        Supports progress updates during long-running operations.
+        
+        Args:
+            project_id: The UUID of the project
+            service_id: The ID of the service to request
+            data: The request data to send to the service
+            timeout: Timeout in milliseconds (default: 10000)
+            
+        Returns:
+            The response data from the service
+            
+        Raises:
+            TimeoutError: If the request times out
+            Exception: If the service returns an error
+        """
+        import threading
+        import time
+        
+        request_id = self._generate_request_id()
+        response_data = {'result': None, 'error': None, 'completed': False}
+        response_event = threading.Event()
+        connection_active = threading.Event()
+        
+        def on_event(event_type: str, event_data: Dict[str, Any]) -> Optional[bool]:
+            if event_type == 'message' and self._is_service_message(event_data.get('data')):
+                message = event_data['data']
+                
+                if (message.get('type') == 'service_response' and 
+                    message.get('requestId') == request_id):
+                    
+                    if message.get('status') == 'completed':
+                        response_data['result'] = message.get('data')
+                        response_data['completed'] = True
+                        response_event.set()
+                        return True  # Stop listening
+                    elif message.get('status') == 'error':
+                        response_data['error'] = message.get('data', {}).get('error', 'Service request failed')
+                        response_data['completed'] = True
+                        response_event.set()
+                        return True  # Stop listening
+                    # Ignore 'received' and 'progress' status messages (continue listening)
+            
+            # Check if we've timed out
+            if response_event.is_set():
+                return True
+            return None
+        
+        # Start listening in a separate thread
+        def listen_thread():
+            try:
+                connection_active.set()
+                self.listen(project_id, on_event)
+            except Exception:
+                # Connection timeouts or errors are expected during request handling
+                pass
+        
+        thread = threading.Thread(target=listen_thread, daemon=True)
+        thread.start()
+        
+        # Wait for connection to be established
+        connection_active.wait(timeout=1.0)
+        
+        if connection_active.is_set():
+            # Send service request
+            request_message = self._create_service_message('service_request',
+                requestId=request_id,
+                serviceId=service_id,
+                data=data
+            )
+            try:
+                self.send_message(project_id, request_message)
+            except Exception as e:
+                raise RuntimeError(f'Failed to send service request: {str(e)}')
+        else:
+            raise RuntimeError('Failed to establish connection for service request')
+        
+        # Wait for response or timeout
+        if response_event.wait(timeout / 1000.0):
+            if response_data['error']:
+                raise Exception(response_data['error'])
+            return response_data['result']
+        else:
+            raise TimeoutError(f'Service request timed out after {timeout}ms')
+
+
+class ProjectsResource:
+    """
+    Resource class for projects operations
+    """
+    
+    def __init__(self, client: 'PlaidClient'):
+        self.client = client
 
     def add_writer(self, id: str, user_id: str) -> Any:
         """
@@ -12880,295 +13539,6 @@ class ProjectsResource:
                 'DELETE',
                 {'original_error': str(e)}
             )
-
-    def heartbeat(self, id: str, client_id: str) -> Any:
-        """
-        INTERNAL, do not use directly.
-
-        Args:
-            id: Path parameter
-            client_id: Required body parameter
-        """
-        url = f"{self.client.base_url}/api/v1/projects/{id}/heartbeat"
-        body_dict = {
-            'client-id': client_id
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
-        
-        headers = {'Content-Type': 'application/json'}
-        # Add user agent header if set
-        if self.client.agent_name:
-            headers['X-Agent-Name'] = self.client.agent_name
-        headers['Authorization'] = f'Bearer {self.client.token}'
-        
-        # Add document-version parameter in strict mode for non-GET requests
-        if self.client._strict_mode_document_id and 'POST' != 'GET':
-            doc_id = self.client._strict_mode_document_id
-            if doc_id in self.client._document_versions:
-                if 'params' not in locals():
-                    params = {}
-                params['document-version'] = self.client._document_versions[doc_id]
-                from urllib.parse import urlencode
-                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
-        
-        # Check if we're in batch mode
-        if self.client._is_batching:
-            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/projects/{id}/heartbeat')
-        
-        
-        try:
-            response = requests.post(url, json=body_data, headers=headers)
-            
-            if not response.ok:
-                # Parse error response
-                try:
-                    error_data = response.json()
-                except requests.exceptions.JSONDecodeError:
-                    error_data = {'message': response.text}
-                
-                server_message = error_data.get('error') or error_data.get('message') or response.reason
-                raise PlaidAPIError(
-                    f'HTTP {response.status_code} {server_message} at {url}',
-                    response.status_code,
-                    url,
-                    'POST',
-                    error_data
-                )
-            
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
-            if 'application/json' in response.headers.get('content-type', '').lower():
-                data = response.json()
-                return self.client._transform_response(data)
-            return response.text
-        
-        except requests.exceptions.RequestException as e:
-            if hasattr(e, 'status'):
-                raise e  # Re-raise our custom error
-            # Handle network errors
-            raise PlaidAPIError(
-                f'Network error: {str(e)} at {url}',
-                0,
-                url,
-                'POST',
-                {'original_error': str(e)}
-            )
-
-    async def heartbeat_async(self, id: str, client_id: str) -> Any:
-        """
-        INTERNAL, do not use directly.
-
-        Args:
-            id: Path parameter
-            client_id: Required body parameter
-        """
-        url = f"{self.client.base_url}/api/v1/projects/{id}/heartbeat"
-        body_dict = {
-            'client-id': client_id
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
-        
-        headers = {'Content-Type': 'application/json'}
-        # Add user agent header if set
-        if self.client.agent_name:
-            headers['X-Agent-Name'] = self.client.agent_name
-        headers['Authorization'] = f'Bearer {self.client.token}'
-        
-        # Add document-version parameter in strict mode for non-GET requests
-        if self.client._strict_mode_document_id and 'POST' != 'GET':
-            doc_id = self.client._strict_mode_document_id
-            if doc_id in self.client._document_versions:
-                if 'params' not in locals():
-                    params = {}
-                params['document-version'] = self.client._document_versions[doc_id]
-                from urllib.parse import urlencode
-                params = {k: str(v).lower() if isinstance(v, bool) else v for k, v in params.items()}
-                url += ('&' if '?' in url else '?') + urlencode({'document-version': params['document-version']})
-        
-        # Check if we're in batch mode
-        if self.client._is_batching:
-            raise ValueError('This endpoint cannot be used in batch mode: /api/v1/projects/{id}/heartbeat')
-        
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=body_data, headers=headers) as response:
-                    
-                    if not response.ok:
-                        # Parse error response
-                        try:
-                            error_data = await response.json()
-                        except aiohttp.ContentTypeError:
-                            error_data = {'message': await response.text()}
-                        
-                        server_message = error_data.get('error') or error_data.get('message') or response.reason
-                        raise PlaidAPIError(
-                            f'HTTP {response.status} {server_message} at {url}',
-                            response.status,
-                            url,
-                            'POST',
-                            error_data
-                        )
-                    
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
-                    content_type = response.headers.get('content-type', '').lower()
-                    if 'application/json' in content_type:
-                        data = await response.json()
-                        return self.client._transform_response(data)
-                    return await response.text
-        
-        except aiohttp.ClientError as e:
-            if hasattr(e, 'status'):
-                raise e  # Re-raise our custom error
-            # Handle network errors
-            raise PlaidAPIError(
-                f'Network error: {str(e)} at {url}',
-                0,
-                url,
-                'POST',
-                {'original_error': str(e)}
-            )
-
-    def listen(self, id: str, on_event: Callable[[str, Dict[str, Any]], None]) -> Dict[str, Any]:
-        """
-        Listen to audit log events and messages for a project via Server-Sent Events (with heartbeat confirmation protocol)
-        
-        Args:
-            id: The UUID of the project to listen to
-            on_event: Callback function that receives (event_type: str, data: dict). 
-                     Heartbeat events are automatically filtered out.
-                     If it returns True, listening will stop.
-            
-        Returns:
-            Dict[str, Any]: Summary of the listening session
-        """
-        import requests
-        import json
-        import time
-        import threading
-        
-        url = f"{self.client.base_url}/api/v1/projects/{id}/listen"
-        headers = {
-            'Authorization': f'Bearer {self.client.token}',
-            'Accept': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive'
-        }
-        # Add user agent header if set
-        if self.client.agent_name:
-            headers['X-Agent-Name'] = self.client.agent_name
-        
-        session = requests.Session()
-        session.headers.update(headers)
-        
-        # Event counters
-        audit_events_received = 0
-        message_events_received = 0
-        connection_events = 0
-        heartbeat_events = 0
-        heartbeat_confirmations_sent = 0
-        error_events = 0
-        start_time = time.time()
-        last_heartbeat = time.time()
-        client_id = None
-        
-        def send_heartbeat_confirmation(client_id: str):
-            """Send heartbeat confirmation to server"""
-            nonlocal heartbeat_confirmations_sent
-            try:
-                heartbeat_url = f"{self.client.base_url}/api/v1/projects/{id}/heartbeat"
-                heartbeat_response = session.post(
-                    heartbeat_url,
-                    json={'client-id': client_id},
-                    headers={'Content-Type': 'application/json'}
-                )
-                if heartbeat_response.status_code == 200:
-                    heartbeat_confirmations_sent += 1
-            except Exception as e:
-                pass
-        
-        try:
-            with session.get(url, stream=True, timeout=None) as response:
-                response.raise_for_status()
-                
-                # Parse SSE stream
-                event_type = None
-                
-                for line in response.iter_lines(decode_unicode=True, chunk_size=None):
-                    if line and line.strip():
-                        if line.startswith('event: '):
-                            event_type = line[7:].strip()
-                        elif line.startswith('data: '):
-                            try:
-                                data_str = line[6:].strip()
-                                # Only attempt JSON parsing if we have non-empty, JSON-like content
-                                if data_str and len(data_str) > 0 and (data_str.startswith('{') or data_str.startswith('[') or data_str.startswith('"')):
-                                    # Parse JSON data
-                                    data = json.loads(data_str)
-                                    
-                                    # Handle different event types
-                                    if event_type == 'connected':
-                                        connection_events += 1
-                                        client_id = data.get('client-id') or data.get('clientId')
-                                    elif event_type == 'heartbeat':
-                                        heartbeat_events += 1
-                                        last_heartbeat = time.time()
-                                        if client_id:
-                                            threading.Thread(
-                                                target=send_heartbeat_confirmation,
-                                                args=(client_id,),
-                                                daemon=True
-                                            ).start()
-                                    elif event_type == 'audit-log':
-                                        audit_events_received += 1
-                                        transformed_data = self.client._transform_response(data)
-                                        should_stop = on_event(event_type, transformed_data)
-                                        if should_stop is True:
-                                            break
-                                    elif event_type == 'message':
-                                        message_events_received += 1
-                                        transformed_data = self.client._transform_response(data)
-                                        should_stop = on_event(event_type, transformed_data)
-                                        if should_stop is True:
-                                            break
-                                    else:
-                                        transformed_data = self.client._transform_response(data)
-                                        should_stop = on_event(event_type, transformed_data)
-                                        if should_stop is True:
-                                            break
-                                else:
-                                    # Skip non-JSON data
-                                    pass
-                            except json.JSONDecodeError as e:
-                                error_events += 1
-                    elif line == '':
-                        event_type = None
-        
-        except requests.exceptions.RequestException as e:
-            error_events += 1
-        finally:
-            session.close()
-        
-        # Return session summary
-        return {
-            'audit_events': audit_events_received,
-            'message_events': message_events_received,
-            'connection_events': connection_events,
-            'heartbeat_events': heartbeat_events,
-            'heartbeat_confirmations_sent': heartbeat_confirmations_sent,
-            'error_events': error_events,
-            'duration_seconds': time.time() - start_time,
-            'last_heartbeat_seconds_ago': time.time() - last_heartbeat if heartbeat_events > 0 else None,
-            'client_id': client_id
-        }
 
     def set_config(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
         """
@@ -19962,6 +20332,17 @@ class PlaidClient:
     Sync methods: client.projects.create(...)
     Async methods: await client.projects.create_async(...)
     
+    Service coordination methods:
+        # Discover services
+        services = client.messages.discover_services(project_id)
+        
+        # Register as a service
+        service_info = {'serviceId': 'my-service', 'serviceName': 'My Service', 'description': 'What it does'}
+        registration = client.messages.serve(project_id, service_info, handle_request)
+        
+        # Request service work
+        result = client.messages.request_service(project_id, 'target-service', request_data)
+    
     Batch operations:
         # Synchronous batch
         client.begin_batch()
@@ -20027,6 +20408,7 @@ class PlaidClient:
         self.users = UsersResource(self)
         self.token_layers = TokenLayersResource(self)
         self.documents = DocumentsResource(self)
+        self.messages = MessagesResource(self)
         self.projects = ProjectsResource(self)
         self.text_layers = TextLayersResource(self)
         self.login = LoginResource(self)

@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 
 export const useNlpService = (projectId, documentId) => {
-  const [isAwake, setIsAwake] = useState(false);
-  const [isChecking, setIsChecking] = useState(false);
+  const [availableServices, setAvailableServices] = useState([]);
+  const [isDiscovering, setIsDiscovering] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [parseStatus, setParseStatus] = useState(null); // 'started', 'success', 'error'
   const [parseError, setParseError] = useState(null);
@@ -11,20 +11,15 @@ export const useNlpService = (projectId, documentId) => {
   
   const { getClient } = useAuth();
   const connectionRef = useRef(null);
-  const wakeCheckTimeoutRef = useRef(null);
-  const hasInitialCheckRef = useRef(false);
+  const servicesRef = useRef([]);
 
-  // Clean up timeouts and connections
+  // Clean up connections
   const cleanup = useCallback(() => {
-    if (wakeCheckTimeoutRef.current) {
-      clearTimeout(wakeCheckTimeoutRef.current);
-      wakeCheckTimeoutRef.current = null;
-    }
     if (connectionRef.current) {
       connectionRef.current.close();
       connectionRef.current = null;
     }
-    hasInitialCheckRef.current = false;
+    setConnectionStatus('disconnected');
   }, []);
 
   // Start listening to project events
@@ -38,39 +33,35 @@ export const useNlpService = (projectId, documentId) => {
       setConnectionStatus('connecting');
       
       const connection = client.messages.listen(projectId, (eventType, eventData) => {
+        // Handle service coordination messages and legacy string messages
         if (eventType === 'message') {
           const messageBody = eventData.data;
           
-          if (messageBody === 'nlp-awake') {
-            setIsAwake(true);
-            setIsChecking(false);
-            // Clear the timeout since we got a response
-            if (wakeCheckTimeoutRef.current) {
-              clearTimeout(wakeCheckTimeoutRef.current);
-              wakeCheckTimeoutRef.current = null;
-            }
-          } else if (messageBody.startsWith('parse-started:')) {
-            const docId = messageBody.split(':', 2)[1];
-            if (docId === documentId) {
-              setIsParsing(true);
-              setParseStatus('started');
-              setParseError(null);
-            }
-          } else if (messageBody.startsWith('parse-success:')) {
-            const docId = messageBody.split(':', 2)[1];
-            if (docId === documentId) {
-              setIsParsing(false);
-              setParseStatus('success');
-              setParseError(null);
-            }
-          } else if (messageBody.startsWith('parse-error:')) {
-            const parts = messageBody.split(':', 3);
-            const docId = parts[1];
-            const error = parts[2] || 'Unknown error';
-            if (docId === documentId) {
-              setIsParsing(false);
-              setParseStatus('error');
-              setParseError(error);
+          // Handle legacy string messages for backward compatibility
+          if (typeof messageBody === 'string') {
+            if (messageBody.startsWith('parse-started:')) {
+              const docId = messageBody.split(':', 2)[1];
+              if (docId === documentId) {
+                setIsParsing(true);
+                setParseStatus('started');
+                setParseError(null);
+              }
+            } else if (messageBody.startsWith('parse-success:')) {
+              const docId = messageBody.split(':', 2)[1];
+              if (docId === documentId) {
+                setIsParsing(false);
+                setParseStatus('success');
+                setParseError(null);
+              }
+            } else if (messageBody.startsWith('parse-error:')) {
+              const parts = messageBody.split(':', 3);
+              const docId = parts[1];
+              const error = parts[2] || 'Unknown error';
+              if (docId === documentId) {
+                setIsParsing(false);
+                setParseStatus('error');
+                setParseError(error);
+              }
             }
           }
         }
@@ -85,49 +76,67 @@ export const useNlpService = (projectId, documentId) => {
     }
   }, [projectId, documentId, getClient]);
 
-  // Check if NLP service is awake
-  const checkIfAwake = useCallback(() => {
-    if (!projectId || isChecking) return;
+  // Discover available NLP services
+  const discoverServices = useCallback(async () => {
+    if (!projectId || isDiscovering) return;
 
     const client = getClient();
     if (!client) return;
 
-    hasInitialCheckRef.current = true; // Mark that we've done a check
-    setIsChecking(true);
-    setIsAwake(false);
+    setIsDiscovering(true);
     
     try {
-      client.messages.sendMessage(projectId, 'nlp-wake-check');
-      
-      // Set timeout to mark as not awake if no response
-      wakeCheckTimeoutRef.current = setTimeout(() => {
-        setIsChecking(false);
-        setIsAwake(false);
-      }, 5000); // 5 second timeout
-      
+      console.log('Starting service discovery for project:', projectId);
+      const services = await client.messages.discoverServices(projectId, 3000);
+      console.log('Discovered services:', services);
+      setAvailableServices(services);
+      servicesRef.current = services;
     } catch (error) {
-      console.error('Failed to send wake check:', error);
-      setIsChecking(false);
-      setIsAwake(false);
+      console.error('Failed to discover services:', error);
+      setAvailableServices([]);
+    } finally {
+      setIsDiscovering(false);
     }
-  }, [projectId, isChecking, getClient]);
+  }, [projectId, getClient]);
 
-  // Request document parsing
-  const requestParse = useCallback(() => {
-    if (!projectId || !documentId || isParsing || !isAwake) return;
+  // Request document parsing using structured service request
+  const requestParse = useCallback(async () => {
+    if (!projectId || !documentId || isParsing || availableServices.length === 0) return;
 
     const client = getClient();
     if (!client) return;
 
+    // Use the first available NLP service
+    const nlpService = availableServices[0];
+    if (!nlpService) {
+      setParseError('No NLP services available');
+      return;
+    }
+
     try {
-      setParseStatus(null);
+      setParseStatus('started');
       setParseError(null);
-      client.messages.sendMessage(projectId, `parse-document:${documentId}`);
+      setIsParsing(true);
+      
+      console.log('Sending service request with documentId:', documentId);
+      const result = await client.messages.requestService(
+        projectId,
+        nlpService.serviceId,
+        { documentId },
+        30000  // 30 second timeout
+      );
+      
+      console.log('Parse result:', result);
+      setParseStatus('success');
+      setIsParsing(false);
+      
     } catch (error) {
       console.error('Failed to request parse:', error);
-      setParseError('Failed to send parse request');
+      setParseError(error.message || 'Failed to parse document');
+      setParseStatus('error');
+      setIsParsing(false);
     }
-  }, [projectId, documentId, isParsing, isAwake, getClient]);
+  }, [projectId, documentId, availableServices, getClient]);
 
   // Clear parse status
   const clearParseStatus = useCallback(() => {
@@ -138,35 +147,15 @@ export const useNlpService = (projectId, documentId) => {
   // Initialize connection when component mounts or projectId changes
   useEffect(() => {
     if (projectId) {
-      hasInitialCheckRef.current = false; // Reset for new project
       startListening();
-      // Small delay before checking if awake to ensure connection is established
+      // Small delay before discovering services to ensure connection is established
       const timer = setTimeout(() => {
-        const client = getClient();
-        if (client && !hasInitialCheckRef.current) {
-          hasInitialCheckRef.current = true;
-          setIsChecking(true);
-          setIsAwake(false);
-          
-          try {
-            client.messages.sendMessage(projectId, 'nlp-wake-check');
-            
-            // Set timeout to mark as not awake if no response
-            wakeCheckTimeoutRef.current = setTimeout(() => {
-              setIsChecking(false);
-              setIsAwake(false);
-            }, 5000);
-          } catch (error) {
-            console.error('Failed to send initial wake check:', error);
-            setIsChecking(false);
-            setIsAwake(false);
-          }
-        }
+        discoverServices();
       }, 1000);
       return () => clearTimeout(timer);
     }
     return cleanup;
-  }, [projectId, startListening, cleanup, getClient]);
+  }, [projectId, startListening, cleanup]); // Removed discoverServices from dependencies
 
   // Cleanup on unmount
   useEffect(() => {
@@ -174,9 +163,11 @@ export const useNlpService = (projectId, documentId) => {
   }, [cleanup]);
 
   return {
+    // Service discovery
+    availableServices,
+    isDiscovering,
+    
     // Status flags
-    isAwake,
-    isChecking,
     isParsing,
     connectionStatus,
     
@@ -185,12 +176,13 @@ export const useNlpService = (projectId, documentId) => {
     parseError,
     
     // Actions
-    checkIfAwake,
+    discoverServices,
     requestParse,
     clearParseStatus,
     
     // Computed flags
-    canParse: isAwake && !isParsing && connectionStatus === 'connected',
-    hasParseResult: parseStatus === 'success' || parseStatus === 'error'
+    canParse: availableServices.length > 0 && !isParsing && connectionStatus === 'connected',
+    hasParseResult: parseStatus === 'success' || parseStatus === 'error',
+    hasServices: availableServices.length > 0
   };
 };

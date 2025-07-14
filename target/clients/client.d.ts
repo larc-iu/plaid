@@ -1,3 +1,28 @@
+interface ServiceInfo {
+  serviceId: string;
+  serviceName: string;
+  description: string;
+}
+
+interface DiscoveredService {
+  serviceId: string;
+  serviceName: string;
+  description: string;
+  timestamp: string;
+}
+
+interface ServiceRegistration {
+  stop(): void;
+  isRunning(): boolean;
+  serviceInfo: ServiceInfo;
+}
+
+interface ResponseHelper {
+  progress(percent: number, message: string): void;
+  complete(data: any): void;
+  error(error: string | Error): void;
+}
+
 interface VocabLinksBundle {
   create(vocabItem: string, tokens: any[], metadata?: any): Promise<any>;
   setMetadata(id: string, body: any): Promise<any>;
@@ -101,14 +126,20 @@ interface DocumentsBundle {
   create(projectId: string, name: string, metadata?: any): Promise<any>;
 }
 
-interface ProjectsBundle {
+interface MessagesBundle {
   sendMessage(id: string, body: any): Promise<any>;
+  heartbeat(id: string, clientId: string): Promise<any>;
+  listen(id: string, onEvent: (eventType: string, data: any) => void): { close(): void; getStats(): any; readyState: number; };
+  discoverServices(projectId: string, timeout?: number): Promise<DiscoveredService[]>;
+  serve(projectId: string, serviceInfo: ServiceInfo, onServiceRequest: (data: any, responseHelper: ResponseHelper) => void): ServiceRegistration;
+  requestService(projectId: string, serviceId: string, data: any, timeout?: number): Promise<any>;
+}
+
+interface ProjectsBundle {
   addWriter(id: string, userId: string): Promise<any>;
   removeWriter(id: string, userId: string): Promise<any>;
   addReader(id: string, userId: string): Promise<any>;
   removeReader(id: string, userId: string): Promise<any>;
-  heartbeat(id: string, clientId: string): Promise<any>;
-  listen(id: string, onEvent: (eventType: string, data: any) => void): { close(): void; getStats(): any; readyState: number; };
   setConfig(id: string, namespace: string, configKey: string, configValue: any): Promise<any>;
   deleteConfig(id: string, namespace: string, configKey: string): Promise<any>;
   addMaintainer(id: string, userId: string): Promise<any>;
@@ -194,6 +225,7 @@ declare class PlaidClient {
   users: UsersBundle;
   tokenLayers: TokenLayersBundle;
   documents: DocumentsBundle;
+  messages: MessagesBundle;
   projects: ProjectsBundle;
   textLayers: TextLayersBundle;
   login: LoginBundle;

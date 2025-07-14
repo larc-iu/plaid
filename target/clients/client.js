@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Sat Jul 12 22:35:21 EDT 2025
+ * Generated on: Mon Jul 14 19:38:59 EDT 2025
  */
 
 class PlaidClient {
@@ -511,12 +511,6 @@ name: update a document's name.
     };
     this.projects = {
       /**
-       * Send a message to all clients that are listening to a project. Useful for e.g. telling an NLP service to perform some work.
- * @param {string} id - Id identifier
- * @param {any} body - Required. Body
-       */
-      sendMessage: this._projectsSendMessage.bind(this),
-      /**
        * Set a user's access level to read and write for this project.
  * @param {string} id - Id identifier
  * @param {string} userId - User-id identifier
@@ -540,19 +534,6 @@ name: update a document's name.
  * @param {string} userId - User-id identifier
        */
       removeReader: this._projectsRemoveReader.bind(this),
-      /**
-       * INTERNAL, do not use directly.
- * @param {string} id - Id identifier
- * @param {string} clientId - Required. Clientid
-       */
-      heartbeat: this._projectsHeartbeat.bind(this),
-      /**
-       * Listen to audit log events and messages for a project via Server-Sent Events
- * @param {string} id - The UUID of the project to listen to
- * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
- * @returns {Object} SSE connection object with .close() and .getStats() methods
-       */
-      listen: this._projectsListen.bind(this),
       /**
        * Set a configuration value for a layer in a editor namespace. Intended for storing metadata about how the layer is intended to be used, e.g. for morpheme tokenization or sentence boundary marking.
  * @param {string} id - Id identifier
@@ -833,6 +814,50 @@ metadata, an optional map of metadata
  * @param {string} tokenId - Token-id identifier
        */
       deleteMetadata: this._tokensDeleteMetadata.bind(this)
+    };
+    this.messages = {
+      /**
+       * Listen for project events including service coordination messages
+       * @param {string} projectId - The UUID of the project to listen to
+       * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
+       * @returns {Object} SSE connection object with .close() and .getStats() methods
+       */
+      listen: this._messagesListen.bind(this),
+      
+      /**
+       * Send a message to project listeners
+       * @param {string} projectId - The UUID of the project to send to
+       * @param {any} data - The message data to send
+       * @returns {Promise<any>} Response from the send operation
+       */
+      sendMessage: this._messagesSendMessage.bind(this),
+      
+      /**
+       * Discover available services in a project
+       * @param {string} projectId - The UUID of the project to query
+       * @param {number} timeout - Timeout in milliseconds (default: 3000)
+       * @returns {Promise<Array>} Array of discovered service information
+       */
+      discoverServices: this._messagesDiscoverServices.bind(this),
+      
+      /**
+       * Register as a service and handle incoming requests
+       * @param {string} projectId - The UUID of the project to serve
+       * @param {Object} serviceInfo - Service information {serviceId, serviceName, description}
+       * @param {function} onServiceRequest - Callback to handle service requests
+       * @returns {Object} Service registration object with .stop() method
+       */
+      serve: this._messagesServe.bind(this),
+      
+      /**
+       * Request a service to perform work
+       * @param {string} projectId - The UUID of the project
+       * @param {string} serviceId - The ID of the service to request
+       * @param {any} data - The request data
+       * @param {number} timeout - Timeout in milliseconds (default: 10000)
+       * @returns {Promise<any>} Service response
+       */
+      requestService: this._messagesRequestService.bind(this)
     };
   }
 
@@ -1300,7 +1325,7 @@ metadata, an optional map of metadata
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -1467,7 +1492,7 @@ metadata, an optional map of metadata
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -1879,7 +1904,7 @@ metadata, an optional map of metadata
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -2462,7 +2487,7 @@ metadata, an optional map of metadata
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -3226,7 +3251,7 @@ metadata, an optional map of metadata
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -3834,7 +3859,7 @@ metadata: optional key-value pairs for additional annotation data.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -4755,7 +4780,7 @@ body: the string which is the content of this text.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -5006,7 +5031,7 @@ body: the string which is the content of this text.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -5186,7 +5211,7 @@ body: the string which is the content of this text.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -5271,7 +5296,7 @@ body: the string which is the content of this text.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -5860,7 +5885,7 @@ body: the string which is the content of this text.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -6111,7 +6136,7 @@ body: the string which is the content of this text.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -6354,7 +6379,7 @@ body: the string which is the content of this text.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -6754,7 +6779,7 @@ body: the string which is the content of this text.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -6842,7 +6867,7 @@ body: the string which is the content of this text.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -7177,14 +7202,9 @@ name: update a document's name.
   /**
    * Send a message to all clients that are listening to a project. Useful for e.g. telling an NLP service to perform some work.
    */
-  async _projectsSendMessage(id, body) {
+  async _messagesSendMessage(id, body) {
     let url = `${this.baseUrl}/api/v1/projects/${id}/message`;
-    const bodyObj = {
-      "body": body
-    };
-    // Filter out undefined optional parameters
-    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const requestBody = this._transformRequest(bodyObj);
+    const requestBody = { body };
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
@@ -7259,6 +7279,246 @@ name: update a document's name.
       fetchError.originalError = error;
       throw fetchError;
     }
+  }
+
+  /**
+   * INTERNAL, do not use directly.
+   */
+  async _messagesHeartbeat(id, clientId) {
+    let url = `${this.baseUrl}/api/v1/projects/${id}/heartbeat`;
+    const bodyObj = {
+      "client-id": clientId
+    };
+    // Filter out undefined optional parameters
+    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
+    const requestBody = this._transformRequest(bodyObj);
+    
+    // Add document-version parameter in strict mode for non-GET requests
+    if (this.strictModeDocumentId && 'GET' !== 'POST') {
+      const docId = this.strictModeDocumentId;
+      if (this.documentVersions.has(docId)) {
+        const docVersion = this.documentVersions.get(docId);
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      }
+    }
+    
+    // Check if we're in batch mode
+    if (this.isBatching) {
+      throw new Error('This endpoint cannot be used in batch mode: /api/v1/projects/{id}/heartbeat');
+    }
+    
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+        ...(this.agentName && { 'X-Agent-Name': this.agentName })
+      },
+      body: JSON.stringify(requestBody)
+    };
+    
+    try {
+      const response = await fetch(url, fetchOptions);
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
+        }
+        
+        const serverMessage = errorData?.error || errorData?.message || response.statusText;
+        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = url;
+        error.method = 'POST';
+        error.responseData = errorData;
+        throw error;
+      }
+      
+      // Extract document versions from response headers
+      this._extractDocumentVersions(response.headers);
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return this._transformResponse(data);
+      }
+      return await response.text();
+    } catch (error) {
+      // Check if it's already our formatted HTTP error
+      if (error.status) {
+        throw error; // Re-throw formatted HTTP error
+      }
+      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
+      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
+      fetchError.status = 0; // Indicate network error
+      fetchError.url = url;
+      fetchError.method = 'POST';
+      fetchError.originalError = error;
+      throw fetchError;
+    }
+  }
+
+  /**
+   * Listen to audit log events and messages for a project via Server-Sent Events
+   * @param {string} id - The UUID of the project to listen to
+   * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
+   * @returns {Object} SSE connection object with .close() method and .getStats() method
+   */
+  _messagesListen(id, onEvent) {
+    
+    const startTime = Date.now();
+    let isConnected = false;
+    let isClosed = false;
+    let clientId = null;
+    let eventStats = { 'audit-log': 0, message: 0, heartbeat: 0, connected: 0, other: 0 };
+    let abortController = new AbortController();
+    
+    // Capture client context for event handling
+    const client = this;
+    
+    // Helper function to send heartbeat confirmation
+    const sendHeartbeatConfirmation = async () => {
+      if (!clientId || isClosed) return;
+      
+      try {
+        const response = await fetch(`${this.baseUrl}/api/v1/projects/${id}/heartbeat`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 'client-id': clientId }),
+          signal: abortController.signal
+        });
+        
+        if (!response.ok) {
+          // Heartbeat confirmation failed
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          // Heartbeat confirmation error
+        }
+      }
+    };
+    
+    // Create SSE-like object that behaves like EventSource but uses Fetch
+    const sseConnection = {
+      readyState: 0, // CONNECTING
+      close: () => {
+        if (!isClosed) {
+          isClosed = true;
+          isConnected = false;
+          sseConnection.readyState = 2; // CLOSED
+          abortController.abort();
+        }
+      },
+      getStats: () => ({
+        durationSeconds: (Date.now() - startTime) / 1000,
+        isConnected,
+        isClosed,
+        clientId,
+        events: { ...eventStats },
+        readyState: sseConnection.readyState
+      })
+    };
+    
+    // Start the fetch streaming connection
+    (async () => {
+      try {
+        let url = `${this.baseUrl}/api/v1/projects/${id}/listen`;
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.token}`,
+            'Accept': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            ...(this.agentName && { 'X-Agent-Name': this.agentName })
+          },
+          signal: abortController.signal
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} ${response.statusText}`);
+        }
+        
+        isConnected = true;
+        sseConnection.readyState = 1; // OPEN
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done || isClosed) {
+            break;
+          }
+          
+          // Decode chunk and add to buffer
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete SSE messages
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+          
+          let eventType = '';
+          let data = '';
+          
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              data = line.slice(6);
+            } else if (line === '' && eventType && data) {
+              // Complete SSE message received
+              try {
+                // Track event stats
+                eventStats[eventType] = (eventStats[eventType] || 0) + 1;
+                
+                if (eventType === 'connected') {
+                  // Extract client ID from connection message
+                  const parsedData = JSON.parse(data);
+                  clientId = parsedData['client-id'] || parsedData.clientId;
+                } else if (eventType === 'heartbeat') {
+                  // Automatically respond to heartbeat with confirmation
+                  sendHeartbeatConfirmation();
+                } else {
+                  // Pass audit-log, message, and other events to callback
+                  const parsedData = JSON.parse(data);
+                  const shouldStop = onEvent(eventType, client._transformResponse(parsedData));
+                  if (shouldStop === true) {
+                    // User callback requested to stop listening
+                    sseConnection.close();
+                    return;
+                  }
+                }
+              } catch (e) {
+                // Failed to parse event data
+              }
+              
+              // Reset for next message
+              eventType = '';
+              data = '';
+            }
+          }
+        }
+        
+      } catch (error) {
+        // SSE connection error or abort
+      } finally {
+        isConnected = false;
+        isClosed = true;
+        sseConnection.readyState = 2; // CLOSED
+      }
+    })();
+    
+    return sseConnection;
   }
 
   /**
@@ -7575,246 +7835,6 @@ name: update a document's name.
       fetchError.originalError = error;
       throw fetchError;
     }
-  }
-
-  /**
-   * INTERNAL, do not use directly.
-   */
-  async _projectsHeartbeat(id, clientId) {
-    let url = `${this.baseUrl}/api/v1/projects/${id}/heartbeat`;
-    const bodyObj = {
-      "client-id": clientId
-    };
-    // Filter out undefined optional parameters
-    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const requestBody = this._transformRequest(bodyObj);
-    
-    // Add document-version parameter in strict mode for non-GET requests
-    if (this.strictModeDocumentId && 'GET' !== 'POST') {
-      const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
-        const separator = url.includes('?') ? '&' : '?';
-        url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
-      }
-    }
-    
-    // Check if we're in batch mode
-    if (this.isBatching) {
-      throw new Error('This endpoint cannot be used in batch mode: /api/v1/projects/{id}/heartbeat');
-    }
-    
-    const fetchOptions = {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-        ...(this.agentName && { 'X-Agent-Name': this.agentName })
-      },
-      body: JSON.stringify(requestBody)
-    };
-    
-    try {
-      const response = await fetch(url, fetchOptions);
-      if (!response.ok) {
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch (parseError) {
-          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
-        }
-        
-        const serverMessage = errorData?.error || errorData?.message || response.statusText;
-        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
-        error.status = response.status;
-        error.statusText = response.statusText;
-        error.url = url;
-        error.method = 'POST';
-        error.responseData = errorData;
-        throw error;
-      }
-      
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json();
-        return this._transformResponse(data);
-      }
-      return await response.text();
-    } catch (error) {
-      // Check if it's already our formatted HTTP error
-      if (error.status) {
-        throw error; // Re-throw formatted HTTP error
-      }
-      // Handle network-level fetch errors (CORS, DNS, timeout, etc.)
-      const fetchError = new Error(`Network error: ${error.message} at ${url}`);
-      fetchError.status = 0; // Indicate network error
-      fetchError.url = url;
-      fetchError.method = 'POST';
-      fetchError.originalError = error;
-      throw fetchError;
-    }
-  }
-
-  /**
-   * Listen to audit log events and messages for a project via Server-Sent Events
-   * @param {string} id - The UUID of the project to listen to
-   * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
-   * @returns {Object} SSE connection object with .close() method and .getStats() method
-   */
-  _projectsListen(id, onEvent) {
-    
-    const startTime = Date.now();
-    let isConnected = false;
-    let isClosed = false;
-    let clientId = null;
-    let eventStats = { 'audit-log': 0, message: 0, heartbeat: 0, connected: 0, other: 0 };
-    let abortController = new AbortController();
-    
-    // Capture client context for event handling
-    const client = this;
-    
-    // Helper function to send heartbeat confirmation
-    const sendHeartbeatConfirmation = async () => {
-      if (!clientId || isClosed) return;
-      
-      try {
-        const response = await fetch(`${this.baseUrl}/api/v1/projects/${id}/heartbeat`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ 'client-id': clientId }),
-          signal: abortController.signal
-        });
-        
-        if (!response.ok) {
-          // Heartbeat confirmation failed
-        }
-      } catch (error) {
-        if (error.name !== 'AbortError') {
-          // Heartbeat confirmation error
-        }
-      }
-    };
-    
-    // Create SSE-like object that behaves like EventSource but uses Fetch
-    const sseConnection = {
-      readyState: 0, // CONNECTING
-      close: () => {
-        if (!isClosed) {
-          isClosed = true;
-          isConnected = false;
-          sseConnection.readyState = 2; // CLOSED
-          abortController.abort();
-        }
-      },
-      getStats: () => ({
-        durationSeconds: (Date.now() - startTime) / 1000,
-        isConnected,
-        isClosed,
-        clientId,
-        events: { ...eventStats },
-        readyState: sseConnection.readyState
-      })
-    };
-    
-    // Start the fetch streaming connection
-    (async () => {
-      try {
-        let url = `${this.baseUrl}/api/v1/projects/${id}/listen`;
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${this.token}`,
-            'Accept': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            ...(this.agentName && { 'X-Agent-Name': this.agentName })
-          },
-          signal: abortController.signal
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status} ${response.statusText}`);
-        }
-        
-        isConnected = true;
-        sseConnection.readyState = 1; // OPEN
-        
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        
-        while (true) {
-          const { done, value } = await reader.read();
-          
-          if (done || isClosed) {
-            break;
-          }
-          
-          // Decode chunk and add to buffer
-          buffer += decoder.decode(value, { stream: true });
-          
-          // Process complete SSE messages
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // Keep incomplete line in buffer
-          
-          let eventType = '';
-          let data = '';
-          
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              eventType = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-              data = line.slice(6);
-            } else if (line === '' && eventType && data) {
-              // Complete SSE message received
-              try {
-                // Track event stats
-                eventStats[eventType] = (eventStats[eventType] || 0) + 1;
-                
-                if (eventType === 'connected') {
-                  // Extract client ID from connection message
-                  const parsedData = JSON.parse(data);
-                  clientId = parsedData['client-id'] || parsedData.clientId;
-                } else if (eventType === 'heartbeat') {
-                  // Automatically respond to heartbeat with confirmation
-                  sendHeartbeatConfirmation();
-                } else {
-                  // Pass audit-log, message, and other events to callback
-                  const parsedData = JSON.parse(data);
-                  const shouldStop = onEvent(eventType, client._transformResponse(parsedData));
-                  if (shouldStop === true) {
-                    // User callback requested to stop listening
-                    sseConnection.close();
-                    return;
-                  }
-                }
-              } catch (e) {
-                // Failed to parse event data
-              }
-              
-              // Reset for next message
-              eventType = '';
-              data = '';
-            }
-          }
-        }
-        
-      } catch (error) {
-        // SSE connection error or abort
-      } finally {
-        isConnected = false;
-        isClosed = true;
-        sseConnection.readyState = 2; // CLOSED
-      }
-    })();
-    
-    return sseConnection;
   }
 
   /**
@@ -8152,7 +8172,7 @@ name: update a document's name.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -8398,7 +8418,7 @@ name: update a document's name.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -8649,7 +8669,7 @@ name: update a document's name.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -8982,7 +9002,7 @@ name: update a document's name.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -9750,7 +9770,7 @@ name: update a document's name.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -10337,7 +10357,7 @@ name: update a document's name.
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -10686,7 +10706,7 @@ precedence: used for tokens with the same begin value in order to indicate their
       queryParams.append('as-of', asOf);
     }
     const queryString = queryParams.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    let finalUrl = queryString ? `${url}?${queryString}` : url;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
@@ -11267,6 +11287,260 @@ metadata, an optional map of metadata
       fetchError.originalError = error;
       throw fetchError;
     }
+  }
+
+
+  // Message format utilities
+  _generateRequestId() {
+    return 'req_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+  }
+
+  _createServiceMessage(type, data = {}) {
+    return {
+      type,
+      timestamp: new Date().toISOString(),
+      ...data
+    };
+  }
+
+  _isServiceMessage(data) {
+    return data && data.type && data.timestamp;
+  }
+
+  // Service discovery implementation
+  _messagesDiscoverServices(projectId, timeout = 3000) {
+    return new Promise((resolve, reject) => {
+      const requestId = this._generateRequestId();
+      const discoveredServices = [];
+      let connection = null;
+      
+      const timer = setTimeout(() => {
+        if (connection) connection.close();
+        resolve(discoveredServices);
+      }, timeout);
+      
+      try {
+        connection = this._messagesListen(projectId, (eventType, eventData) => {
+          if (eventType === 'message' && this._isServiceMessage(eventData.data)) {
+            const message = eventData.data;
+            
+            if (message.type === 'service_registration' && message.requestId === requestId) {
+              discoveredServices.push({
+                serviceId: message.serviceId,
+                serviceName: message.serviceName,
+                description: message.description,
+                timestamp: message.timestamp
+              });
+            }
+          }
+        });
+        
+        // Send discovery request
+        const discoveryMessage = this._createServiceMessage('service_discovery', { requestId });
+        try {
+          this._messagesSendMessage(projectId, discoveryMessage);
+        } catch (error) {
+          clearTimeout(timer);
+          if (connection) connection.close();
+          reject(new Error(`Failed to send discovery message: ${error.message}`));
+          return;
+        }
+        
+      } catch (error) {
+        clearTimeout(timer);
+        if (connection) connection.close();
+        reject(new Error(`Cannot establish SSE connection: ${error.message}`));
+      }
+    });
+  }
+
+  // Service registration implementation
+  _messagesServe(projectId, serviceInfo, onServiceRequest) {
+    const { serviceId, serviceName, description } = serviceInfo;
+    let connection = null;
+    let isRunning = true;
+    
+    const serviceRegistration = {
+      stop: () => {
+        isRunning = false;
+        if (connection) connection.close();
+      },
+      isRunning: () => isRunning,
+      serviceInfo: { serviceId, serviceName, description }
+    };
+    
+    try {
+      connection = this._messagesListen(projectId, (eventType, eventData) => {
+        if (!isRunning) return true; // Stop listening
+        
+        if (eventType === 'message' && this._isServiceMessage(eventData.data)) {
+          const message = eventData.data;
+          
+          if (message.type === 'service_discovery') {
+            // Respond to service discovery
+            const registrationMessage = this._createServiceMessage('service_registration', {
+              requestId: message.requestId,
+              serviceId,
+              serviceName,
+              description
+            });
+            try {
+              this._messagesSendMessage(projectId, registrationMessage);
+            } catch (error) {
+              // Ignore send failures during discovery
+            }
+          } else if (message.type === 'service_request' && message.serviceId === serviceId) {
+            // Handle service request
+            try {
+              // Send acknowledgment
+              const ackMessage = this._createServiceMessage('service_response', {
+                requestId: message.requestId,
+                status: 'received'
+              });
+              try {
+                this._messagesSendMessage(projectId, ackMessage);
+              } catch (error) {
+                // Continue even if ack fails
+              }
+              
+              // Create response helper
+              const responseHelper = {
+                progress: (percent, message) => {
+                  const progressMessage = this._createServiceMessage('service_response', {
+                    requestId: message.requestId,
+                    status: 'progress',
+                    progress: { percent, message }
+                  });
+                  try {
+                    this._messagesSendMessage(projectId, progressMessage);
+                  } catch (error) {
+                    // Ignore send failures for progress updates
+                  }
+                },
+                complete: (data) => {
+                  const completionMessage = this._createServiceMessage('service_response', {
+                    requestId: message.requestId,
+                    status: 'completed',
+                    data
+                  });
+                  try {
+                    this._messagesSendMessage(projectId, completionMessage);
+                  } catch (error) {
+                    // Ignore send failures for completion
+                  }
+                },
+                error: (error) => {
+                  const errorMessage = this._createServiceMessage('service_response', {
+                    requestId: message.requestId,
+                    status: 'error',
+                    data: { error: error.message || error }
+                  });
+                  try {
+                    this._messagesSendMessage(projectId, errorMessage);
+                  } catch (error) {
+                    // Ignore send failures for errors
+                  }
+                }
+              };
+              
+              // Call user handler
+              try {
+                onServiceRequest(message.data, responseHelper);
+              } catch (error) {
+                responseHelper.error(error.message || error);
+              }
+              
+            } catch (error) {
+              // Send error response
+              const errorMessage = this._createServiceMessage('service_response', {
+                requestId: message.requestId,
+                status: 'error',
+                data: { error: error.message || error }
+              });
+              try {
+                this._messagesSendMessage(projectId, errorMessage);
+              } catch (sendError) {
+                // Ignore errors when sending error responses
+              }
+            }
+          }
+        }
+      });
+      
+    } catch (error) {
+      throw new Error(`Failed to start service: ${error.message}`);
+    }
+    
+    return serviceRegistration;
+  }
+
+  // Service request implementation
+  _messagesRequestService(projectId, serviceId, data, timeout = 10000) {
+    return new Promise((resolve, reject) => {
+      const requestId = this._generateRequestId();
+      let connection = null;
+      let isResolved = false;
+      
+      const timer = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          if (connection) connection.close();
+          reject(new Error(`Service request timed out after ${timeout}ms`));
+        }
+      }, timeout);
+      
+      try {
+        connection = this._messagesListen(projectId, (eventType, eventData) => {
+          if (eventType === 'message' && this._isServiceMessage(eventData.data)) {
+            const message = eventData.data;
+            
+            if (message.type === 'service_response' && message.requestId === requestId) {
+              if (message.status === 'completed') {
+                if (!isResolved) {
+                  isResolved = true;
+                  clearTimeout(timer);
+                  connection.close();
+                  resolve(message.data);
+                }
+              } else if (message.status === 'error') {
+                if (!isResolved) {
+                  isResolved = true;
+                  clearTimeout(timer);
+                  connection.close();
+                  reject(new Error(message.data?.error || 'Service request failed'));
+                }
+              }
+              // Ignore 'received' and 'progress' status messages for now
+            }
+          }
+        });
+        
+        // Send service request
+        const requestMessage = this._createServiceMessage('service_request', {
+          requestId,
+          serviceId,
+          data
+        });
+        try {
+          this._messagesSendMessage(projectId, requestMessage);
+        } catch (error) {
+          if (!isResolved) {
+            isResolved = true;
+            clearTimeout(timer);
+            if (connection) connection.close();
+            reject(new Error(`Failed to send service request: ${error.message}`));
+          }
+        }
+        
+      } catch (error) {
+        if (!isResolved) {
+          isResolved = true;
+          clearTimeout(timer);
+          if (connection) connection.close();
+          reject(new Error(`Cannot establish SSE connection: ${error.message}`));
+        }
+      }
+    });
   }
 
   /**
