@@ -37,7 +37,7 @@ export const useNlpService = (projectId, documentId) => {
     try {
       setConnectionStatus('connecting');
       
-      const connection = client.projects.listen(projectId, (eventType, eventData) => {
+      const connection = client.messages.listen(projectId, (eventType, eventData) => {
         if (eventType === 'message') {
           const messageBody = eventData.data;
           
@@ -97,7 +97,7 @@ export const useNlpService = (projectId, documentId) => {
     setIsAwake(false);
     
     try {
-      client.projects.sendMessage(projectId, 'nlp-wake-check');
+      client.messages.sendMessage(projectId, 'nlp-wake-check');
       
       // Set timeout to mark as not awake if no response
       wakeCheckTimeoutRef.current = setTimeout(() => {
@@ -122,7 +122,7 @@ export const useNlpService = (projectId, documentId) => {
     try {
       setParseStatus(null);
       setParseError(null);
-      client.projects.sendMessage(projectId, `parse-document:${documentId}`);
+      client.messages.sendMessage(projectId, `parse-document:${documentId}`);
     } catch (error) {
       console.error('Failed to request parse:', error);
       setParseError('Failed to send parse request');
@@ -149,7 +149,7 @@ export const useNlpService = (projectId, documentId) => {
           setIsAwake(false);
           
           try {
-            client.projects.sendMessage(projectId, 'nlp-wake-check');
+            client.messages.sendMessage(projectId, 'nlp-wake-check');
             
             // Set timeout to mark as not awake if no response
             wakeCheckTimeoutRef.current = setTimeout(() => {
