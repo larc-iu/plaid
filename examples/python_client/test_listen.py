@@ -179,7 +179,7 @@ async def send_test_messages(client: PlaidClient, project_id: str):
     for i, message in enumerate(messages):
         try:
             print(f"📤 Sending message {i+1}/{len(messages)}: {message['type']}")
-            result = await client.projects.send_message_async(project_id, message)
+            result = await client.messages.listen_message_async(project_id, message)
             print(f"✅ Message sent successfully")
             await asyncio.sleep(1)  # Wait between messages
         except Exception as error:
@@ -272,7 +272,7 @@ def main():
         
         # Start listening (this will block for the specified timeout)
         print("✨ Event stream starting...")
-        session_summary = client.projects.listen(
+        session_summary = client.messages.listen(
             CONFIG['project_id'], 
             event_handler, 
             timeout=15

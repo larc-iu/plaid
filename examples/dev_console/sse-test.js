@@ -48,7 +48,7 @@ async function testSSEListen(username, password) {
     console.log('📝 Step 3: Setting up Fetch SSE listener (replaces EventSource)...');
     let eventCount = 0;
     
-    const sseConnection = client.projects.listen(
+    const sseConnection = client.messages.listen(
       projectId, 
       (eventType, data) => {
         eventCount++;
@@ -72,7 +72,7 @@ async function testSSEListen(username, password) {
     console.log('✅ Fetch SSE connection started (Python-like behavior)');
     console.log('📢 You can now:');
     console.log('   1. Perform operations on the project to generate audit events');
-    console.log('   2. Send test messages using client.projects.sendMessage()');
+    console.log('   2. Send test messages using client.messages.sendMessage()');
     console.log('   3. Watch heartbeat confirmations in the console');
     console.log('');
     console.log('🔧 Test commands you can run:');
@@ -124,7 +124,7 @@ async function testSendMessage(projectId = window.testProjectId) {
   };
   
   try {
-    await window.testClient.projects.sendMessage(projectId, message);
+    await window.testClient.messages.sendMessage(projectId, message);
     console.log('✅ Test message sent:', message);
   } catch (error) {
     console.error('❌ Failed to send message:', error);
