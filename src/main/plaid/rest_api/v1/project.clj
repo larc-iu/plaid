@@ -237,7 +237,8 @@
     {:parameters {:path [:map [:id :uuid]]}
      :get {:summary "Listen to audit log events and messages for a project via Server-Sent Events"
            :middleware [[pra/wrap-reader-required get-project-id]]
-           :openapi {:x-client-method "listen"}
+           :openapi {:x-client-method "listen"
+                     :x-client-bundle "messages"}
            :handler sse-handler}}]
 
    ;; Message endpoint for sending arbitrary messages to project subscribers
@@ -245,6 +246,8 @@
    ["/:id/heartbeat"
     {:parameters {:path [:map [:id :uuid]]}
      :post {:summary "INTERNAL, do not use directly."
+            {:openapi {:x-client-bundle "messages"
+                       :x-client-method "_heartbeat"}}
             :middleware [[pra/wrap-reader-required get-project-id]]
             :parameters {:body [:map [:client-id :string]]}
             :handler (fn [{{{:keys [id]} :path
@@ -262,7 +265,8 @@
      :post {:summary (str "Send a message to all clients that are listening to a project. "
                           "Useful for e.g. telling an NLP service to perform some work.")
             :middleware [[pra/wrap-writer-required get-project-id]]
-            :openapi {:x-client-method "send-message"}
+            :openapi {:x-client-method "send-message"
+                      :x-client-bundle "messages"}
             :parameters {:body any?}                        ; Accept any JSON payload
             :handler (fn [{{{:keys [id]} :path
                             body :body} :parameters
