@@ -380,7 +380,7 @@ def main():
             
             if message_body == "nlp-wake-check":
                 print(f"Received wake-check from project {project_id}")
-                client.projects.send_message(project_id, "nlp-awake")
+                client.messages.send_message(project_id, "nlp-awake")
                 
             elif message_body.startswith("parse-document:"):
                 document_id = message_body.split(":", 1)[1]
@@ -392,39 +392,39 @@ def main():
                     text_layer = document.get('text_layers', [{}])[0] if document.get('text_layers') else None
 
                     if not text_layer:
-                        client.projects.send_message(project_id, f"parse-error:{document_id}:No text layer found")
+                        client.messages.send_message(project_id, f"parse-error:{document_id}:No text layer found")
                         return
 
                     text = text_layer.get('text')
                     if not text:
-                        client.projects.send_message(project_id, f"parse-error:{document_id}:No text content found")
+                        client.messages.send_message(project_id, f"parse-error:{document_id}:No text content found")
                         return
 
                     text_content = text.get('body', '')
                     if not text_content.strip():
-                        client.projects.send_message(project_id, f"parse-error:{document_id}:Text content is empty")
+                        client.messages.send_message(project_id, f"parse-error:{document_id}:Text content is empty")
                         return
 
                     # Send parsing started message
-                    client.projects.send_message(project_id, f"parse-started:{document_id}")
+                    client.messages.send_message(project_id, f"parse-started:{document_id}")
 
                     # Perform the parse
                     success = parse_document(pipeline, client, document_id, text_content)
 
                     # Send completion message
                     if success:
-                        client.projects.send_message(project_id, f"parse-success:{document_id}")
+                        client.messages.send_message(project_id, f"parse-success:{document_id}")
                     else:
-                        client.projects.send_message(project_id, f"parse-error:{document_id}:Parsing failed")
+                        client.messages.send_message(project_id, f"parse-error:{document_id}:Parsing failed")
 
                 except Exception as e:
                     print(f"Error during parse: {str(e)}")
-                    client.projects.send_message(project_id, f"parse-error:{document_id}:{e}")
+                    client.messages.send_message(project_id, f"parse-error:{document_id}:{e}")
                     raise(e)
 
     # Start by listening to a sample project (you can remove this hardcoded ID)
     print(f"Starting NLP service, listening to project {target_project_id}")
-    connection = client.projects.listen(target_project_id, on_event)
+    connection = client.messages.listen(target_project_id, on_event)
     print("End listening")
 
 
