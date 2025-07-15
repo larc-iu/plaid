@@ -79,12 +79,11 @@ export const ProjectList = () => {
         </div>
       )}
 
-      {showCreateForm && (
-        <ProjectForm 
-          onClose={() => setShowCreateForm(false)}
-          onSuccess={handleProjectCreated}
-        />
-      )}
+      <ProjectForm 
+        isOpen={showCreateForm}
+        onClose={() => setShowCreateForm(false)}
+        onSuccess={handleProjectCreated}
+      />
 
       {projects.length === 0 ? (
         <div className="text-center py-12">

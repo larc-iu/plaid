@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { SentenceRow } from './SentenceRow';
-import { VirtualSentenceRow } from './VirtualSentenceRow';
-import { useDocumentData } from './hooks/useDocumentData';
-import { useLayerInfo } from './hooks/useLayerInfo';
-import { useAnnotationHandlers } from './hooks/useAnnotationHandlers';
-import { useSentenceData } from './hooks/useSentenceData';
-import { useDocumentHistory } from './hooks/useDocumentHistory';
-import { useNlpService } from './hooks/useNlpService';
-import { DocumentTabs } from './DocumentTabs';
-import { HistoryDrawer } from './HistoryDrawer';
+import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
+import { useDocumentData } from './hooks/useDocumentData.js';
+import { useLayerInfo } from './hooks/useLayerInfo.js';
+import { useAnnotationHandlers } from './hooks/useAnnotationHandlers.js';
+import { useSentenceData } from './hooks/useSentenceData.js';
+import { useDocumentHistory } from './hooks/useDocumentHistory.js';
+import { useNlpService } from './hooks/useNlpService.js';
+import { DocumentTabs } from './DocumentTabs.jsx';
+import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
 
 export const AnnotationEditor = () => {
   const { projectId, documentId } = useParams();

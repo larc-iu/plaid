@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { useDocumentData } from './hooks/useDocumentData';
-import { DocumentTabs } from './DocumentTabs';
+import { useDocumentData } from './hooks/useDocumentData.js';
+import { DocumentTabs } from './DocumentTabs.jsx';
 
 export const ExportEditor = () => {
   const { projectId, documentId } = useParams();

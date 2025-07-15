@@ -1,0 +1,144 @@
+/* Universal Dependencies Tree Styles */
+
+/* Dependency Tree Container */
+.dependency-tree-container {
+  position: absolute;
+  top: -50px; /* Position just above the sentence grid */
+  left: 0;
+  width: 100%;
+  z-index: 10; /* Ensure it appears above the sentence grid */
+  pointer-events: none; /* Allow clicks to pass through to text below */
+}
+
+.tree-svg {
+  display: block;
+  background-color: transparent; /* Make background transparent */
+  border: none; /* Remove border for overlay */
+  border-radius: 4px;
+  pointer-events: auto; /* Re-enable pointer events for SVG interactions */
+}
+
+/* Tree instruction boxes - can be replaced with Tailwind classes
+   .tree-instruction-box: px-3 py-2 bg-gray-100 border border-gray-300 rounded mb-2 text-xs text-gray-500 pointer-events-auto
+   .tree-source-selected-box: px-3 py-2 bg-blue-50 border border-blue-600 rounded mb-2 text-xs text-blue-700 pointer-events-auto
+*/
+
+.tree-root-rect {
+  cursor: pointer;
+}
+
+.tree-root-rect--default {
+  cursor: default;
+}
+
+.tree-root-text {
+  font-size: 12px;
+  fill: #4b5563;
+  font-weight: bold;
+  text-anchor: middle;
+}
+
+.tree-token-text {
+  font-size: 14px;
+  font-family: monospace;
+  text-anchor: middle;
+}
+
+.tree-token-text--drag-source {
+  fill: #dc2626;
+  font-weight: bold;
+}
+
+.tree-token-text--selected {
+  fill: #2563eb;
+  font-weight: bold;
+}
+
+.tree-token-text--hovered {
+  fill: #4b5563;
+}
+
+.tree-token-text--normal {
+  fill: #111827;
+}
+
+.tree-token-index {
+  font-size: 10px;
+  fill: #9ca3af;
+  text-anchor: middle;
+}
+
+.tree-token-group {
+  user-select: none;
+}
+
+.tree-token-group--drag {
+  cursor: crosshair;
+}
+
+.tree-token-group--grab {
+  cursor: grab;
+}
+
+.tree-token-area {
+  user-select: none;
+}
+
+.tree-token-area--drag {
+  cursor: crosshair;
+}
+
+.tree-token-area--grab {
+  cursor: grab;
+}
+
+.tree-arc-path {
+  fill: none;
+  cursor: pointer;
+}
+
+.tree-arc-arrow {
+  cursor: pointer;
+}
+
+.tree-deprel-edit {
+  font-size: 11px;
+  color: #2563eb;
+  text-align: center;
+  font-family: sans-serif;
+  background: white;
+  border: 1px solid #2563eb;
+  border-radius: 2px;
+  padding: 1px 4px;
+  outline: none;
+  min-width: 40px;
+}
+
+.tree-deprel-text {
+  font-size: 11px;
+  text-anchor: middle;
+  cursor: pointer;
+  font-family: sans-serif;
+  outline: none;
+}
+
+.tree-deprel-text--focused {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.tree-drag-arc {
+  fill: none;
+  stroke: #000;
+  stroke-width: 2;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.tree-temp-arc {
+  fill: none;
+  stroke: #93c5fd;
+  stroke-width: 2;
+  stroke-dasharray: 5,5;
+  pointer-events: none;
+}

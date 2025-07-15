@@ -127,21 +127,19 @@ export const DocumentList = () => {
         </div>
       )}
 
-      {showCreateForm && (
-        <DocumentForm 
-          projectId={projectId}
-          onClose={() => setShowCreateForm(false)}
-          onSuccess={handleDocumentCreated}
-        />
-      )}
+      <DocumentForm 
+        projectId={projectId}
+        isOpen={showCreateForm}
+        onClose={() => setShowCreateForm(false)}
+        onSuccess={handleDocumentCreated}
+      />
 
-      {showImportModal && (
-        <ImportModal 
-          projectId={projectId}
-          onClose={() => setShowImportModal(false)}
-          onSuccess={handleImportSuccess}
-        />
-      )}
+      <ImportModal 
+        projectId={projectId}
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={handleImportSuccess}
+      />
 
       {documents.length === 0 ? (
         <div className="text-center py-12">

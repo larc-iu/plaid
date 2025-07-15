@@ -1,59 +1,21 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import { Layout } from './components/common/Layout';
+import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { UserProfile } from './components/auth/UserProfile';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectManagement } from './components/projects/ProjectManagement';
 import { DocumentList } from './components/documents/DocumentList';
-import { TextEditor } from './components/editor/TextEditor';
-import { AnnotationEditor } from './components/editor/AnnotationEditor';
-import { ExportEditor } from './components/editor/ExportEditor';
+import { TextEditor } from './components/editor/TextEditor.jsx';
+import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
+import { ExportEditor } from './components/editor/ExportEditor.jsx';
 import './App.css';
 
-// Get the deployment basename by finding where the app's static assets are served from
-function getBasename() {
-  // Find a script tag that loads this app's bundle
-  const scripts = document.querySelectorAll('script[src]');
-  
-  for (const script of scripts) {
-    const src = script.getAttribute('src');
-    // Look for the main bundle (usually contains 'main' or 'index' and ends with .js)
-    if (src && (src.includes('main') || src.includes('index')) && src.endsWith('.js') && !src.startsWith('http')) {
-      // Handle relative paths like './assets/main.js'
-      if (src.startsWith('./')) {
-        return ''; // Root deployment with relative paths
-      }
-      
-      // Extract the directory path from the script src
-      const lastSlash = src.lastIndexOf('/');
-      if (lastSlash > 0) {
-        const scriptDir = src.substring(0, lastSlash);
-        // Filter out empty segments and dots
-        const segments = scriptDir.split('/').filter(seg => seg && seg !== '.');
-        
-        if (segments.length > 0 && segments[segments.length - 1] === 'assets') {
-          // Remove 'assets' directory to get app root
-          const basePath = segments.slice(0, -1).join('/');
-          return basePath ? '/' + basePath : '';
-        } else if (segments.length > 0) {
-          // Script is directly in subdirectory
-          return '/' + segments.join('/');
-        }
-      }
-    }
-  }
-  
-  // Fallback: no basename (root deployment)
-  return '';
-}
-
 function App() {
-  const basename = getBasename();
   
   return (
-    <BrowserRouter basename={basename}>
+    <HashRouter>
       <AuthProvider>
         <Routes>
           {/* Public routes */}
@@ -94,7 +56,7 @@ function App() {
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AuthProvider>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
