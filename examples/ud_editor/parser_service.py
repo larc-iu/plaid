@@ -252,7 +252,7 @@ def main():
     def handle_service_request(request_data, response_helper):
         """Handle structured service requests for document parsing"""
         print(f"Received service request: {request_data}")
-        document_id = request_data.get('document_id')
+        document_id = request_data.get('documentId')
         try:
             # Get document content
             document = client.documents.get(document_id, True)
