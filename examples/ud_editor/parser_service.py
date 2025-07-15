@@ -311,7 +311,7 @@ def main():
     
     try:
         # Keep the service running
-        while service_registration['is_running']():
+        while service_registration['isRunning']():
             import time
             time.sleep(1)
     except KeyboardInterrupt:

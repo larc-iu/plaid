@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Mon Jul 14 19:38:59 EDT 2025
+ * Generated on: Mon Jul 14 20:05:47 EDT 2025
  */
 
 class PlaidClient {
@@ -889,7 +889,8 @@ metadata, an optional map of metadata
           });
         }
       } catch (e) {
-        // Ignore malformed header
+        // Log malformed header issues
+        console.warn('Failed to parse document versions header:', e);
       }
     }
   }
@@ -7499,7 +7500,8 @@ name: update a document's name.
                   }
                 }
               } catch (e) {
-                // Failed to parse event data
+                // Log failed event data parsing
+                console.warn('Failed to parse SSE event data:', e);
               }
               
               // Reset for next message
@@ -7510,7 +7512,8 @@ name: update a document's name.
         }
         
       } catch (error) {
-        // SSE connection error or abort
+        // Log SSE connection error or abort
+        console.warn('SSE connection error:', error);
       } finally {
         isConnected = false;
         isClosed = true;
@@ -11387,7 +11390,8 @@ metadata, an optional map of metadata
             try {
               this._messagesSendMessage(projectId, registrationMessage);
             } catch (error) {
-              // Ignore send failures during discovery
+              // Log send failures during discovery
+              console.warn('Failed to send discovery response:', error);
             }
           } else if (message.type === 'service_request' && message.serviceId === serviceId) {
             // Handle service request
@@ -11414,7 +11418,8 @@ metadata, an optional map of metadata
                   try {
                     this._messagesSendMessage(projectId, progressMessage);
                   } catch (error) {
-                    // Ignore send failures for progress updates
+                    // Log send failures for progress updates
+                    console.warn('Failed to send progress update:', error);
                   }
                 },
                 complete: (data) => {
@@ -11426,7 +11431,8 @@ metadata, an optional map of metadata
                   try {
                     this._messagesSendMessage(projectId, completionMessage);
                   } catch (error) {
-                    // Ignore send failures for completion
+                    // Log send failures for completion
+                    console.warn('Failed to send completion message:', error);
                   }
                 },
                 error: (error) => {
@@ -11438,7 +11444,8 @@ metadata, an optional map of metadata
                   try {
                     this._messagesSendMessage(projectId, errorMessage);
                   } catch (error) {
-                    // Ignore send failures for errors
+                    // Log send failures for errors
+                    console.warn('Failed to send error message:', error);
                   }
                 }
               };
@@ -11460,7 +11467,8 @@ metadata, an optional map of metadata
               try {
                 this._messagesSendMessage(projectId, errorMessage);
               } catch (sendError) {
-                // Ignore errors when sending error responses
+                // Log errors when sending error responses
+                console.warn('Failed to send error response:', sendError);
               }
             }
           }
