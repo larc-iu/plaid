@@ -251,24 +251,8 @@ def main():
 
     def handle_service_request(request_data, response_helper):
         """Handle structured service requests for document parsing"""
-        print(f"Received structured service request: {request_data}")
-        print(f"Request data type: {type(request_data)}")
-        if isinstance(request_data, dict):
-            print(f"Available keys: {list(request_data.keys())}")
-        
-        # Handle the case where request_data might be None or not a dict
-        if not request_data or not isinstance(request_data, dict):
-            response_helper.error(f"Invalid request data: {request_data}")
-            return
-            
-        document_id = request_data.get('document_id')  # Use snake_case key after API transformation
-        if not document_id:
-            # Try camelCase as fallback
-            document_id = request_data.get('documentId')
-            if not document_id:
-                response_helper.error(f"No documentId provided in request. Got keys: {list(request_data.keys())}")
-                return
-            
+        print(f"Received service request: {request_data}")
+        document_id = request_data.get('document_id')
         try:
             # Get document content
             document = client.documents.get(document_id, True)
