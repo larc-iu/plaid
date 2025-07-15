@@ -1,0 +1,185 @@
+/* Main containers */
+.sentence-container {
+  margin: 20px;
+  margin-top: 56px;
+  width: 100%;
+  position: relative; /* Enable absolute positioning for children */
+}
+
+.sentence-grid {
+  display: flex;
+  padding-top: 215px; /* Moderate padding to make room for dependency tree */
+}
+
+.labels-column {
+  display: flex;
+  flex-direction: column;
+  width: 80px;
+  padding: 0 8px;
+  margin-right: 8px;
+  flex: 0 0 auto;
+}
+
+.token-column {
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px;
+  margin-right: 8px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  min-width: 0; /* Allow column to shrink */
+}
+
+/* Label styles */
+.label-spacer {
+  min-height: 29px;
+  padding: 4px 2px;
+}
+
+.row-label {
+  font-size: 10px;
+  font-weight: bold;
+  color: #374151;
+  padding: 2px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+}
+
+/* Token form (baseline) */
+.token-form {
+  text-align: center;
+  font-size: 14px;
+  font-family: monospace;
+  font-weight: bold;
+  padding: 4px 2px;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Annotation cells */
+.annotation-cell {
+  padding: 2px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.features-cell {
+  padding: 2px;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Editable content */
+.editable-field {
+  padding: 2px 4px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: text;
+  min-height: 18px;
+  text-align: center;
+  outline: none;
+  white-space: nowrap;
+  background-color: transparent;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.editable-field:focus {
+  border-color: #3b82f6;
+  background-color: #fff;
+}
+
+.editable-field--empty {
+  color: #999;
+  font-style: italic;
+}
+
+.editable-field--filled {
+  color: #000;
+  font-style: normal;
+}
+
+/* Features */
+.features-container {
+  padding: 2px;
+  min-height: 18px;
+  width: 100%;
+}
+
+.feature-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  border-radius: 2px;
+  /*padding: 1px 3px;
+  margin-bottom: 2px;*/
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.feature-tag--normal {
+  background-color: transparent;
+  border: 1px solid transparent;
+}
+
+.feature-tag--hovered {
+  background-color: #FECACA;
+  border: 1px solid #EF4444;
+}
+
+.feature-text {
+  flex: 1;
+  font-family: sans-serif;
+  text-align: center;
+}
+
+.feature-delete-btn {
+  color: #EF4444;
+  font-size: 10px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.feature-delete-btn--hidden {
+  opacity: 0;
+}
+
+.feature-delete-btn--visible {
+  opacity: 1;
+}
+
+.feature-input-container {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.feature-input {
+  flex: 1;
+  font-size: 10px;
+  border: 1px solid #A855F7;
+  border-radius: 2px;
+  padding: 1px 3px;
+  outline: none;
+}
+
+.feature-add-btn {
+  font-size: 10px;
+  color: #777;
+  padding: 1px 3px;
+  border: 1px dashed #777;
+  border-radius: 2px;
+  width: 100%;
+  background-color: transparent;
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 0.2s;
+}

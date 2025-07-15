@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { TokenVisualizer } from './TokenVisualizer';
-import { DocumentTabs } from './DocumentTabs';
+import { useAuth } from '../../contexts/AuthContext.jsx';
+import { TokenVisualizer } from './TokenVisualizer.jsx';
+import { DocumentTabs } from './DocumentTabs.jsx';
 
 export const TextEditor = () => {
   const { projectId, documentId } = useParams();

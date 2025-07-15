@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { SentenceRow } from './SentenceRow';
+import { SentenceRow } from './SentenceRow.jsx';
 
 const VirtualSentenceRow = ({ 
   sentenceData, 

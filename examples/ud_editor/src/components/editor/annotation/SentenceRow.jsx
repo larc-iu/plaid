@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { DependencyTree } from './DependencyTree';
-import { useTokenPositions } from './hooks/useTokenPositions';
-import './editor.css';
+import { DependencyTree } from './DependencyTree.jsx';
+import { useTokenPositions } from '../hooks/useTokenPositions.js';
+import './SentenceRow.css';
 
 // Shared throttle for tab navigation across all EditableCell instances
 let lastGlobalTabPress = 0;
