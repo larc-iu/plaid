@@ -18,6 +18,7 @@ Flan is a React frontend that connects to the Plaid REST API for linguistic anno
   If you want to check for compilation errors, run `npm run build`.
 * Run `tree src/` for an overview of the structure.
 * Rely on Mantine's built-in components and their hook library wherever applicable.
+  As you consider how to implement something, don't be afraid to use your search tools if you suspect that Mantine might provide parts of it.
 
 Mantine notes:
 
@@ -36,7 +37,7 @@ Reference implementation:
 
 ## Related Files
 
-- `@examples/ud_editor/` - Reference implementation with full feature set
-- `@src/gen/plaid/` - Client code generation utilities
-- `@CLAUDE.md` - Main Plaid platform documentation
-- `@examples/ud_editor/src/services/plaidClient.js` - Generated API client
+- `@../ud_editor/` - Reference implementation with full feature set
+- `@../../CLAUDE.md` - Main Plaid platform documentation
+- `@../../target/clients/client.js` - API client
+- `@../../target/clients/client.d.ts` - TypeScript definitions for API client--useful for seeing function signatures at a glance
