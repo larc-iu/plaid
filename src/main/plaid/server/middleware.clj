@@ -54,7 +54,7 @@
 (defn wrap-static-resources
   "Serves static files from a filesystem directory"
   [handler]
-  (let [resources-path (or (-> config :plaid.server/static-resources-path)
+  (let [resources-path (or (-> config :plaid.server.middleware/static-resources-path)
                            "resources")]
     (log/info (format "Serving static files from `%s/`" resources-path))
     (fn [{:keys [uri request-method] :as request}]
@@ -83,7 +83,7 @@
 (mount/defstate middleware
   :start
   (let [defaults-config (:ring.middleware/defaults-config config)
-        cors-config (or (:plaid.server/cors-config config)
+        cors-config (or (:plaid.server.middleware/cors-config config)
                          {:access-control-allow-origin ["*"]
                           :access-control-allow-methods [:get :put :post :delete :options]
                           :access-control-allow-headers ["Authorization" "Content-Type"]})]
