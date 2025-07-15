@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Mon Jul 14 19:39:02 EDT 2025
+Generated on: Mon Jul 14 20:05:50 EDT 2025
 """
 
 import requests
@@ -12476,9 +12476,9 @@ class MessagesResource:
                 )
                 if heartbeat_response.status_code == 200:
                     heartbeat_confirmations_sent += 1
-            except Exception:
-                # Silently ignore heartbeat confirmation failures
-                pass
+            except Exception as e:
+                # Log heartbeat confirmation failures but don't break connection
+                print(f"Warning: Failed to confirm heartbeat: {e}")
         
         def get_connection_stats():
             """Get real-time connection statistics (similar to JavaScript getStats())"""
@@ -12550,30 +12550,31 @@ class MessagesResource:
                                             if should_stop is True:
                                                 is_closed = True
                                                 break
-                                        except Exception:
-                                            # Continue listening even if callback fails
-                                            pass
+                                        except Exception as e:
+                                            # Log callback failures but continue listening
+                                            print(f"Warning: Failed to execute SSE event callback: {e}")
                                 else:
-                                    # Skip non-JSON data or malformed content
-                                    pass
+                                    # Skip non-JSON data or malformed content - but log if unexpected
+                                    if data_buffer.strip():
+                                        print(f"Warning: Failed to parse non-JSON SSE data: {data_buffer[:100]}...")
                                     
-                            except json.JSONDecodeError:
-                                # Skip malformed JSON data
-                                pass
-                            except Exception:
-                                # Skip any other parsing errors
-                                pass
+                            except json.JSONDecodeError as e:
+                                # Log malformed JSON data
+                                print(f"Warning: Failed to parse SSE JSON data: {e} - Data: {data_buffer[:100]}...")
+                            except Exception as e:
+                                # Log any other parsing errors
+                                print(f"Warning: Failed to parse SSE data: {e}")
                             finally:
                                 # Reset for next message
                                 event_type = None
                                 data_buffer = ''
         
-        except requests.exceptions.RequestException:
-            # Connection errors are expected when closing/timing out
-            pass
-        except Exception:
-            # Any other unexpected errors
-            pass
+        except requests.exceptions.RequestException as e:
+            # Expected connection errors when closing/timing out - log for debugging
+            print(f"Info: SSE connection ended: {e}")
+        except Exception as e:
+            # Log any other unexpected errors
+            print(f"Error: Failed with unexpected SSE error: {e}")
         finally:
             is_connected = False
             is_closed = True
@@ -12649,7 +12650,7 @@ class MessagesResource:
                 self.listen(project_id, on_event)
             except Exception as e:
                 # Connection errors are expected when timing out
-                pass
+                print(f"Info: Service discovery connection ended: {e}")
         
         thread = threading.Thread(target=listen_thread, daemon=True)
         thread.start()
@@ -12715,9 +12716,9 @@ class MessagesResource:
                 )
                 try:
                     self.messages_client.send_message(self.project_id, progress_msg)
-                except Exception:
-                    # Ignore send failures for progress updates
-                    pass
+                except Exception as e:
+                    # Log send failures for progress updates
+                    print(f"Warning: Failed to send progress update: {e}")
             
             def complete(self, data: Any):
                 """Send completion response with result data"""
@@ -12728,9 +12729,9 @@ class MessagesResource:
                 )
                 try:
                     self.messages_client.send_message(self.project_id, completion_msg)
-                except Exception:
-                    # Ignore send failures for completion
-                    pass
+                except Exception as e:
+                    # Log send failures for completion
+                    print(f"Warning: Failed to send completion response: {e}")
             
             def error(self, error: str):
                 """Send error response"""
@@ -12741,9 +12742,9 @@ class MessagesResource:
                 )
                 try:
                     self.messages_client.send_message(self.project_id, error_msg)
-                except Exception:
-                    # Ignore send failures for errors
-                    pass
+                except Exception as e:
+                    # Log send failures for errors
+                    print(f"Warning: Failed to send error response: {e}")
         
         def on_event(event_type: str, event_data: Dict[str, Any]) -> Optional[bool]:
             if not is_running.is_set():
@@ -12762,9 +12763,9 @@ class MessagesResource:
                     )
                     try:
                         self.send_message(project_id, registration_msg)
-                    except Exception:
-                        # Ignore send failures during discovery
-                        pass
+                    except Exception as e:
+                        # Log send failures during discovery
+                        print(f"Warning: Failed to send discovery response: {e}")
                 
                 elif (message.get('type') == 'service_request' and 
                       message.get('serviceId') == service_id):
@@ -12777,9 +12778,9 @@ class MessagesResource:
                         )
                         try:
                             self.send_message(project_id, ack_msg)
-                        except Exception:
-                            # Continue even if ack fails
-                            pass
+                        except Exception as e:
+                            # Log ack failures but continue
+                            print(f"Warning: Failed to send acknowledgment: {e}")
                         
                         # Create response helper
                         response_helper = ResponseHelper(message.get('requestId'), self, project_id)
@@ -12803,9 +12804,9 @@ class MessagesResource:
                                 data={'error': str(e)}
                             )
                             self.send_message(project_id, error_msg)
-                        except Exception:
-                            # Ignore errors when sending error responses
-                            pass
+                        except Exception as e:
+                            # Log errors when sending error responses
+                            print(f"Warning: Failed to send error response during serve: {e}")
         
         # Start service in a separate thread
         def service_thread():
@@ -12816,7 +12817,7 @@ class MessagesResource:
         
         service_registration = {
             'stop': lambda: is_running.clear(),
-            'is_running': lambda: is_running.is_set(),
+            'isRunning': lambda: is_running.is_set(),
             'service_info': {
                 'service_id': service_id, 
                 'service_name': service_name, 
@@ -12883,9 +12884,9 @@ class MessagesResource:
             try:
                 connection_active.set()
                 self.listen(project_id, on_event)
-            except Exception:
+            except Exception as e:
                 # Connection timeouts or errors are expected during request handling
-                pass
+                print(f"Info: Service request connection ended: {e}")
         
         thread = threading.Thread(target=listen_thread, daemon=True)
         thread.start()
@@ -20436,9 +20437,9 @@ class PlaidClient:
                 versions_map = json.loads(doc_versions_header)
                 if isinstance(versions_map, dict):
                     self._document_versions.update(versions_map)
-            except (json.JSONDecodeError, TypeError):
-                # Ignore malformed header
-                pass
+            except (json.JSONDecodeError, TypeError) as e:
+                # Log malformed header issues
+                print(f"Warning: Failed to parse document versions header: {e}")
     
     def _transform_request(self, obj: Any) -> Any:
         """Transform request data from Python conventions to API conventions"""

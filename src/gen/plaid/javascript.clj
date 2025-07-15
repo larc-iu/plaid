@@ -150,7 +150,8 @@
           });
         }
       } catch (e) {
-        // Ignore malformed header
+        // Log malformed header issues
+        console.warn('Failed to parse document versions header:', e);
       }
     }
   }
@@ -498,7 +499,8 @@
          "                  }\n"
          "                }\n"
          "              } catch (e) {\n"
-         "                // Failed to parse event data\n"
+         "                // Log failed event data parsing\n"
+         "                console.warn('Failed to parse SSE event data:', e);\n"
          "              }\n"
          "              \n"
          "              // Reset for next message\n"
@@ -509,7 +511,8 @@
          "        }\n"
          "        \n"
          "      } catch (error) {\n"
-         "        // SSE connection error or abort\n"
+         "        // Log SSE connection error or abort\n"
+         "        console.warn('SSE connection error:', error);\n"
          "      } finally {\n"
          "        isConnected = false;\n"
          "        isClosed = true;\n"
@@ -752,7 +755,8 @@
        "            try {\n"
        "              this._messagesSendMessage(projectId, registrationMessage);\n"
        "            } catch (error) {\n"
-       "              // Ignore send failures during discovery\n"
+       "              // Log send failures during discovery\n"
+       "              console.warn('Failed to send discovery response:', error);\n"
        "            }\n"
        "          } else if (message.type === 'service_request' && message.serviceId === serviceId) {\n"
        "            // Handle service request\n"
@@ -779,7 +783,8 @@
        "                  try {\n"
        "                    this._messagesSendMessage(projectId, progressMessage);\n"
        "                  } catch (error) {\n"
-       "                    // Ignore send failures for progress updates\n"
+       "                    // Log send failures for progress updates\n"
+       "                    console.warn('Failed to send progress update:', error);\n"
        "                  }\n"
        "                },\n"
        "                complete: (data) => {\n"
@@ -791,7 +796,8 @@
        "                  try {\n"
        "                    this._messagesSendMessage(projectId, completionMessage);\n"
        "                  } catch (error) {\n"
-       "                    // Ignore send failures for completion\n"
+       "                    // Log send failures for completion\n"
+       "                    console.warn('Failed to send completion message:', error);\n"
        "                  }\n"
        "                },\n"
        "                error: (error) => {\n"
@@ -803,7 +809,8 @@
        "                  try {\n"
        "                    this._messagesSendMessage(projectId, errorMessage);\n"
        "                  } catch (error) {\n"
-       "                    // Ignore send failures for errors\n"
+       "                    // Log send failures for errors\n"
+       "                    console.warn('Failed to send error message:', error);\n"
        "                  }\n"
        "                }\n"
        "              };\n"
@@ -825,7 +832,8 @@
        "              try {\n"
        "                this._messagesSendMessage(projectId, errorMessage);\n"
        "              } catch (sendError) {\n"
-       "                // Ignore errors when sending error responses\n"
+       "                // Log errors when sending error responses\n"
+       "                console.warn('Failed to send error response:', sendError);\n"
        "              }\n"
        "            }\n"
        "          }\n"
