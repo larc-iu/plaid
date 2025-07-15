@@ -3,6 +3,9 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { ProjectList } from './components/projects/ProjectList';
+import { ProjectDetail } from './components/projects/ProjectDetail';
+import { UserProfile } from './components/auth/UserProfile';
+import { AppLayout } from './components/layout/AppLayout';
 
 function App() {
   return (
@@ -15,13 +18,33 @@ function App() {
           {/* Protected routes */}
           <Route path="/" element={
             <ProtectedRoute>
-              <Navigate to="/projects" replace />
+              <AppLayout>
+                <Navigate to="/projects" replace />
+              </AppLayout>
             </ProtectedRoute>
           } />
           
           <Route path="/projects" element={
             <ProtectedRoute>
-              <ProjectList />
+              <AppLayout>
+                <ProjectList />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/projects/:projectId" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ProjectDetail />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <UserProfile />
+              </AppLayout>
             </ProtectedRoute>
           } />
           
