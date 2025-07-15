@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 
 export const useNlpService = (projectId, documentId) => {
@@ -7,74 +7,9 @@ export const useNlpService = (projectId, documentId) => {
   const [isParsing, setIsParsing] = useState(false);
   const [parseStatus, setParseStatus] = useState(null); // 'started', 'success', 'error'
   const [parseError, setParseError] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState('disconnected'); // 'connected', 'connecting', 'disconnected'
   
   const { getClient } = useAuth();
-  const connectionRef = useRef(null);
-  const servicesRef = useRef([]);
 
-  // Clean up connections
-  const cleanup = useCallback(() => {
-    if (connectionRef.current) {
-      connectionRef.current.close();
-      connectionRef.current = null;
-    }
-    setConnectionStatus('disconnected');
-  }, []);
-
-  // Start listening to project events
-  const startListening = useCallback(() => {
-    if (!projectId || connectionRef.current) return;
-
-    const client = getClient();
-    if (!client) return;
-
-    try {
-      setConnectionStatus('connecting');
-      
-      const connection = client.messages.listen(projectId, (eventType, eventData) => {
-        // Handle service coordination messages and legacy string messages
-        if (eventType === 'message') {
-          const messageBody = eventData.data;
-          
-          // Handle legacy string messages for backward compatibility
-          if (typeof messageBody === 'string') {
-            if (messageBody.startsWith('parse-started:')) {
-              const docId = messageBody.split(':', 2)[1];
-              if (docId === documentId) {
-                setIsParsing(true);
-                setParseStatus('started');
-                setParseError(null);
-              }
-            } else if (messageBody.startsWith('parse-success:')) {
-              const docId = messageBody.split(':', 2)[1];
-              if (docId === documentId) {
-                setIsParsing(false);
-                setParseStatus('success');
-                setParseError(null);
-              }
-            } else if (messageBody.startsWith('parse-error:')) {
-              const parts = messageBody.split(':', 3);
-              const docId = parts[1];
-              const error = parts[2] || 'Unknown error';
-              if (docId === documentId) {
-                setIsParsing(false);
-                setParseStatus('error');
-                setParseError(error);
-              }
-            }
-          }
-        }
-      });
-
-      connectionRef.current = connection;
-      setConnectionStatus('connected');
-      
-    } catch (error) {
-      console.error('Failed to start listening:', error);
-      setConnectionStatus('disconnected');
-    }
-  }, [projectId, documentId, getClient]);
 
   // Discover available NLP services
   const discoverServices = useCallback(async () => {
@@ -90,7 +25,6 @@ export const useNlpService = (projectId, documentId) => {
       const services = await client.messages.discoverServices(projectId, 3000);
       console.log('Discovered services:', services);
       setAvailableServices(services);
-      servicesRef.current = services;
     } catch (error) {
       console.error('Failed to discover services:', error);
       setAvailableServices([]);
@@ -144,23 +78,12 @@ export const useNlpService = (projectId, documentId) => {
     setParseError(null);
   }, []);
 
-  // Initialize connection when component mounts or projectId changes
+  // Discover services when component mounts or projectId changes
   useEffect(() => {
     if (projectId) {
-      startListening();
-      // Small delay before discovering services to ensure connection is established
-      const timer = setTimeout(() => {
-        discoverServices();
-      }, 1000);
-      return () => clearTimeout(timer);
+      discoverServices();
     }
-    return cleanup;
-  }, [projectId, startListening, cleanup]); // Removed discoverServices from dependencies
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return cleanup;
-  }, [cleanup]);
+  }, [projectId, discoverServices]);
 
   return {
     // Service discovery
@@ -169,7 +92,6 @@ export const useNlpService = (projectId, documentId) => {
     
     // Status flags
     isParsing,
-    connectionStatus,
     
     // Parse status
     parseStatus,
@@ -181,7 +103,7 @@ export const useNlpService = (projectId, documentId) => {
     clearParseStatus,
     
     // Computed flags
-    canParse: availableServices.length > 0 && !isParsing && connectionStatus === 'connected',
+    canParse: availableServices.length > 0 && !isParsing,
     hasParseResult: parseStatus === 'success' || parseStatus === 'error',
     hasServices: availableServices.length > 0
   };
