@@ -5,6 +5,7 @@ import { Notifications } from '@mantine/notifications';
 import App from './App';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
+import 'mantine-datatable/styles.layer.css';
 
 const theme = createTheme({
   // You can customize the theme here
