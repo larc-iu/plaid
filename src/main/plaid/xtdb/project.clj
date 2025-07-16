@@ -34,7 +34,18 @@
   ([db-like id]
    (get db-like id false))
   ([db-like id include-documents]
-   (when-let [e (pxc/find-entity (pxc/->db db-like) {:project/id id})]
+   (when-let [e (xt/pull (pxc/->db db-like)
+                         [:project/id :project/name :project/readers :project/writers :project/maintainers
+                          {:project/vocabs [:vocab/id :vocab/name :vocab/maintainers :config]}
+                          :config
+                          {:project/text-layers [:text-layer/id :text-layer/name :config
+                                                 {:text-layer/token-layers
+                                                  [:token-layer/id :token-layer/name :config
+                                                   {:token-layer/span-layers
+                                                    [:span-layer/id :span-layer/name :config
+                                                     {:span-layer/relation-layers
+                                                      [:relation-layer/id :relation-layer/name :config]}]}]}]}]
+                         id)]
      (-> e
          (dissoc :xt/id)
          (cond-> include-documents (assoc :project/documents (get-documents db-like id)))))))
