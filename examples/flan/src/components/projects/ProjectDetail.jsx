@@ -5,69 +5,107 @@ import {
   Container, 
   Title, 
   Text, 
-  Button, 
   Stack,
   Alert,
   Loader,
   Center,
-  Group,
   Breadcrumbs,
-  Anchor
+  Anchor,
+  Tabs
 } from '@mantine/core';
-import { DataTable } from 'mantine-datatable';
-import { notifications } from '@mantine/notifications';
-import { IconArrowLeft } from '@tabler/icons-react';
+import { IconFile, IconUsers, IconSettings } from '@tabler/icons-react';
+import { DocumentList } from './DocumentList';
+import { AccessManagement } from './AccessManagement';
+import { ProjectSettings } from './ProjectSettings';
 
 export const ProjectDetail = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { getClient } = useAuth();
+  const { user, getClient } = useAuth();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('documents');
 
-  const fetchProjectAndDocuments = async () => {
+  // Unified data fetching function with flexible options
+  const fetchData = async (options = {}) => {
+    const {
+      includeProject = false,
+      includeUsers = false,
+      includeDocuments = false,
+      showLoadingSpinner = false
+    } = options;
+
     try {
-      setLoading(true);
+      if (showLoadingSpinner) {
+        setLoading(true);
+      }
+      
       const client = getClient();
       if (!client) {
         throw new Error('Not authenticated');
       }
       
-      // Fetch project with documents (includeDocuments = true)
-      const projectData = await client.projects.get(projectId, true);
-      setProject(projectData);
-      setDocuments(projectData.documents || []);
+      // Fetch project data (with documents if requested)
+      if (includeProject) {
+        const projectData = await client.projects.get(projectId, includeDocuments);
+        setProject(projectData);
+        
+        if (includeDocuments) {
+          setDocuments(projectData.documents || []);
+        }
+      }
+      
+      // Fetch users if requested and user has permission
+      if (includeUsers && (user.isAdmin || project?.maintainers?.includes(user.id))) {
+        const usersData = await client.users.list();
+        setUsers(usersData);
+      }
+      
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
         navigate('/login');
         return;
       }
-      setError('Failed to load project and documents');
-      console.error('Error fetching project:', err);
+      setError('Failed to load data');
+      console.error('Error fetching data:', err);
     } finally {
-      setLoading(false);
+      if (showLoadingSpinner) {
+        setLoading(false);
+      }
     }
   };
 
+  // Initial data load with full loading state
+  const fetchInitialData = () => fetchData({
+    includeProject: true,
+    includeUsers: true,
+    includeDocuments: true,
+    showLoadingSpinner: true
+  });
+
+  // Update project data without loading spinner
+  const updateProjectData = () => fetchData({
+    includeProject: true,
+    includeDocuments: true
+  });
+
+  // Update users list without loading spinner
+  const updateUsersData = () => fetchData({
+    includeUsers: true
+  });
+
   useEffect(() => {
-    fetchProjectAndDocuments();
+    fetchInitialData();
   }, [projectId]);
 
-  const handleDocumentClick = (document) => {
-    // TODO: Navigate to document editor/viewer
-    notifications.show({
-      title: 'Coming Soon',
-      message: `Document "${document.name}" selected. Editor will be implemented later.`,
-      color: 'blue'
-    });
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString();
+  // Check if current user can manage this project
+  const canManageProject = () => {
+    if (!user || !project) return false;
+    return user.isAdmin || project.maintainers?.includes(user.id);
   };
 
   const breadcrumbItems = [
@@ -119,83 +157,60 @@ export const ProjectDetail = () => {
   return (
     <Container size="lg" py="xl">
       <Stack spacing="lg">
-        <Button 
-          variant="subtle" 
-          leftSection={<IconArrowLeft size={16} />}
-          mb="md"
-          onClick={() => navigate(-1)}
-        >
-          Back
-        </Button>
-
         <Breadcrumbs>
           {breadcrumbItems}
         </Breadcrumbs>
 
         <div>
           <Title order={1} mb="xs">{project.name}</Title>
-          <Text c="dimmed" mb="lg">Project ID: {project.id}</Text>
+          <Text c="dimmed" size="xs" mb="lg">{project.id}</Text>
         </div>
 
-        <div>
-          <Title order={2} mb="md">Documents</Title>
-          
-          {documents.length === 0 ? (
-            <Center py="xl">
-              <Stack align="center" spacing="md">
-                <Text size="lg" c="dimmed">No documents found</Text>
-                <Text size="sm" c="dimmed">
-                  This project doesn't have any documents yet.
-                </Text>
-              </Stack>
-            </Center>
-          ) : (
-            <DataTable
-              textSelectionDisabled
-              withTableBorder
-              withRowBorders
-              highlightOnHover
-              columns={[
-                { 
-                  accessor: 'name', 
-                  title: 'Document Name',
-                  width: '40%'
-                },
-                { 
-                  accessor: 'id', 
-                  title: 'ID',
-                  width: '30%',
-                  render: ({ id }) => (
-                    <Text size="sm" c="dimmed">{id}</Text>
-                  )
-                },
-                { 
-                  accessor: 'createdAt', 
-                  title: 'Created',
-                  width: '15%',
-                  render: ({ createdAt }) => (
-                    <Text size="sm">{formatDate(createdAt)}</Text>
-                  )
-                },
-                { 
-                  accessor: 'modifiedAt', 
-                  title: 'Modified',
-                  width: '15%',
-                  render: ({ modifiedAt }) => (
-                    <Text size="sm">{formatDate(modifiedAt)}</Text>
-                  )
-                }
-              ]}
-              records={documents.sort((a, b) => a.name.localeCompare(b.name))}
-              onRowClick={({ record }) => handleDocumentClick(record)}
-              sx={{
-                '& tbody tr': {
-                  cursor: 'pointer'
-                }
-              }}
-            />
+        <Tabs value={activeTab} onChange={setActiveTab}>
+          <Tabs.List>
+            <Tabs.Tab value="documents" leftSection={<IconFile size={16} />}>
+              Document List
+            </Tabs.Tab>
+            {canManageProject() && (
+              <Tabs.Tab value="management" leftSection={<IconUsers size={16} />}>
+                Access Management
+              </Tabs.Tab>
+            )}
+            {canManageProject() && (
+              <Tabs.Tab value="settings" leftSection={<IconSettings size={16} />}>
+                Settings
+              </Tabs.Tab>
+            )}
+          </Tabs.List>
+
+          <Tabs.Panel value="documents">
+            <DocumentList documents={documents} />
+          </Tabs.Panel>
+
+          {canManageProject() && (
+            <Tabs.Panel value="management">
+              <AccessManagement
+                project={project}
+                users={users}
+                user={user}
+                projectId={projectId}
+                getClient={getClient}
+                onDataUpdate={updateProjectData}
+                onUsersUpdate={updateUsersData}
+              />
+            </Tabs.Panel>
           )}
-        </div>
+
+          {canManageProject() && (
+            <Tabs.Panel value="settings">
+              <ProjectSettings
+                project={project}
+                projectId={projectId}
+                getClient={getClient}
+              />
+            </Tabs.Panel>
+          )}
+        </Tabs>
       </Stack>
     </Container>
   );
