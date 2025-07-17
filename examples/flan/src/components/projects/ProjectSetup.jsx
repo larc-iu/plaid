@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   Container, 
@@ -57,49 +57,42 @@ export const ProjectSetup = () => {
     ...(isNewProject ? [{
       id: 'basic-info',
       title: 'Basic Information',
-      description: 'Name your project',
       icon: IconInfoCircle,
       component: BasicInfoStep
     }] : []),
     ...(!isNewProject ? [{
       id: 'layer-selection',
       title: 'Layer Selection',
-      description: 'Choose baseline layers',
       icon: IconStack,
       component: LayerSelectionStep
     }] : []),
     {
       id: 'document-metadata',
       title: 'Document Metadata',
-      description: 'Configure document fields',
       icon: IconFileText,
       component: DocumentMetadataStep
     },
     {
       id: 'orthographies',
       title: 'Orthographies',
-      description: 'Set up writing systems',
       icon: IconLanguage,
       component: OrthographiesStep
     },
     {
       id: 'fields',
       title: 'Fields',
-      description: 'Define annotation fields',
       icon: IconList,
       component: FieldsStep
     },
     {
       id: 'vocabulary',
       title: 'Vocabulary',
-      description: 'Set up vocabulary layers',
       icon: IconBook2,
       component: VocabularyStep
     },
     {
       id: 'confirmation',
       title: 'Confirmation',
-      description: 'Review and finalize setup',
       icon: IconCheck,
       component: ConfirmationStep
     }
@@ -152,7 +145,7 @@ export const ProjectSetup = () => {
     { title: isNewProject ? 'New Project' : 'Project Setup', href: null }
   ].map((item, index) => (
     item.href ? (
-      <Anchor key={index} onClick={() => navigate(item.href)}>
+      <Anchor key={index} component={Link} to={item.href}>
         {item.title}
       </Anchor>
     ) : (
@@ -191,9 +184,6 @@ export const ProjectSetup = () => {
                     style={{ cursor: 'pointer' }}
                     onClick={() => handleStepClick(index)}
                   >
-                    <Text size="xs" c="dimmed">
-                      {step.description}
-                    </Text>
                   </Timeline.Item>
                 ))}
               </Timeline>
@@ -205,7 +195,6 @@ export const ProjectSetup = () => {
               <Stack spacing="lg">
                 <div>
                   <Title order={2}>{currentStepData.title}</Title>
-                  {/*<Text c="dimmed">{currentStepData.description}</Text>*/}
                 </div>
 
                 <StepComponent
