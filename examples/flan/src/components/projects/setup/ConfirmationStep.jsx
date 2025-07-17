@@ -195,10 +195,8 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         color: 'green'
       });
 
-      // Navigate to project after a short delay to show success message
-      setTimeout(() => {
-        navigate(`/projects/${currentProjectId}`);
-      }, 2000);
+      // Redirect
+      navigate(`/projects/${currentProjectId}`);
 
     } catch (error) {
       console.error('Setup failed:', error);
