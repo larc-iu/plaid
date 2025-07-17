@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
+import { ProjectSetup } from './components/projects/ProjectSetup';
 import { UserProfile } from './components/auth/UserProfile';
 import { AppLayout } from './components/layout/AppLayout';
 
@@ -28,6 +29,22 @@ function App() {
             <ProtectedRoute>
               <AppLayout>
                 <ProjectList />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/projects/new" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ProjectSetup />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/projects/:projectId/setup" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ProjectSetup />
               </AppLayout>
             </ProtectedRoute>
           } />

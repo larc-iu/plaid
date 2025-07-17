@@ -102,6 +102,13 @@ export const ProjectDetail = () => {
     fetchInitialData();
   }, [projectId]);
 
+  // Check if project needs setup and redirect if necessary
+  useEffect(() => {
+    if (project && !project.config?.flan?.initialized) {
+      navigate(`/projects/${projectId}/setup`);
+    }
+  }, [project, projectId, navigate]);
+
   // Check if current user can manage this project
   const canManageProject = () => {
     if (!user || !project) return false;

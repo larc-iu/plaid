@@ -15,6 +15,7 @@ import {
   SimpleGrid
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconPlus } from '@tabler/icons-react';
 import IconLogout from '@tabler/icons-react/dist/esm/icons/IconLogout.mjs';
 
 export const ProjectList = () => {
@@ -71,10 +72,16 @@ export const ProjectList = () => {
   return (
     <Container size="lg" py="xl">
       <Stack spacing="xl">
-        <Group position="apart">
+        <Group justify="space-between">
           <div>
             <Title order={1}>Projects</Title>
           </div>
+          <Button 
+            leftSection={<IconPlus size={16} />}
+            onClick={() => navigate('/projects/new')}
+          >
+            New Project
+          </Button>
         </Group>
 
         {error && (
