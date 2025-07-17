@@ -21,6 +21,7 @@ The Flan setup wizard configures projects with the following layer structure and
 
 ### Span Layers
 - Created for each annotation field with `spanLayer.config.flan.scope = "Token"|"Sentence"` - Determines annotation scope
+- A "Sentences" span layer is always created with `spanLayer.config.flan.scope = "Sentence"` and `spanLayer.config.flan.primary = true` - Primary sentence segmentation layer
 
 ### Vocabulary Layers
 - Linked to projects via `client.projects.linkVocab(projectId, vocabId)` - No special config needed
