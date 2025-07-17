@@ -196,9 +196,23 @@ export const FieldsStep = ({ data, onDataChange, setupData, isNewProject, projec
           highlightOnHover
           columns={[
             {
+              accessor: 'scope',
+              title: 'Scope',
+              width: '15%',
+              render: (record) => (
+                  <Badge
+                      color={record.scope === 'Token' ? 'blue' : 'green'}
+                      variant="light"
+                      size="sm"
+                  >
+                    {record.scope}
+                  </Badge>
+              )
+            },
+            {
               accessor: 'name',
               title: 'Field Name',
-              width: '70%',
+              width: '85%',
               render: (record) => {
                 return (
                   <Group 
@@ -260,20 +274,6 @@ export const FieldsStep = ({ data, onDataChange, setupData, isNewProject, projec
                   </Group>
                 );
               }
-            },
-            {
-              accessor: 'scope',
-              title: 'Scope',
-              width: '30%',
-              render: (record) => (
-                <Badge 
-                  color={record.scope === 'Token' ? 'blue' : 'green'} 
-                  variant="light"
-                  size="sm"
-                >
-                  {record.scope}
-                </Badge>
-              )
             }
           ]}
           records={tableData}
@@ -314,7 +314,7 @@ export const FieldsStep = ({ data, onDataChange, setupData, isNewProject, projec
       {/* Ignored Tokens Section */}
       <Paper p="md" withBorder>
         <Text size="md" fw={500} mb="md">Ignored Tokens</Text>
-        <Text size="sm" c="dimmed" mb="lg">
+        <Text size="sm" c="dimmed" mb="lg" component="div">
           Configure which tokens should be ignored when applying <Badge color="blue" variant="light" size="sm">Token</Badge> scope annotations.
         </Text>
 
