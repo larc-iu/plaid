@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   Container, 
@@ -120,7 +120,7 @@ export const ProjectDetail = () => {
     { title: project?.name || 'Loading...', href: null }
   ].map((item, index) => (
     item.href ? (
-      <Anchor key={index} onClick={() => navigate(item.href)}>
+      <Anchor key={index} component={Link} to={item.href}>
         {item.title}
       </Anchor>
     ) : (
