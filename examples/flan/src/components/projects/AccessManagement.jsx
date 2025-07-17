@@ -280,33 +280,7 @@ export const AccessManagement = memo(({
               title: 'Username',
               width: '20%',
               render: (record) => (
-                <Group 
-                  justify="space-between"
-                  onMouseEnter={() => setHoveredUser(record.id)}
-                  onMouseLeave={() => setHoveredUser(null)}
-                  style={{ width: '100%' }}
-                >
-                  <Text>{record.username}</Text>
-                  {user.isAdmin && record.id !== user.id && (
-                    <Button
-                      size="xs"
-                      color="red"
-                      variant="light"
-                      style={{ 
-                        opacity: hoveredUser === record.id ? 1 : 0,
-                        transition: 'opacity 0.2s ease'
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleDeleteUserClick(record.id, record.username);
-                      }}
-                      loading={deletingUser}
-                      disabled={deletingUser}
-                    >
-                      <IconTrash size={14} />
-                    </Button>
-                  )}
-                </Group>
+                <Text>{record.username}</Text>
               )
             },
             { 
@@ -325,19 +299,48 @@ export const AccessManagement = memo(({
               accessor: 'role', 
               title: 'Project Role',
               width: '40%',
-              render: ({ id, role, isAdmin }) => (
-                <Select
-                  value={isAdmin && "admin" || role}
-                  onChange={(value) => handleRoleChange(id, value)}
-                  disabled={updatingUser === id || id === user.id || isAdmin}
-                  data={[
-                    { value: 'none', label: 'No Access' },
-                    { value: 'reader', label: 'Reader' },
-                    { value: 'writer', label: 'Writer' },
-                    { value: 'maintainer', label: 'Maintainer' },
-                  ]}
-                  size="xs"
-                />
+              render: (record) => (
+                <Group 
+                  justify="space-between"
+                  onMouseEnter={() => setHoveredUser(record.id)}
+                  onMouseLeave={() => setHoveredUser(null)}
+                  style={{ width: '100%' }}
+                >
+                  <Select
+                    value={record.isAdmin && "admin" || record.role}
+                    onChange={(value) => handleRoleChange(record.id, value)}
+                    disabled={updatingUser === record.id || record.id === user.id || record.isAdmin}
+                    data={[
+                      { value: 'none', label: 'No Access' },
+                      { value: 'reader', label: 'Reader' },
+                      { value: 'writer', label: 'Writer' },
+                      { value: 'maintainer', label: 'Maintainer' },
+                    ]}
+                    size="xs"
+                    style={{ flex: 1 }}
+                  />
+                  {user.isAdmin && (
+                    <Button
+                      size="xs"
+                      color="red"
+                      variant="light"
+                      style={{ 
+                        opacity: (hoveredUser === record.id && record.id !== user.id) ? 1 : 0,
+                        transition: 'opacity 0.2s ease',
+                        marginLeft: '8px',
+                        cursor: (record.id !== user.id ? 'pointer' : 'default')
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDeleteUserClick(record.id, record.username);
+                      }}
+                      loading={deletingUser}
+                      disabled={deletingUser}
+                    >
+                      <IconTrash size={14} />
+                    </Button>
+                  )}
+                </Group>
               )
             }
           ]}
