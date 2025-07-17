@@ -30,6 +30,7 @@ export const AccessManagement = memo(({
 }) => {
   const clipboard = useClipboard({ timeout: 2000 });
   const [updatingUser, setUpdatingUser] = useState(null);
+  const [hoveredUser, setHoveredUser] = useState(null);
   const [addUserModalOpened, { open: openAddUserModal, close: closeAddUserModal }] = useDisclosure(false);
   const [deleteUserModalOpened, { open: openDeleteUserModal, close: closeDeleteUserModal }] = useDisclosure(false);
   const [newUserData, setNewUserData] = useState({
@@ -262,7 +263,6 @@ export const AccessManagement = memo(({
         </Group>
         
         <DataTable
-          textSelectionDisabled
           withTableBorder
           withRowBorders
           highlightOnHover
@@ -278,7 +278,36 @@ export const AccessManagement = memo(({
             { 
               accessor: 'username', 
               title: 'Username',
-              width: '20%'
+              width: '20%',
+              render: (record) => (
+                <Group 
+                  justify="space-between"
+                  onMouseEnter={() => setHoveredUser(record.id)}
+                  onMouseLeave={() => setHoveredUser(null)}
+                  style={{ width: '100%' }}
+                >
+                  <Text>{record.username}</Text>
+                  {user.isAdmin && record.id !== user.id && (
+                    <Button
+                      size="xs"
+                      color="red"
+                      variant="light"
+                      style={{ 
+                        opacity: hoveredUser === record.id ? 1 : 0,
+                        transition: 'opacity 0.2s ease'
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDeleteUserClick(record.id, record.username);
+                      }}
+                      loading={deletingUser}
+                      disabled={deletingUser}
+                    >
+                      <IconTrash size={14} />
+                    </Button>
+                  )}
+                </Group>
+              )
             },
             { 
               accessor: 'isAdmin', 
@@ -295,7 +324,7 @@ export const AccessManagement = memo(({
             { 
               accessor: 'role', 
               title: 'Project Role',
-              width: '25%',
+              width: '40%',
               render: ({ id, role, isAdmin }) => (
                 <Select
                   value={isAdmin && "admin" || role}
@@ -309,27 +338,6 @@ export const AccessManagement = memo(({
                   ]}
                   size="xs"
                 />
-              )
-            },
-            { 
-              accessor: 'actions', 
-              title: 'Actions',
-              width: '5%',
-              render: ({ id, username }) => (
-                <Group spacing="xs">
-                  {user.isAdmin && id !== user.id && (
-                    <Button
-                      size="xs"
-                      color="red"
-                      variant="light"
-                      onClick={() => handleDeleteUserClick(id, username)}
-                      loading={deletingUser}
-                      disabled={deletingUser}
-                    >
-                      <IconTrash size={14} />
-                    </Button>
-                  )}
-                </Group>
               )
             }
           ]}
