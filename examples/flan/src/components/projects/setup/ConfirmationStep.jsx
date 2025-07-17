@@ -116,21 +116,38 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       }
 
       // Step 5: Create span layers for annotation fields
-      if (tokenLayerId && setupData.fields?.fields?.length > 0) {
+      if (tokenLayerId) {
         updateProgress(50, 'Creating annotation field layers...');
         const createdSpanLayers = [];
         
-        for (const field of setupData.fields.fields) {
-          try {
-            updateProgress(50, `Creating span layer: ${field.name}...`);
-            const spanLayer = await client.spanLayers.create(tokenLayerId, field.name);
-            
-            // Set the scope in the span layer's config
-            await client.spanLayers.setConfig(spanLayer.id, "flan", "scope", field.scope);
-            
-            createdSpanLayers.push(spanLayer);
-          } catch (fieldError) {
-            console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
+        // Always create a "Sentences" span layer first
+        try {
+          updateProgress(50, 'Creating span layer: Sentences...');
+          const sentencesLayer = await client.spanLayers.create(tokenLayerId, 'Sentences');
+          
+          // Set the scope and primary config
+          await client.spanLayers.setConfig(sentencesLayer.id, "flan", "scope", "Sentence");
+          await client.spanLayers.setConfig(sentencesLayer.id, "flan", "primary", true);
+          
+          createdSpanLayers.push(sentencesLayer);
+        } catch (sentencesError) {
+          console.warn('Failed to create Sentences span layer:', sentencesError);
+        }
+        
+        // Create span layers for user-defined annotation fields
+        if (setupData.fields?.fields?.length > 0) {
+          for (const field of setupData.fields.fields) {
+            try {
+              updateProgress(50, `Creating span layer: ${field.name}...`);
+              const spanLayer = await client.spanLayers.create(tokenLayerId, field.name);
+              
+              // Set the scope in the span layer's config
+              await client.spanLayers.setConfig(spanLayer.id, "flan", "scope", field.scope);
+              
+              createdSpanLayers.push(spanLayer);
+            } catch (fieldError) {
+              console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
+            }
           }
         }
         
