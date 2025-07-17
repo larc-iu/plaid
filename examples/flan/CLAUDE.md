@@ -3,6 +3,30 @@
 Flan is a React frontend that connects to the Plaid REST API for linguistic annotation tasks.
 Note that we are using React (18.3.1) with Mantine (8.1.3) and React Router DOM (7.6.2).
 
+## Flan Setup Process
+
+The Flan setup wizard configures projects with the following layer structure and configurations:
+
+### Project Level
+- `project.config.flan.initialized = true` - Marks project as Flan-configured
+- `project.config.flan.documentMetadata = [{name: "Date"}, {name: "Speakers"}, ...]` - Available document metadata fields
+
+### Text Layer
+- `textLayer.config.flan.primary = true` - Marks as the primary Flan text layer
+
+### Token Layer  
+- `tokenLayer.config.flan.primary = true` - Marks as the primary Flan token layer
+- `tokenLayer.config.flan.orthographies = [{name: "IPA"}, {name: "Custom"}, ...]` - Available orthographies (baseline excluded)
+- `tokenLayer.config.flan.ignoredTokens = {type: "unicodePunctuation", whitelist: [...]}` - Token-level annotation exclusions
+
+### Span Layers
+- Created for each annotation field with `spanLayer.config.flan.scope = "Token"|"Sentence"` - Determines annotation scope
+
+### Vocabulary Layers
+- Linked to projects via `client.projects.linkVocab(projectId, vocabId)` - No special config needed
+
+All configurations use the "flan" namespace to avoid conflicts with other applications.
+
 ## Development
 
 * Assume that the user already has the development server running via `npm run dev`. 
