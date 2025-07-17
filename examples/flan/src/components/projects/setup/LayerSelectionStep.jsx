@@ -195,21 +195,23 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
             <Radio
               value="existing"
               label="Use existing text layer"
-              disabled={textLayers.length === 0}
+              disabled={textLayers.filter(layer => layer.id).length === 0}
             />
-            {data?.textLayerType === 'existing' && textLayers.length > 0 && (
+            {data?.textLayerType === 'existing' && textLayers.filter(layer => layer.id).length > 0 && (
               <Select
                 placeholder="Select a text layer"
-                data={textLayers.map(layer => ({
-                  value: layer.id,
-                  label: layer.name || layer.id
-                }))}
+                data={textLayers
+                  .filter(layer => layer.id) // Filter out layers without valid IDs
+                  .map(layer => ({
+                    value: layer.id,
+                    label: layer.name || layer.id
+                  }))}
                 value={data?.selectedTextLayerId || null}
                 onChange={handleTextLayerSelectionChange}
                 ml="xl"
               />
             )}
-            {data?.textLayerType === 'existing' && textLayers.length === 0 && (
+            {data?.textLayerType === 'existing' && textLayers.filter(layer => layer.id).length === 0 && (
               <Text size="sm" c="dimmed" ml="xl">No existing text layers found</Text>
             )}
             
@@ -244,21 +246,23 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
               <Radio
                 value="existing"
                 label="Use existing token layer"
-                disabled={availableTokenLayers.length === 0}
+                disabled={availableTokenLayers.filter(layer => layer.id).length === 0}
               />
-              {data?.tokenLayerType === 'existing' && availableTokenLayers.length > 0 && (
+              {data?.tokenLayerType === 'existing' && availableTokenLayers.filter(layer => layer.id).length > 0 && (
                 <Select
                   placeholder="Select a token layer"
-                  data={availableTokenLayers.map(layer => ({
-                    value: layer.id,
-                    label: layer.name || layer.id
-                  }))}
+                  data={availableTokenLayers
+                    .filter(layer => layer.id) // Filter out layers without valid IDs
+                    .map(layer => ({
+                      value: layer.id,
+                      label: layer.name || layer.id
+                    }))}
                   value={data?.selectedTokenLayerId || null}
                   onChange={handleTokenLayerSelectionChange}
                   ml="xl"
                 />
               )}
-              {data?.tokenLayerType === 'existing' && availableTokenLayers.length === 0 && (
+              {data?.tokenLayerType === 'existing' && availableTokenLayers.filter(layer => layer.id).length === 0 && (
                 <Text size="sm" c="dimmed" ml="xl">
                   No existing token layers found for the selected text layer
                 </Text>

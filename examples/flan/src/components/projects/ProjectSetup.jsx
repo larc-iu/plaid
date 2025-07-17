@@ -49,6 +49,12 @@ export const ProjectSetup = () => {
     vocabulary: {},
   });
 
+  // Helper function to convert step ID to camelCase data key
+  const stepIdToDataKey = (stepId) => {
+    // Convert kebab-case to camelCase
+    return stepId.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+  };
+
   // For /projects/new, projectId will be undefined
   // For /projects/:projectId/setup, projectId will be the actual ID
   const isNewProject = !projectId || projectId === 'new';
@@ -128,7 +134,7 @@ export const ProjectSetup = () => {
   const isCurrentStepValid = () => {
     const currentStepData = steps[currentStep];
     const StepComponent = currentStepData.component;
-    const stepKey = currentStepData.id.replace('-', '');
+    const stepKey = stepIdToDataKey(currentStepData.id);
     const stepData = setupData[stepKey];
     
     // If the step component has a validation function, use it
@@ -181,8 +187,6 @@ export const ProjectSetup = () => {
                     key={step.id}
                     bullet={<step.icon size={14} />}
                     title={step.title}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => handleStepClick(index)}
                   >
                   </Timeline.Item>
                 ))}
@@ -198,8 +202,8 @@ export const ProjectSetup = () => {
                 </div>
 
                 <StepComponent
-                  data={setupData[currentStepData.id.replace('-', '')]}
-                  onDataChange={(data) => updateSetupData(currentStepData.id.replace('-', ''), data)}
+                  data={setupData[stepIdToDataKey(currentStepData.id)]}
+                  onDataChange={(data) => updateSetupData(stepIdToDataKey(currentStepData.id), data)}
                   setupData={setupData}
                   isNewProject={isNewProject}
                   projectId={projectId}
