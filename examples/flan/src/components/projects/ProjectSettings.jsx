@@ -14,6 +14,10 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconTrash, IconAlertTriangle } from '@tabler/icons-react';
+import { DocumentMetadataSettings } from './settings/DocumentMetadataSettings.jsx';
+import { OrthographiesSettings } from './settings/OrthographiesSettings.jsx';
+import { FieldsSettings } from './settings/FieldsSettings.jsx';
+import { VocabularySettings } from './settings/VocabularySettings.jsx';
 
 export const ProjectSettings = ({ 
   project, 
@@ -71,6 +75,30 @@ export const ProjectSettings = ({
   return (
     <>
       <Stack spacing="lg" mt="md">
+        {/* Document Metadata Configuration */}
+        <DocumentMetadataSettings 
+          projectId={projectId} 
+          getClient={getClient} 
+        />
+        
+        {/* Orthographies Configuration */}
+        <OrthographiesSettings 
+          projectId={projectId} 
+          getClient={getClient} 
+        />
+        
+        {/* Fields Configuration */}
+        <FieldsSettings 
+          projectId={projectId} 
+          getClient={getClient} 
+        />
+        
+        {/* Vocabulary Configuration */}
+        <VocabularySettings 
+          projectId={projectId} 
+          getClient={getClient} 
+        />
+        
         <Paper withBorder p="md">
           <Title order={2} mb="md">Danger Zone</Title>
           <Text size="sm" mb="md" c="dimmed">

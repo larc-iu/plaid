@@ -64,14 +64,20 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         const textLayer = await client.textLayers.create(currentProjectId, 'Main Text');
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
+        // Mark as flan-managed
+        await client.textLayers.setConfig(textLayerId, "flan", "primary", true);
       } else if (setupData.layerSelection?.textLayerType === 'new' && setupData.layerSelection?.newTextLayerName) {
         updateProgress(20, 'Creating text layer...');
         const textLayer = await client.textLayers.create(currentProjectId, setupData.layerSelection.newTextLayerName);
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
+        // Mark as flan-managed
+        await client.textLayers.setConfig(textLayerId, "flan", "primary", true);
       } else if (setupData.layerSelection?.textLayerType === 'existing' && setupData.layerSelection?.selectedTextLayerId) {
         textLayerId = setupData.layerSelection.selectedTextLayerId;
         updateProgress(20, 'Using existing text layer...');
+        // Mark as flan-managed
+        await client.textLayers.setConfig(textLayerId, "flan", "primary", true);
       }
 
       // Step 3: Create/configure token layer
@@ -82,14 +88,20 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         const tokenLayer = await client.tokenLayers.create(textLayerId, 'Main Tokens');
         tokenLayerId = tokenLayer.id;
         resources.tokenLayer = tokenLayer;
+        // Mark as flan-managed
+        await client.tokenLayers.setConfig(tokenLayerId, "flan", "primary", true);
       } else if (setupData.layerSelection?.tokenLayerType === 'new' && setupData.layerSelection?.newTokenLayerName && textLayerId) {
         updateProgress(30, 'Creating token layer...');
         const tokenLayer = await client.tokenLayers.create(textLayerId, setupData.layerSelection.newTokenLayerName);
         tokenLayerId = tokenLayer.id;
         resources.tokenLayer = tokenLayer;
+        // Mark as flan-managed
+        await client.tokenLayers.setConfig(tokenLayerId, "flan", "primary", true);
       } else if (setupData.layerSelection?.tokenLayerType === 'existing' && setupData.layerSelection?.selectedTokenLayerId) {
         tokenLayerId = setupData.layerSelection.selectedTokenLayerId;
         updateProgress(30, 'Using existing token layer...');
+        // Mark as flan-managed
+        await client.tokenLayers.setConfig(tokenLayerId, "flan", "primary", true);
       }
 
       // Step 4: Configure orthographies on token layer
