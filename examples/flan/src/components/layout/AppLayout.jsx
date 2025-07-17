@@ -1,11 +1,13 @@
-import { AppShell, Burger, Group, Text } from '@mantine/core';
+import { AppShell, Burger, Group, Text, NavLink } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { Link, useLocation } from 'react-router-dom';
 import { UserButton } from './UserButton';
 import { useAuth } from '../../contexts/AuthContext';
 
 export function AppLayout({ children }) {
   const [opened, { toggle }] = useDisclosure();
   const { user, logout } = useAuth();
+  const location = useLocation();
 
   return (
     <AppShell
@@ -35,7 +37,13 @@ export function AppLayout({ children }) {
       </AppShell.Header>
 
       <AppShell.Navbar p="md">
-        {/* Navigation items will be added here */}
+        <NavLink
+          label="Projects"
+          component={Link}
+          to="/projects"
+          active={location.pathname === '/projects'}
+          onClick={() => toggle()}
+        />
       </AppShell.Navbar>
 
       <AppShell.Main>
