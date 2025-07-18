@@ -4,7 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { VocabularyManager } from './VocabularyManager';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
-export const VocabularySettings = ({ projectId, getClient }) => {
+export const VocabularySettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -14,7 +14,9 @@ export const VocabularySettings = ({ projectId, getClient }) => {
       setIsLoading(true);
       setHasError(false);
       
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       // Get all available vocabularies
       const allVocabs = await client.vocabLayers.list();
@@ -47,7 +49,9 @@ export const VocabularySettings = ({ projectId, getClient }) => {
       setIsLoading(true);
       setHasError(false);
       
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       // Get current project state
       const project = await client.projects.get(projectId);

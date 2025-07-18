@@ -23,12 +23,11 @@ export const ProjectList = () => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { getClient, user, logout } = useAuth();
+  const { client, user, logout } = useAuth();
 
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      const client = getClient();
       if (!client) {
         throw new Error('Not authenticated');
       }

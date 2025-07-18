@@ -2,12 +2,11 @@ import { useState, useEffect } from 'react';
 import { Stack, Text } from '@mantine/core';
 import { VocabularyManager } from '../settings/VocabularyManager.jsx';
 
-export const VocabularyStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, getClient }) => {
+export const VocabularyStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   
   // Load vocabularies from API on mount
   const handleLoadData = async () => {
     try {
-      const client = getClient();
       if (!client) throw new Error('Not authenticated');
       
       const vocabList = await client.vocabLayers.list();

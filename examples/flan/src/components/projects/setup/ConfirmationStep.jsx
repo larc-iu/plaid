@@ -17,7 +17,7 @@ import {
 import { IconCheck, IconX, IconRefresh, IconInfoCircle, IconPlayerPlay } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 
-export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, getClient }) => {
+export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const navigate = useNavigate();
   const [isExecuting, setIsExecuting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -40,7 +40,6 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     setCreatedResources({});
     
     try {
-      const client = getClient();
       if (!client) {
         throw new Error('Authentication required');
       }
@@ -104,7 +103,18 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         await client.tokenLayers.setConfig(tokenLayerId, "flan", "primary", true);
       }
 
-      // Step 4: Configure orthographies on token layer
+      // Step 4: Create sentence token layer
+      let sentenceTokenLayerId = null;
+      if (textLayerId) {
+        updateProgress(35, 'Creating sentence token layer...');
+        const sentenceTokenLayer = await client.tokenLayers.create(textLayerId, 'Sentences');
+        sentenceTokenLayerId = sentenceTokenLayer.id;
+        resources.sentenceTokenLayer = sentenceTokenLayer;
+        // Mark as sentence layer
+        await client.tokenLayers.setConfig(sentenceTokenLayerId, "flan", "sentence", true);
+      }
+
+      // Step 5: Configure orthographies on token layer
       if (tokenLayerId && setupData.orthographies?.orthographies?.length > 0) {
         updateProgress(40, 'Configuring orthographies...');
         const orthographiesConfig = setupData.orthographies.orthographies
@@ -115,31 +125,21 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         await client.tokenLayers.setConfig(tokenLayerId, "flan", "orthographies", orthographiesConfig);
       }
 
-      // Step 5: Create span layers for annotation fields
-      if (tokenLayerId) {
+      // Step 6: Create span layers for annotation fields
+      if (tokenLayerId && sentenceTokenLayerId) {
         updateProgress(50, 'Creating annotation field layers...');
         const createdSpanLayers = [];
-        
-        // Always create a "Sentences" span layer first
-        try {
-          updateProgress(50, 'Creating span layer: Sentences...');
-          const sentencesLayer = await client.spanLayers.create(tokenLayerId, 'Sentences');
-          
-          // Set the scope and primary config
-          await client.spanLayers.setConfig(sentencesLayer.id, "flan", "scope", "Sentence");
-          await client.spanLayers.setConfig(sentencesLayer.id, "flan", "primary", true);
-          
-          createdSpanLayers.push(sentencesLayer);
-        } catch (sentencesError) {
-          console.warn('Failed to create Sentences span layer:', sentencesError);
-        }
         
         // Create span layers for user-defined annotation fields
         if (setupData.fields?.fields?.length > 0) {
           for (const field of setupData.fields.fields) {
             try {
-              updateProgress(50, `Creating span layer: ${field.name}...`);
-              const spanLayer = await client.spanLayers.create(tokenLayerId, field.name);
+              // Choose parent layer based on field scope
+              const parentLayerId = field.scope === 'Sentence' ? sentenceTokenLayerId : tokenLayerId;
+              const parentType = field.scope === 'Sentence' ? 'sentence token layer' : 'primary token layer';
+              
+              updateProgress(50, `Creating span layer: ${field.name} (${field.scope})...`);
+              const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
               
               // Set the scope in the span layer's config
               await client.spanLayers.setConfig(spanLayer.id, "flan", "scope", field.scope);
@@ -154,7 +154,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         resources.spanLayers = createdSpanLayers;
       }
 
-      // Step 6: Configure ignored tokens on token layer
+      // Step 7: Configure ignored tokens on token layer
       if (tokenLayerId && setupData.fields?.ignoredTokens) {
         updateProgress(60, 'Configuring ignored tokens...');
         const ignoredTokensConfig = {
@@ -170,7 +170,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         await client.tokenLayers.setConfig(tokenLayerId, "flan", "ignoredTokens", ignoredTokensConfig);
       }
 
-      // Step 7: Handle vocabularies
+      // Step 8: Handle vocabularies
       if (setupData.vocabulary?.vocabularies?.length > 0) {
         updateProgress(70, 'Configuring vocabularies...');
         const enabledVocabs = setupData.vocabulary.vocabularies.filter(vocab => vocab.enabled);
@@ -199,7 +199,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         resources.vocabularies = vocabulariesProcessed;
       }
 
-      // Step 8: Configure document metadata
+      // Step 9: Configure document metadata
       if (setupData.documentMetadata?.enabledFields?.length > 0) {
         updateProgress(80, 'Configuring document metadata...');
         const enabledFields = setupData.documentMetadata.enabledFields.filter(field => field.enabled);
@@ -209,7 +209,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         await client.projects.setConfig(currentProjectId, "flan", "documentMetadata", metadataConfig);
       }
 
-      // Step 9: Mark project as initialized
+      // Step 10: Mark project as initialized
       updateProgress(90, 'Finalizing setup...');
       await client.projects.setConfig(currentProjectId, "flan", "initialized", true);
 
@@ -404,6 +404,9 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
             )}
             {createdResources.tokenLayer && (
               <Text size="sm">✓ Token layer: {createdResources.tokenLayer.name}</Text>
+            )}
+            {createdResources.sentenceTokenLayer && (
+              <Text size="sm">✓ Sentence token layer: {createdResources.sentenceTokenLayer.name}</Text>
             )}
             {createdResources.spanLayers?.length > 0 && (
               <Text size="sm">✓ Span layers: {createdResources.spanLayers.map(layer => layer.name).join(', ')}</Text>

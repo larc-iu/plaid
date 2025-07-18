@@ -21,7 +21,7 @@ import { ProjectSettings } from './ProjectSettings';
 export const ProjectDetail = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { user, getClient } = useAuth();
+  const { user, client } = useAuth();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [users, setUsers] = useState([]);
@@ -43,7 +43,6 @@ export const ProjectDetail = () => {
         setLoading(true);
       }
       
-      const client = getClient();
       if (!client) {
         throw new Error('Not authenticated');
       }
@@ -92,6 +91,11 @@ export const ProjectDetail = () => {
     includeProject: true,
     includeDocuments: true
   });
+
+  // Handle document creation
+  const handleDocumentCreated = (newDocument) => {
+    setDocuments(prev => [...prev, newDocument]);
+  };
 
   // Update users list without loading spinner
   const updateUsersData = () => fetchData({
@@ -191,7 +195,12 @@ export const ProjectDetail = () => {
           </Tabs.List>
 
           <Tabs.Panel value="documents">
-            <DocumentList documents={documents} />
+            <DocumentList 
+              documents={documents} 
+              projectId={projectId}
+              client={client}
+              onDocumentCreated={handleDocumentCreated}
+            />
           </Tabs.Panel>
 
           {canManageProject() && (
@@ -201,7 +210,7 @@ export const ProjectDetail = () => {
                 users={users}
                 user={user}
                 projectId={projectId}
-                getClient={getClient}
+                client={client}
                 onDataUpdate={updateProjectData}
                 onUsersUpdate={updateUsersData}
               />
@@ -213,7 +222,7 @@ export const ProjectDetail = () => {
               <ProjectSettings
                 project={project}
                 projectId={projectId}
-                getClient={getClient}
+                client={client}
               />
             </Tabs.Panel>
           )}

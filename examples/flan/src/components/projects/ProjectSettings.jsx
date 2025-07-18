@@ -22,7 +22,7 @@ import { VocabularySettings } from './settings/VocabularySettings.jsx';
 export const ProjectSettings = ({ 
   project, 
   projectId, 
-  getClient 
+  client 
 }) => {
   const navigate = useNavigate();
   const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
@@ -41,7 +41,9 @@ export const ProjectSettings = ({
 
     try {
       setIsDeleting(true);
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       await client.projects.delete(projectId);
       
       notifications.show({
@@ -78,25 +80,25 @@ export const ProjectSettings = ({
         {/* Document Metadata Configuration */}
         <DocumentMetadataSettings 
           projectId={projectId} 
-          getClient={getClient} 
+          client={client} 
         />
         
         {/* Orthographies Configuration */}
         <OrthographiesSettings 
           projectId={projectId} 
-          getClient={getClient} 
+          client={client} 
         />
         
         {/* Fields Configuration */}
         <FieldsSettings 
           projectId={projectId} 
-          getClient={getClient} 
+          client={client} 
         />
         
         {/* Vocabulary Configuration */}
         <VocabularySettings 
           projectId={projectId} 
-          getClient={getClient} 
+          client={client} 
         />
         
         <Paper withBorder p="md">

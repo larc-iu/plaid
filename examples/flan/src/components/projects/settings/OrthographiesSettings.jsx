@@ -4,7 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { OrthographiesManager } from './OrthographiesManager.jsx';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
-export const OrthographiesSettings = ({ projectId, getClient }) => {
+export const OrthographiesSettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -20,7 +20,9 @@ export const OrthographiesSettings = ({ projectId, getClient }) => {
       setIsLoading(true);
       setHasError(false);
       
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       // Get the project which contains text layers
       const project = await client.projects.get(projectId);
@@ -89,7 +91,9 @@ export const OrthographiesSettings = ({ projectId, getClient }) => {
       setIsLoading(true);
       setHasError(false);
       
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       // Get the project which contains text layers
       const project = await client.projects.get(projectId);

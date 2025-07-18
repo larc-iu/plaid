@@ -60,12 +60,7 @@ export const AuthProvider = ({ children }) => {
     updateUser,
     isAuthenticated: !!user,
     loading,
-    getClient: () => {
-      if (!user) {
-        throw new Error('Not authenticated');
-      }
-      return authService.getClient();
-    }
+    client: user ? authService.getClient() : null
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

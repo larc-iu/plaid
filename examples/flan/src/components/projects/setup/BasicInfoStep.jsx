@@ -1,6 +1,6 @@
 import { Stack, TextInput, Text } from '@mantine/core';
 
-export const BasicInfoStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, getClient }) => {
+export const BasicInfoStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const handleProjectNameChange = (event) => {
     onDataChange({
       ...data,

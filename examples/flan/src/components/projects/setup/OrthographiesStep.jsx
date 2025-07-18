@@ -1,7 +1,7 @@
 import { Stack, Text } from '@mantine/core';
 import { OrthographiesManager } from '../settings/OrthographiesManager.jsx';
 
-export const OrthographiesStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, getClient }) => {
+export const OrthographiesStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   
   // Handle saving changes - interface with parent's onDataChange
   const handleSaveChanges = async (newData) => {
