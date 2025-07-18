@@ -1,5 +1,6 @@
 import { Avatar, Menu, Button, Text, Group } from '@mantine/core';
-import { IconLogout, IconUser } from '@tabler/icons-react';
+import IconLogout from '@tabler/icons-react/dist/esm/icons/IconLogout.mjs';
+import IconUser from '@tabler/icons-react/dist/esm/icons/IconUser.mjs';
 import { useNavigate } from 'react-router-dom';
 
 export function UserButton({ user, onLogout }) {

@@ -13,7 +13,9 @@ import {
   Anchor,
   Tabs
 } from '@mantine/core';
-import { IconFile, IconUsers, IconSettings } from '@tabler/icons-react';
+import IconFile from '@tabler/icons-react/dist/esm/icons/IconFile.mjs';
+import IconUsers from '@tabler/icons-react/dist/esm/icons/IconUsers.mjs';
+import IconSettings from '@tabler/icons-react/dist/esm/icons/IconSettings.mjs';
 import { DocumentList } from './DocumentList';
 import { AccessManagement } from './AccessManagement';
 import { ProjectSettings } from './ProjectSettings';
@@ -109,7 +111,7 @@ export const ProjectDetail = () => {
   // Check if project needs setup and redirect if necessary
   useEffect(() => {
     if (project && !project.config?.flan?.initialized) {
-      navigate(`/projects/${projectId}/setup`);
+      navigate(`/projects/${projectId}/setup`, { replace: true });
     }
   }, [project, projectId, navigate]);
 

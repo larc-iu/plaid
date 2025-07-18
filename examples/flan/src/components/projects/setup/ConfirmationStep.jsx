@@ -14,7 +14,11 @@ import {
   Loader,
   Title
 } from '@mantine/core';
-import { IconCheck, IconX, IconRefresh, IconInfoCircle, IconPlayerPlay } from '@tabler/icons-react';
+import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs';
+import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
+import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
+import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
+import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
 import { notifications } from '@mantine/notifications';
 
 export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
@@ -200,14 +204,28 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       }
 
       // Step 9: Configure document metadata
-      if (setupData.documentMetadata?.enabledFields?.length > 0) {
-        updateProgress(80, 'Configuring document metadata...');
-        const enabledFields = setupData.documentMetadata.enabledFields.filter(field => field.enabled);
-        const metadataConfig = enabledFields.map(field => ({
-          name: field.name
-        }));
-        await client.projects.setConfig(currentProjectId, "flan", "documentMetadata", metadataConfig);
+      updateProgress(80, 'Configuring document metadata...');
+      
+      // Use configured fields if available, otherwise use predefined defaults
+      let enabledFields = setupData.documentMetadata?.enabledFields?.filter(field => field.enabled) || [];
+      
+      // If no document metadata was configured, use the default enabled fields
+      if (!setupData.documentMetadata?.enabledFields) {
+        const defaultFields = [
+          { name: 'Date', enabled: true, isCustom: false },
+          { name: 'Speakers', enabled: true, isCustom: false },
+          { name: 'Location', enabled: true, isCustom: false },
+          { name: 'Genre', enabled: false, isCustom: false },
+          { name: 'Recording Quality', enabled: false, isCustom: false },
+          { name: 'Transcriber', enabled: false, isCustom: false }
+        ];
+        enabledFields = defaultFields.filter(field => field.enabled);
       }
+      
+      const metadataConfig = enabledFields.map(field => ({
+        name: field.name
+      }));
+      await client.projects.setConfig(currentProjectId, "flan", "documentMetadata", metadataConfig);
 
       // Step 10: Mark project as initialized
       updateProgress(90, 'Finalizing setup...');

@@ -15,7 +15,7 @@ import {
   SimpleGrid
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPlus } from '@tabler/icons-react';
+import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
 import IconLogout from '@tabler/icons-react/dist/esm/icons/IconLogout.mjs';
 
 export const ProjectList = () => {

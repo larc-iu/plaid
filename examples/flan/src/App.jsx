@@ -5,6 +5,7 @@ import { LoginForm } from './components/auth/LoginForm';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
 import { ProjectSetup } from './components/projects/ProjectSetup';
+import { DocumentDetail } from './components/documents/DocumentDetail';
 import { UserProfile } from './components/auth/UserProfile';
 import { AppLayout } from './components/layout/AppLayout';
 
@@ -45,6 +46,14 @@ function App() {
             <ProtectedRoute>
               <AppLayout>
                 <ProjectSetup />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/projects/:projectId/documents/:documentId" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <DocumentDetail />
               </AppLayout>
             </ProtectedRoute>
           } />

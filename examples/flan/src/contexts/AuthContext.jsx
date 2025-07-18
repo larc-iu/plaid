@@ -53,6 +53,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const client = user ? authService.getClient() : null;
+
+  // Make available in console during dev
+  if (import.meta.env.VITE_API_URL) {
+    window.__client = client
+  }
+
   const value = {
     user,
     login,
@@ -60,7 +67,7 @@ export const AuthProvider = ({ children }) => {
     updateUser,
     isAuthenticated: !!user,
     loading,
-    client: user ? authService.getClient() : null
+    client
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

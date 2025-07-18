@@ -13,7 +13,8 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconTrash, IconAlertTriangle } from '@tabler/icons-react';
+import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
+import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
 import { DocumentMetadataSettings } from './settings/DocumentMetadataSettings.jsx';
 import { OrthographiesSettings } from './settings/OrthographiesSettings.jsx';
 import { FieldsSettings } from './settings/FieldsSettings.jsx';

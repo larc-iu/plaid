@@ -12,7 +12,7 @@ import {
 } from '@mantine/core';
 import { DataTable } from 'mantine-datatable';
 import { notifications } from '@mantine/notifications';
-import { IconPlus } from '@tabler/icons-react';
+import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
 
 export const DocumentList = ({ documents, projectId, client, onDocumentCreated }) => {
   const [createModalOpened, setCreateModalOpened] = useState(false);
@@ -20,12 +20,8 @@ export const DocumentList = ({ documents, projectId, client, onDocumentCreated }
   const [documentContent, setDocumentContent] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const handleDocumentClick = (document) => {
-    // TODO: Navigate to document editor/viewer
-    notifications.show({
-      title: 'Coming Soon',
-      message: `Document "${document.name}" selected. Editor will be implemented later.`,
-      color: 'blue'
-    });
+    // Navigate to document detail page
+    window.location.href = `#/projects/${projectId}/documents/${document.id}`;
   };
 
   const formatDate = (dateString) => {
@@ -68,9 +64,12 @@ export const DocumentList = ({ documents, projectId, client, onDocumentCreated }
       setDocumentContent('');
       setCreateModalOpened(false);
 
-      // Notify parent component
+      // Notify parent component with the document name we know it should have
       if (onDocumentCreated) {
-        onDocumentCreated(newDocument);
+        onDocumentCreated({
+          ...newDocument,
+          name: documentName.trim() // Ensure the name is set optimistically
+        });
       }
     } catch (error) {
       console.error('Failed to create document:', error);
