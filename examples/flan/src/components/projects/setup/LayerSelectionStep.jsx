@@ -10,7 +10,7 @@ import {
   Alert,
   Loader
 } from '@mantine/core';
-import { IconInfoCircle } from '@tabler/icons-react';
+import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
 
 export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const [project, setProject] = useState(null);

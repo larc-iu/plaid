@@ -14,15 +14,13 @@ import {
   Breadcrumbs,
   Anchor
 } from '@mantine/core';
-import { 
-  IconInfoCircle, 
-  IconStack, 
-  IconFileText, 
-  IconLanguage, 
-  IconList, 
-  IconBook2, 
-  IconCheck 
-} from '@tabler/icons-react';
+import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
+import IconStack from '@tabler/icons-react/dist/esm/icons/IconStack.mjs';
+import IconFileText from '@tabler/icons-react/dist/esm/icons/IconFileText.mjs';
+import IconLanguage from '@tabler/icons-react/dist/esm/icons/IconLanguage.mjs';
+import IconList from '@tabler/icons-react/dist/esm/icons/IconList.mjs';
+import IconBook2 from '@tabler/icons-react/dist/esm/icons/IconBook2.mjs';
+import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs';
 
 // Step components
 import { BasicInfoStep } from './setup/BasicInfoStep';

@@ -17,7 +17,11 @@ import {
 import { DataTable } from 'mantine-datatable';
 import { notifications } from '@mantine/notifications';
 import { useClipboard, useDisclosure } from '@mantine/hooks';
-import { IconCopy, IconCheck, IconUserPlus, IconTrash, IconAlertTriangle } from '@tabler/icons-react';
+import IconCopy from '@tabler/icons-react/dist/esm/icons/IconCopy.mjs';
+import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs';
+import IconUserPlus from '@tabler/icons-react/dist/esm/icons/IconUserPlus.mjs';
+import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
+import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
 
 export const AccessManagement = memo(({ 
   project, 

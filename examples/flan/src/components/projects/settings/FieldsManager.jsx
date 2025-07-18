@@ -12,7 +12,10 @@ import {
   TagsInput
 } from '@mantine/core';
 import { DataTable } from 'mantine-datatable';
-import { IconPlus, IconTrash, IconChevronUp, IconChevronDown } from '@tabler/icons-react';
+import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
+import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
+import IconChevronUp from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';
+import IconChevronDown from '@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs';
 import { notifications } from '@mantine/notifications';
 
 // Default annotation fields

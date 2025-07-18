@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Paper, Text, Alert } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { DocumentMetadataManager } from './DocumentMetadataManager.jsx';
-import { IconAlertTriangle } from '@tabler/icons-react';
+import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
 
 export const DocumentMetadataSettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
