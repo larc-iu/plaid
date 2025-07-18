@@ -38,6 +38,7 @@ All configurations use the "flan" namespace to avoid conflicts with other applic
 * There's typically no need for you to try to test your changes. The user will test it himself in the browser.
 * See `@examples/ud_editor/` for complete Plaid client usage examples
 * If it's not obvious to you what a certain client function does or returns, do not make assumptions. Instead, investigate whether existing code clarifies it (feel free to grep for `client.bundle.methodName`), or else ask the user.
+* Make sure that you always import icons from individual files: write `import IconLogout from '@tabler/icons-react/dist/esm/icons/IconLogout.mjs';`, not `import { IconLogout } from '@tabler/icons-react';`.
 
 ## Related Files
 
