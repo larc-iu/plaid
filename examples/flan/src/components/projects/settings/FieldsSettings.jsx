@@ -4,7 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { FieldsManager } from './FieldsManager';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
-export const FieldsSettings = ({ projectId, getClient }) => {
+export const FieldsSettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -20,7 +20,9 @@ export const FieldsSettings = ({ projectId, getClient }) => {
       setIsLoading(true);
       setHasError(false);
       
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       // Get the project which contains text layers
       const project = await client.projects.get(projectId);
@@ -100,7 +102,9 @@ export const FieldsSettings = ({ projectId, getClient }) => {
       setIsLoading(true);
       setHasError(false);
       
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       // Get the project which contains text layers
       const project = await client.projects.get(projectId);

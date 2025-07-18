@@ -36,7 +36,7 @@ import { ConfirmationStep } from './setup/ConfirmationStep';
 export const ProjectSetup = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { user, getClient } = useAuth();
+  const { user, client } = useAuth();
   
   const [currentStep, setCurrentStep] = useState(0);
   const [setupData, setSetupData] = useState({
@@ -208,7 +208,7 @@ export const ProjectSetup = () => {
                   isNewProject={isNewProject}
                   projectId={projectId}
                   user={user}
-                  getClient={getClient}
+                  client={client}
                 />
 
                 <Group justify="space-between" pt="md">

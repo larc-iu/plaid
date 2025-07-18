@@ -1,7 +1,7 @@
 import { Stack, Text, Badge } from '@mantine/core';
 import { FieldsManager } from '../settings/FieldsManager.jsx';
 
-export const FieldsStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, getClient }) => {
+export const FieldsStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   
   // Initialize data with defaults if not already present
   if (!data?.fields) {

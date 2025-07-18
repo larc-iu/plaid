@@ -1,7 +1,7 @@
 import { Stack, Text } from '@mantine/core';
 import { DocumentMetadataManager } from '../settings/DocumentMetadataManager.jsx';
 
-export const DocumentMetadataStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, getClient }) => {
+export const DocumentMetadataStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   
   // Handle saving changes - interface with parent's onDataChange
   const handleSaveChanges = async (newData) => {

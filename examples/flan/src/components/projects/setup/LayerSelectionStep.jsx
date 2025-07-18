@@ -12,7 +12,7 @@ import {
 } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 
-export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, getClient }) => {
+export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -36,7 +36,6 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
     const fetchProjectData = async () => {
       try {
         setLoading(true);
-        const client = getClient();
         if (!client) throw new Error('Not authenticated');
         
         const projectData = await client.projects.get(projectId);
@@ -53,7 +52,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
     if (projectId) {
       fetchProjectData();
     }
-  }, [projectId, getClient]);
+  }, [projectId, client]);
 
   // Auto-select single text layer and single token layer when data loads
   useEffect(() => {

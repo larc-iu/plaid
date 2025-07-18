@@ -24,7 +24,7 @@ export const AccessManagement = memo(({
   users, 
   user, 
   projectId, 
-  getClient, 
+  client, 
   onDataUpdate,
   onUsersUpdate
 }) => {
@@ -64,7 +64,9 @@ export const AccessManagement = memo(({
 
     try {
       setUpdatingUser(userId);
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
 
       // Add new permission (if not 'none'). Old permission is automatically unassigned on addition,
       // and removing reader removes all other permissions.
@@ -122,7 +124,9 @@ export const AccessManagement = memo(({
 
     try {
       setCreatingUser(true);
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       // Create the user
       await client.users.create(newUserData.username, newUserData.password, newUserData.isAdmin);
@@ -186,7 +190,9 @@ export const AccessManagement = memo(({
 
     try {
       setDeletingUser(true);
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       // Delete the user
       await client.users.delete(userToDelete.id);

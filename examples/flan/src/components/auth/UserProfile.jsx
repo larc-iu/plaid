@@ -20,7 +20,7 @@ import { IconArrowLeft } from '@tabler/icons-react';
 
 export const UserProfile = () => {
   const navigate = useNavigate();
-  const { user, getClient, updateUser } = useAuth();
+  const { user, client, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -58,7 +58,9 @@ export const UserProfile = () => {
     setLoading(true);
 
     try {
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       if (!user.id) {
         throw new Error('Could not get current user ID');

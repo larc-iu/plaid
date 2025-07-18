@@ -4,7 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { DocumentMetadataManager } from './DocumentMetadataManager.jsx';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
-export const DocumentMetadataSettings = ({ projectId, getClient }) => {
+export const DocumentMetadataSettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -20,7 +20,9 @@ export const DocumentMetadataSettings = ({ projectId, getClient }) => {
       setIsLoading(true);
       setHasError(false);
       
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       const project = await client.projects.get(projectId);
       
       // Extract current metadata configuration
@@ -54,7 +56,9 @@ export const DocumentMetadataSettings = ({ projectId, getClient }) => {
       setIsLoading(true);
       setHasError(false);
       
-      const client = getClient();
+      if (!client) {
+        throw new Error('Not authenticated');
+      }
       
       // Convert to API format (only store enabled fields with just name)
       const enabledFields = data.enabledFields.filter(field => field.enabled);
