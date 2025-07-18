@@ -150,7 +150,14 @@
         {:keys [required-body-params optional-body-params]} ordered-params
         {:keys [is-config?]} special-endpoints
         body-params (concat required-body-params optional-body-params)
-        has-files? (some :is-file? body-params)]
+        has-files? (some :is-file? body-params)
+
+        ;; Check if method name contains metadata/Metadata or config/Config
+        has-metadata-in-name? (or (str/includes? method-name "metadata")
+                                  (str/includes? method-name "Metadata"))
+        has-config-in-name? (or (str/includes? method-name "config")
+                                (str/includes? method-name "Config"))
+        skip-body-nesting? (or has-metadata-in-name? has-config-in-name?)]
     (cond
       (and is-config? (= http-method :put))
       "        body_data = config_value"
@@ -167,15 +174,28 @@
              "        # Filter out None values\n"
              "        files_data = {k: v for k, v in files_dict.items() if v is not None}\n"))
 
-      (= method-name "send-message")
+      (and (= method-name "send-message") (not skip-body-nesting?))
       (str "        body_data = {'body': body}")
+
+      ;; Special case for metadata/config functions with send-message
+      (and (= method-name "send-message") skip-body-nesting?)
+      (str "        body_data = body")
 
       ;; Special case: single array parameter that represents the entire body
       (and (= (count body-params) 1)
            (= (:type (first body-params)) "array")
            (= (:original-name (first body-params)) "body"))
       (let [param-name (transform-key-name-python (:name (first body-params)))]
-        (str "        body_data = self.client._transform_request(" param-name ")"))
+        (if skip-body-nesting?
+          (str "        body_data = " param-name)
+          (str "        body_data = self.client._transform_request(" param-name ")")))
+
+      ;; Special case: single parameter that should be the entire body for metadata/config
+      (and skip-body-nesting?
+           (= (count body-params) 1)
+           (seq body-params))
+      (let [param-name (transform-key-name-python (:name (first body-params)))]
+        (str "        body_data = " param-name))
 
       (seq body-params)
       (let [body-dict-items (map (fn [{:keys [name original-name]}]
@@ -187,7 +207,9 @@
              "        }\n"
              "        # Filter out None values\n"
              "        body_dict = {k: v for k, v in body_dict.items() if v is not None}\n"
-             "        body_data = self.client._transform_request(body_dict)"))
+             (if skip-body-nesting?
+               "        body_data = body_dict"
+               "        body_data = self.client._transform_request(body_dict)")))
 
       :else nil)))
 

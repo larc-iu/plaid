@@ -271,41 +271,63 @@
   "Generate JavaScript code to construct request body from individual parameters"
   [operation body-params]
   (when (seq body-params)
-    (cond
-      ;; Special case: single array parameter that represents the entire body
-      (and (= (count body-params) 1)
-           (= (:type (first body-params)) "array")
-           (= (:original-name (first body-params)) "body"))
-      (let [param-name (transform-key-name (:name (first body-params)))]
-        (str "const requestBody = this._transformRequest(" param-name ");"))
+    (let [{:keys [method-name]} operation
+          ;; Check if method name contains metadata/Metadata or config/Config
+          has-metadata-in-name? (or (str/includes? method-name "metadata")
+                                    (str/includes? method-name "Metadata"))
+          has-config-in-name? (or (str/includes? method-name "config")
+                                  (str/includes? method-name "Config"))
+          skip-body-nesting? (or has-metadata-in-name? has-config-in-name?)]
+      (cond
+        ;; Special case: single array parameter that represents the entire body
+        (and (= (count body-params) 1)
+             (= (:type (first body-params)) "array")
+             (= (:original-name (first body-params)) "body"))
+        (let [param-name (transform-key-name (:name (first body-params)))]
+          (if skip-body-nesting?
+            (str "const requestBody = " param-name ";")
+            (str "const requestBody = this._transformRequest(" param-name ");")))
 
-      (= (:method-name operation) "send-message")
-      (str "const requestBody = { body };")
+        (and (= method-name "send-message") (not skip-body-nesting?))
+        (str "const requestBody = { body };")
 
-      ;; Handle multipart/form-data with file uploads
-      (some :is-file? body-params)
-      (let [form-data-lines (map (fn [{:keys [name original-name is-file?]}]
-                                   (let [js-name (transform-key-name name)]
-                                     (str "    formData.append('" original-name "', " js-name ");")))
-                                 body-params)]
-        (str "const formData = new FormData();\n"
-             (str/join "\n" form-data-lines)
-             "\n    const requestBody = formData;"))
+        ;; Special case for metadata/config functions with send-message
+        (and (= method-name "send-message") skip-body-nesting?)
+        (str "const requestBody = body;")
 
-      ;; Regular case: object parameters
-      :else
-      (let [all-params (map (fn [{:keys [name original-name]}]
-                              (let [js-name (if (= original-name "body")
-                                              (transform-key-name "body")
-                                              (transform-key-name name))]
-                                (str "      \"" original-name "\": " js-name)))
-                            body-params)]
-        (str "const bodyObj = {\n"
-             (str/join ",\n" all-params)
-             "\n    };\n"
-             "    // Filter out undefined optional parameters\n"
-             "    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);\n"
-             "    const requestBody = this._transformRequest(bodyObj);")))))
+        ;; Handle multipart/form-data with file uploads
+        (some :is-file? body-params)
+        (let [form-data-lines (map (fn [{:keys [name original-name is-file?]}]
+                                     (let [js-name (transform-key-name name)]
+                                       (str "    formData.append('" original-name "', " js-name ");")))
+                                   body-params)]
+          (str "const formData = new FormData();\n"
+               (str/join "\n" form-data-lines)
+               "\n    const requestBody = formData;"))
+
+        ;; Special case: single parameter that should be the entire body for metadata/config
+        (and skip-body-nesting?
+             (= (count body-params) 1)
+             (seq body-params))
+        (let [js-name (transform-key-name (:name (first body-params)))]
+          (str "const requestBody = " js-name ";"))
+
+        ;; Regular case: object parameters
+        :else
+        (let [all-params (map (fn [{:keys [name original-name]}]
+                                (let [js-name (if (= original-name "body")
+                                                (transform-key-name "body")
+                                                (transform-key-name name))]
+                                  (str "      \"" original-name "\": " js-name)))
+                              body-params)]
+          (str "const bodyObj = {\n"
+               (str/join ",\n" all-params)
+               "\n    };\n"
+               "    // Filter out undefined optional parameters\n"
+               "    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);\n"
+               (if skip-body-nesting?
+                 "    const requestBody = bodyObj;"
+                 "    const requestBody = this._transformRequest(bodyObj);")))))))
 
 (defn- generate-fetch-options
   "Generate JavaScript fetch options"

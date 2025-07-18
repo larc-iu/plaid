@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Fri Jul 18 13:51:22 EDT 2025
+Generated on: Fri Jul 18 13:55:30 EDT 2025
 """
 
 import requests
@@ -216,12 +216,7 @@ class VocabLinksResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -299,12 +294,7 @@ class VocabLinksResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-links/{id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -2332,12 +2322,7 @@ class RelationsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -2415,12 +2400,7 @@ class RelationsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/relations/{relation_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -6322,12 +6302,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -6405,12 +6380,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/spans/{span_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -6804,12 +6774,7 @@ class TextsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -6887,12 +6852,7 @@ class TextsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/texts/{text_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -10922,12 +10882,7 @@ class DocumentsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -11005,12 +10960,7 @@ class DocumentsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/documents/{document_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -16837,12 +16787,7 @@ class VocabItemsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-items/{id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -16920,12 +16865,7 @@ class VocabItemsResource:
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/vocab-items/{id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -20013,12 +19953,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set
@@ -20096,12 +20031,7 @@ metadata, an optional map of metadata
             body: Required body parameter
         """
         url = f"{self.client.base_url}/api/v1/tokens/{token_id}/metadata"
-        body_dict = {
-            'body': body
-        }
-        # Filter out None values
-        body_dict = {k: v for k, v in body_dict.items() if v is not None}
-        body_data = self.client._transform_request(body_dict)
+        body_data = body
         
         headers = {'Content-Type': 'application/json'}
         # Add user agent header if set

@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Fri Jul 18 13:51:20 EDT 2025
+ * Generated on: Fri Jul 18 13:55:29 EDT 2025
  */
 
 class PlaidClient {
@@ -1155,12 +1155,7 @@ metadata, an optional map of metadata
    */
   async _vocabLinksSetMetadata(id, body) {
     let url = `${this.baseUrl}/api/v1/vocab-links/${id}/metadata`;
-    const bodyObj = {
-      "body": body
-    };
-    // Filter out undefined optional parameters
-    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const requestBody = this._transformRequest(bodyObj);
+    const requestBody = body;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
@@ -2230,12 +2225,7 @@ metadata, an optional map of metadata
    */
   async _relationsSetMetadata(relationId, body) {
     let url = `${this.baseUrl}/api/v1/relations/${relationId}/metadata`;
-    const bodyObj = {
-      "body": body
-    };
-    // Filter out undefined optional parameters
-    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const requestBody = this._transformRequest(bodyObj);
+    const requestBody = body;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
@@ -4274,12 +4264,7 @@ metadata, an optional map of metadata
    */
   async _spansSetMetadata(spanId, body) {
     let url = `${this.baseUrl}/api/v1/spans/${spanId}/metadata`;
-    const bodyObj = {
-      "body": body
-    };
-    // Filter out undefined optional parameters
-    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const requestBody = this._transformRequest(bodyObj);
+    const requestBody = body;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
@@ -4516,12 +4501,7 @@ metadata, an optional map of metadata
    */
   async _textsSetMetadata(textId, body) {
     let url = `${this.baseUrl}/api/v1/texts/${textId}/metadata`;
-    const bodyObj = {
-      "body": body
-    };
-    // Filter out undefined optional parameters
-    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const requestBody = this._transformRequest(bodyObj);
+    const requestBody = body;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
@@ -6603,12 +6583,7 @@ body: the string which is the content of this text.
    */
   async _documentsSetMetadata(documentId, body) {
     let url = `${this.baseUrl}/api/v1/documents/${documentId}/metadata`;
-    const bodyObj = {
-      "body": body
-    };
-    // Filter out undefined optional parameters
-    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const requestBody = this._transformRequest(bodyObj);
+    const requestBody = body;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
@@ -9513,12 +9488,7 @@ name: update a document's name.
    */
   async _vocabItemsSetMetadata(id, body) {
     let url = `${this.baseUrl}/api/v1/vocab-items/${id}/metadata`;
-    const bodyObj = {
-      "body": body
-    };
-    // Filter out undefined optional parameters
-    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const requestBody = this._transformRequest(bodyObj);
+    const requestBody = body;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
@@ -11131,12 +11101,7 @@ metadata, an optional map of metadata
    */
   async _tokensSetMetadata(tokenId, body) {
     let url = `${this.baseUrl}/api/v1/tokens/${tokenId}/metadata`;
-    const bodyObj = {
-      "body": body
-    };
-    // Filter out undefined optional parameters
-    Object.keys(bodyObj).forEach(key => bodyObj[key] === undefined && delete bodyObj[key]);
-    const requestBody = this._transformRequest(bodyObj);
+    const requestBody = body;
     
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
