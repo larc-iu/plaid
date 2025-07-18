@@ -17,16 +17,10 @@ import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
 export const DocumentList = ({ documents, projectId, client, onDocumentCreated }) => {
   const [createModalOpened, setCreateModalOpened] = useState(false);
   const [documentName, setDocumentName] = useState('');
-  const [documentContent, setDocumentContent] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const handleDocumentClick = (document) => {
     // Navigate to document detail page
     window.location.href = `#/projects/${projectId}/documents/${document.id}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString();
   };
 
   const handleCreateDocument = async () => {
@@ -46,12 +40,6 @@ export const DocumentList = ({ documents, projectId, client, onDocumentCreated }
       }
 
       const newDocument = await client.documents.create(projectId, documentName.trim());
-      
-      // If content is provided, add it to the document
-      if (documentContent.trim()) {
-        // TODO: Add content to document when text layer functionality is available
-        // For now, we'll just create the document without content
-      }
 
       notifications.show({
         title: 'Success',
@@ -61,7 +49,6 @@ export const DocumentList = ({ documents, projectId, client, onDocumentCreated }
 
       // Reset form
       setDocumentName('');
-      setDocumentContent('');
       setCreateModalOpened(false);
 
       // Notify parent component with the document name we know it should have
@@ -149,14 +136,6 @@ export const DocumentList = ({ documents, projectId, client, onDocumentCreated }
             value={documentName}
             onChange={(event) => setDocumentName(event.currentTarget.value)}
             required
-          />
-          <Textarea
-            label="Initial Content (Optional)"
-            placeholder="Enter initial document content..."
-            value={documentContent}
-            onChange={(event) => setDocumentContent(event.currentTarget.value)}
-            minRows={4}
-            maxRows={8}
           />
           <Group justify="flex-end">
             <Button
