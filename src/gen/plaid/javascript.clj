@@ -540,6 +540,13 @@
                           (seq optional-body-params)
                           (and is-config? (= http-method :put)))
 
+            ;; Check if method name contains metadata/Metadata or config/Config
+            has-metadata-in-name? (or (str/includes? method-name "metadata")
+                                      (str/includes? method-name "Metadata"))
+            has-config-in-name? (or (str/includes? method-name "config")
+                                    (str/includes? method-name "Config"))
+            skip-transformation? (or has-metadata-in-name? has-config-in-name?)
+
             ;; Generate method parameters
             method-params (generate-method-params-from-operation operation)
 
@@ -575,7 +582,12 @@
             private-method-name (str "_" bundle-name (csk/->PascalCase transformed-method-name))
 
             ;; Determine URL variable name
-            url-var (if (seq all-filtered-params) "finalUrl" "url")]
+            url-var (if (seq all-filtered-params) "finalUrl" "url")
+
+            ;; Transform response logic
+            transform-response-code (if skip-transformation?
+                                      "        return data;\n"
+                                      "        return this._transformResponse(data);\n")]
 
         (str "  /**\n"
              "   * " formatted-summary "\n"
@@ -637,7 +649,7 @@
                (str "      const contentType = response.headers.get('content-type');\n"
                     "      if (contentType && contentType.includes('application/json')) {\n"
                     "        const data = await response.json();\n"
-                    "        return this._transformResponse(data);\n"
+                    transform-response-code
                     "      }\n"
                     "      return await response.text();\n"))
              "    } catch (error) {\n"

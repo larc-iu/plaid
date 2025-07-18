@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Mon Jul 14 20:05:47 EDT 2025
+ * Generated on: Fri Jul 18 13:51:20 EDT 2025
  */
 
 class PlaidClient {
@@ -1219,7 +1219,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -1298,7 +1298,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -1798,7 +1798,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -1877,7 +1877,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -2294,7 +2294,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -2373,7 +2373,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -3145,7 +3145,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -3224,7 +3224,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -4338,7 +4338,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -4417,7 +4417,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -4580,7 +4580,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -4659,7 +4659,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -5779,7 +5779,7 @@ body: the string which is the content of this text.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -5858,7 +5858,7 @@ body: the string which is the content of this text.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -6667,7 +6667,7 @@ body: the string which is the content of this text.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -6746,7 +6746,7 @@ body: the string which is the content of this text.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -7904,7 +7904,7 @@ name: update a document's name.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -7983,7 +7983,7 @@ name: update a document's name.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -8898,7 +8898,7 @@ name: update a document's name.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -8977,7 +8977,7 @@ name: update a document's name.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -9577,7 +9577,7 @@ name: update a document's name.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -9656,7 +9656,7 @@ name: update a document's name.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -10253,7 +10253,7 @@ name: update a document's name.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -10332,7 +10332,7 @@ name: update a document's name.
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -11195,7 +11195,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
@@ -11274,7 +11274,7 @@ metadata, an optional map of metadata
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        return this._transformResponse(data);
+        return data;
       }
       return await response.text();
     } catch (error) {
