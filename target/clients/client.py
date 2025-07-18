@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Mon Jul 14 20:05:50 EDT 2025
+Generated on: Fri Jul 18 13:51:22 EDT 2025
 """
 
 import requests
@@ -192,7 +192,7 @@ class VocabLinksResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -275,7 +275,7 @@ class VocabLinksResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -360,7 +360,7 @@ class VocabLinksResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -435,7 +435,7 @@ class VocabLinksResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -512,7 +512,7 @@ class VocabLinksResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -682,7 +682,7 @@ class VocabLinksResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -834,7 +834,7 @@ class VocabLinksResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1019,7 +1019,7 @@ class VocabLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1171,7 +1171,7 @@ class VocabLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1339,7 +1339,7 @@ class VocabLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1419,7 +1419,7 @@ class VocabLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -1501,7 +1501,7 @@ class VocabLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1578,7 +1578,7 @@ class VocabLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -1657,7 +1657,7 @@ class VocabLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1825,7 +1825,7 @@ class VocabLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1991,7 +1991,7 @@ class VocabLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2145,7 +2145,7 @@ class VocabLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2299,7 +2299,7 @@ class VocabLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2391,7 +2391,7 @@ class RelationsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -2476,7 +2476,7 @@ class RelationsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2551,7 +2551,7 @@ class RelationsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -2628,7 +2628,7 @@ class RelationsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2796,7 +2796,7 @@ class RelationsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2966,7 +2966,7 @@ class RelationsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3118,7 +3118,7 @@ class RelationsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3286,7 +3286,7 @@ class RelationsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3454,7 +3454,7 @@ class RelationsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3646,7 +3646,7 @@ target_id: the target span this relation goes to
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3812,7 +3812,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3968,7 +3968,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4057,7 +4057,7 @@ class SpanLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -4139,7 +4139,7 @@ class SpanLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4216,7 +4216,7 @@ class SpanLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -4295,7 +4295,7 @@ class SpanLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4465,7 +4465,7 @@ class SpanLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4617,7 +4617,7 @@ class SpanLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4785,7 +4785,7 @@ class SpanLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4955,7 +4955,7 @@ class SpanLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5123,7 +5123,7 @@ class SpanLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5300,7 +5300,7 @@ class SpansResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5488,7 +5488,7 @@ metadata: optional key-value pairs for additional annotation data.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5658,7 +5658,7 @@ metadata: optional key-value pairs for additional annotation data.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5810,7 +5810,7 @@ metadata: optional key-value pairs for additional annotation data.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5978,7 +5978,7 @@ metadata: optional key-value pairs for additional annotation data.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6142,7 +6142,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6298,7 +6298,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6381,7 +6381,7 @@ metadata, an optional map of metadata
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -6466,7 +6466,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6541,7 +6541,7 @@ metadata, an optional map of metadata
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -6618,7 +6618,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6771,7 +6771,7 @@ class BatchResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6863,7 +6863,7 @@ class TextsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -6948,7 +6948,7 @@ class TextsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7023,7 +7023,7 @@ class TextsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -7100,7 +7100,7 @@ class TextsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7286,7 +7286,7 @@ body: the string which is the content of this text.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7456,7 +7456,7 @@ body: the string which is the content of this text.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7608,7 +7608,7 @@ body: the string which is the content of this text.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7776,7 +7776,7 @@ body: the string which is the content of this text.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7953,7 +7953,7 @@ class UsersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8127,7 +8127,7 @@ class UsersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8309,7 +8309,7 @@ class UsersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8479,7 +8479,7 @@ class UsersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8631,7 +8631,7 @@ class UsersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8807,7 +8807,7 @@ class UsersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8984,7 +8984,7 @@ class TokenLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9154,7 +9154,7 @@ class TokenLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9234,7 +9234,7 @@ class TokenLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -9316,7 +9316,7 @@ class TokenLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9393,7 +9393,7 @@ class TokenLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -9472,7 +9472,7 @@ class TokenLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9642,7 +9642,7 @@ class TokenLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9794,7 +9794,7 @@ class TokenLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9962,7 +9962,7 @@ class TokenLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10141,7 +10141,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10293,7 +10293,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10445,7 +10445,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10756,7 +10756,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10898,7 +10898,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10981,7 +10981,7 @@ class DocumentsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -11066,7 +11066,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11141,7 +11141,7 @@ class DocumentsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -11218,7 +11218,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11400,7 +11400,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11576,7 +11576,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11728,7 +11728,7 @@ class DocumentsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11900,7 +11900,7 @@ name: update a document's name.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -12074,7 +12074,7 @@ name: update a document's name.
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -12241,7 +12241,7 @@ class MessagesResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -12397,7 +12397,7 @@ class MessagesResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13064,7 +13064,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13218,7 +13218,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13372,7 +13372,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13526,7 +13526,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13606,7 +13606,7 @@ class ProjectsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -13688,7 +13688,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13765,7 +13765,7 @@ class ProjectsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -13844,7 +13844,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13998,7 +13998,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14152,7 +14152,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14334,7 +14334,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14488,7 +14488,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14642,7 +14642,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14818,7 +14818,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14970,7 +14970,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15138,7 +15138,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15306,7 +15306,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15472,7 +15472,7 @@ class ProjectsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15561,7 +15561,7 @@ class TextLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -15643,7 +15643,7 @@ class TextLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15720,7 +15720,7 @@ class TextLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -15799,7 +15799,7 @@ class TextLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15969,7 +15969,7 @@ class TextLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16121,7 +16121,7 @@ class TextLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16289,7 +16289,7 @@ class TextLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16457,7 +16457,7 @@ class TextLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16627,7 +16627,7 @@ class TextLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16804,7 +16804,7 @@ class LoginResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16896,7 +16896,7 @@ class VocabItemsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -16981,7 +16981,7 @@ class VocabItemsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17056,7 +17056,7 @@ class VocabItemsResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -17133,7 +17133,7 @@ class VocabItemsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17307,7 +17307,7 @@ class VocabItemsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17477,7 +17477,7 @@ class VocabItemsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17629,7 +17629,7 @@ class VocabItemsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17797,7 +17797,7 @@ class VocabItemsResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17974,7 +17974,7 @@ class RelationLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18144,7 +18144,7 @@ class RelationLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18224,7 +18224,7 @@ class RelationLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -18306,7 +18306,7 @@ class RelationLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18383,7 +18383,7 @@ class RelationLayersResource:
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -18462,7 +18462,7 @@ class RelationLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18632,7 +18632,7 @@ class RelationLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18784,7 +18784,7 @@ class RelationLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18952,7 +18952,7 @@ class RelationLayersResource:
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19159,7 +19159,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19329,7 +19329,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19481,7 +19481,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19665,7 +19665,7 @@ precedence: ordering value for the token relative to other tokens with the same 
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19833,7 +19833,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19989,7 +19989,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return self.client._transform_response(data)
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -20072,7 +20072,7 @@ metadata, an optional map of metadata
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -20157,7 +20157,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -20232,7 +20232,7 @@ metadata, an optional map of metadata
             
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
-                return self.client._transform_response(data)
+                return data
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -20309,7 +20309,7 @@ metadata, an optional map of metadata
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
-                        return self.client._transform_response(data)
+                return data
                     return await response.text
         
         except aiohttp.ClientError as e:

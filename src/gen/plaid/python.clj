@@ -384,6 +384,13 @@
         transformed-method-name (common/transform-method-name method-name :snake_case)
         py-method-name (str transformed-method-name (when-not sync? "_async"))
 
+        ;; Check if method name contains metadata/Metadata or config/Config
+        has-metadata-in-name? (or (str/includes? method-name "metadata")
+                                  (str/includes? method-name "Metadata"))
+        has-config-in-name? (or (str/includes? method-name "config")
+                                (str/includes? method-name "Config"))
+        skip-transformation? (or has-metadata-in-name? has-config-in-name?)
+
         ;; Parameters
         method-params (generate-python-method-params operation)
         full-params (if (empty? method-params) "self" (str "self, " method-params))
@@ -409,7 +416,12 @@
         async-def (if sync? "def" "async def")
         await-keyword (if sync? "" "await ")
         response-json (if sync? "response.json()" "await response.json()")
-        response-text (if sync? "response.text" "await response.text")]
+        response-text (if sync? "response.text" "await response.text")
+
+        ;; Transform response logic
+        transform-response-code (if skip-transformation?
+                                  "                return data\n"
+                                  "                return self.client._transform_response(data)\n")]
 
     (str "    " async-def " " py-method-name "(" full-params ") -> Any:\n"
          "        \"\"\"\n"
@@ -516,7 +528,7 @@
                   "            # Return raw binary content for media downloads\n            return response.content\n"
                   (str "            if 'application/json' in response.headers.get('content-type', '').lower():\n"
                        "                data = " response-json "\n"
-                       "                return self.client._transform_response(data)\n"
+                       transform-response-code
                        "            return " response-text "\n"))
                 "        \n"
                 "        except requests.exceptions.RequestException as e:\n"
@@ -565,7 +577,7 @@
                   (str "                    content_type = response.headers.get('content-type', '').lower()\n"
                        "                    if 'application/json' in content_type:\n"
                        "                        data = " response-json "\n"
-                       "                        return self.client._transform_response(data)\n"
+                       transform-response-code
                        "                    return " response-text "\n"))
                 "        \n"
                 "        except aiohttp.ClientError as e:\n"
@@ -904,8 +916,7 @@
         ;; Generate batch builder class
         batch-methods (generate-python-batch-methods)
 
-
-        ;; Generate improved messages resource class with better method discovery
+;; Generate improved messages resource class with better method discovery
         messages-resource-class-additions (str "    def _generate_request_id(self) -> str:\n"
                                                "        \"\"\"Generate a unique request ID for tracking service coordination\"\"\"\n"
                                                "        import uuid\n"
