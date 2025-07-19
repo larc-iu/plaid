@@ -38,4 +38,4 @@
 
  :plaid.server.locks/config {:expiration-ms 60000}
 
- :plaid.media/config {:max-file-size-mb 100}}
+ :plaid.media/config {:max-file-size-mb 200}}

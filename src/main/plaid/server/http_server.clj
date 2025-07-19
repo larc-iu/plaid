@@ -15,11 +15,15 @@
 (defstate http-server
   :start
   (let [http-kit-config (::http-kit/config config)
-        port (:port http-kit-config)]
+        media-config (:plaid.media/config config)
+        max-file-size-mb (:max-file-size-mb media-config)
+        max-body-bytes (* max-file-size-mb 1024 1024)
+        http-kit-config-with-max-body (assoc http-kit-config :max-body max-body-bytes)
+        port (:port http-kit-config-with-max-body)]
     (when (nil? port)
       (throw (Exception. "You must set a port as the environment variable PORT.")))
-    (log/info "Starting server on port" port)
-    (let [stop-server (http-kit/run-server middleware http-kit-config)]
+    (log/info "Starting server on port" port "with max body size" max-body-bytes "bytes")
+    (let [stop-server (http-kit/run-server middleware http-kit-config-with-max-body)]
       (fn []
         (stop-server))))
 
