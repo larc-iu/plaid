@@ -41,6 +41,15 @@ export const DocumentList = ({ documents, projectId, client, onDocumentCreated }
 
       const newDocument = await client.documents.create(projectId, documentName.trim());
 
+      // Get the project data to find the primary text layer
+      const projectData = await client.projects.get(projectId);
+      const primaryTextLayer = projectData?.textLayers?.find(layer => layer.config?.flan?.primary);
+
+      if (primaryTextLayer) {
+        // Create a blank text for the new document
+        await client.texts.create(primaryTextLayer.id, newDocument.id, '', {});
+      }
+
       notifications.show({
         title: 'Success',
         message: `Document "${documentName}" created successfully`,

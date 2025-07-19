@@ -696,15 +696,6 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
   }, [text, parsedDocument?.sentences, existingTokens, isDragging, dragStart, dragEnd, hoveredSentence, hoveredSplitPosition, selectedTokens, isTokenDragging]);
 
   const handleTokenize = async () => {
-    if (!text) {
-      notifications.show({
-        title: 'No Text',
-        message: 'Please add baseline text before tokenizing',
-        color: 'orange'
-      });
-      return;
-    }
-
     setIsTokenizing(true);
     setTokenizationProgress(0);
 

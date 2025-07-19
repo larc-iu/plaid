@@ -27,6 +27,9 @@ export function parseDocument(rawDocument) {
       layers.primaryTokenLayer,
       layers.spanLayers
     );
+
+    // Process alignment tokens
+    const alignmentTokens = processAlignmentTokens(layers.alignmentTokenLayer);
     
     // Validate sentence token partitioning
     validateSentencePartitioning(sentences, documentData.text);
@@ -34,6 +37,7 @@ export function parseDocument(rawDocument) {
     return {
       document: documentData,
       sentences: enrichedSentences,
+      alignmentTokens: alignmentTokens,
       layers: layers // Include layer metadata for debugging
     };
   } catch (error) {
@@ -93,6 +97,11 @@ function findPrimaryLayers(textLayers) {
   const sentenceTokenLayer = primaryTextLayer.tokenLayers.find(
     layer => layer.config?.flan?.sentence
   );
+
+  // Find alignment token layer (contains time-aligned tokens)
+  const alignmentTokenLayer = primaryTextLayer.tokenLayers.find(
+    layer => layer.config?.flan?.alignment
+  );
   
   if (!primaryTokenLayer) {
     throw new Error('No primary token layer found');
@@ -132,6 +141,7 @@ function findPrimaryLayers(textLayers) {
     primaryTextLayer,
     primaryTokenLayer,
     sentenceTokenLayer,
+    alignmentTokenLayer,
     spanLayers
   };
 }
@@ -159,6 +169,49 @@ function processSentenceBoundaries(sentenceTokenLayer) {
     .sort((a, b) => a.begin - b.begin);
   
   return sentences;
+}
+
+/**
+ * Process alignment tokens from alignment token layer
+ * @param {Object} alignmentTokenLayer - Alignment token layer
+ * @returns {Array} Array of alignment token objects with time metadata
+ */
+function processAlignmentTokens(alignmentTokenLayer) {
+  if (!alignmentTokenLayer || !alignmentTokenLayer.tokens || !Array.isArray(alignmentTokenLayer.tokens)) {
+    console.warn('No alignment tokens found, creating empty alignment tokens array');
+    return [];
+  }
+  
+  // Extract alignment tokens and sort by begin position
+  const alignmentTokens = alignmentTokenLayer.tokens
+    .map(token => {
+      // Extract time metadata from token spans or config
+      let timeBegin = null;
+      let timeEnd = null;
+      
+      // Look for time metadata in spans
+      if (token.spans && Array.isArray(token.spans)) {
+        token.spans.forEach(span => {
+          if (span.value && typeof span.value === 'object') {
+            if (span.value.timeBegin !== undefined) timeBegin = span.value.timeBegin;
+            if (span.value.timeEnd !== undefined) timeEnd = span.value.timeEnd;
+          }
+        });
+      }
+      
+      return {
+        id: token.id,
+        text: token.text || '',
+        begin: token.begin,
+        end: token.end,
+        timeBegin: timeBegin,
+        timeEnd: timeEnd,
+        annotations: {} // Will be populated later if needed
+      };
+    })
+    .sort((a, b) => a.begin - b.begin);
+  
+  return alignmentTokens;
 }
 
 /**
@@ -317,6 +370,10 @@ export function validateParsedDocument(parsedDocument) {
     
     if (!Array.isArray(parsedDocument.sentences)) {
       throw new Error('Sentences must be an array');
+    }
+
+    if (!Array.isArray(parsedDocument.alignmentTokens)) {
+      throw new Error('Alignment tokens must be an array');
     }
     
     // Validate each sentence structure
