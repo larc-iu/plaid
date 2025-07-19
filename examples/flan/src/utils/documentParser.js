@@ -32,7 +32,7 @@ export function parseDocument(rawDocument) {
     const alignmentTokens = processAlignmentTokens(layers.alignmentTokenLayer);
     
     // Validate sentence token partitioning
-    validateSentencePartitioning(sentences, documentData.text);
+    validateSentencePartitioning(sentences, documentData.text.body);
     
     return {
       document: documentData,
@@ -61,7 +61,8 @@ function extractDocumentData(rawDocument) {
     name: rawDocument.name,
     project: rawDocument.project,
     version: rawDocument.version,
-    text: primaryTextLayer?.text?.body || null
+    mediaUrl: rawDocument.mediaUrl,
+    text: primaryTextLayer?.text
   };
 }
 
@@ -184,31 +185,10 @@ function processAlignmentTokens(alignmentTokenLayer) {
   
   // Extract alignment tokens and sort by begin position
   const alignmentTokens = alignmentTokenLayer.tokens
-    .map(token => {
-      // Extract time metadata from token spans or config
-      let timeBegin = null;
-      let timeEnd = null;
-      
-      // Look for time metadata in spans
-      if (token.spans && Array.isArray(token.spans)) {
-        token.spans.forEach(span => {
-          if (span.value && typeof span.value === 'object') {
-            if (span.value.timeBegin !== undefined) timeBegin = span.value.timeBegin;
-            if (span.value.timeEnd !== undefined) timeEnd = span.value.timeEnd;
-          }
-        });
-      }
-      
-      return {
-        id: token.id,
-        text: token.text || '',
-        begin: token.begin,
-        end: token.end,
-        timeBegin: timeBegin,
-        timeEnd: timeEnd,
-        annotations: {} // Will be populated later if needed
-      };
-    })
+    .map(token => ({
+      ...token, // Pass through all token data including metadata
+      annotations: {} // Will be populated later if needed
+    }))
     .sort((a, b) => a.begin - b.begin);
   
   return alignmentTokens;

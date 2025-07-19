@@ -117,21 +117,9 @@ const checkAndFixTokenization = async (client, document, project, parsedDocument
     await client.texts.setMetadata(text.id, updatedMetadata);
     
     await client.submitBatch();
-    
-    notifications.show({
-      title: 'Tokenization Fixed',
-      message: 'Sentence partitioning has been corrected',
-      color: 'green'
-    });
-    
     return true; // Fix was applied
   } catch (error) {
     console.error('Failed to fix tokenization:', error);
-    notifications.show({
-      title: 'Error',
-      message: 'Failed to fix sentence partitioning',
-      color: 'red'
-    });
     return false;
   } finally {
     // Release document lock
@@ -176,12 +164,11 @@ export const DocumentBaseline = ({ document, parsedDocument, project, client, on
       await client.documents.acquireLock(document.id);
 
       // Phase 1: Save text + mark as dirty
-      const existingText = parsedDocument?.document?.text;
-      const textId = document?.textLayers?.find(layer => layer.config?.flan?.primary)?.text?.id;
-      
+      const textId = parsedDocument?.document?.text?.id;
+
       client.beginBatch();
-      
-      if (existingText && textId) {
+
+      if (textId) {
         // Update existing text
         await client.texts.update(textId, editedText);
         
@@ -217,7 +204,7 @@ export const DocumentBaseline = ({ document, parsedDocument, project, client, on
       
       notifications.show({
         title: 'Success',
-        message: 'Baseline text saved and sentence partitioning updated',
+        message: 'Baseline text saved',
         color: 'green'
       });
       
@@ -252,7 +239,7 @@ export const DocumentBaseline = ({ document, parsedDocument, project, client, on
 
   const handleEdit = () => {
     // Load current text content from parsed document
-    const currentText = parsedDocument?.document?.text || '';
+    const currentText = parsedDocument?.document?.text?.body || '';
     setEditedText(currentText);
     setIsEditing(true);
   };
@@ -315,7 +302,6 @@ export const DocumentBaseline = ({ document, parsedDocument, project, client, on
                   leftSection={<IconDeviceFloppy size={16} />}
                   onClick={handleSave}
                   loading={saving}
-                  disabled={!editedText.trim()}
                 >
                   Save Changes
                 </Button>
@@ -326,7 +312,7 @@ export const DocumentBaseline = ({ document, parsedDocument, project, client, on
               <div>
                 <Paper bg="gray.0" p="md" radius="md">
                   <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                    {parsedDocument?.document?.text || ''}
+                    {parsedDocument?.document?.text?.body || ''}
                   </Text>
                 </Paper>
               </div>

@@ -13,6 +13,7 @@ import {
   FileButton,
   Center
 } from '@mantine/core';
+import { TimeAlignmentPopover } from './media/TimeAlignmentPopover.jsx';
 import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
 import IconPlayerPause from '@tabler/icons-react/dist/esm/icons/IconPlayerPause.mjs';
 import IconPlayerSkipBack from '@tabler/icons-react/dist/esm/icons/IconPlayerSkipBack.mjs';
@@ -23,8 +24,8 @@ import IconZoomOut from '@tabler/icons-react/dist/esm/icons/IconZoomOut.mjs';
 import IconUpload from '@tabler/icons-react/dist/esm/icons/IconUpload.mjs';
 import IconPlayerTrackPrev from '@tabler/icons-react/dist/esm/icons/IconPlayerTrackPrev.mjs';
 import IconPlayerTrackNext from '@tabler/icons-react/dist/esm/icons/IconPlayerTrackNext.mjs';
-import IconClearAll from '@tabler/icons-react/dist/esm/icons/IconClearAll.mjs';
 import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
+import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import { notifications } from '@mantine/notifications';
 
 // Constants
@@ -40,7 +41,7 @@ const formatTime = (seconds) => {
 };
 
 // Media Player Component  
-const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, mediaElement, isPlaying: parentIsPlaying }) => {
+const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, mediaElement, isPlaying: parentIsPlaying, onSeek }) => {
   const mediaRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -72,14 +73,18 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
 
   const seekTo = (time) => {
     if (mediaRef.current) {
+      mediaRef.current.pause(); // Stop playback when seeking
       mediaRef.current.currentTime = time;
+      onSeek && onSeek(time); // Notify parent of seek
     }
   };
 
   const skipTime = (seconds) => {
     if (mediaRef.current) {
       const newTime = Math.max(0, Math.min(duration, mediaRef.current.currentTime + seconds));
+      mediaRef.current.pause(); // Stop playback when skipping
       mediaRef.current.currentTime = newTime;
+      onSeek && onSeek(newTime); // Notify parent of seek
     }
   };
 
@@ -219,9 +224,8 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
 };
 
 // Timeline Component  
-const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondChange, alignmentTokens, onTimelineClick, onSelectionCreate, selection, onPlaySelection, onClearSelection, mediaUrl, mediaElement, isPlaying }) => {
+const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondChange, alignmentTokens, onTimelineClick, onSelectionCreate, selection, onPlaySelection, onClearSelection, mediaUrl, mediaElement, isPlaying, onEditSelection, popoverOpened, setPopoverOpened, client, parsedDocument, project, handleAlignmentCreated, timelineContainerRef }) => {
   const timelineRef = useRef(null);
-  const containerRef = useRef(null);
   const needleRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
@@ -291,6 +295,39 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
     }
   };
 
+  // Handle wheel events with proper passive listener setup
+  useEffect(() => {
+    const handleWheel = (event) => {
+      event.preventDefault();
+      
+      if (event.ctrlKey || event.metaKey) {
+        // CTRL+scroll: zoom in/out (modify pixels per second)
+        const delta = event.deltaY > 0 ? -1 : 1; // Reverse for natural zooming
+        const zoomFactor = 1.1;
+        const newPixelsPerSecond = delta > 0 
+          ? Math.min(100, pixelsPerSecond * zoomFactor)
+          : Math.max(4, pixelsPerSecond / zoomFactor);
+        onPixelsPerSecondChange && onPixelsPerSecondChange(newPixelsPerSecond);
+      } else {
+        // Normal scroll: pan left/right
+        const scrollAmount = 50; // pixels to scroll
+        const container = timelineContainerRef.current;
+        if (container) {
+          const delta = event.deltaY > 0 ? scrollAmount : -scrollAmount;
+          container.scrollLeft += delta;
+        }
+      }
+    };
+
+    const container = timelineContainerRef.current;
+    if (container) {
+      container.addEventListener('wheel', handleWheel, { passive: false });
+      return () => {
+        container.removeEventListener('wheel', handleWheel);
+      };
+    }
+  }, [pixelsPerSecond, onPixelsPerSecondChange]);
+
   const timelineWidth = duration * pixelsPerSecond;
   
   // Smooth needle movement with auto-scroll
@@ -302,7 +339,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         needleRef.current.style.left = `${position}px`;
         
         // Auto-scroll to keep needle in view
-        const timelineContainer = containerRef.current; // The scrollable Box
+        const timelineContainer = timelineContainerRef.current; // The scrollable Box
         if (timelineContainer) {
           const containerWidth = timelineContainer.clientWidth;
           const scrollLeft = timelineContainer.scrollLeft;
@@ -369,7 +406,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         
         // Create high-resolution canvas for waveform
         const pixelRatio = window.devicePixelRatio || 1;
-        const canvas = document.createElement('canvas');
+        const canvas = window.document.createElement('canvas');
         
         // Cap canvas width to prevent browser limits (most browsers limit to ~32k pixels)
         const maxCanvasWidth = 16384; // Conservative limit
@@ -441,7 +478,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         console.error('Failed to generate waveform:', error);
         // Create fallback waveform
         const pixelRatio = window.devicePixelRatio || 1;
-        const canvas = document.createElement('canvas');
+        const canvas = window.document.createElement('canvas');
         canvas.width = timelineWidth * pixelRatio;
         canvas.height = TIMELINE_HEIGHT * pixelRatio;
         const ctx = canvas.getContext('2d');
@@ -513,7 +550,10 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         </Group>
 
         {/* Timeline Visualization */}
-        <Box ref={containerRef} style={{ overflowX: 'auto', border: '1px solid #e0e0e0', borderRadius: '4px', paddingTop: '50px' }}>
+        <Box 
+          ref={timelineContainerRef} 
+          style={{ overflowX: 'auto', border: '1px solid #e0e0e0', borderRadius: '4px', paddingTop: '50px' }}
+        >
           <Box 
             ref={timelineRef}
             style={{ 
@@ -565,18 +605,60 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
 
             {/* Persistent selection highlight */}
             {selection && (
-              <div
-                style={{
-                  position: 'absolute',
-                  left: `${selection.start * pixelsPerSecond}px`,
-                  width: `${(selection.end - selection.start) * pixelsPerSecond}px`,
-                  top: 0,
-                  bottom: 0,
-                  backgroundColor: 'rgba(34, 139, 230, 0.15)',
-                  border: '2px solid #228be6',
-                  pointerEvents: 'none',
-                  zIndex: 4
-                }}
+              <TimeAlignmentPopover
+                opened={popoverOpened}
+                onClose={() => setPopoverOpened(false)}
+                selection={selection}
+                client={client}
+                parsedDocument={parsedDocument}
+                project={project}
+                onAlignmentCreated={handleAlignmentCreated}
+                selectionBox={
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${selection.start * pixelsPerSecond}px`,
+                      width: `${(selection.end - selection.start) * pixelsPerSecond}px`,
+                      top: 0,
+                      bottom: 0,
+                      backgroundColor: 'rgba(34, 139, 230, 0.15)',
+                      border: '2px solid #228be6',
+                      pointerEvents: 'none',
+                      zIndex: 4
+                    }}
+                  >
+                    {/* Edit button in top-right corner */}
+                    <Tooltip label="Add transcription">
+                      <ActionIcon
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          onEditSelection && onEditSelection(selection);
+                        }}
+                        onMouseUp={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        size="sm"
+                        variant="filled"
+                        color="blue"
+                        style={{
+                          position: 'absolute',
+                          top: '36px',
+                          right: '-12px',
+                          pointerEvents: 'auto',
+                          zIndex: 40
+                        }}
+                      >
+                        <IconEdit size={24} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </div>
+                }
               />
             )}
 
@@ -660,25 +742,36 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
             {alignmentTokens.map((token, index) => (
               <div
                 key={token.id || index}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Create selection from alignment token
+                  const tokenSelection = {
+                    start: token.metadata?.timeBegin || 0,
+                    end: token.metadata?.timeEnd || 0
+                  };
+                  onSelectionCreate(tokenSelection.start, tokenSelection.end);
+                }}
                 style={{
                   position: 'absolute',
-                  left: `${(token.timeBegin || 0) * pixelsPerSecond}px`,
-                  width: `${((token.timeEnd || token.timeBegin || 1) - (token.timeBegin || 0)) * pixelsPerSecond}px`,
-                  top: '60px',
-                  height: '30px',
-                  backgroundColor: '#e3f2fd',
+                  left: `${(token.metadata?.timeBegin || 0) * pixelsPerSecond}px`,
+                  width: `${((token.metadata?.timeEnd || token.metadata?.timeBegin || 1) - (token.metadata?.timeBegin || 0)) * pixelsPerSecond}px`,
+                  top: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(25, 118, 210, 0.15)',
                   border: '1px solid #1976d2',
-                  borderRadius: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0 4px',
+                  borderRadius: '0px',
+                  padding: '4px 4px',
+                  lineHeight: '14px',
                   fontSize: '12px',
                   overflow: 'hidden',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  color: '#000',
+                  fontWeight: 500,
+                  zIndex: 3
                 }}
-                title={`${token.text} (${formatTime(token.timeBegin || 0)} - ${formatTime(token.timeEnd || 0)})`}
+                title={`${parsedDocument?.document?.text?.body?.substring(token.begin, token.end) || ''} (${formatTime(token.metadata?.timeBegin || 0)} - ${formatTime(token.metadata?.timeEnd || 0)})`}
               >
-                {token.text}
+                {parsedDocument?.document?.text?.body?.substring(token.begin, token.end) || ''}
               </div>
             ))}
           </Box>
@@ -724,7 +817,7 @@ const MediaUpload = ({ onUpload, isUploading }) => {
   );
 };
 
-export const DocumentMedia = ({ document, parsedDocument, project, client, onMediaUpdated }) => {
+export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -734,7 +827,9 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
   const [selection, setSelection] = useState(null); // { start: number, end: number }
   const [mediaElement, setMediaElement] = useState(null); // EWAN pattern: store element in state
   const [playingSelection, setPlayingSelection] = useState(null); // Track if we're playing a selection
+  const [popoverOpened, setPopoverOpened] = useState(false);
   const selectionMonitorRef = useRef(null);
+  const timelineContainerRef = useRef(null);
 
   // Get authenticated media URL with proper base path handling
   const getAuthenticatedMediaUrl = (serverUrl) => {
@@ -742,34 +837,34 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
     return `${serverUrl}?token=${client.token}`;
   };
 
-  const authenticatedMediaUrl = getAuthenticatedMediaUrl(document?.mediaUrl);
+  const authenticatedMediaUrl = getAuthenticatedMediaUrl(parsedDocument?.document?.mediaUrl);
 
   // Get alignment token layer
   const alignmentTokenLayer = parsedDocument?.layers?.alignmentTokenLayer;
   const alignmentTokens = parsedDocument?.alignmentTokens || [];
 
+  // Helper function to auto-scroll timeline to show current position
+  const autoScrollToTime = (time) => {
+    if (timelineContainerRef.current && pixelsPerSecond > 0) {
+      const position = time * pixelsPerSecond;
+      const containerWidth = timelineContainerRef.current.clientWidth;
+      const scrollLeft = position - containerWidth / 2; // Center the position
+      timelineContainerRef.current.scrollLeft = Math.max(0, scrollLeft);
+    }
+  };
+
+  // Handle seek events from media player controls
+  const handleSeek = (time) => {
+    setPlayingSelection(null); // Clear any playing selection
+    autoScrollToTime(time); // Auto-scroll timeline to show seeked position
+  };
+
   const handleMediaUpload = async (file) => {
     if (!file) return;
 
-    // Check file format
-    const fileName = file.name.toLowerCase();
-    const supportedFormats = ['mp4', 'webm', 'ogg', 'mov', 'mp3', 'wav', 'm4a', 'aac'];
-    const fileExtension = fileName.split('.').pop();
-    
-    if (!supportedFormats.includes(fileExtension)) {
-      notifications.show({
-        title: 'Unsupported Format',
-        message: `${fileExtension.toUpperCase()} files may not be supported. Please use: MP4, WebM, OGG, MOV, MP3, WAV, M4A, or AAC files for best compatibility.`,
-        color: 'orange',
-        autoClose: 8000
-      });
-      // Still allow upload, but warn user
-    }
-    
     try {
       setIsUploading(true);
-      await client.documents.uploadMedia(document.id, file);
-      
+      await client.documents.uploadMedia(parsedDocument.document.id, file);
       notifications.show({
         title: 'Success',
         message: 'Media file uploaded successfully',
@@ -801,13 +896,8 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
   const handleSelectionCreate = (startTime, endTime) => {
     const newSelection = { start: startTime, end: endTime };
     setSelection(newSelection);
-    notifications.show({
-      title: 'Time Range Selected',
-      message: `Selected ${formatTime(startTime)} - ${formatTime(endTime)}`,
-      color: 'blue'
-    });
+    setPopoverOpened(false); // Close popover when selection changes
   };
-
 
   // Monitor selection playback and auto-pause at end
   useEffect(() => {
@@ -855,36 +945,49 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
 
   const handleSkipToBeginning = () => {
     if (mediaElement) {
+      mediaElement.pause(); // Stop playback
       mediaElement.currentTime = 0;
       setPlayingSelection(null);
+      autoScrollToTime(0); // Auto-scroll timeline
     }
   };
 
   const handleSkipToEnd = () => {
     if (mediaElement && duration) {
+      mediaElement.pause(); // Stop playback
       mediaElement.currentTime = duration;
       setPlayingSelection(null);
+      autoScrollToTime(duration); // Auto-scroll timeline
     }
   };
 
   const handleClearSelection = () => {
     setSelection(null);
-    notifications.show({
-      title: 'Selection Cleared',
-      message: 'Time range selection has been cleared',
-      color: 'gray'
-    });
+    setPopoverOpened(false); // Close popover when selection is cleared
+  };
+
+  const handleAlignmentCreated = () => {
+    // Clear selection and refresh document
+    setSelection(null);
+    setPopoverOpened(false);
+    if (onMediaUpdated) {
+      onMediaUpdated();
+    }
+  };
+
+  const handleEditSelection = (selection) => {
+    setPopoverOpened(true);
   };
 
   const handleDeleteMedia = async () => {
-    if (!document?.id || !client) return;
+    if (!parsedDocument?.document?.id || !client) return;
     
     if (!confirm('Are you sure you want to delete this media file? This action cannot be undone.')) {
       return;
     }
 
     try {
-      await client.documents.deleteMedia(document.id);
+      await client.documents.deleteMedia(parsedDocument.document.id);
       notifications.show({
         title: 'Media Deleted',
         message: 'Media file has been deleted successfully',
@@ -905,7 +1008,7 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
   };
 
   // If no media, show upload interface
-  if (!document?.mediaUrl) {
+  if (!parsedDocument?.document?.mediaUrl) {
     return (
       <Stack spacing="lg">
         <MediaUpload onUpload={handleMediaUpload} isUploading={isUploading} />
@@ -929,46 +1032,53 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
         onMediaElementReady={setMediaElement}
         mediaElement={mediaElement}
         isPlaying={isPlaying}
+        onSeek={handleSeek}
       />
 
       {/* Timeline */}
-      <Timeline
-        duration={duration}
-        currentTime={currentTime}
-        pixelsPerSecond={pixelsPerSecond}
-        onPixelsPerSecondChange={setPixelsPerSecond}
-        alignmentTokens={alignmentTokens}
-        onTimelineClick={handleTimelineClick}
-        onSelectionCreate={handleSelectionCreate}
-        selection={selection}
-        onPlaySelection={handlePlaySelection}
-        onClearSelection={handleClearSelection}
-        mediaUrl={authenticatedMediaUrl}
-        mediaElement={mediaElement}
-        isPlaying={isPlaying}
-      />
+      <Box style={{ position: 'relative' }}>
+        <Timeline
+          duration={duration}
+          currentTime={currentTime}
+          pixelsPerSecond={pixelsPerSecond}
+          onPixelsPerSecondChange={setPixelsPerSecond}
+          alignmentTokens={alignmentTokens}
+          onTimelineClick={handleTimelineClick}
+          onSelectionCreate={handleSelectionCreate}
+          selection={selection}
+          onPlaySelection={handlePlaySelection}
+          onClearSelection={handleClearSelection}
+          mediaUrl={authenticatedMediaUrl}
+          mediaElement={mediaElement}
+          isPlaying={isPlaying}
+          onEditSelection={handleEditSelection}
+          popoverOpened={popoverOpened}
+          setPopoverOpened={setPopoverOpened}
+          client={client}
+          parsedDocument={parsedDocument}
+          project={project}
+          handleAlignmentCreated={handleAlignmentCreated}
+          timelineContainerRef={timelineContainerRef}
+        />
 
-      {/* Danger Zone */}
-      {document?.mediaUrl && (
-        <Paper withBorder p="md" style={{ borderColor: '#ccc' }}>
-          <Group justify="space-between" align="center">
-            <div>
-              <Text fw={500} c="gray">Delete Media</Text>
-              <Text size="sm" c="dimmed">
-                Permanently delete the media file from this document. This action cannot be undone.
-              </Text>
-            </div>
-            <Button
-              variant="outline"
-              color="gray"
-              leftSection={<IconTrash size={16} />}
-              onClick={handleDeleteMedia}
-            >
-              Delete Media
-            </Button>
-          </Group>
-        </Paper>
-      )}
+        
+        {/* Delete media button */}
+        {parsedDocument?.document?.mediaUrl && (
+          <div style={{ position: 'absolute', bottom: '-100px', right: '16px' }}>
+            <Tooltip label="Delete media file">
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="md"
+                onClick={handleDeleteMedia}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </div>
+        )}
+      </Box>
+
     </Stack>
   );
 };
