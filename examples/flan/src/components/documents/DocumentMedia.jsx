@@ -899,6 +899,19 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
     setPopoverOpened(false); // Close popover when selection changes
   };
 
+  // Handle ESC key to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && selection) {
+        setSelection(null);
+        setPopoverOpened(false);
+      }
+    };
+
+    window.document.addEventListener('keydown', handleKeyDown);
+    return () => window.document.removeEventListener('keydown', handleKeyDown);
+  }, [selection]);
+
   // Monitor selection playback and auto-pause at end
   useEffect(() => {
     const monitorSelection = () => {
