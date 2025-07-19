@@ -173,75 +173,78 @@
      :deleted ()}
   "
   [{:keys [type index value] :as op} text tokens]
-  (if (not (or (and (= type :insert) (int? index) (string? value))
-               (and (= type :delete) (int? index) (int? value))))
-    (do
-      (log/error "Malformed op:" op)
-      tokens)
-    (case type
-      ;; three cases:
-      ;; - token opens and closes before index (no changes)
-      ;; - token opens before index but closes later (expand the token)
-      ;; - token opens and closes after index (add offset to both indices)
-      :insert
-      (let [offset (count value)
-            unaffected-tokens (filterv #(<= (:token/end %) index) tokens)
-            affected-tokens (filterv #(> (:token/end %) index) tokens)]
-        {:text    (update text :text/body insert-str index value)
-         :tokens  (into unaffected-tokens
-                        (map (fn [{:token/keys [begin end] :as token}]
-                               (if (and (> index begin) (< index end))
-                                 (-> token
-                                     (update :token/end #(+ % offset)))
-                                 (-> token
-                                     (update :token/begin #(+ % offset))
-                                     (update :token/end #(+ % offset)))))
-                             affected-tokens))
-         :deleted []})
-
-      :delete
-      (let [end-index (+ index value)
-            unaffected? #(and (< (:token/begin %) index)
-                              (<= (:token/end %) index))
-            contained? (fn [token]
-                         (and (>= (:token/begin token) index)
-                              (<= (:token/end token) end-index)))
-            ;; token opens and closes within deletion range--delete it
-            deleted-tokens (filterv contained? tokens)
-            ;; token opens and closes before index (no changes)
-            unaffected-tokens (filterv unaffected? tokens)
-            affected-tokens (filterv #(not (or (contained? %) (unaffected? %))) tokens)]
-        {:text    (update text :text/body delete-str index value)
-         :tokens  (into unaffected-tokens
-                        (mapv (fn [{:token/keys [begin end] :as token}]
-                                (cond
-                                  ;; token opens and closes after deletion range--token is same but indices shrink
-                                  (and (>= begin end-index)
-                                       (>= end end-index))
+  (let [type (or (and (keyword? type) type)
+                 (and (string? type) (keyword type))
+                 type)]
+    (if (not (or (and (or (= type :insert)) (int? index) (string? value))
+                 (and (= type :delete) (int? index) (int? value))))
+      (do
+        (log/error "Malformed op:" op)
+        tokens)
+      (case type
+        ;; three cases:
+        ;; - token opens and closes before index (no changes)
+        ;; - token opens before index but closes later (expand the token)
+        ;; - token opens and closes after index (add offset to both indices)
+        :insert
+        (let [offset (count value)
+              unaffected-tokens (filterv #(<= (:token/end %) index) tokens)
+              affected-tokens (filterv #(> (:token/end %) index) tokens)]
+          {:text (update text :text/body insert-str index value)
+           :tokens (into unaffected-tokens
+                         (map (fn [{:token/keys [begin end] :as token}]
+                                (if (and (> index begin) (< index end))
                                   (-> token
-                                      (update :token/begin #(- % value))
-                                      (update :token/end #(- % value)))
-
-                                  ;; token opens before index and closes within deletion range--shrink the token
-                                  (and (< begin index)
-                                       (<= end end-index))
+                                      (update :token/end #(+ % offset)))
                                   (-> token
-                                      (assoc :token/end index))
-
-                                  ;; token opens within deletion range and closes outside--set token/begin to index and shrink
-                                  (and (>= begin index)
-                                       (> end end-index))
-                                  (-> token
-                                      (assoc :token/begin index)
-                                      (update :token/end #(- % (- end-index (min begin index)))))
-
-                                  ;; deletion range is contained inside token
-                                  :else
-                                  (-> token
-                                      (update :token/end #(- % value)))
-                                  ))
+                                      (update :token/begin #(+ % offset))
+                                      (update :token/end #(+ % offset)))))
                               affected-tokens))
-         :deleted (mapv :token/id deleted-tokens)}))))
+           :deleted []})
+
+        :delete
+        (let [end-index (+ index value)
+              unaffected? #(and (< (:token/begin %) index)
+                                (<= (:token/end %) index))
+              contained? (fn [token]
+                           (and (>= (:token/begin token) index)
+                                (<= (:token/end token) end-index)))
+              ;; token opens and closes within deletion range--delete it
+              deleted-tokens (filterv contained? tokens)
+              ;; token opens and closes before index (no changes)
+              unaffected-tokens (filterv unaffected? tokens)
+              affected-tokens (filterv #(not (or (contained? %) (unaffected? %))) tokens)]
+          {:text (update text :text/body delete-str index value)
+           :tokens (into unaffected-tokens
+                         (mapv (fn [{:token/keys [begin end] :as token}]
+                                 (cond
+                                   ;; token opens and closes after deletion range--token is same but indices shrink
+                                   (and (>= begin end-index)
+                                        (>= end end-index))
+                                   (-> token
+                                       (update :token/begin #(- % value))
+                                       (update :token/end #(- % value)))
+
+                                   ;; token opens before index and closes within deletion range--shrink the token
+                                   (and (< begin index)
+                                        (<= end end-index))
+                                   (-> token
+                                       (assoc :token/end index))
+
+                                   ;; token opens within deletion range and closes outside--set token/begin to index and shrink
+                                   (and (>= begin index)
+                                        (> end end-index))
+                                   (-> token
+                                       (assoc :token/begin index)
+                                       (update :token/end #(- % (- end-index (min begin index)))))
+
+                                   ;; deletion range is contained inside token
+                                   :else
+                                   (-> token
+                                       (update :token/end #(- % value)))
+                                   ))
+                               affected-tokens))
+           :deleted (mapv :token/id deleted-tokens)})))))
 
 (defn apply-text-edits [ops text tokens]
   (loop [accum {:deleted [] :text text :tokens tokens}
