@@ -107,7 +107,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
   const primaryTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.flan?.primary);
   const sentenceTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.flan?.sentence);
   
-  const text = parsedDocument?.document?.text || '';
+  const text = parsedDocument?.document?.text?.body || '';
   const existingTokens = parsedDocument?.sentences?.flatMap(s => s.tokens) || [];
   const existingSentenceTokens = parsedDocument?.sentences || [];
   
