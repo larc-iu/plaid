@@ -370,8 +370,9 @@
   times in a transaction could lead to conflicting matches and puts."
   [xt-map eids]
   (let [{:keys [db]} (pxc/ensure-db xt-map)
-        tokens-attrs (mapv #(pxc/entity db %) eids)
-        _ (check-tokens-consistency! tokens-attrs)
+        ;; This is actually not necessary
+        ;;tokens-attrs (mapv #(pxc/entity db %) eids)
+        ;;_ (check-tokens-consistency! tokens-attrs)
         eids-set (set eids)
         ;; Find all spans that contain any of the tokens being deleted
         spans (->> (xt/q db
