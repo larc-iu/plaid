@@ -26,21 +26,17 @@ import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mj
 import IconPlayerTrackPrev from '@tabler/icons-react/dist/esm/icons/IconPlayerTrackPrev.mjs';
 import IconPlayerTrackNext from '@tabler/icons-react/dist/esm/icons/IconPlayerTrackNext.mjs';
 import IconClearAll from '@tabler/icons-react/dist/esm/icons/IconClearAll.mjs';
+import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import { notifications } from '@mantine/notifications';
 
 // Media Player Component  
-const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSeekRequest, onSkipToBeginning, onSkipToEnd, onMediaElementReady }) => {
+const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, mediaElement, isPlaying: parentIsPlaying }) => {
   const mediaRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [mediaError, setMediaError] = useState(null);
 
-  // Handle external seek requests (from timeline clicks)
-  useEffect(() => {
-    if (onSeekRequest && mediaRef.current && Math.abs(mediaRef.current.currentTime - onSeekRequest) > 0.1) {
-      mediaRef.current.currentTime = onSeekRequest;
-    }
-  }, [onSeekRequest]);
+  // Remove the problematic seek useEffect - we'll use direct manipulation instead
 
   // Expose media element reference to parent
   useEffect(() => {
@@ -48,6 +44,8 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
       onMediaElementReady(mediaRef.current);
     }
   }, [onMediaElementReady]);
+
+  // No direct slider manipulation - let React handle it through props
 
   const togglePlayback = async () => {
     if (mediaRef.current) {
@@ -69,10 +67,6 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
   const seekTo = (time) => {
     if (mediaRef.current) {
       mediaRef.current.currentTime = time;
-      // Manually update parent state when paused
-      if (onTimeUpdate) {
-        onTimeUpdate(time);
-      }
     }
   };
 
@@ -80,10 +74,6 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
     if (mediaRef.current) {
       const newTime = Math.max(0, Math.min(duration, mediaRef.current.currentTime + seconds));
       mediaRef.current.currentTime = newTime;
-      // Manually update parent state when paused
-      if (onTimeUpdate) {
-        onTimeUpdate(newTime);
-      }
     }
   };
 
@@ -125,13 +115,10 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
             width: '100%', 
             maxHeight: '400px',
             backgroundColor: '#000',
-            borderRadius: '8px'
+            borderRadius: '8px',
+            display: mediaType === 'audio' ? 'none' : 'block'
           }}
           onTimeUpdate={(e) => onTimeUpdate && onTimeUpdate(e.target.currentTime)}
-          onDurationChange={(e) => {
-            setDuration(e.target.duration);
-            onDurationChange && onDurationChange(e.target.duration);
-          }}
           onPlay={() => {
             setIsPlaying(true);
             onPlayingChange && onPlayingChange(true);
@@ -143,7 +130,7 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
           onLoadedMetadata={(e) => {
             setDuration(e.target.duration);
             onDurationChange && onDurationChange(e.target.duration);
-            
+
             // Detect if this is actually a video or just audio
             const video = e.target;
             if (video.videoWidth === 0 || video.videoHeight === 0) {
@@ -151,26 +138,31 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
             } else {
               setMediaType('video');
             }
+
+            // Ensure parent gets the media element reference
+            if (onMediaElementReady) {
+              onMediaElementReady(e.target);
+            }
           }}
           onError={(e) => {
             console.error('Media error:', e);
             setMediaError('Failed to load media. This format may not be supported.');
             setIsSupported(false);
           }}
-          preload="metadata"
+          preload="auto"
         />
 
         {/* Transport Controls */}
         <Group justify="center" spacing="xs">
           <Tooltip label="Skip to beginning">
             <ActionIcon onClick={onSkipToBeginning} size="lg">
-              <IconPlayerTrackPrev size={20} />
+              <IconPlayerSkipBack size={20} />
             </ActionIcon>
           </Tooltip>
           
           <Tooltip label="Skip back 5 seconds">
             <ActionIcon onClick={() => skipTime(-5)} size="lg">
-              <IconPlayerSkipBack size={20} />
+              <IconPlayerTrackPrev size={20} />
             </ActionIcon>
           </Tooltip>
           
@@ -182,13 +174,13 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
           
           <Tooltip label="Skip forward 5 seconds">
             <ActionIcon onClick={() => skipTime(5)} size="lg">
-              <IconPlayerSkipForward size={20} />
+              <IconPlayerTrackNext size={20} />
             </ActionIcon>
           </Tooltip>
           
           <Tooltip label="Skip to end">
             <ActionIcon onClick={onSkipToEnd} size="lg">
-              <IconPlayerTrackNext size={20} />
+              <IconPlayerSkipForward size={20} />
             </ActionIcon>
           </Tooltip>
         </Group>
@@ -230,6 +222,7 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
 // Timeline Component  
 const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondChange, alignmentTokens, onTimelineClick, onSelectionCreate, selection, onPlaySelection, onClearSelection, mediaUrl, mediaElement, isPlaying }) => {
   const timelineRef = useRef(null);
+  const containerRef = useRef(null);
   const needleRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
@@ -307,13 +300,33 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
 
   const timelineWidth = duration * pixelsPerSecond;
   
-  // Smooth needle movement without React re-renders
+  // Smooth needle movement with auto-scroll
   useEffect(() => {
     const updateNeedle = () => {
-      if (needleRef.current && mediaElement && pixelsPerSecond > 0) {
+      if (needleRef.current && timelineRef.current && mediaElement && pixelsPerSecond > 0) {
         const currentTime = mediaElement.currentTime;
         const position = currentTime * pixelsPerSecond;
         needleRef.current.style.left = `${position}px`;
+        
+        // Auto-scroll to keep needle in view
+        const timelineContainer = containerRef.current; // The scrollable Box
+        if (timelineContainer) {
+          const containerWidth = timelineContainer.clientWidth;
+          const scrollLeft = timelineContainer.scrollLeft;
+          const scrollRight = scrollLeft + containerWidth;
+          
+          // Add some padding so needle doesn't stick to edge
+          const padding = containerWidth * 0.1; // 10% padding
+          
+          // Check if needle is off-screen and auto-scroll
+          if (position < scrollLeft + padding) {
+            // Needle going off left side
+            timelineContainer.scrollLeft = Math.max(0, position - padding);
+          } else if (position > scrollRight - padding) {
+            // Needle going off right side  
+            timelineContainer.scrollLeft = position - containerWidth + padding;
+          }
+        }
       }
       
       if (isPlaying && mediaElement) {
@@ -352,11 +365,17 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         // Get channel data (use first channel)
         const channelData = audioBuffer.getChannelData(0);
         
-        // Create canvas for waveform
+        // Create high-resolution canvas for waveform
+        const pixelRatio = window.devicePixelRatio || 1;
         const canvas = document.createElement('canvas');
-        canvas.width = timelineWidth;
-        canvas.height = 100;
+        const canvasWidth = timelineWidth * pixelRatio;
+        const canvasHeight = 100 * pixelRatio;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
         const ctx = canvas.getContext('2d');
+        
+        // Scale context for high DPI
+        ctx.scale(pixelRatio, pixelRatio);
         
         // Clear canvas
         ctx.fillStyle = 'transparent';
@@ -366,8 +385,13 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         ctx.fillStyle = '#90caf9';
         ctx.globalAlpha = 0.8;
         
-        const samples = timelineWidth;
+        // Use much higher sampling rate for better resolution
+        const samples = Math.max(timelineWidth * 2, 4000); // At least 2x timeline width or 4000 samples
         const blockSize = Math.floor(channelData.length / samples);
+        
+        // First pass: calculate all amplitudes and find the maximum
+        const amplitudes = [];
+        let maxAmplitude = 0;
         
         for (let i = 0; i < samples; i++) {
           let sum = 0;
@@ -379,10 +403,24 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
           }
           
           const amplitude = sum / (end - start);
-          const barHeight = Math.max(3, amplitude * 90);
+          amplitudes.push(amplitude);
+          maxAmplitude = Math.max(maxAmplitude, amplitude);
+        }
+        
+        // Second pass: draw bars scaled to fill available height
+        const availableHeight = 90; // Leave 5px padding top/bottom
+        const minBarHeight = 2;
+        
+        for (let i = 0; i < samples; i++) {
+          const amplitude = amplitudes[i];
+          // Scale amplitude to use full height, with minimum bar height
+          const normalizedAmplitude = maxAmplitude > 0 ? amplitude / maxAmplitude : 0;
+          const barHeight = Math.max(minBarHeight, normalizedAmplitude * availableHeight);
           const y = 50 - barHeight / 2;
           
-          ctx.fillRect(i, y, 1, barHeight);
+          const x = (i / samples) * timelineWidth;
+          const barWidth = timelineWidth / samples;
+          ctx.fillRect(x, y, Math.max(0.5, barWidth), barHeight);
         }
         
         // Convert canvas to image
@@ -392,17 +430,24 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
       } catch (error) {
         console.error('Failed to generate waveform:', error);
         // Create fallback waveform
+        const pixelRatio = window.devicePixelRatio || 1;
         const canvas = document.createElement('canvas');
-        canvas.width = timelineWidth;
-        canvas.height = 100;
+        canvas.width = timelineWidth * pixelRatio;
+        canvas.height = 100 * pixelRatio;
         const ctx = canvas.getContext('2d');
+        
+        // Scale context for high DPI
+        ctx.scale(pixelRatio, pixelRatio);
         
         ctx.fillStyle = '#90caf9';
         ctx.globalAlpha = 0.3;
         
-        for (let i = 0; i < timelineWidth; i += 2) {
+        const samples = timelineWidth * 2;
+        for (let i = 0; i < samples; i++) {
           const height = Math.random() * 40 + 5;
-          ctx.fillRect(i, 50 - height/2, 1, height);
+          const x = (i / samples) * timelineWidth;
+          const barWidth = timelineWidth / samples;
+          ctx.fillRect(x, 50 - height/2, Math.max(0.5, barWidth), height);
         }
         
         setWaveformImage(canvas.toDataURL());
@@ -424,13 +469,29 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
           <Text fw={500}>Timeline</Text>
           <Group spacing="xs">
             <Tooltip label="Zoom out">
-              <ActionIcon onClick={() => onPixelsPerSecondChange(Math.max(25, pixelsPerSecond - 25))} size="sm">
+              <ActionIcon 
+                onClick={() => {
+                  // Zoom out by 1/3, minimum 4px/s
+                  const newZoom = Math.max(4, pixelsPerSecond / (4/3));
+                  onPixelsPerSecondChange(newZoom);
+                }} 
+                size="sm"
+                disabled={pixelsPerSecond <= 4}
+              >
                 <IconZoomOut size={16} />
               </ActionIcon>
             </Tooltip>
-            <Text size="sm" c="dimmed">{pixelsPerSecond}px/s</Text>
+            <Text size="sm" c="dimmed">{Math.round(pixelsPerSecond)}px/s</Text>
             <Tooltip label="Zoom in">
-              <ActionIcon onClick={() => onPixelsPerSecondChange(Math.min(400, pixelsPerSecond + 25))} size="sm">
+              <ActionIcon 
+                onClick={() => {
+                  // Zoom in by 1/3, max 100px/s
+                  const newZoom = Math.min(100, pixelsPerSecond * (4/3));
+                  onPixelsPerSecondChange(newZoom);
+                }} 
+                size="sm"
+                disabled={pixelsPerSecond >= 100}
+              >
                 <IconZoomIn size={16} />
               </ActionIcon>
             </Tooltip>
@@ -438,7 +499,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         </Group>
 
         {/* Timeline Visualization */}
-        <Box style={{ overflowX: 'auto', border: '1px solid #e0e0e0', borderRadius: '4px', paddingTop: '50px' }}>
+        <Box ref={containerRef} style={{ overflowX: 'auto', border: '1px solid #e0e0e0', borderRadius: '4px', paddingTop: '50px' }}>
           <Box 
             ref={timelineRef}
             style={{ 
@@ -462,11 +523,11 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
                   position: 'absolute',
                   top: 0,
                   left: 0,
-                  width: '100%',
+                  width: `${timelineWidth}px`,
                   height: '100px',
                   backgroundImage: `url(${waveformImage})`,
                   backgroundRepeat: 'no-repeat',
-                  backgroundSize: 'cover',
+                  backgroundSize: '100% 100%',
                   pointerEvents: 'none',
                   zIndex: 1
                 }}
@@ -488,34 +549,41 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
               </div>
             )}
             {/* Time markers */}
-            {Array.from({ length: Math.ceil(duration) + 1 }, (_, i) => (
-              <div
-                key={i}
-                style={{
-                  position: 'absolute',
-                  left: `${i * pixelsPerSecond}px`,
-                  top: 0,
-                  bottom: 0,
-                  borderLeft: i % 5 === 0 ? '2px solid #666' : '1px solid #ccc',
-                  pointerEvents: 'none'
-                }}
-              >
-                {i % 5 === 0 && (
-                  <Text
-                    size="xs"
-                    style={{
-                      position: 'absolute',
-                      top: '2px',
-                      left: '4px',
-                      color: '#666',
-                      userSelect: 'none'
-                    }}
-                  >
-                    {formatTime(i)}
-                  </Text>
-                )}
-              </div>
-            ))}
+            {Array.from({ length: Math.ceil(duration) + 1 }, (_, i) => {
+              // If px/s is less than 7, only show 5-second marks and timestamps divisible by 30
+              const showSecondTicks = pixelsPerSecond >= 7;
+              const showThisTick = showSecondTicks || i % 5 === 0;
+              const showTimestamp = i % 5 === 0 && (pixelsPerSecond >= 7 || i % 30 === 0);
+              
+              return showThisTick ? (
+                <div
+                  key={i}
+                  style={{
+                    position: 'absolute',
+                    left: `${i * pixelsPerSecond}px`,
+                    top: 0,
+                    bottom: 0,
+                    borderLeft: i % 5 === 0 ? '2px solid #666' : '1px solid #ccc',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  {showTimestamp && (
+                    <Text
+                      size="xs"
+                      style={{
+                        position: 'absolute',
+                        top: '2px',
+                        left: '4px',
+                        color: '#666',
+                        userSelect: 'none'
+                      }}
+                    >
+                      {formatTime(i)}
+                    </Text>
+                  )}
+                </div>
+              ) : null;
+            })}
 
             {/* Persistent selection highlight */}
             {selection && (
@@ -669,29 +737,13 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
   const [isUploading, setIsUploading] = useState(false);
   const [selection, setSelection] = useState(null); // { start: number, end: number }
   const [mediaElement, setMediaElement] = useState(null); // EWAN pattern: store element in state
+  const [playingSelection, setPlayingSelection] = useState(null); // Track if we're playing a selection
+  const selectionMonitorRef = useRef(null);
 
   // Get authenticated media URL with proper base path handling
   const getAuthenticatedMediaUrl = (serverUrl) => {
     if (!serverUrl || !client?.token) return serverUrl;
-    
-    // If the URL is already absolute (starts with http/https), use it as-is
-    if (serverUrl.startsWith('http://') || serverUrl.startsWith('https://')) {
-      const separator = serverUrl.includes('?') ? '&' : '?';
-      return `${serverUrl}${separator}token=${client.token}`;
-    }
-    
-    // For relative URLs with hash routing, get base path by cutting off everything after hash
-    const currentOrigin = window.location.origin;
-    const currentPathname = window.location.pathname; // Everything before the hash
-    
-    // Remove leading slash from serverUrl if present to avoid double slashes
-    const cleanServerUrl = serverUrl.startsWith('/') ? serverUrl.slice(1) : serverUrl;
-    
-    // Construct the full URL: origin + pathname + serverUrl
-    const fullUrl = `${currentOrigin}${currentPathname}${cleanServerUrl}`;
-    
-    const separator = fullUrl.includes('?') ? '&' : '?';
-    return `${fullUrl}${separator}token=${client.token}`;
+    return `${serverUrl}?token=${client.token}`;
   };
 
   const authenticatedMediaUrl = getAuthenticatedMediaUrl(document?.mediaUrl);
@@ -743,11 +795,11 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
     }
   };
 
-  const [seekTime, setSeekTime] = useState(null);
-
   const handleTimelineClick = (time) => {
-    setTime(time);
-    setSeekTime(time);
+    if (mediaElement) {
+      mediaElement.currentTime = time;
+      setPlayingSelection(null);
+    }
   };
 
   const handleSelectionCreate = (startTime, endTime) => {
@@ -760,29 +812,63 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
     });
   };
 
-  // EWAN pattern: direct media element manipulation
-  const setTime = (time) => {
-    if (mediaElement) {
-      const newTime = (time === 'end' && duration) ? duration : time;
-      mediaElement.currentTime = newTime;
-      // Manually update state when paused (since requestAnimationFrame won't run)
-      setCurrentTime(newTime);
+
+  // Monitor selection playback and auto-pause at end
+  useEffect(() => {
+    const monitorSelection = () => {
+      if (playingSelection && mediaElement && isPlaying) {
+        const currentTime = mediaElement.currentTime;
+        if (currentTime >= playingSelection.end) {
+          // Reached end of selection, snap to exact end and pause
+          mediaElement.currentTime = playingSelection.end;
+          mediaElement.pause();
+          setPlayingSelection(null);
+          return; // Stop monitoring
+        }
+      }
+      
+      if (playingSelection && isPlaying) {
+        selectionMonitorRef.current = requestAnimationFrame(monitorSelection);
+      }
+    };
+
+    if (playingSelection && isPlaying) {
+      selectionMonitorRef.current = requestAnimationFrame(monitorSelection);
+    } else {
+      if (selectionMonitorRef.current) {
+        cancelAnimationFrame(selectionMonitorRef.current);
+        selectionMonitorRef.current = null;
+      }
     }
-  };
+
+    return () => {
+      if (selectionMonitorRef.current) {
+        cancelAnimationFrame(selectionMonitorRef.current);
+        selectionMonitorRef.current = null;
+      }
+    };
+  }, [playingSelection, isPlaying, mediaElement]);
 
   const handlePlaySelection = () => {
     if (selection && mediaElement) {
-      setTime(selection.start);
+      mediaElement.currentTime = selection.start;
+      setPlayingSelection(selection);
       mediaElement.play();
     }
   };
 
   const handleSkipToBeginning = () => {
-    setTime(0);
+    if (mediaElement) {
+      mediaElement.currentTime = 0;
+      setPlayingSelection(null);
+    }
   };
 
   const handleSkipToEnd = () => {
-    setTime('end');
+    if (mediaElement && duration) {
+      mediaElement.currentTime = duration;
+      setPlayingSelection(null);
+    }
   };
 
   const handleClearSelection = () => {
@@ -792,6 +878,34 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
       message: 'Time range selection has been cleared',
       color: 'gray'
     });
+  };
+
+  const handleDeleteMedia = async () => {
+    if (!document?.id || !client) return;
+    
+    if (!confirm('Are you sure you want to delete this media file? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await client.documents.deleteMedia(document.id);
+      notifications.show({
+        title: 'Media Deleted',
+        message: 'Media file has been deleted successfully',
+        color: 'green'
+      });
+      
+      if (onMediaUpdated) {
+        onMediaUpdated();
+      }
+    } catch (error) {
+      console.error('Failed to delete media:', error);
+      notifications.show({
+        title: 'Delete Failed',
+        message: error.message || 'Failed to delete media file',
+        color: 'red'
+      });
+    }
   };
 
   const formatTime = (seconds) => {
@@ -820,20 +934,12 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
         onDurationChange={setDuration}
         onPlayingChange={setIsPlaying}
         onVolumeChange={setVolume}
-        onSeekRequest={seekTime}
         onSkipToBeginning={handleSkipToBeginning}
         onSkipToEnd={handleSkipToEnd}
         onMediaElementReady={setMediaElement}
+        mediaElement={mediaElement}
+        isPlaying={isPlaying}
       />
-
-      {/* Selection Info */}
-      {selection && (
-        <Paper withBorder p="sm">
-          <Text size="sm" c="dimmed" ta="center">
-            Selection: {formatTime(selection.start)} - {formatTime(selection.end)} ({formatTime(selection.end - selection.start)})
-          </Text>
-        </Paper>
-      )}
 
       {/* Timeline */}
       <Timeline
@@ -852,11 +958,27 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
         isPlaying={isPlaying}
       />
 
-      {/* Instructions */}
-      <Alert icon={<IconInfoCircle size={16} />} color="blue">
-        Click on the timeline to seek to a specific time. Drag to select time ranges for transcription.
-        Use the zoom controls to adjust the timeline scale. Existing alignment tokens are shown as blue bars.
-      </Alert>
+      {/* Danger Zone */}
+      {document?.mediaUrl && (
+        <Paper withBorder p="md" style={{ borderColor: '#ccc' }}>
+          <Group justify="space-between" align="center">
+            <div>
+              <Text fw={500} c="gray">Delete Media</Text>
+              <Text size="sm" c="dimmed">
+                Permanently delete the media file from this document. This action cannot be undone.
+              </Text>
+            </div>
+            <Button
+              variant="outline"
+              color="gray"
+              leftSection={<IconTrash size={16} />}
+              onClick={handleDeleteMedia}
+            >
+              Delete Media
+            </Button>
+          </Group>
+        </Paper>
+      )}
     </Stack>
   );
 };
