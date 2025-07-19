@@ -22,12 +22,31 @@
       (-> request :path-params (get "document-id"))))
 
 (defn stream-file-response
-  "Create a streaming response for a file"
-  [file content-type size]
-  (-> (response/response (FileInputStream. file))
-      (response/header "Content-Type" content-type)
-      (response/header "Content-Length" (str size))
-      (response/header "Cache-Control" "public, max-age=3600")))
+  "Create a streaming response for a file with optional range support"
+  [file content-type size range-header]
+  (if range-header
+    ;; Handle range request
+    (let [[_ start-str end-str] (re-find #"bytes=(\d+)-(\d*)" range-header)
+          start (Long/parseLong start-str)
+          end (if (empty? end-str)
+                (dec size)
+                (min (Long/parseLong end-str) (dec size)))
+          length (inc (- end start))
+          input-stream (doto (FileInputStream. file)
+                         (.skip start))]
+      (-> (response/response input-stream)
+          (response/status 206)
+          (response/header "Content-Type" content-type)
+          (response/header "Content-Length" (str length))
+          (response/header "Content-Range" (str "bytes " start "-" end "/" size))
+          (response/header "Accept-Ranges" "bytes")
+          (response/header "Cache-Control" "public, max-age=3600")))
+    ;; Normal full file response
+    (-> (response/response (FileInputStream. file))
+        (response/header "Content-Type" content-type)
+        (response/header "Content-Length" (str size))
+        (response/header "Accept-Ranges" "bytes")
+        (response/header "Cache-Control" "public, max-age=3600"))))
 
 (def media-routes
   ["/media"
@@ -37,13 +56,15 @@
     {:get {:summary "Get media file for a document"
            :openapi {:x-client-method "get-media"}
            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
-           :handler (fn [{{{:keys [document-id]} :path} :parameters db :db}]
-                      (let [result (media/get-media-file document-id)]
+           :handler (fn [{{{:keys [document-id]} :path} :parameters db :db headers :headers}]
+                      (let [result (media/get-media-file document-id)
+                            range-header (get headers "range")]
                         (if (:success result)
                           (stream-file-response
                            (:file result)
                            (:content-type result)
-                           (:size result))
+                           (:size result)
+                           range-header)
                           {:status 404
                            :body {:error (:error result)}})))}
 
