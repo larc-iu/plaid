@@ -53,8 +53,6 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
     }
   }, [onMediaElementReady]);
 
-  // No direct slider manipulation - let React handle it through props
-
   const togglePlayback = async () => {
     if (mediaRef.current) {
       try {
@@ -564,42 +562,6 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
                 Loading waveform...
               </div>
             )}
-            {/* Time markers */}
-            {Array.from({ length: Math.ceil(duration) + 1 }, (_, i) => {
-              // If px/s is less than 7, only show 5-second marks and timestamps divisible by 30
-              const showSecondTicks = pixelsPerSecond >= 7;
-              const showThisTick = showSecondTicks || i % 5 === 0;
-              const showTimestamp = i % 5 === 0 && (pixelsPerSecond >= 7 || i % 30 === 0);
-              
-              return showThisTick ? (
-                <div
-                  key={i}
-                  style={{
-                    position: 'absolute',
-                    left: `${i * pixelsPerSecond}px`,
-                    top: 0,
-                    bottom: 0,
-                    borderLeft: i % 5 === 0 ? '2px solid #666' : '1px solid #ccc',
-                    pointerEvents: 'none'
-                  }}
-                >
-                  {showTimestamp && (
-                    <Text
-                      size="xs"
-                      style={{
-                        position: 'absolute',
-                        top: '2px',
-                        left: '4px',
-                        color: '#666',
-                        userSelect: 'none'
-                      }}
-                    >
-                      {formatTime(i)}
-                    </Text>
-                  )}
-                </div>
-              ) : null;
-            })}
 
             {/* Persistent selection highlight */}
             {selection && (
@@ -618,29 +580,47 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
               />
             )}
 
-            {/* Floating play selection button */}
+            {/* Selection time labels and controls */}
             {selection && (
               <div
                 style={{
                   position: 'absolute',
-                  left: `${(selection.start + (selection.end - selection.start) / 2) * pixelsPerSecond - 20}px`,
-                  top: '-40px',
-                  zIndex: 15,
-                  pointerEvents: 'auto'
+                  left: `${selection.start * pixelsPerSecond}px`,
+                  width: `${(selection.end - selection.start) * pixelsPerSecond}px`,
+                  top: '-35px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  pointerEvents: 'auto',
+                  zIndex: 15
                 }}
               >
-                <Group spacing="xs">
-                  <Tooltip label="Play selected region">
-                    <ActionIcon onClick={onPlaySelection} size="sm" variant="filled" color="blue">
-                      <IconPlayerPlay size={14} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label="Clear selection">
-                    <ActionIcon onClick={onClearSelection} size="sm" color="red" variant="filled">
-                      <IconClearAll size={14} />
-                    </ActionIcon>
-                  </Tooltip>
-                </Group>
+                <Text
+                  size="xs"
+                  style={{
+                    color: '#228be6',
+                    fontWeight: 600
+                  }}
+                >
+                  {formatTime(selection.start)}
+                </Text>
+                
+                <Tooltip label="Play selected region">
+                  <ActionIcon onClick={onPlaySelection} size="sm" variant="filled" color="blue">
+                    <IconPlayerPlay size={12} />
+                  </ActionIcon>
+                </Tooltip>
+                
+                <Text
+                  size="xs"
+                  style={{
+                    color: '#228be6',
+                    fontWeight: 600
+                  }}
+                >
+                  {formatTime(selection.end)}
+                </Text>
               </div>
             )}
 
@@ -669,8 +649,8 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
                 left: `${(currentTime || 0) * pixelsPerSecond}px`,
                 top: 0,
                 bottom: 0,
-                width: '2px',
-                backgroundColor: '#228be6',
+                width: '1px',
+                backgroundColor: '#c40000',
                 pointerEvents: 'none',
                 zIndex: 10
               }}
