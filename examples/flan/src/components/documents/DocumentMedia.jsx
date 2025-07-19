@@ -13,7 +13,6 @@ import {
   FileButton,
   Center
 } from '@mantine/core';
-// Using custom waveform implementation due to react-audio-visualize compatibility issues
 import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
 import IconPlayerPause from '@tabler/icons-react/dist/esm/icons/IconPlayerPause.mjs';
 import IconPlayerSkipBack from '@tabler/icons-react/dist/esm/icons/IconPlayerSkipBack.mjs';
@@ -22,12 +21,23 @@ import IconVolume from '@tabler/icons-react/dist/esm/icons/IconVolume.mjs';
 import IconZoomIn from '@tabler/icons-react/dist/esm/icons/IconZoomIn.mjs';
 import IconZoomOut from '@tabler/icons-react/dist/esm/icons/IconZoomOut.mjs';
 import IconUpload from '@tabler/icons-react/dist/esm/icons/IconUpload.mjs';
-import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
 import IconPlayerTrackPrev from '@tabler/icons-react/dist/esm/icons/IconPlayerTrackPrev.mjs';
 import IconPlayerTrackNext from '@tabler/icons-react/dist/esm/icons/IconPlayerTrackNext.mjs';
 import IconClearAll from '@tabler/icons-react/dist/esm/icons/IconClearAll.mjs';
 import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import { notifications } from '@mantine/notifications';
+
+// Constants
+const TIMELINE_HEIGHT = 100;
+const WAVEFORM_AVAILABLE_HEIGHT = 90;
+const MIN_BAR_HEIGHT = 2;
+
+// Utility function for formatting time
+const formatTime = (seconds) => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
 
 // Media Player Component  
 const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, mediaElement, isPlaying: parentIsPlaying }) => {
@@ -35,8 +45,6 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [mediaError, setMediaError] = useState(null);
-
-  // Remove the problematic seek useEffect - we'll use direct manipulation instead
 
   // Expose media element reference to parent
   useEffect(() => {
@@ -77,16 +85,8 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
     }
   };
 
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
-  // Since we can't determine type from URL without extension, 
-  // we'll use a video element for everything (it can play audio too)
   const [mediaType, setMediaType] = useState('video');
-  const [isSupported, setIsSupported] = useState(true); // Assume supported until proven otherwise
+  const [isSupported, setIsSupported] = useState(true);
 
   return (
     <Paper withBorder p="md">
@@ -196,6 +196,7 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
             value={currentTime || 0}
             max={duration || 100}
             onChange={seekTo}
+            label={(value) => formatTime(value)}
             size="sm"
             style={{ flex: 1 }}
           />
@@ -231,12 +232,6 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
   const [waveformImage, setWaveformImage] = useState(null);
   const [isLoadingWaveform, setIsLoadingWaveform] = useState(false);
   const animationFrameRef = useRef(null);
-
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
 
   const getTimeFromPosition = (clientX) => {
     if (!timelineRef.current) return 0;
@@ -349,6 +344,15 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
     };
   }, [isPlaying, mediaElement, pixelsPerSecond]);
   
+  // Cleanup object URLs to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (waveformImage && waveformImage.startsWith('blob:')) {
+        URL.revokeObjectURL(waveformImage);
+      }
+    };
+  }, [waveformImage]);
+
   // Generate canvas-based waveform image
   useEffect(() => {
     const generateWaveformImage = async () => {
@@ -368,8 +372,13 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         // Create high-resolution canvas for waveform
         const pixelRatio = window.devicePixelRatio || 1;
         const canvas = document.createElement('canvas');
-        const canvasWidth = timelineWidth * pixelRatio;
-        const canvasHeight = 100 * pixelRatio;
+        
+        // Cap canvas width to prevent browser limits (most browsers limit to ~32k pixels)
+        const maxCanvasWidth = 16384; // Conservative limit
+        const idealCanvasWidth = timelineWidth * pixelRatio;
+        const canvasWidth = Math.min(idealCanvasWidth, maxCanvasWidth);
+        const canvasHeight = TIMELINE_HEIGHT * pixelRatio;
+        
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
         const ctx = canvas.getContext('2d');
@@ -379,14 +388,15 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         
         // Clear canvas
         ctx.fillStyle = 'transparent';
-        ctx.fillRect(0, 0, timelineWidth, 100);
+        const effectiveTimelineWidth = canvasWidth / pixelRatio;
+        ctx.fillRect(0, 0, effectiveTimelineWidth, TIMELINE_HEIGHT);
         
         // Draw waveform
         ctx.fillStyle = '#90caf9';
         ctx.globalAlpha = 0.8;
         
         // Use much higher sampling rate for better resolution
-        const samples = Math.max(timelineWidth * 2, 4000); // At least 2x timeline width or 4000 samples
+        const samples = Math.max(effectiveTimelineWidth * 2, 4000); // At least 2x effective width or 4000 samples
         const blockSize = Math.floor(channelData.length / samples);
         
         // First pass: calculate all amplitudes and find the maximum
@@ -408,24 +418,26 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         }
         
         // Second pass: draw bars scaled to fill available height
-        const availableHeight = 90; // Leave 5px padding top/bottom
-        const minBarHeight = 2;
         
         for (let i = 0; i < samples; i++) {
           const amplitude = amplitudes[i];
           // Scale amplitude to use full height, with minimum bar height
           const normalizedAmplitude = maxAmplitude > 0 ? amplitude / maxAmplitude : 0;
-          const barHeight = Math.max(minBarHeight, normalizedAmplitude * availableHeight);
-          const y = 50 - barHeight / 2;
+          const barHeight = Math.max(MIN_BAR_HEIGHT, normalizedAmplitude * WAVEFORM_AVAILABLE_HEIGHT);
+          const y = (TIMELINE_HEIGHT / 2) - barHeight / 2;
           
-          const x = (i / samples) * timelineWidth;
-          const barWidth = timelineWidth / samples;
+          const x = (i / samples) * effectiveTimelineWidth;
+          const barWidth = effectiveTimelineWidth / samples;
           ctx.fillRect(x, y, Math.max(0.5, barWidth), barHeight);
         }
         
-        // Convert canvas to image
-        const imageUrl = canvas.toDataURL();
-        setWaveformImage(imageUrl);
+        // Convert canvas to blob and create object URL (more efficient than base64)
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const imageUrl = URL.createObjectURL(blob);
+            setWaveformImage(imageUrl);
+          }
+        });
         
       } catch (error) {
         console.error('Failed to generate waveform:', error);
@@ -433,7 +445,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         const pixelRatio = window.devicePixelRatio || 1;
         const canvas = document.createElement('canvas');
         canvas.width = timelineWidth * pixelRatio;
-        canvas.height = 100 * pixelRatio;
+        canvas.height = TIMELINE_HEIGHT * pixelRatio;
         const ctx = canvas.getContext('2d');
         
         // Scale context for high DPI
@@ -445,12 +457,16 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         const samples = timelineWidth * 2;
         for (let i = 0; i < samples; i++) {
           const height = Math.random() * 40 + 5;
-          const x = (i / samples) * timelineWidth;
-          const barWidth = timelineWidth / samples;
-          ctx.fillRect(x, 50 - height/2, Math.max(0.5, barWidth), height);
+          const x = (i / samples) * effectiveTimelineWidth;
+          const barWidth = effectiveTimelineWidth / samples;
+          ctx.fillRect(x, (TIMELINE_HEIGHT / 2) - height/2, Math.max(0.5, barWidth), height);
         }
         
-        setWaveformImage(canvas.toDataURL());
+        canvas.toBlob((blob) => {
+          if (blob) {
+            setWaveformImage(URL.createObjectURL(blob));
+          }
+        });
       } finally {
         setIsLoadingWaveform(false);
       }
@@ -504,7 +520,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
             ref={timelineRef}
             style={{ 
               position: 'relative', 
-              height: '100px',
+              height: `${TIMELINE_HEIGHT}px`,
               width: `${timelineWidth}px`,
               minWidth: '100%',
               cursor: isDragging ? 'grabbing' : 'pointer',
@@ -524,7 +540,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
                   top: 0,
                   left: 0,
                   width: `${timelineWidth}px`,
-                  height: '100px',
+                  height: `${TIMELINE_HEIGHT}px`,
                   backgroundImage: `url(${waveformImage})`,
                   backgroundRepeat: 'no-repeat',
                   backgroundSize: '100% 100%',
@@ -906,12 +922,6 @@ export const DocumentMedia = ({ document, parsedDocument, project, client, onMed
         color: 'red'
       });
     }
-  };
-
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   // If no media, show upload interface
