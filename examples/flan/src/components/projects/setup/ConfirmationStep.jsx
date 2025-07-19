@@ -118,6 +118,17 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         await client.tokenLayers.setConfig(sentenceTokenLayerId, "flan", "sentence", true);
       }
 
+      // Step 4.5: Create alignment token layer for time-aligned tokens
+      let alignmentTokenLayerId = null;
+      if (textLayerId) {
+        updateProgress(37, 'Creating alignment token layer...');
+        const alignmentTokenLayer = await client.tokenLayers.create(textLayerId, 'Time Alignment');
+        alignmentTokenLayerId = alignmentTokenLayer.id;
+        resources.alignmentTokenLayer = alignmentTokenLayer;
+        // Mark as alignment layer
+        await client.tokenLayers.setConfig(alignmentTokenLayerId, "flan", "alignment", true);
+      }
+
       // Step 5: Configure orthographies on token layer
       if (tokenLayerId && setupData.orthographies?.orthographies?.length > 0) {
         updateProgress(40, 'Configuring orthographies...');
@@ -425,6 +436,9 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
             )}
             {createdResources.sentenceTokenLayer && (
               <Text size="sm">✓ Sentence token layer: {createdResources.sentenceTokenLayer.name}</Text>
+            )}
+            {createdResources.alignmentTokenLayer && (
+              <Text size="sm">✓ Alignment token layer: {createdResources.alignmentTokenLayer.name}</Text>
             )}
             {createdResources.spanLayers?.length > 0 && (
               <Text size="sm">✓ Span layers: {createdResources.spanLayers.map(layer => layer.name).join(', ')}</Text>

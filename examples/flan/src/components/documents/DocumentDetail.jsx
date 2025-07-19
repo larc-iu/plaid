@@ -18,10 +18,12 @@ import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import IconAnalyze from '@tabler/icons-react/dist/esm/icons/IconAnalyze.mjs';
 import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs';
 import IconLetterA from '@tabler/icons-react/dist/esm/icons/IconLetterA.mjs';
+import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
 import { DocumentMetadata } from './DocumentMetadata';
 import { DocumentBaseline } from './DocumentBaseline';
 import { DocumentTokenize } from './DocumentTokenize';
 import { DocumentAnalyze } from './DocumentAnalyze';
+import { DocumentMedia } from './DocumentMedia';
 import { parseDocument, validateParsedDocument } from '../../utils/documentParser';
 
 export const DocumentDetail = () => {
@@ -160,13 +162,16 @@ export const DocumentDetail = () => {
             <Tabs.Tab value="metadata" leftSection={<IconFileText size={16} />}>
               Metadata
             </Tabs.Tab>
+            <Tabs.Tab value="media" leftSection={<IconPlayerPlay size={16} />}>
+              Media
+            </Tabs.Tab>
             <Tabs.Tab value="baseline" leftSection={<IconEdit size={16} />}>
               Baseline
             </Tabs.Tab>
-            <Tabs.Tab value="tokenize" leftSection={<IconLetterA size={16} />} disabled={!parsedDocument?.document?.text}>
+            <Tabs.Tab value="tokenize" leftSection={<IconLetterA size={16} />} disabled={parsedDocument?.layers?.primaryTextLayer?.text?.body.length === 0}>
               Tokenize
             </Tabs.Tab>
-            <Tabs.Tab value="analyze" leftSection={<IconAnalyze size={16} />} disabled={!parsedDocument?.document?.text || !parsedDocument?.sentences?.some(s => s.tokens?.length > 0)}>
+            <Tabs.Tab value="analyze" leftSection={<IconAnalyze size={16} />} disabled={!parsedDocument?.sentences?.some(s => s.tokens?.length > 0)}>
               Analyze
             </Tabs.Tab>
           </Tabs.List>
@@ -243,6 +248,34 @@ export const DocumentDetail = () => {
               parsedDocument={parsedDocument}
               project={project}
               client={client}
+            />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="media">
+            <DocumentMedia 
+              document={document}
+              parsedDocument={parsedDocument}
+              project={project}
+              client={client}
+              onMediaUpdated={() => {
+                // Refresh the document data after media operations
+                const fetchData = async () => {
+                  try {
+                    const [documentData, projectData] = await Promise.all([
+                      client.documents.get(documentId, true),
+                      client.projects.get(projectId)
+                    ]);
+                    
+                    const parsed = parseDocument(documentData);
+                    setParsedDocument(parsed);
+                    setDocument(documentData);
+                    setProject(projectData);
+                  } catch (error) {
+                    console.error('Error refreshing document after media operation:', error);
+                  }
+                };
+                fetchData();
+              }}
             />
           </Tabs.Panel>
         </Tabs>

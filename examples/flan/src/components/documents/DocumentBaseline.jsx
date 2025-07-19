@@ -326,7 +326,7 @@ export const DocumentBaseline = ({ document, parsedDocument, project, client, on
               <div>
                 <Paper bg="gray.0" p="md" radius="md">
                   <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                    {parsedDocument?.document?.text || 'No text content available'}
+                    {parsedDocument?.document?.text || ''}
                   </Text>
                 </Paper>
               </div>
