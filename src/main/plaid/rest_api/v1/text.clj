@@ -68,11 +68,21 @@
                                "bodies, and a best effort is made to minimize Levenshtein distance between the two. "
                                "Token indices are updated so that tokens remain intact. Tokens which fall within "
                                "a range of deleted text are either shrunk appropriately if there is partial overlap "
-                               "or else deleted if there is whole overlap.")
+                               "or else deleted if there is whole overlap."
+                               "\n\n"
+                               "If preferred, body can instead be a list of edit directives such as:\n"
+                               "  {type: \"delete\", index: 5, value: 3} (delete 3 chars at index 5)\n"
+                               "  {type: \"insert\", index: 0, value: \"abc\"} (insert \"abc\" at the front)")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :uuid]]
-                              :body [:map [:body string?]]}
+                              ;; TODO figure out how to make malli happy with something like this
+                              ;; [:map [:body {:optional true} string?]
+                              ;;  [:ops {:optional true} [:sequential [:map
+                              ;;                                       [:type [:enum "delete" "insert"]]
+                              ;;                                       [:index int?]
+                              ;;                                      [:value [:or string? int?]]]]]]
+                              :body any?}
                  :handler (fn [{{{:keys [text-id]} :path {:keys [body]} :body} :parameters xtdb :xtdb user-id :user/id}]
                             (let [{:keys [success code error] :as result} (txt/update-body {:node xtdb} text-id body user-id)]
                               (if success
