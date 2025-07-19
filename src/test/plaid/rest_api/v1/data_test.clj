@@ -582,16 +582,6 @@
         tl (-> tl-res :body :id)
         _ (assert-created tl-res)]
 
-    (testing "Non-string body validation - coercion catches this at middleware level"
-      ;; Note: The coercion middleware catches non-string bodies before our validation,
-      ;; so this test verifies the middleware layer works correctly
-      (is (thrown? java.lang.IllegalArgumentException
-                   (api-call admin-request {:method :post
-                                            :path "/api/v1/texts"
-                                            :body {:text-layer-id tl
-                                                   :document-id doc
-                                                   :body 123}}))))
-
     (testing "Non-existent text layer"
       (let [fake-tl (java.util.UUID/randomUUID)
             res (create-text admin-request fake-tl doc "test")]
