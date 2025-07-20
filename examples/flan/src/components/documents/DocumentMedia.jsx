@@ -13,6 +13,7 @@ import {
   FileButton,
   Center
 } from '@mantine/core';
+import { useHotkeys } from '@mantine/hooks';
 import { TimeAlignmentPopover } from './media/TimeAlignmentPopover.jsx';
 import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
 import IconPlayerPause from '@tabler/icons-react/dist/esm/icons/IconPlayerPause.mjs';
@@ -32,12 +33,94 @@ import { notifications } from '@mantine/notifications';
 const TIMELINE_HEIGHT = 100;
 const WAVEFORM_AVAILABLE_HEIGHT = 90;
 const MIN_BAR_HEIGHT = 2;
+const WAVEFORM_CACHE_PREFIX = 'flan_waveform_';
+const WAVEFORM_CACHE_VERSION = 'v1_'; // Increment when waveform generation logic changes
 
 // Utility function for formatting time
 const formatTime = (seconds) => {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = Math.floor(seconds % 60);
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
+// Utility functions for waveform caching
+const generateAudioHash = async (arrayBuffer) => {
+  // Create a simple hash from audio data
+  const uint8Array = new Uint8Array(arrayBuffer);
+  let hash = 0;
+  
+  // Sample every nth byte to create a reasonable hash without processing entire file
+  const step = Math.max(1, Math.floor(uint8Array.length / 10000));
+  for (let i = 0; i < uint8Array.length; i += step) {
+    hash = ((hash << 5) - hash + uint8Array[i]) & 0xffffffff;
+  }
+  
+  return hash.toString(36);
+};
+
+const getCacheKey = (audioHash, timelineWidth, duration) => {
+  return `${WAVEFORM_CACHE_PREFIX}${WAVEFORM_CACHE_VERSION}${audioHash}_${timelineWidth}_${Math.round(duration)}`;
+};
+
+const getCachedWaveform = (cacheKey) => {
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const data = JSON.parse(cached);
+      // Check if cache entry is not too old (7 days)
+      if (Date.now() - data.timestamp < 7 * 24 * 60 * 60 * 1000) {
+        return data.imageData;
+      } else {
+        localStorage.removeItem(cacheKey);
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to read waveform cache:', error);
+  }
+  return null;
+};
+
+const setCachedWaveform = (cacheKey, imageData) => {
+  try {
+    const data = {
+      imageData,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+  } catch (error) {
+    console.warn('Failed to cache waveform (storage might be full):', error);
+    // Try to clear old cache entries and retry
+    clearOldWaveformCache();
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+    } catch (retryError) {
+      console.warn('Failed to cache waveform after cleanup:', retryError);
+    }
+  }
+};
+
+const clearOldWaveformCache = () => {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(WAVEFORM_CACHE_PREFIX)) {
+        try {
+          const data = JSON.parse(localStorage.getItem(key));
+          // Remove entries older than 7 days
+          if (Date.now() - data.timestamp > 7 * 24 * 60 * 60 * 1000) {
+            keysToRemove.push(key);
+          }
+        } catch (e) {
+          // Remove malformed cache entries
+          keysToRemove.push(key);
+        }
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+  } catch (error) {
+    console.warn('Failed to clear old waveform cache:', error);
+  }
 };
 
 // Media Player Component  
@@ -246,6 +329,9 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
   const handleMouseDown = (event) => {
     if (event.button !== 0) return; // Only left mouse button
     
+    // Close popover when starting a new selection
+    setPopoverOpened(false);
+    
     const time = getTimeFromPosition(event.clientX);
     setIsDragging(true);
     setDragStart(time);
@@ -285,14 +371,6 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
     
     setDragStart(null);
     setDragEnd(null);
-  };
-
-  const handleTimelineClick = (event) => {
-    // This is handled by mouseUp, but keeping for compatibility
-    if (!isDragging) {
-      const time = getTimeFromPosition(event.clientX);
-      onTimelineClick && onTimelineClick(time);
-    }
   };
 
   // Handle wheel events with proper passive listener setup
@@ -394,9 +472,26 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
       if (!mediaUrl || !duration || waveformImage || timelineWidth < 100) return;
       
       setIsLoadingWaveform(true);
+      
+      let audioHash = null;
+      let cacheKey = null;
+      
       try {
         const response = await fetch(mediaUrl);
         const arrayBuffer = await response.arrayBuffer();
+        
+        // Generate hash from audio data for caching
+        audioHash = await generateAudioHash(arrayBuffer);
+        cacheKey = getCacheKey(audioHash, timelineWidth, duration);
+        
+        // Check cache first
+        const cachedWaveform = getCachedWaveform(cacheKey);
+        if (cachedWaveform) {
+          // Cached waveform is a data URL, use it directly
+          setWaveformImage(cachedWaveform);
+          setIsLoadingWaveform(false);
+          return;
+        }
         
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -431,7 +526,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         ctx.globalAlpha = 0.8;
         
         // Use much higher sampling rate for better resolution
-        const samples = Math.max(effectiveTimelineWidth * 2, 4000); // At least 2x effective width or 4000 samples
+        const samples = Math.max(effectiveTimelineWidth * 2, 8000);
         const blockSize = Math.floor(channelData.length / samples);
         
         // First pass: calculate all amplitudes and find the maximum
@@ -466,11 +561,15 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
           ctx.fillRect(x, y, Math.max(0.5, barWidth), barHeight);
         }
         
-        // Convert canvas to blob and create object URL (more efficient than base64)
-        canvas.toBlob((blob) => {
+        // Convert canvas to data URL for caching and blob for immediate use
+        canvas.toBlob(async (blob) => {
           if (blob) {
             const imageUrl = URL.createObjectURL(blob);
             setWaveformImage(imageUrl);
+            
+            // Cache the data URL version for persistence
+            const dataUrl = canvas.toDataURL('image/png', 0.8);
+            setCachedWaveform(cacheKey, dataUrl);
           }
         });
         
@@ -489,6 +588,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         ctx.fillStyle = '#90caf9';
         ctx.globalAlpha = 0.3;
         
+        const effectiveTimelineWidth = timelineWidth;
         const samples = timelineWidth * 2;
         for (let i = 0; i < samples; i++) {
           const height = Math.random() * 40 + 5;
@@ -627,36 +727,6 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
                       zIndex: 4
                     }}
                   >
-                    {/* Edit button in top-right corner */}
-                    <Tooltip label="Add transcription">
-                      <ActionIcon
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          onEditSelection && onEditSelection(selection);
-                        }}
-                        onMouseUp={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                        }}
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                        }}
-                        size="sm"
-                        variant="filled"
-                        color="blue"
-                        style={{
-                          position: 'absolute',
-                          top: '36px',
-                          right: '-12px',
-                          pointerEvents: 'auto',
-                          zIndex: 40
-                        }}
-                      >
-                        <IconEdit size={24} />
-                      </ActionIcon>
-                    </Tooltip>
                   </div>
                 }
               />
@@ -896,21 +966,45 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
   const handleSelectionCreate = (startTime, endTime) => {
     const newSelection = { start: startTime, end: endTime };
     setSelection(newSelection);
-    setPopoverOpened(false); // Close popover when selection changes
+    setPopoverOpened(true); // Open popover immediately when selection is created
   };
 
-  // Handle ESC key to clear selection
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && selection) {
+  const handlePlaySelection = () => {
+    if (selection && mediaElement) {
+      mediaElement.currentTime = selection.start;
+      setPlayingSelection(selection);
+      mediaElement.play();
+    }
+  };
+
+  // Setup hotkeys
+  useHotkeys([
+    // ESC key to clear selection
+    ['Escape', () => {
+      if (selection) {
         setSelection(null);
         setPopoverOpened(false);
       }
-    };
-
-    window.document.addEventListener('keydown', handleKeyDown);
-    return () => window.document.removeEventListener('keydown', handleKeyDown);
-  }, [selection]);
+    }],
+    
+    // Space key to toggle playback
+    ['space', () => {
+      if (mediaElement) {
+        if (isPlaying) {
+          mediaElement.pause();
+        } else {
+          mediaElement.play();
+        }
+      }
+    }],
+    
+    // Ctrl+Space to play selection
+    ['ctrl+space', () => {
+      if (selection && mediaElement) {
+        handlePlaySelection();
+      }
+    }]
+  ]);
 
   // Monitor selection playback and auto-pause at end
   useEffect(() => {
@@ -947,14 +1041,6 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
       }
     };
   }, [playingSelection, isPlaying, mediaElement]);
-
-  const handlePlaySelection = () => {
-    if (selection && mediaElement) {
-      mediaElement.currentTime = selection.start;
-      setPlayingSelection(selection);
-      mediaElement.play();
-    }
-  };
 
   const handleSkipToBeginning = () => {
     if (mediaElement) {
@@ -1030,7 +1116,7 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
   }
 
   return (
-    <Stack spacing="lg">
+    <Stack spacing="lg" mb="400px">
       {/* Media Player */}
       <MediaPlayer
         mediaUrl={authenticatedMediaUrl}
