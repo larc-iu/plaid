@@ -13,7 +13,7 @@ import {
   ActionIcon,
   Tooltip,
   Kbd,
-  Modal
+  Popover
 } from '@mantine/core';
 import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
 import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
@@ -38,45 +38,132 @@ const TokenComponent = ({
   onTokenDragEnter,
   onTokenDragEnd,
   isSelected,
-  isTokenDragging
+  isTokenDragging,
+  popoverOpened,
+  popoverToken,
+  hoveredSplitPosition,
+  setHoveredSplitPosition,
+  handleTokenSplit,
+  setPopoverOpened,
+  setPopoverToken
 }) => {
   return (
-    <Box
-      component="span"
-      onClick={(e) => {
-        if (e.ctrlKey) {
-          onTokenClick(span, e);
-        } else {
-          onTokenSplit(span);
+    <Popover
+      width="auto"
+      position="bottom"
+      withArrow
+      shadow="md"
+      opened={popoverOpened && popoverToken?.id === span.id}
+      onClose={() => {
+        if (popoverToken?.id === span.id) {
+          setPopoverOpened(false);
+          setPopoverToken(null);
+          setHoveredSplitPosition(null);
         }
-      }}
-      onContextMenu={(e) => onTokenRightClick(span, e)}
-      onMouseDown={(e) => {
-        if (!e.ctrlKey) {
-          onTokenDragStart(span, e);
-        }
-      }}
-      onMouseEnter={(e) => {
-        if (isTokenDragging) {
-          onTokenDragEnter(span);
-        }
-      }}
-      onMouseUp={onTokenDragEnd}
-      style={{
-        display: 'inline-block',
-        margin: '1px',
-        padding: '2px 4px',
-        backgroundColor: isSelected ? '#1976d2' : '#e3f2fd',
-        color: isSelected ? 'white' : 'inherit',
-        border: `1px solid ${isSelected ? '#1565c0' : '#bbdefb'}`,
-        borderRadius: '4px',
-        fontSize: '13px',
-        cursor: 'pointer',
-        userSelect: 'none'
       }}
     >
-      {span.text}
-    </Box>
+      <Popover.Target>
+        <Box
+          component="span"
+          onClick={(e) => {
+            if (e.ctrlKey) {
+              onTokenClick(span, e);
+            } else {
+              onTokenSplit(span);
+            }
+          }}
+          onContextMenu={(e) => onTokenRightClick(span, e)}
+          onMouseDown={(e) => {
+            if (!e.ctrlKey) {
+              onTokenDragStart(span, e);
+            }
+          }}
+          onMouseEnter={(e) => {
+            if (isTokenDragging) {
+              onTokenDragEnter(span);
+            }
+          }}
+          onMouseUp={onTokenDragEnd}
+          style={{
+            display: 'inline-block',
+            margin: '1px',
+            padding: '2px 4px',
+            backgroundColor: isSelected ? '#1976d2' : '#e3f2fd',
+            color: isSelected ? 'white' : 'inherit',
+            border: `1px solid ${isSelected ? '#1565c0' : '#bbdefb'}`,
+            borderRadius: '4px',
+            fontSize: '13px',
+            cursor: 'pointer',
+            userSelect: 'none'
+          }}
+        >
+          {span.text}
+        </Box>
+      </Popover.Target>
+      
+      <Popover.Dropdown>
+        {popoverToken?.id === span.id && (
+          <Stack spacing="sm">
+            <Text size="sm" c="dimmed">
+              Click between characters to split the token:
+            </Text>
+            
+            <Box style={{ 
+              display: 'flex', 
+              alignItems: 'center',
+              gap: '2px',
+              padding: '10px',
+              backgroundColor: '#f8f9fa',
+              borderRadius: '8px',
+              justifyContent: 'center'
+            }}>
+              {Array.from(text.slice(span.begin, span.end)).map((char, index) => (
+                <Box key={`popover-char-${span.begin}-${index}`} style={{ display: 'flex', alignItems: 'center' }}>
+                  <Text 
+                    style={{ 
+                      fontFamily: 'monospace',
+                      backgroundColor: '#fff',
+                      padding: '4px 6px',
+                      borderRadius: '4px',
+                      minWidth: '20px',
+                      textAlign: 'center',
+                      fontSize: '16px',
+                      border: '1px solid #dee2e6'
+                    }}
+                  >
+                    {char === ' ' ? '·' : char}
+                  </Text>
+                  {index < Array.from(text.slice(span.begin, span.end)).length - 1 && (
+                    <Box
+                      style={{
+                        width: '24px',
+                        height: '24px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: hoveredSplitPosition === index ? 1 : 0.5,
+                        transition: 'opacity 0.2s ease',
+                        backgroundColor: hoveredSplitPosition === index ? '#fff5f5' : 'transparent',
+                        borderRadius: '4px'
+                      }}
+                      onMouseEnter={() => setHoveredSplitPosition(index)}
+                      onMouseLeave={() => setHoveredSplitPosition(null)}
+                      onClick={() => handleTokenSplit(span, index + 1)}
+                    >
+                      <IconCut 
+                        size={14} 
+                        color={hoveredSplitPosition === index ? '#e03131' : '#868e96'} 
+                      />
+                    </Box>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          </Stack>
+        )}
+      </Popover.Dropdown>
+    </Popover>
   );
 };
 
@@ -97,9 +184,9 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
   const [selectedTokens, setSelectedTokens] = useState(new Set());
   const [dragStartToken, setDragStartToken] = useState(null);
   
-  // Token splitting modal state
-  const [modalOpened, setModalOpened] = useState(false);
-  const [modalToken, setModalToken] = useState(null);
+  // Token splitting popover state
+  const [popoverOpened, setPopoverOpened] = useState(false);
+  const [popoverToken, setPopoverToken] = useState(null);
   const [hoveredSplitPosition, setHoveredSplitPosition] = useState(null);
 
   // Get layer information
@@ -334,10 +421,17 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
     }
   };
 
-  // Handle opening token splitting modal
-  const handleTokenSplitModal = (token) => {
-    setModalToken(token);
-    setModalOpened(true);
+  // Handle opening token splitting popover
+  const handleTokenSplitPopover = (token) => {
+    // Toggle if clicking the same token
+    if (popoverOpened && popoverToken?.id === token.id) {
+      setPopoverOpened(false);
+      setPopoverToken(null);
+      setHoveredSplitPosition(null);
+    } else {
+      setPopoverToken(token);
+      setPopoverOpened(true);
+    }
   };
 
   // Handle token splitting at character position
@@ -366,9 +460,9 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
       
       await client.submitBatch();
       
-      // Close modal
-      setModalOpened(false);
-      setModalToken(null);
+      // Close popover
+      setPopoverOpened(false);
+      setPopoverToken(null);
       setHoveredSplitPosition(null);
       
       if (onTokenizationComplete) {
@@ -523,12 +617,19 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
                 text={text}
                 onTokenClick={handleTokenClick}
                 onTokenRightClick={handleTokenRightClick}
-                onTokenSplit={handleTokenSplitModal}
+                onTokenSplit={handleTokenSplitPopover}
                 onTokenDragStart={handleTokenDragStart}
                 onTokenDragEnter={handleTokenDragEnter}
                 onTokenDragEnd={handleTokenDragEnd}
                 isSelected={selectedTokens.has(span.id)}
                 isTokenDragging={isTokenDragging}
+                popoverOpened={popoverOpened}
+                popoverToken={popoverToken}
+                hoveredSplitPosition={hoveredSplitPosition}
+                setHoveredSplitPosition={setHoveredSplitPosition}
+                handleTokenSplit={handleTokenSplit}
+                setPopoverOpened={setPopoverOpened}
+                setPopoverToken={setPopoverToken}
               />
             ) : (
               <span 
@@ -664,12 +765,19 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
                       text={text}
                       onTokenClick={handleTokenClick}
                       onTokenRightClick={handleTokenRightClick}
-                      onTokenSplit={handleTokenSplitModal}
+                      onTokenSplit={handleTokenSplitPopover}
                       onTokenDragStart={handleTokenDragStart}
                       onTokenDragEnter={handleTokenDragEnter}
                       onTokenDragEnd={handleTokenDragEnd}
                       isSelected={selectedTokens.has(span.id)}
                       isTokenDragging={isTokenDragging}
+                      popoverOpened={popoverOpened}
+                      popoverToken={popoverToken}
+                      hoveredSplitPosition={hoveredSplitPosition}
+                      setHoveredSplitPosition={setHoveredSplitPosition}
+                      handleTokenSplit={handleTokenSplit}
+                      setPopoverOpened={setPopoverOpened}
+                      setPopoverToken={setPopoverToken}
                     />
                   ) : (
                     <span
@@ -788,11 +896,34 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
             </div>
           </Stack>
         </Box>
-        
+
         <Box style={{ flex: 1, overflowY: 'auto', paddingLeft: '70px' }}>
           {renderTextWithTokens}
         </Box>
       </Paper>
+
+      {/* Controls */}
+      <Paper withBorder p="md" style={{ flexShrink: 0 }}>
+        <Group justify="space-between" align="flex-end">
+          <Select
+              label="Tokenization Algorithm"
+              value={algorithm}
+              onChange={setAlgorithm}
+              data={[
+                { value: 'rule-based-punctuation', label: 'Rule-based Punctuation' }
+              ]}
+              style={{ flex: 1, maxWidth: 300 }}
+          />
+
+          <Button
+              leftSection={<IconPlayerPlay size={16} />}
+              onClick={handleTokenize}
+              loading={isTokenizing}
+              disabled={!text || !primaryTokenLayer}
+          >
+            Tokenize
+          </Button>
+      </Group>
 
       {/* Progress */}
       {isTokenizing && (
@@ -808,30 +939,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
         </Paper>
       )}
 
-      {/* Controls */}
-      <Paper withBorder p="md" style={{ flexShrink: 0 }}>
-        <Group justify="space-between" align="flex-end">
-          <Select
-            label="Tokenization Algorithm"
-            value={algorithm}
-            onChange={setAlgorithm}
-            data={[
-              { value: 'rule-based-punctuation', label: 'Rule-based Punctuation' }
-            ]}
-            style={{ flex: 1, maxWidth: 300 }}
-          />
-          
-          <Button
-            leftSection={<IconPlayerPlay size={16} />}
-            onClick={handleTokenize}
-            loading={isTokenizing}
-            disabled={!text || !primaryTokenLayer}
-          >
-            Tokenize
-          </Button>
-        </Group>
-
-        {!primaryTokenLayer && (
+      {!primaryTokenLayer && (
           <>
             <Divider mt="md" />
             <Alert icon={<IconInfoCircle size={16} />} color="red" mt="md">
@@ -840,80 +948,6 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
           </>
         )}
       </Paper>
-
-      {/* Token Splitting Modal */}
-      <Modal
-        opened={modalOpened}
-        onClose={() => {
-          setModalOpened(false);
-          setModalToken(null);
-          setHoveredSplitPosition(null);
-        }}
-        title="Split Token"
-        centered
-        size="auto"
-      >
-        {modalToken && (
-          <Stack spacing="md">
-            <Text size="sm" c="dimmed">
-              Click between characters to split the token:
-            </Text>
-            
-            <Box style={{ 
-              display: 'flex', 
-              alignItems: 'center',
-              gap: '2px',
-              padding: '10px',
-              backgroundColor: '#f8f9fa',
-              borderRadius: '8px',
-              justifyContent: 'center'
-            }}>
-              {Array.from(text.slice(modalToken.begin, modalToken.end)).map((char, index) => (
-                <Box key={`modal-char-${modalToken.begin}-${index}`} style={{ display: 'flex', alignItems: 'center' }}>
-                  <Text 
-                    style={{ 
-                      fontFamily: 'monospace',
-                      backgroundColor: '#fff',
-                      padding: '4px 6px',
-                      borderRadius: '4px',
-                      minWidth: '20px',
-                      textAlign: 'center',
-                      fontSize: '16px',
-                      border: '1px solid #dee2e6'
-                    }}
-                  >
-                    {char === ' ' ? '·' : char}
-                  </Text>
-                  {index < Array.from(text.slice(modalToken.begin, modalToken.end)).length - 1 && (
-                    <Box
-                      style={{
-                        width: '24px',
-                        height: '24px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        opacity: hoveredSplitPosition === index ? 1 : 0.5,
-                        transition: 'opacity 0.2s ease',
-                        backgroundColor: hoveredSplitPosition === index ? '#fff5f5' : 'transparent',
-                        borderRadius: '4px'
-                      }}
-                      onMouseEnter={() => setHoveredSplitPosition(index)}
-                      onMouseLeave={() => setHoveredSplitPosition(null)}
-                      onClick={() => handleTokenSplit(modalToken, index + 1)}
-                    >
-                      <IconCut 
-                        size={14} 
-                        color={hoveredSplitPosition === index ? '#e03131' : '#868e96'} 
-                      />
-                    </Box>
-                  )}
-                </Box>
-              ))}
-            </Box>
-          </Stack>
-        )}
-      </Modal>
 
     </Stack>
   );

@@ -9,7 +9,7 @@ import {
   SegmentedControl,
   Alert
 } from '@mantine/core';
-import { useFocusTrap } from '@mantine/hooks';
+import { useFocusTrap, useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
 
@@ -118,26 +118,29 @@ export const TimeAlignmentPopover = ({
     }
   }, [opened, mode]);
 
-  // Handle keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (!opened) return;
-      
-      if (e.key === 'Escape') {
-        e.preventDefault();
+  // Setup keyboard shortcuts
+  useHotkeys([
+    ['Escape', () => {
+      if (opened) {
         handleCancel();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault();
+      }
+    }],
+    ['ctrl+Enter', () => {
+      if (opened) {
         handleSave();
-      } else if (e.key === 'Delete' && mode === 'edit') {
-        e.preventDefault();
+      }
+    }],
+    ['cmd+Enter', () => {
+      if (opened) {
+        handleSave();
+      }
+    }],
+    ['Delete', () => {
+      if (opened && mode === 'edit') {
         handleDelete();
       }
-    };
-
-    window.document.addEventListener('keydown', handleKeyDown);
-    return () => window.document.removeEventListener('keydown', handleKeyDown);
-  }, [opened, text, mode]);
+    }]
+  ]);
 
   const handleCancel = () => {
     setText('');
@@ -283,7 +286,39 @@ export const TimeAlignmentPopover = ({
     const newText = beforeText + text.trim() + afterText;
     
     // Update the text
-    await client.texts.update(textId, newText);
+    try {
+      // Editing text might have caused the token to shrink--new content at the end will not automatically cause the
+      // token to grow, and more dramatically, if the entirety of the content was changed, it may have been deleted.
+      // Assume that it did not change at first, and use the `_tokenizationDirty` flag to trigger any necessary sentence
+      // expansion during parsing.
+      client.beginBatch();
+      client.texts.update(textId, newText);
+      client.tokens.update(existingAlignment.id, tokenBegin, tokenBegin + text.trim().length);
+      client.texts.setMetadata(textId, {...parsedDocument.document.text.metadata, _tokenizationDirty: true})
+      await client.submitBatch()
+    } catch (e) {
+      // We failed--404 means the entirety of the contents was replaced.
+      if (e.status === 404) {
+        client.beginBatch();
+        client.texts.update(textId, newText);
+        client.tokens.create(
+            parsedDocument?.layers?.alignmentTokenLayer.id,
+            textId,
+            tokenBegin,
+            tokenBegin + text.trim().length,
+            undefined,
+            {timeBegin: selection.start, timeEnd: selection.end}
+        );
+        // We know we're replacing the entirety of the content if we got here, so just make a new sentence token
+        client.tokens.create(
+            parsedDocument?.layers?.sentenceTokenLayer.id,
+            textId,
+            tokenBegin,
+            tokenBegin + text.trim().length,
+        )
+        await client.submitBatch()
+      }
+    }
   };
 
   const handleAlignExisting = async () => {
@@ -438,7 +473,7 @@ export const TimeAlignmentPopover = ({
       opened={opened}
       onClose={() => {}} // Don't close on click outside
       width={400}
-      position="right"
+      position="bottom"
       withArrow
       shadow="md"
       clickOutsideEvents={[]} // Disable click outside to close
