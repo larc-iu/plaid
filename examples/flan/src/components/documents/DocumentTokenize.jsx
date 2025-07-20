@@ -422,6 +422,12 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
 
   // Handle starting token splitting
   const handleTokenSplitStart = (token) => {
+    // Don't allow splitting tokens with fewer than 2 characters
+    const tokenText = text.slice(token.begin, token.end);
+    if (tokenText.length < 2) {
+      return;
+    }
+    
     // If clicking on another token while one is already being split, switch to the new one
     setSplittingToken(token);
     setHoveredSplitPosition(null);
@@ -604,7 +610,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
           {spans.map((span, index) => 
             span.isToken ? (
               <TokenComponent
-                key={`token-${span.id || span.begin}-${span.end}`}
+                key={span.id ? `token-${span.id}` : `token-span-${span.begin}-${span.end}`}
                 span={span}
                 text={text}
                 onTokenClick={handleTokenClick}
@@ -649,7 +655,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
       }}>
         {sentences.map((sentence, sentenceIndex) => (
           <Box 
-            key={`sentence-${sentence.id || sentence.begin}-${sentence.end}`}
+            key={`sentence-${sentence.id}`}
             style={{ 
               position: 'relative',
               display: 'flex',
@@ -659,7 +665,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
               marginLeft: '-70px',
               marginRight: '-12px'
             }}
-            onMouseEnter={() => setHoveredSentence(sentence.id || `${sentence.begin}-${sentence.end}`)}
+            onMouseEnter={() => setHoveredSentence(sentence.id)}
             onMouseLeave={() => setHoveredSentence(null)}
           >
             {/* Sentence number */}
@@ -749,7 +755,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
                 return spans.map((span, spanIndex) => 
                   span.isToken ? (
                     <TokenComponent
-                      key={`token-${span.id || span.begin}-${span.end}`}
+                      key={span.id ? `token-${span.id}` : `sentence-${sentenceIndex}-token-${span.begin}-${span.end}-${spanIndex}`}
                       span={span}
                       text={text}
                       onTokenClick={handleTokenClick}
