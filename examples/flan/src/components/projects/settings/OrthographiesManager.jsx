@@ -34,7 +34,8 @@ export const OrthographiesManager = ({
   onLoadData,
   onSaveChanges,
   onError,
-  showTitle = true
+  showTitle = true,
+  autoSaveDefaults = false // Only auto-save defaults in setup mode
 }) => {
   const [orthographies, setOrthographies] = useState([]);
   const [newOrthographyName, setNewOrthographyName] = useState('');
@@ -62,9 +63,9 @@ export const OrthographiesManager = ({
         setOrthographies(orthographiesData.orthographies);
         setIsInitialized(true);
         
-        // Important: If we're using default data and onSaveChanges exists, 
+        // Important: If we're using default data and onSaveChanges exists AND autoSaveDefaults is enabled,
         // save the defaults to the parent setup wizard
-        if (!initialData?.orthographies && onSaveChanges) {
+        if (!initialData?.orthographies && onSaveChanges && autoSaveDefaults) {
           await onSaveChanges(orthographiesData);
         }
       } catch (error) {
@@ -74,8 +75,8 @@ export const OrthographiesManager = ({
         setOrthographies(DEFAULT_ORTHOGRAPHIES);
         setIsInitialized(true);
         
-        // Save defaults even on error
-        if (onSaveChanges) {
+        // Save defaults even on error (only in setup mode)
+        if (onSaveChanges && autoSaveDefaults) {
           try {
             await onSaveChanges(defaultData);
           } catch (saveError) {

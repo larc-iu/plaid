@@ -171,12 +171,6 @@ export const FieldsSettings = ({ projectId, client }) => {
           await client.spanLayers.delete(existingLayer.id);
         }
       }
-      
-      notifications.show({
-        title: 'Settings Saved',
-        message: 'Annotation fields configuration has been updated',
-        color: 'green'
-      });
     } catch (error) {
       console.error('Failed to save fields configuration:', error);
       setHasError(true);

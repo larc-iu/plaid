@@ -24,6 +24,7 @@ export const OrthographiesStep = ({ data, onDataChange, setupData, isNewProject,
         initialData={data}
         onSaveChanges={handleSaveChanges}
         showTitle={true}
+        autoSaveDefaults={true}
       />
     </Stack>
   );
