@@ -55,15 +55,6 @@ const ensureSentencePartitioning = async (client, document, project, textContent
     return;
   }
 
-  // Check if we need to expand the first sentence to cover content at the beginning
-  if (sortedSentences[0].begin > 0) {
-    await client.tokens.update(
-      sortedSentences[0].id,
-      0, // Start from beginning
-      sortedSentences[0].end
-    );
-  }
-
   // Expand each sentence to cover any gaps to its right
   for (let i = 0; i < sortedSentences.length; i++) {
     const currentSentence = sortedSentences[i];
@@ -73,14 +64,14 @@ const ensureSentencePartitioning = async (client, document, project, textContent
       // There's a gap between this sentence and the next, expand current sentence
       await client.tokens.update(
         currentSentence.id,
-        currentSentence.begin,
+        i === 0 ? 0 : currentSentence.begin,
         nextSentence.begin
       );
     } else if (!nextSentence && currentSentence.end < textContent.length) {
       // This is the last sentence and it doesn't cover the end of the text
       await client.tokens.update(
         currentSentence.id,
-        currentSentence.begin,
+        i === 0 ? 0 : currentSentence.begin,
         textContent.length
       );
     }
