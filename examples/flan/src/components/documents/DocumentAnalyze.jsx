@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { 
   Stack, 
   Title, 
@@ -8,7 +8,6 @@ import {
   Group,
   Alert,
   Divider,
-  Select,
   ActionIcon,
   Tooltip,
   SimpleGrid,
@@ -19,10 +18,13 @@ import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mj
 import IconFileText from '@tabler/icons-react/dist/esm/icons/IconFileText.mjs';
 import IconLetterA from '@tabler/icons-react/dist/esm/icons/IconLetterA.mjs';
 import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
-import IconChevronDown from '@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs';
+import './DocumentAnalyze.css';
+
+// Shared throttle for tab navigation across all EditableCell instances
+let lastGlobalTabPress = 0;
 
 // EditableCell component for annotation fields
-const EditableCell = ({ value, onUpdate, isReadOnly, placeholder, style, isSaving }) => {
+const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, placeholder, isSaving }) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -63,6 +65,16 @@ const EditableCell = ({ value, onUpdate, isReadOnly, placeholder, style, isSavin
   };
 
   const handleKeyDown = (e) => {
+    // Throttle tab key presses to prevent browser hanging
+    if (e.key === 'Tab') {
+      const now = Date.now();
+      if (now - lastGlobalTabPress < 55) {
+        e.preventDefault();
+        return;
+      }
+      lastGlobalTabPress = now;
+    }
+    
     if (e.key === 'Enter') {
       e.preventDefault();
       inputRef.current?.blur();
@@ -86,41 +98,38 @@ const EditableCell = ({ value, onUpdate, isReadOnly, placeholder, style, isSavin
   const hasContent = displayValue && displayValue.trim() !== '';
   const isDisabled = isReadOnly || isUpdating || isSaving;
   
+  const className = `editable-field ${
+    hasContent ? 'editable-field--filled' : 'editable-field--empty'
+  } ${
+    isDisabled ? 'editable-field--disabled' : ''
+  } ${
+    isUpdating || isSaving ? 'editable-field--updating' : ''
+  }`.trim();
+  
   return (
     <input
       ref={inputRef}
+      id={tokenId && field ? `${tokenId}-${field}` : undefined}
       type="text"
       value={displayValue}
       onChange={handleChange}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       onFocus={handleFocus}
+      className={className}
+      title={isDisabled ? (isUpdating ? 'Saving...' : '') : `Edit ${field || 'annotation'}`}
+      tabIndex={tabIndex}
       readOnly={isDisabled}
       disabled={isUpdating || isSaving}
-      style={{
-        width: '100%',
-        minWidth: '60px',
-        padding: '4px 8px',
-        border: '1px solid #dee2e6',
-        borderRadius: '4px',
-        fontSize: '14px',
-        backgroundColor: isDisabled ? '#f8f9fa' : hasContent ? '#fff' : '#f8f9fa',
-        cursor: isDisabled ? 'default' : 'text',
-        opacity: isUpdating || isSaving ? 0.6 : 1,
-        ...style
-      }}
-      title={isDisabled ? (isUpdating ? 'Saving...' : '') : 'Click to edit'}
     />
   );
-};
+});
 
 export const DocumentAnalyze = ({ document, parsedDocument, project, client }) => {
-  const [selectedSentenceIndex, setSelectedSentenceIndex] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const sentences = parsedDocument?.sentences || [];
-  const selectedSentence = sentences[selectedSentenceIndex];
   
   // Extract available annotation fields from parsed sentences
   const sentenceFields = useMemo(() => {
@@ -154,17 +163,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
     return sentence.tokens.map(token => getTokenText(token)).join(' ');
   }, [getTokenText]);
 
-  // Sentence navigation data
-  const sentenceOptions = useMemo(() => {
-    return sentences.map((sentence, index) => {
-      const sentenceText = getSentenceText(sentence);
-      const truncatedText = sentenceText.length > 50 ? sentenceText.substring(0, 50) + '...' : sentenceText;
-      return {
-        value: index.toString(),
-        label: `Sentence ${index + 1}: ${truncatedText}`
-      };
-    });
-  }, [sentences, getSentenceText]);
 
   // API update handlers
   const handleTokenAnnotationUpdate = useCallback(async (tokenId, layerName, value) => {
@@ -266,6 +264,60 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
     }
   };
 
+  // TokenColumn component for displaying individual token annotations
+  const TokenColumn = React.memo(({ token, tokenIndex, columnWidth, getTabIndex, tokenFields, orthographyFields, onAnnotationUpdate, onOrthographyUpdate, isSaving, isReadOnly }) => {
+    return (
+      <div className="token-column" style={{ width: `${columnWidth}px` }}>
+        {/* Baseline token text (read-only) */}
+        <div className="token-form">
+          {getTokenText(token)}
+        </div>
+        
+        {/* Orthography rows */}
+        {orthographyFields.map(ortho => (
+          <div key={`${token.id}-${ortho.name}`} className="annotation-cell">
+            <EditableCell
+              value={token.orthographies?.[ortho.name] || ''}
+              tokenId={token.id}
+              field={ortho.name}
+              tabIndex={getTabIndex ? getTabIndex(tokenIndex, ortho.name) : undefined}
+              onUpdate={(value) => onOrthographyUpdate(token.id, ortho.name, value)}
+              placeholder={`Enter ${ortho.name}...`}
+              isSaving={isSaving}
+              isReadOnly={isReadOnly}
+            />
+          </div>
+        ))}
+        
+        {/* Annotation field rows */}
+        {tokenFields.map(field => (
+          <div key={`${token.id}-${field.id}`} className="annotation-cell">
+            <EditableCell
+              value={token.annotations[field.name] || ''}
+              tokenId={token.id}
+              field={field.name}
+              tabIndex={getTabIndex ? getTabIndex(tokenIndex, field.name) : undefined}
+              onUpdate={(value) => onAnnotationUpdate(token.id, field.name, value)}
+              placeholder={`Enter ${field.name}...`}
+              isSaving={isSaving}
+              isReadOnly={isReadOnly}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }, (prevProps, nextProps) => {
+    return (
+      prevProps.token === nextProps.token &&
+      prevProps.tokenIndex === nextProps.tokenIndex &&
+      prevProps.columnWidth === nextProps.columnWidth &&
+      prevProps.isSaving === nextProps.isSaving &&
+      prevProps.isReadOnly === nextProps.isReadOnly &&
+      prevProps.onAnnotationUpdate === nextProps.onAnnotationUpdate &&
+      prevProps.onOrthographyUpdate === nextProps.onOrthographyUpdate
+    );
+  });
+
   // TokenGrid component for displaying tokens with annotations
   const TokenGrid = ({ sentence }) => {
     if (!sentence || !sentence.tokens || sentence.tokens.length === 0) {
@@ -294,117 +346,74 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
           return (value.length * charWidth) + padding;
         });
         
-        return Math.max(minWidth, tokenWidth, ...annotationWidths);
+        const orthographyWidths = orthographyFields.map(ortho => {
+          const value = token.orthographies?.[ortho.name] || '';
+          return (value.length * charWidth) + padding;
+        });
+        
+        return Math.max(minWidth, tokenWidth, ...annotationWidths, ...orthographyWidths);
       });
-    }, [tokens, getTokenText]);
+    }, [tokens, getTokenText, tokenFields, orthographyFields]);
+
+    // Calculate tab indices for navigation
+    const getTabIndex = useCallback((tokenIndex, field) => {
+      const allFields = [...orthographyFields.map(o => o.name), ...tokenFields.map(f => f.name)];
+      const fieldIndex = allFields.indexOf(field);
+      const tokensInSentence = tokens.length;
+      
+      // Row-wise navigation: field type determines row, token index determines position in row
+      return (fieldIndex * tokensInSentence) + tokenIndex + 1;
+    }, [orthographyFields, tokenFields, tokens.length]);
+
+    // Handle orthography updates
+    const handleOrthographyUpdate = useCallback(async (tokenId, orthographyName, value) => {
+      console.log('TODO: Update orthography', tokenId, orthographyName, value);
+      // TODO: Implement orthography update logic
+    }, []);
+
+    // Detect if we're in read-only mode
+    const isReadOnly = false; // TODO: Implement read-only detection
     
     return (
-      <div style={{ overflowX: 'auto' }}>
-        <div style={{ display: 'flex', minWidth: 'fit-content' }}>
-          {/* Labels column */}
-          <div style={{ 
-            minWidth: '100px', 
-            borderRight: '1px solid #dee2e6',
-            backgroundColor: '#f8f9fa'
-          }}>
-            {/* Baseline row */}
-            <div style={{
-              height: '40px',
-              display: 'flex',
-              alignItems: 'center',
-              padding: '8px',
-              borderBottom: '1px solid #dee2e6',
-              fontWeight: 'bold'
-            }}>
-              BASELINE
-            </div>
-            
-            {/* Orthography rows */}
-            {orthographyFields.map(ortho => (
-              <div key={ortho.name} style={{
-                height: '40px',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '8px',
-                borderBottom: '1px solid #dee2e6',
-                fontWeight: 'bold'
-              }}>
-                {ortho.name.toUpperCase()}
-              </div>
-            ))}
-            
-            {/* Annotation field rows */}
-            {tokenFields.map(field => (
-              <div key={field.id} style={{
-                height: '40px',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '8px',
-                borderBottom: '1px solid #dee2e6',
-                fontWeight: 'bold'
-              }}>
-                {field.name.toUpperCase()}
-              </div>
-            ))}
+      <div className="sentence-grid">
+        {/* Labels column */}
+        <div className="labels-column">
+          {/* Baseline row */}
+          <div className="row-label">
+            BASELINE
           </div>
           
-          {/* Token columns */}
-          {tokens.map((token, tokenIndex) => (
-            <div key={token.id} style={{
-              minWidth: `${columnWidths[tokenIndex]}px`,
-              borderRight: tokenIndex < tokens.length - 1 ? '1px solid #dee2e6' : 'none'
-            }}>
-              {/* Baseline token text (read-only) */}
-              <div style={{
-                height: '40px',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '8px',
-                borderBottom: '1px solid #dee2e6',
-                backgroundColor: '#f8f9fa',
-                fontFamily: 'monospace'
-              }}>
-                {getTokenText(token)}
-              </div>
-              
-              {/* Orthography rows */}
-              {orthographyFields.map(ortho => (
-                <div key={`${token.id}-${ortho.name}`} style={{
-                  height: '40px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '4px',
-                  borderBottom: '1px solid #dee2e6'
-                }}>
-                  <EditableCell
-                    value={token.orthographies?.[ortho.name] || ''}
-                    onUpdate={(value) => console.log('TODO: Update orthography', token.id, ortho.name, value)}
-                    placeholder={`Enter ${ortho.name}...`}
-                    isSaving={saving}
-                  />
-                </div>
-              ))}
-              
-              {/* Annotation field rows */}
-              {tokenFields.map(field => (
-                <div key={`${token.id}-${field.id}`} style={{
-                  height: '40px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '4px',
-                  borderBottom: '1px solid #dee2e6'
-                }}>
-                  <EditableCell
-                    value={token.annotations[field.name] || ''}
-                    onUpdate={(value) => handleTokenAnnotationUpdate(token.id, field.name, value)}
-                    placeholder={`Enter ${field.name}...`}
-                    isSaving={saving}
-                  />
-                </div>
-              ))}
+          {/* Orthography rows */}
+          {orthographyFields.map(ortho => (
+            <div key={ortho.name} className="row-label">
+              {ortho.name.toUpperCase()}
+            </div>
+          ))}
+          
+          {/* Annotation field rows */}
+          {tokenFields.map(field => (
+            <div key={field.id} className="row-label">
+              {field.name.toUpperCase()}
             </div>
           ))}
         </div>
+        
+        {/* Token columns */}
+        {tokens.map((token, tokenIndex) => (
+          <TokenColumn
+            key={token.id}
+            token={token}
+            tokenIndex={tokenIndex}
+            columnWidth={columnWidths[tokenIndex]}
+            getTabIndex={getTabIndex}
+            tokenFields={tokenFields}
+            orthographyFields={orthographyFields}
+            onAnnotationUpdate={handleTokenAnnotationUpdate}
+            onOrthographyUpdate={handleOrthographyUpdate}
+            isSaving={saving}
+            isReadOnly={isReadOnly}
+          />
+        ))}
       </div>
     );
   };
@@ -417,16 +426,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
     
     return (
       <Stack spacing="sm">
-        {/* Sentence text display */}
-        <div>
-          <Text size="sm" fw={500} c="dimmed">Sentence Text:</Text>
-          <Paper bg="gray.0" p="sm" radius="md">
-            <Text style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-              {getSentenceText(sentence)}
-            </Text>
-          </Paper>
-        </div>
-        
         {/* Sentence annotation fields */}
         {sentenceFields.length > 0 && (
           <div>
@@ -462,72 +461,66 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
   };
   
   return (
-    <Stack spacing="lg" mt="md">
-
-      {/* Annotation Grid */}
-      <Paper withBorder p="md">
-        <Stack spacing="md">
-          <Group justify="space-between" align="center">
-            <div>
-              <Title order={3}>Annotation Grid</Title>
-              <Text size="sm" c="dimmed">
-                Edit linguistic annotations for tokens and sentences
-              </Text>
-            </div>
-            <Group>
-              <Tooltip label="Refresh data">
-                <ActionIcon variant="light" onClick={() => window.location.reload()}>
-                  <IconRefresh size={16} />
-                </ActionIcon>
-              </Tooltip>
-            </Group>
-          </Group>
-
-          <Divider />
-          
-          {sentences.length === 0 ? (
-            <Alert icon={<IconInfoCircle size={16} />} color="yellow">
-              No sentences found. Please tokenize the document first.
-            </Alert>
-          ) : (
-            <Stack spacing="md">
-              {/* Sentence navigation */}
+    <div className="document-analyze-container">
+      <Stack spacing="lg" mt="md">
+        {/* Annotation Grid */}
+        <Paper withBorder p="md" className="annotation-grid-paper">
+          <Stack spacing="md">
+            <Group justify="space-between" align="center">
+              <div>
+                <Title order={3}>Annotation Grid</Title>
+                <Text size="sm" c="dimmed">
+                  Edit linguistic annotations for tokens and sentences
+                </Text>
+              </div>
               <Group>
-                <Select
-                  label="Select Sentence"
-                  value={selectedSentenceIndex.toString()}
-                  onChange={(value) => setSelectedSentenceIndex(parseInt(value))}
-                  data={sentenceOptions}
-                  rightSection={<IconChevronDown size={16} />}
-                  style={{ minWidth: '300px' }}
-                />
+                <Tooltip label="Refresh data">
+                  <ActionIcon variant="light" onClick={() => window.location.reload()}>
+                    <IconRefresh size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+            </Group>
+
+            <Divider />
+            
+            {sentences.length === 0 ? (
+              <Alert icon={<IconInfoCircle size={16} />} color="yellow">
+                No sentences found. Please tokenize the document first.
+              </Alert>
+            ) : (
+              <Stack spacing="lg">
                 <Text size="sm" c="dimmed">
                   {sentences.length} sentence{sentences.length !== 1 ? 's' : ''} total
                 </Text>
-              </Group>
-              
-              {/* Sentence-level annotations */}
-              <SentenceGrid sentence={selectedSentence} />
-              
-              <Divider />
-              
-              {/* Token grid */}
-              <div>
-                <Text size="sm" fw={500} c="dimmed" mb="sm">Token Annotations:</Text>
+                
                 {tokenFields.length === 0 && orthographyFields.length === 0 ? (
                   <Alert icon={<IconInfoCircle size={16} />} color="yellow">
                     No token-level annotation fields or orthographies configured for this project.
                   </Alert>
                 ) : (
-                  <ScrollArea>
-                    <TokenGrid sentence={selectedSentence} />
-                  </ScrollArea>
+                  <Stack spacing="xl">
+                    {/* Render all sentences */}
+                    {sentences.map((sentence, sentenceIndex) => (
+                      <div key={sentenceIndex}>
+                        {/* Sentence-level annotations */}
+                        <SentenceGrid sentence={sentence} />
+                        
+                        <Divider my="sm" />
+                        
+                        {/* Token grid */}
+                        <ScrollArea>
+                          <TokenGrid sentence={sentence} />
+                        </ScrollArea>
+                      </div>
+                    ))}
+                  </Stack>
                 )}
-              </div>
-            </Stack>
-          )}
-        </Stack>
-      </Paper>
-    </Stack>
+              </Stack>
+            )}
+          </Stack>
+        </Paper>
+      </Stack>
+    </div>
   );
 };
