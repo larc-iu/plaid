@@ -130,14 +130,26 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       }
 
       // Step 5: Configure orthographies on token layer
+      console.log('Setup orthographies data:', setupData.orthographies);
       if (tokenLayerId && setupData.orthographies?.orthographies?.length > 0) {
         updateProgress(40, 'Configuring orthographies...');
+        console.log('All orthographies:', setupData.orthographies.orthographies);
         const orthographiesConfig = setupData.orthographies.orthographies
           .filter(orth => !orth.isBaseline) // Skip baseline orthography
           .map(orth => ({
             name: orth.name
           }));
-        await client.tokenLayers.setConfig(tokenLayerId, "flan", "orthographies", orthographiesConfig);
+        console.log('Non-baseline orthographies config:', orthographiesConfig);
+        
+        // Only set config if there are non-baseline orthographies
+        if (orthographiesConfig.length > 0) {
+          await client.tokenLayers.setConfig(tokenLayerId, "flan", "orthographies", orthographiesConfig);
+          console.log('Orthographies config saved to token layer');
+        } else {
+          console.log('No non-baseline orthographies to save');
+        }
+      } else {
+        console.log('Skipping orthographies setup - no data or tokenLayerId missing');
       }
 
       // Step 6: Create span layers for annotation fields
