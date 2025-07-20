@@ -26,15 +26,21 @@
     (let [db (pxc/->db db-like)
           core-attrs (select-keys document-entity attr-keys)
           ;; Get the latest audit ID for this document as version
-          latest-audit-id (ffirst (xt/q db
-                                        '{:find [?a s]
-                                          :where [[?a :audit/documents ?doc]
-                                                  [(get-start-valid-time ?a) s]]
-                                          :order-by [[s :desc]]
-                                          :limit 1
-                                          :in [?doc]}
-                                        id))
-          core-attrs-with-version (assoc core-attrs :document/version latest-audit-id)
+          [latest-audit-id time-modified] (first (xt/q db
+                                                       '{:find [?a s]
+                                                         :where [[?a :audit/documents ?doc]
+                                                                 [(get-start-valid-time ?a) s]]
+                                                         :order-by [[s :desc]] :limit 1 :in [?doc]}
+                                                       id))
+          time-created (ffirst (xt/q db
+                                     '{:find [s]
+                                       :where [[?a :audit/documents ?doc]
+                                               [(get-start-valid-time ?a) s]]
+                                       :order-by [[s :asc]] :limit 1 :in [?doc]}
+                                     id))
+          core-attrs-with-version (assoc core-attrs :document/version latest-audit-id
+                                                    :document/time-created time-created
+                                                    :document/time-modified time-modified)
           ;; Add media URL if media file exists
           core-attrs-with-media (if (media/media-exists? id)
                                   (assoc core-attrs-with-version :document/media-url (str "/api/v1/documents/" id "/media"))
