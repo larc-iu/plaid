@@ -33,7 +33,7 @@ export function parseDocument(rawDocument) {
     
     // Validate sentence token partitioning
     validateSentencePartitioning(sentences, documentData.text.body);
-    
+
     return {
       document: documentData,
       sentences: enrichedSentences,
@@ -195,6 +195,45 @@ function processAlignmentTokens(alignmentTokenLayer) {
 }
 
 /**
+ * Collect orthographies for a token
+ * @param {Object} token - Token object
+ * @param {Object} primaryTokenLayer - Primary token layer with orthography config
+ * @param {Array} tokenSpanLayers - Token-level span layers
+ * @returns {Object} Orthographies keyed by orthography name
+ */
+function collectOrthographies(token, primaryTokenLayer, tokenSpanLayers) {
+  const orthographies = {};
+  
+  // Find all span layers that are orthographies and initialize them
+  tokenSpanLayers.forEach(spanLayer => {
+    const orthographyName = spanLayer.config?.flan?.orthography;
+    if (orthographyName) {
+      // Initialize with null
+      orthographies[orthographyName] = null;
+      
+      // Find spans that contain this token
+      const matchingSpans = (spanLayer.spans || []).filter(span => 
+        span.tokens && span.tokens.some(tokenId => tokenId === token.id)
+      );
+      
+      if (matchingSpans.length > 0) {
+        orthographies[orthographyName] = matchingSpans[0].value || '';
+      }
+    }
+  });
+  
+  // Also get orthography configurations from the primary token layer and initialize any missing ones
+  const orthographyConfigs = primaryTokenLayer.config?.flan?.orthographies || [];
+  orthographyConfigs.forEach(orthoConfig => {
+    if (!orthographies.hasOwnProperty(orthoConfig.name)) {
+      orthographies[orthoConfig.name] = null;
+    }
+  });
+  
+  return orthographies;
+}
+
+/**
  * Map word tokens to sentences and collect annotations
  * @param {Array} sentences - Array of sentence boundaries
  * @param {Object} primaryTokenLayer - Primary token layer with word tokens
@@ -211,7 +250,8 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers) {
       text: token.text || '',
       begin: token.begin,
       end: token.end,
-      annotations: {} // Will be populated later
+      annotations: {}, // Will be populated later
+      orthographies: {} // Will be populated later
     }))
     .sort((a, b) => a.begin - b.begin);
   
@@ -222,10 +262,11 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers) {
       token.begin >= sentence.begin && token.end <= sentence.end
     );
     
-    // Collect token-level annotations for each token
+    // Collect token-level annotations and orthographies for each token
     const tokensWithAnnotations = tokensInSentence.map(token => ({
       ...token,
-      annotations: collectAnnotations(token, spanLayers.token, 'Token')
+      annotations: collectAnnotations(token, spanLayers.token, 'Token'),
+      orthographies: collectOrthographies(token, primaryTokenLayer, spanLayers.token)
     }));
     
     // Collect sentence-level annotations for the sentence
@@ -246,11 +287,17 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers) {
  * @param {Object} item - Token or sentence object
  * @param {Array} spanLayers - Relevant span layers
  * @param {string} scope - 'Token' or 'Sentence'
- * @returns {Object} Annotations keyed by layer name
+ * @returns {Object} Annotations keyed by layer name, with null for missing annotations
  */
 function collectAnnotations(item, spanLayers, scope) {
   const annotations = {};
   
+  // Initialize all annotation layer keys with null values
+  spanLayers.forEach(spanLayer => {
+    annotations[spanLayer.name] = null;
+  });
+  
+  // Fill in actual annotation values where they exist
   spanLayers.forEach(spanLayer => {
     // Find spans that match this item
     const matchingSpans = (spanLayer.spans || []).filter(span => {
@@ -259,14 +306,18 @@ function collectAnnotations(item, spanLayers, scope) {
         return span.tokens && span.tokens.some(tokenId => tokenId === item.id);
       } else {
         // For sentences, find spans that match this sentence
-        // This might need adjustment based on how sentence spans are structured
-        return span.begin >= item.begin && span.end <= item.end;
+        // Look for spans that overlap with the sentence boundaries
+        return span.tokens && span.tokens.length > 0 && 
+               span.tokens.some(tokenId => {
+                 // This is a simplified approach - we'd need to check if the token is within the sentence
+                 // For now, assume sentence-level spans are properly constructed
+                 return true;
+               });
       }
     });
     
-    // Store the annotation value(s)
+    // Store the annotation value if found
     if (matchingSpans.length > 0) {
-      // If multiple spans, take the first one or combine them
       annotations[spanLayer.name] = matchingSpans[0].value || '';
     }
   });

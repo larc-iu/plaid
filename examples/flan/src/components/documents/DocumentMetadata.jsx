@@ -20,7 +20,6 @@ export const DocumentMetadata = ({ document, parsedDocument, project, client, on
   const [editedName, setEditedName] = useState(document?.name || '');
   const [editedMetadata, setEditedMetadata] = useState({});
   const [saving, setSaving] = useState(false);
-  console.log("Document:", document)
 
   // Get metadata fields configuration from project
   const metadataFields = project?.config?.flan?.documentMetadata || [];

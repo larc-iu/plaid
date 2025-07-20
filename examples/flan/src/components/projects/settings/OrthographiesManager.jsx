@@ -61,11 +61,27 @@ export const OrthographiesManager = ({
         
         setOrthographies(orthographiesData.orthographies);
         setIsInitialized(true);
+        
+        // Important: If we're using default data and onSaveChanges exists, 
+        // save the defaults to the parent setup wizard
+        if (!initialData?.orthographies && onSaveChanges) {
+          await onSaveChanges(orthographiesData);
+        }
       } catch (error) {
         console.error('Failed to load orthographies configuration:', error);
         // Still set as initialized even on error, so we show the default orthographies
+        const defaultData = { orthographies: DEFAULT_ORTHOGRAPHIES };
         setOrthographies(DEFAULT_ORTHOGRAPHIES);
         setIsInitialized(true);
+        
+        // Save defaults even on error
+        if (onSaveChanges) {
+          try {
+            await onSaveChanges(defaultData);
+          } catch (saveError) {
+            console.error('Failed to save default orthographies:', saveError);
+          }
+        }
         
         if (onError) {
           onError(error);
