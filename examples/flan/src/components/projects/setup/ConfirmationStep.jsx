@@ -130,7 +130,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       }
 
       // Step 5: Configure orthographies on token layer
-      if (tokenLayerId && setupData.orthographies?.orthographies?.length > 0) {
+      if (tokenLayerId && setupData.orthographies?.orthographies) {
         updateProgress(40, 'Configuring orthographies...');
         const orthographiesConfig = setupData.orthographies.orthographies
           .filter(orth => !orth.isBaseline) // Skip baseline orthography
@@ -138,10 +138,8 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
             name: orth.name
           }));
         
-        // Only set config if there are non-baseline orthographies
-        if (orthographiesConfig.length > 0) {
-          await client.tokenLayers.setConfig(tokenLayerId, "flan", "orthographies", orthographiesConfig);
-        }
+        // Always save the config to indicate user choice, even if empty
+        await client.tokenLayers.setConfig(tokenLayerId, "flan", "orthographies", orthographiesConfig);
       }
 
       // Step 6: Create span layers for annotation fields

@@ -50,16 +50,18 @@ export const OrthographiesSettings = ({ projectId, client }) => {
       // Extract current orthographies configuration
       const currentConfig = tokenLayer.config?.flan?.orthographies;
       
-      if (currentConfig && Array.isArray(currentConfig)) {
-        // Convert API format back to component format
-        // Note: The baseline orthography might not be stored in config, so add it
-        const configOrthographies = currentConfig.map(orth => ({
+      // Check if orthographies config has been explicitly set (even if empty)
+      const hasOrthographiesConfig = tokenLayer.config?.flan && tokenLayer.config.flan.hasOwnProperty('orthographies');
+      
+      if (hasOrthographiesConfig) {
+        // Config has been set, respect it even if empty
+        const configOrthographies = (currentConfig || []).map(orth => ({
           name: orth.name,
           isBaseline: orth.name === 'Baseline',
           isCustom: !isPredefinedOrthography(orth.name)
         }));
         
-        // Ensure baseline is first
+        // Always ensure baseline is included (it's always present but not stored in config)
         const hasBaseline = configOrthographies.some(orth => orth.isBaseline);
         if (!hasBaseline) {
           configOrthographies.unshift({
@@ -74,7 +76,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         };
       }
       
-      // Return null to use default orthographies
+      // No orthographies config has been set yet, use defaults
       return null;
     } catch (error) {
       console.error('Failed to load orthographies configuration:', error);
