@@ -224,6 +224,16 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
         throw new Error('Token is not within any existing sentence');
       }
 
+      // Check if this is the first token in the sentence
+      if (token.begin === containingSentence.begin) {
+        notifications.show({
+          title: 'Cannot split here',
+          message: 'Cannot create a new sentence at the first token of a sentence',
+          color: 'yellow'
+        });
+        return;
+      }
+
       // Use a batch so that these two changes occur atomically
       client.beginBatch()
 
@@ -702,10 +712,10 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
                   zIndex: 10
                 }}
               >
-                <Tooltip label="Delete sentence boundary">
+                <Tooltip label="Merge sentence">
                   <ActionIcon
                     variant="filled"
-                    color="red"
+                    color="gray"
                     size="sm"
                     onClick={() => handleDeleteSentence(sentence)}
                     style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
