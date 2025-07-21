@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
@@ -36,6 +36,38 @@ export const DocumentDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('metadata');
+
+  // Function to update a specific path in the parsed document
+  const setParsedDocumentKey = useCallback((path, updater) => {
+    setParsedDocument(prevDoc => {
+      if (!prevDoc) return prevDoc;
+      
+      // We need to clone only the objects along the path we're changing
+      const newDoc = { ...prevDoc };
+      let current = newDoc;
+      let parent = null;
+      
+      // Navigate to the parent of the target
+      for (let i = 0; i < path.length - 1; i++) {
+        const key = path[i];
+        parent = current;
+        // Only clone the objects/arrays along the path we're modifying
+        current[key] = Array.isArray(current[key]) 
+          ? [...current[key]] 
+          : { ...current[key] };
+        current = current[key];
+      }
+      
+      // Update the target value
+      const lastKey = path[path.length - 1];
+      const currentValue = current[lastKey];
+      current[lastKey] = typeof updater === 'function' 
+        ? updater(currentValue) 
+        : updater;
+      
+      return newDoc;
+    });
+  }, []);
 
   // Fetch document and project data
   useEffect(() => {
@@ -250,6 +282,7 @@ export const DocumentDetail = () => {
               parsedDocument={parsedDocument}
               project={project}
               client={client}
+              setParsedDocumentKey={setParsedDocumentKey}
             />
           </Tabs.Panel>
 
