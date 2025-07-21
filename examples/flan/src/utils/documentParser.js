@@ -166,6 +166,7 @@ function processSentenceBoundaries(sentenceTokenLayer) {
       text: token.text || '',
       begin: token.begin,
       end: token.end,
+      sentenceToken: token, // Include full sentence token object
       annotations: {} // Will be populated later
     }))
     .sort((a, b) => a.begin - b.begin);
@@ -196,39 +197,24 @@ function processAlignmentTokens(alignmentTokenLayer) {
 }
 
 /**
- * Collect orthographies for a token
- * @param {Object} token - Token object
+ * Collect orthographies for a token from its metadata
+ * @param {Object} token - Token object with metadata
  * @param {Object} primaryTokenLayer - Primary token layer with orthography config
- * @param {Array} tokenSpanLayers - Token-level span layers
  * @returns {Object} Orthographies keyed by orthography name
  */
-function collectOrthographies(token, primaryTokenLayer, tokenSpanLayers) {
+function collectOrthographies(token, primaryTokenLayer) {
   const orthographies = {};
   
-  // Find all span layers that are orthographies and initialize them
-  tokenSpanLayers.forEach(spanLayer => {
-    const orthographyName = spanLayer.config?.flan?.orthography;
-    if (orthographyName) {
-      // Initialize with null
-      orthographies[orthographyName] = null;
-      
-      // Find spans that contain this token
-      const matchingSpans = (spanLayer.spans || []).filter(span => 
-        span.tokens && span.tokens.some(tokenId => tokenId === token.id)
-      );
-      
-      if (matchingSpans.length > 0) {
-        orthographies[orthographyName] = matchingSpans[0].value || '';
-      }
-    }
-  });
-  
-  // Also get orthography configurations from the primary token layer and initialize any missing ones
+  // Get orthography configurations from the primary token layer
   const orthographyConfigs = primaryTokenLayer.config?.flan?.orthographies || [];
+  
+  // Initialize all configured orthographies
   orthographyConfigs.forEach(orthoConfig => {
-    if (!orthographies.hasOwnProperty(orthoConfig.name)) {
-      orthographies[orthoConfig.name] = null;
-    }
+    const orthographyName = orthoConfig.name;
+    const metadataKey = `orthog:${orthographyName}`;
+    
+    // Get value from metadata using orthog:${name} key pattern
+    orthographies[orthographyName] = token.metadata?.[metadataKey] || '';
   });
   
   return orthographies;
@@ -253,8 +239,9 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text) {
       begin: token.begin,
       end: token.end,
       content: text.slice(token.begin, token.end), // Pre-compute token content
+      metadata: token.metadata || {}, // Include full metadata object
       annotations: {}, // Will be populated later
-      orthographies: {} // Will be populated later
+      orthographies: {} // Will be populated later from metadata
     }))
     .sort((a, b) => a.begin - b.begin);
   
@@ -269,7 +256,7 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text) {
     const tokensWithAnnotations = tokensInSentence.map(token => ({
       ...token,
       annotations: collectAnnotations(token, spanLayers.token, 'Token'),
-      orthographies: collectOrthographies(token, primaryTokenLayer, spanLayers.token)
+      orthographies: collectOrthographies(token, primaryTokenLayer)
     }));
     
     // Collect sentence-level annotations for the sentence
