@@ -159,6 +159,7 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
     if (mediaRef.current) {
       mediaRef.current.pause(); // Stop playback when seeking
       mediaRef.current.currentTime = time;
+      onTimeUpdate && onTimeUpdate(time); // Update state immediately
       onSeek && onSeek(time); // Notify parent of seek
     }
   };
@@ -168,6 +169,7 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
       const newTime = Math.max(0, Math.min(duration, mediaRef.current.currentTime + seconds));
       mediaRef.current.pause(); // Stop playback when skipping
       mediaRef.current.currentTime = newTime;
+      onTimeUpdate && onTimeUpdate(newTime); // Update state immediately
       onSeek && onSeek(newTime); // Notify parent of seek
     }
   };
@@ -357,10 +359,13 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
   const handleMouseDown = (event) => {
     if (event.button !== 0) return; // Only left mouse button
     
-    // Close popover when starting a new selection
-    setPopoverOpened(false);
-    
     const time = getTimeFromPosition(event.clientX);
+    
+    // Only close popover if clicking outside existing selection
+    if (!selection || time < selection.start || time > selection.end) {
+      setPopoverOpened(false);
+    }
+    
     setIsDragging(true);
     setDragStart(time);
     setDragEnd(time);
@@ -986,8 +991,15 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
 
   const handleTimelineClick = (time) => {
     if (mediaElement) {
+      mediaElement.pause(); // Stop playback when clicking timeline
       mediaElement.currentTime = time;
+      setCurrentTime(time); // Update state immediately
       setPlayingSelection(null);
+      
+      // If clicking inside existing selection, open popover (if not already open)
+      if (selection && time >= selection.start && time <= selection.end && !popoverOpened) {
+        setPopoverOpened(true);
+      }
     }
   };
 
@@ -1074,6 +1086,7 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
     if (mediaElement) {
       mediaElement.pause(); // Stop playback
       mediaElement.currentTime = 0;
+      setCurrentTime(0); // Update state immediately
       setPlayingSelection(null);
       autoScrollToTime(0); // Auto-scroll timeline
     }
@@ -1083,6 +1096,7 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
     if (mediaElement && duration) {
       mediaElement.pause(); // Stop playback
       mediaElement.currentTime = duration;
+      setCurrentTime(duration); // Update state immediately
       setPlayingSelection(null);
       autoScrollToTime(duration); // Auto-scroll timeline
     }
