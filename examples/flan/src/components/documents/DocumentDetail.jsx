@@ -211,17 +211,17 @@ export const DocumentDetail = () => {
           </Tabs.List>
 
           <Tabs.Panel value="metadata">
-            <DocumentMetadata
+            {activeTab === "metadata" && <DocumentMetadata
               document={document}
               parsedDocument={parsedDocument}
               project={project}
               client={client}
               onDocumentUpdated={setDocument}
-            />
+            />}
           </Tabs.Panel>
 
           <Tabs.Panel value="baseline">
-            <DocumentBaseline
+            {activeTab === "baseline" && <DocumentBaseline
               document={document}
               parsedDocument={parsedDocument}
               project={project}
@@ -245,11 +245,11 @@ export const DocumentDetail = () => {
                 };
                 fetchData();
               }}
-            />
+            />}
           </Tabs.Panel>
 
           <Tabs.Panel value="tokenize">
-            <DocumentTokenize
+            {activeTab === "tokenize" && <DocumentTokenize
               document={document}
               parsedDocument={parsedDocument}
               project={project}
@@ -273,21 +273,21 @@ export const DocumentDetail = () => {
                 };
                 fetchData();
               }}
-            />
+            />}
           </Tabs.Panel>
 
           <Tabs.Panel value="analyze">
-            <DocumentAnalyze
+            {activeTab === "analyze" && <DocumentAnalyze
               document={document}
               parsedDocument={parsedDocument}
               project={project}
               client={client}
               setParsedDocumentKey={setParsedDocumentKey}
-            />
+            />}
           </Tabs.Panel>
 
           <Tabs.Panel value="media">
-            <DocumentMedia
+            {activeTab === "media" && <DocumentMedia
               document={document}
               parsedDocument={parsedDocument}
               project={project}
@@ -311,7 +311,7 @@ export const DocumentDetail = () => {
                 };
                 fetchData();
               }}
-            />
+            />}
           </Tabs.Panel>
         </Tabs>
       </Stack>
