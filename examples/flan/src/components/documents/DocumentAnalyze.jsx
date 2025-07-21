@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Stack, 
   Title, 
@@ -24,7 +24,7 @@ import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
 let lastGlobalTabPress = 0;
 
 // EditableCell component for annotation fields
-const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, placeholder, isSaving, columnWidth, onDocumentReload }) => {
+const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, placeholder, isSaving, columnWidth, onDocumentReload }) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -145,7 +145,7 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
       disabled={isUpdating || isSaving}
     />
   );
-});
+};
 
 // Function to determine if a token should be ignored for annotation
 const isTokenIgnored = (token, ignoredTokensConfig) => {
@@ -177,7 +177,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
 
   // Helper function to reload document data
-  const reloadDocument = useCallback(async () => {
+  const reloadDocument = async () => {
     if (onDocumentReload) {
       try {
         await onDocumentReload();
@@ -185,10 +185,10 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         console.error('Failed to reload document:', error);
       }
     }
-  }, [onDocumentReload]);
+  };
   
-  // Extract available annotation fields from parsed sentences - computed once, stable
-  const sentenceFields = useMemo(() => {
+  // Extract available annotation fields from parsed sentences
+  const sentenceFields = (() => {
     if (!sentences.length) return [];
     const firstSentence = sentences[0];
     const sentenceSpanLayers = parsedDocument?.layers?.spanLayers?.sentence || [];
@@ -198,9 +198,9 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
       const layer = sentenceSpanLayers.find(layer => layer.name === name);
       return { name, id: layer?.id || name };
     });
-  }, [JSON.stringify(parsedDocument.layers.spanLayers.sentence)]);
+  })();
   
-  const tokenFields = useMemo(() => {
+  const tokenFields = (() => {
     if (!sentences.length || !sentences[0].tokens?.length) return [];
     const firstToken = sentences[0].tokens[0];
     const tokenSpanLayers = parsedDocument?.layers?.spanLayers?.token || [];
@@ -210,15 +210,13 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
       const layer = tokenSpanLayers.find(layer => layer.name === name);
       return { name, id: layer?.id || name };
     });
-  }, [JSON.stringify(parsedDocument.layers.spanLayers.token)]);
+  })();
   
   // Extract available orthographies from parsed tokens
-  const orthographyFields = useMemo(() => {
-    return parsedDocument.layers.primaryTokenLayer.config.flan.orthographies;
-  }, [JSON.stringify(parsedDocument.layers.primaryTokenLayer.config)]);
+  const orthographyFields = parsedDocument.layers.primaryTokenLayer.config.flan.orthographies;
 
   // TokenColumn component for displaying individual token annotations
-  const TokenColumn = React.memo(({ token, tokenIndex, sentenceIndex, columnWidth, getTabIndex, tokenFields, orthographyFields, isSaving, isReadOnly }) => {
+  const TokenColumn = ({ token, tokenIndex, sentenceIndex, columnWidth, getTabIndex, tokenFields, orthographyFields, isSaving, isReadOnly }) => {
     // Check if this token should be ignored
     const tokenIsIgnored = isTokenIgnored(token, ignoredTokensConfig);
 
@@ -289,18 +287,10 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         ))}
       </div>
     );
-  }, (prevProps, nextProps) => {
-    return (
-      prevProps.token === nextProps.token &&
-      prevProps.tokenIndex === nextProps.tokenIndex &&
-      prevProps.columnWidth === nextProps.columnWidth &&
-      prevProps.isSaving === nextProps.isSaving &&
-      prevProps.isReadOnly === nextProps.isReadOnly
-    );
-  });
+  };
 
   // TokenGrid component for displaying tokens with annotations
-  const TokenGrid = React.memo(({ sentence, sentenceIndex, tokenFields, orthographyFields, ignoredTokensConfig }) => {
+  const TokenGrid = ({ sentence, sentenceIndex, tokenFields, orthographyFields, ignoredTokensConfig }) => {
     if (!sentence || !sentence.tokens || sentence.tokens.length === 0) {
       return (
         <Alert icon={<IconInfoCircle size={16} />} color="yellow">
@@ -347,7 +337,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
     }, [tokens, tokenFields, orthographyFields, ignoredTokensConfig]);
 
     // Calculate tab indices for navigation - made purely local to this sentence
-    const getTabIndex = useCallback((tokenIndex, field) => {
+    const getTabIndex = (tokenIndex, field) => {
       const allFields = [...orthographyFields.map(o => o.name), ...tokenFields.map(f => f.name)];
       const fieldIndex = allFields.indexOf(field);
       const tokensInSentence = tokens.length;
@@ -357,7 +347,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
       
       // Row-wise navigation: field type determines row, token index determines position in row
       return sentenceOffset + (fieldIndex * tokensInSentence) + tokenIndex + 1;
-    }, [orthographyFields, tokenFields, sentenceIndex, tokens.length]); // Removed global sentences dependency
+    };
 
     // Detect if we're in read-only mode
     const isReadOnly = false; // TODO: Implement read-only detection
@@ -404,18 +394,10 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         </div>
       </div>
     );
-  }, (prevProps, nextProps) => {
-    return (
-      prevProps.sentence === nextProps.sentence &&
-      prevProps.sentenceIndex === nextProps.sentenceIndex &&
-      prevProps.tokenFields === nextProps.tokenFields &&
-      prevProps.orthographyFields === nextProps.orthographyFields &&
-      prevProps.ignoredTokensConfig === nextProps.ignoredTokensConfig
-    );
-  });
+  };
   
   // SentenceGrid component for sentence-level annotations
-  const SentenceGrid = React.memo(({ sentence, sentenceIndex, sentenceFields }) => {
+  const SentenceGrid = ({ sentence, sentenceIndex, sentenceFields }) => {
     if (!sentence) {
       return null;
     }
@@ -456,13 +438,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         )}
       </Stack>
     );
-  }, (prevProps, nextProps) => {
-    return (
-      prevProps.sentence === nextProps.sentence &&
-      prevProps.sentenceIndex === nextProps.sentenceIndex &&
-      prevProps.sentenceFields === nextProps.sentenceFields
-    );
-  });
+  };
   
   return (
     <div className="document-analyze-container">
