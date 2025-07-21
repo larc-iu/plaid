@@ -37,6 +37,23 @@ export const DocumentDetail = () => {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('metadata');
 
+  // Function to refresh document data
+  const refreshDocumentData = useCallback(async () => {
+    try {
+      const [documentData, projectData] = await Promise.all([
+        client.documents.get(documentId, true),
+        client.projects.get(projectId)
+      ]);
+
+      const parsed = parseDocument(documentData);
+      setParsedDocument(parsed);
+      setDocument(documentData);
+      setProject(projectData);
+    } catch (error) {
+      console.error('Error refreshing document data:', error);
+    }
+  }, [client, documentId, projectId]);
+
   // Function to update a specific path in the parsed document
   const setParsedDocumentKey = useCallback((path, updater) => {
     setParsedDocument(prevDoc => {
@@ -189,8 +206,9 @@ export const DocumentDetail = () => {
           <Text c="dimmed" size="xs" mb="lg">{document.id}</Text>
         </div>
 
-        <Tabs value={activeTab} onChange={(e) => {
-          setActiveTab(e)
+        <Tabs value={activeTab} onChange={async (newTab) => {
+          await refreshDocumentData();
+          setActiveTab(newTab);
         }}>
           <Tabs.List>
             <Tabs.Tab value="metadata" leftSection={<IconFileText size={16} />}>
@@ -226,25 +244,7 @@ export const DocumentDetail = () => {
               parsedDocument={parsedDocument}
               project={project}
               client={client}
-              onTextUpdated={() => {
-                // Refresh the document data after text update
-                const fetchData = async () => {
-                  try {
-                    const [documentData, projectData] = await Promise.all([
-                      client.documents.get(documentId, true),
-                      client.projects.get(projectId)
-                    ]);
-
-                    const parsed = parseDocument(documentData);
-                    setParsedDocument(parsed);
-                    setDocument(documentData);
-                    setProject(projectData);
-                  } catch (error) {
-                    console.error('Error refreshing document after text update:', error);
-                  }
-                };
-                fetchData();
-              }}
+              onTextUpdated={refreshDocumentData}
             />}
           </Tabs.Panel>
 
@@ -254,25 +254,7 @@ export const DocumentDetail = () => {
               parsedDocument={parsedDocument}
               project={project}
               client={client}
-              onTokenizationComplete={() => {
-                // Refresh the document data after tokenization
-                const fetchData = async () => {
-                  try {
-                    const [documentData, projectData] = await Promise.all([
-                      client.documents.get(documentId, true),
-                      client.projects.get(projectId)
-                    ]);
-
-                    const parsed = parseDocument(documentData);
-                    setParsedDocument(parsed);
-                    setDocument(documentData);
-                    setProject(projectData);
-                  } catch (error) {
-                    console.error('Error refreshing document after tokenization:', error);
-                  }
-                };
-                fetchData();
-              }}
+              onTokenizationComplete={refreshDocumentData}
             />}
           </Tabs.Panel>
 
@@ -292,25 +274,7 @@ export const DocumentDetail = () => {
               parsedDocument={parsedDocument}
               project={project}
               client={client}
-              onMediaUpdated={() => {
-                // Refresh the document data after media operations
-                const fetchData = async () => {
-                  try {
-                    const [documentData, projectData] = await Promise.all([
-                      client.documents.get(documentId, true),
-                      client.projects.get(projectId)
-                    ]);
-
-                    const parsed = parseDocument(documentData);
-                    setParsedDocument(parsed);
-                    setDocument(documentData);
-                    setProject(projectData);
-                  } catch (error) {
-                    console.error('Error refreshing document after media operation:', error);
-                  }
-                };
-                fetchData();
-              }}
+              onMediaUpdated={refreshDocumentData}
             />}
           </Tabs.Panel>
         </Tabs>
