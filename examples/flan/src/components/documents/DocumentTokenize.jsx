@@ -185,10 +185,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
   // Sync local state when parsedDocument prop changes and also use strict mode
   useEffect(() => {
     setLocalParsedDocument(parsedDocument);
-    client.enterStrictMode(parsedDocument.id);
-    console.log(client.strictModeDocumentId)
   }, [parsedDocument]);
-  console.log(client.strictModeDocumentId)
   // Fallback function to reload from server on error
   const handleOperationError = (error, operationName) => {
     console.error(`${operationName} failed:`, error);
