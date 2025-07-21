@@ -8,9 +8,10 @@
 /**
  * Main parser function that transforms raw document response
  * @param {Object} rawDocument - Raw document response from API
+ * @param {Object} client - Client object for API calls (optional, for cleanup)
  * @returns {Object} Parsed document structure
  */
-export function parseDocument(rawDocument) {
+export function parseDocument(rawDocument, client) {
   try {
     // Extract core document data
     const documentData = extractDocumentData(rawDocument);
@@ -26,7 +27,8 @@ export function parseDocument(rawDocument) {
       sentences,
       layers.primaryTokenLayer,
       layers.spanLayers,
-      documentData.text.body
+      documentData.text.body,
+      client
     );
 
     // Process alignment tokens
@@ -221,15 +223,98 @@ function collectOrthographies(token, primaryTokenLayer) {
 }
 
 /**
+ * Process vocabulary links to find single-token associations
+ * @param {Array} vocabs - Array of vocabulary objects from primary token layer
+ * @param {Function} client - Client object for API calls (optional, for cleanup)
+ * @returns {Object} Object mapping token IDs to vocab items for single-token links
+ */
+function processSingleTokenVocabLinks(vocabs, client) {
+  const singleTokenVocabLinks = {};
+  const multipleLinksForToken = {};
+  
+  if (!Array.isArray(vocabs)) {
+    return singleTokenVocabLinks;
+  }
+  
+  // First pass: collect all vocab links per token
+  vocabs.forEach(vocab => {
+    if (!vocab.vocabLinks || !Array.isArray(vocab.vocabLinks)) {
+      return;
+    }
+    
+    vocab.vocabLinks.forEach(vocabLink => {
+      // Check if this vocab link has exactly one token
+      if (vocabLink.tokens && Array.isArray(vocabLink.tokens) && vocabLink.tokens.length === 1) {
+        const tokenId = vocabLink.tokens[0];
+        
+        if (vocabLink.vocabItem) {
+          const vocabItemData = {
+            id: vocabLink.vocabItem.id,
+            form: vocabLink.vocabItem.form,
+            metadata: vocabLink.vocabItem.metadata || {},
+            vocabId: vocab.id,
+            vocabName: vocab.name,
+            linkId: vocabLink.id
+          };
+          
+          // Track multiple links for the same token
+          if (!multipleLinksForToken[tokenId]) {
+            multipleLinksForToken[tokenId] = [];
+          }
+          multipleLinksForToken[tokenId].push(vocabItemData);
+        }
+      }
+    });
+  });
+  
+  // Second pass: handle multiple vocab items per token
+  Object.entries(multipleLinksForToken).forEach(([tokenId, vocabItems]) => {
+    if (vocabItems.length > 1) {
+      console.warn(`🚨 VOCAB LINK VIOLATION: Token ${tokenId} has ${vocabItems.length} associated vocab items. Expected exactly 1.`);
+      console.warn('Associated vocab items:', vocabItems.map(v => `${v.form} (${v.vocabName})`));
+      
+      // Choose one randomly to keep
+      const randomIndex = Math.floor(Math.random() * vocabItems.length);
+      const chosenItem = vocabItems[randomIndex];
+      singleTokenVocabLinks[tokenId] = chosenItem;
+      
+      console.warn(`Randomly chose to keep: ${chosenItem.form} (${chosenItem.vocabName})`);
+      
+      // Schedule cleanup of the others if client is available
+      if (client) {
+        const toDelete = vocabItems.filter((_, index) => index !== randomIndex);
+        toDelete.forEach(item => {
+          console.warn(`Scheduling deletion of vocab link ${item.linkId} for vocab item: ${item.form}`);
+          // Note: We can't await here since this is synchronous parsing
+          // The cleanup will happen asynchronously
+          client.vocabLinks.delete(item.linkId).catch(error => {
+            console.error(`Failed to delete duplicate vocab link ${item.linkId}:`, error);
+          });
+        });
+      }
+    } else if (vocabItems.length === 1) {
+      // Single vocab item - normal case
+      singleTokenVocabLinks[tokenId] = vocabItems[0];
+    }
+  });
+  
+  return singleTokenVocabLinks;
+}
+
+/**
  * Map word tokens to sentences and collect annotations
  * @param {Array} sentences - Array of sentence boundaries
  * @param {Object} primaryTokenLayer - Primary token layer with word tokens
  * @param {Object} spanLayers - Categorized span layers
  * @param {string} text - The full document text for computing token content
+ * @param {Object} client - Client object for API calls (optional, for cleanup)
  * @returns {Array} Sentences with tokens and annotations
  */
-function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text) {
+function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, client) {
   const wordTokens = primaryTokenLayer.tokens || [];
+  
+  // Process vocabulary links from the primary token layer
+  const singleTokenVocabLinks = processSingleTokenVocabLinks(primaryTokenLayer.vocabs || [], client);
   
   // Sort word tokens by begin position
   const sortedTokens = wordTokens
@@ -241,7 +326,8 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text) {
       content: text.slice(token.begin, token.end), // Pre-compute token content
       metadata: token.metadata || {}, // Include full metadata object
       annotations: {}, // Will be populated later
-      orthographies: {} // Will be populated later from metadata
+      orthographies: {}, // Will be populated later from metadata
+      vocabItem: singleTokenVocabLinks[token.id] || null // Add vocab item if linked
     }))
     .sort((a, b) => a.begin - b.begin);
   

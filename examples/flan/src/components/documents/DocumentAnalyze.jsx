@@ -19,6 +19,7 @@ import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mj
 import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
 import './DocumentAnalyze.css';
 import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
+import { VocabLinkHoverCard } from './analyze/VocabLinkHoverCard.jsx';
 
 // Shared throttle for tab navigation across all EditableCell instances
 let lastGlobalTabPress = 0;
@@ -183,23 +184,12 @@ const isTokenIgnored = (token, ignoredTokensConfig) => {
   return false;
 };
 
-export const DocumentAnalyze = ({ document, parsedDocument, project, client, onDocumentReload, setParsedDocumentKey }) => {
+export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularies, client, onDocumentReload, setParsedDocumentKey }) => {
   const [saving, setSaving] = useState(false);
 
   const sentences = parsedDocument?.sentences || [];
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
 
-  // Helper function to reload document data
-  const reloadDocument = async () => {
-    if (onDocumentReload) {
-      try {
-        await onDocumentReload();
-      } catch (error) {
-        console.error('Failed to reload document:', error);
-      }
-    }
-  };
-  
   // Extract available annotation fields from parsed sentences
   const sentenceFields = (() => {
     if (!sentences.length) return [];
@@ -254,7 +244,14 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
       <div className="token-column">
         {/* Baseline token text (read-only) */}
         <div className="token-form">
-          {token.content}
+          <VocabLinkHoverCard
+            vocabularies={vocabularies}
+            token={token}
+            client={client}
+            onDocumentReload={onDocumentReload}
+          >
+            {token.content}
+          </VocabLinkHoverCard>
         </div>
         
         {/* Orthography rows - always show for ignored tokens */}
@@ -427,7 +424,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               </div>
               <Group>
                 <Tooltip label="Refresh data">
-                  <ActionIcon variant="light" onClick={() => window.location.reload()}>
+                  <ActionIcon variant="light" onClick={() => onDocumentReload()}>
                     <IconRefresh size={16} />
                   </ActionIcon>
                 </Tooltip>

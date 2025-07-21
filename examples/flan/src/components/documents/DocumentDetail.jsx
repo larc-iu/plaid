@@ -33,6 +33,7 @@ export const DocumentDetail = () => {
   const [document, setDocument] = useState(null);
   const [project, setProject] = useState(null);
   const [parsedDocument, setParsedDocument] = useState(null);
+  const [vocabularies, setVocabularies] = useState({});
   const [loading, setLoading] = useState(true);
   const [tabLoading, setTabLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,10 +47,44 @@ export const DocumentDetail = () => {
         client.projects.get(projectId)
       ]);
 
-      const parsed = parseDocument(documentData);
+      // Fetch vocabularies associated with this project
+      let projectVocabularies = {};
+      try {
+        // Get vocabulary IDs from project.vocabs
+        const projectVocabIds = projectData.vocabs?.map(vocab => vocab.id) || [];
+        
+        if (projectVocabIds.length > 0) {
+          // Fetch full vocabulary data including items for project-associated vocabs only
+          const vocabulariesWithItems = await Promise.all(
+            projectVocabIds.map(async (vocabId) => {
+              try {
+                const fullVocab = await client.vocabLayers.get(vocabId, true);
+                return fullVocab;
+              } catch (error) {
+                console.warn(`Error fetching full vocab data for ${vocabId}:`, error);
+                return null;
+              }
+            })
+          );
+          
+          // Convert array to object with ID as key, filtering out null values
+          projectVocabularies = vocabulariesWithItems
+            .filter(vocab => vocab !== null)
+            .reduce((acc, vocab) => {
+              acc[vocab.id] = vocab;
+              return acc;
+            }, {});
+        }
+      } catch (vocabError) {
+        console.warn('Error fetching vocabularies:', vocabError);
+        // Continue with empty vocabularies if fetch fails
+      }
+
+      const parsed = parseDocument(documentData, client);
       setParsedDocument(parsed);
       setDocument(documentData);
       setProject(projectData);
+      setVocabularies(projectVocabularies);
     } catch (error) {
       console.error('Error refreshing document data:', error);
     }
@@ -108,10 +143,50 @@ export const DocumentDetail = () => {
         ]);
 
         console.log('DocumentDetail: API calls successful:', { documentData, projectData });
+
+        // Fetch vocabularies associated with this project
+        let projectVocabularies = {};
+        try {
+          console.log('DocumentDetail: Fetching project-associated vocabularies...');
+          
+          // Get vocabulary IDs from project.vocabs
+          const projectVocabIds = projectData.vocabs?.map(vocab => vocab.id) || [];
+          console.log('DocumentDetail: Project vocab IDs:', projectVocabIds);
+          
+          if (projectVocabIds.length > 0) {
+            // Fetch full vocabulary data including items for project-associated vocabs only
+            const vocabulariesWithItems = await Promise.all(
+              projectVocabIds.map(async (vocabId) => {
+                try {
+                  const fullVocab = await client.vocabLayers.get(vocabId, true);
+                  return fullVocab;
+                } catch (error) {
+                  console.warn(`Error fetching full vocab data for ${vocabId}:`, error);
+                  return null;
+                }
+              })
+            );
+            
+            // Convert array to object with ID as key, filtering out null values
+            projectVocabularies = vocabulariesWithItems
+              .filter(vocab => vocab !== null)
+              .reduce((acc, vocab) => {
+                acc[vocab.id] = vocab;
+                return acc;
+              }, {});
+            
+            console.log('DocumentDetail: Project vocabularies loaded:', Object.keys(projectVocabularies).length, 'with items:', vocabulariesWithItems.filter(v => v).map(v => `${v.name}: ${v.items?.length || 0} items`));
+          } else {
+            console.log('DocumentDetail: No vocabularies associated with this project');
+          }
+        } catch (vocabError) {
+          console.warn('DocumentDetail: Error fetching vocabularies:', vocabError);
+          // Continue with empty vocabularies if fetch fails
+        }
         
         // Parse the document data into a render-friendly structure
         try {
-          const parsed = parseDocument(documentData);
+          const parsed = parseDocument(documentData, client);
           console.log('DocumentDetail: Document parsed successfully:', parsed);
           
           // Validate the parsed structure
@@ -127,6 +202,7 @@ export const DocumentDetail = () => {
         
         setDocument(documentData);
         setProject(projectData);
+        setVocabularies(projectVocabularies);
         setError('');
       } catch (err) {
         console.error('DocumentDetail: Error occurred:', err);
@@ -289,8 +365,10 @@ export const DocumentDetail = () => {
                 document={document}
                 parsedDocument={parsedDocument}
                 project={project}
+                vocabularies={vocabularies}
                 client={client}
                 setParsedDocumentKey={setParsedDocumentKey}
+                onDocumentReload={refreshDocumentData}
               />
             )}
           </Tabs.Panel>

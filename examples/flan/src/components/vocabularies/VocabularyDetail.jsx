@@ -17,7 +17,8 @@ import {
   Group,
   Paper,
   Modal,
-  Divider
+  Divider,
+  Switch
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
@@ -42,6 +43,7 @@ export const VocabularyDetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [customFields, setCustomFields] = useState([]);
+  const [fieldConfigs, setFieldConfigs] = useState({});
   const [newFieldName, setNewFieldName] = useState('');
   const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
@@ -74,14 +76,23 @@ export const VocabularyDetail = () => {
       
       // Extract custom fields from config
       const fields = [];
+      const configs = {};
       if (vocabularyData.config?.flan?.fields) {
-        Object.keys(vocabularyData.config.flan.fields).forEach(fieldName => {
+        Object.entries(vocabularyData.config.flan.fields).forEach(([fieldName, fieldConfig]) => {
           if (fieldName.toLowerCase() !== 'form') {
             fields.push(fieldName);
+            // Handle both old boolean format and new object format
+            if (typeof fieldConfig === 'object' && fieldConfig !== null) {
+              configs[fieldName] = fieldConfig;
+            } else {
+              // Legacy boolean format - convert to object
+              configs[fieldName] = { inline: false };
+            }
           }
         });
       }
       setCustomFields(fields);
+      setFieldConfigs(configs);
       
       // Fetch users if user can manage this vocabulary
       if (canManageVocabulary(vocabularyData)) {
@@ -122,14 +133,23 @@ export const VocabularyDetail = () => {
       
       // Extract custom fields from config
       const fields = [];
+      const configs = {};
       if (vocabularyData.config?.flan?.fields) {
-        Object.keys(vocabularyData.config.flan.fields).forEach(fieldName => {
+        Object.entries(vocabularyData.config.flan.fields).forEach(([fieldName, fieldConfig]) => {
           if (fieldName.toLowerCase() !== 'form') {
             fields.push(fieldName);
+            // Handle both old boolean format and new object format
+            if (typeof fieldConfig === 'object' && fieldConfig !== null) {
+              configs[fieldName] = fieldConfig;
+            } else {
+              // Legacy boolean format - convert to object
+              configs[fieldName] = { inline: false };
+            }
           }
         });
       }
       setCustomFields(fields);
+      setFieldConfigs(configs);
       
     } catch (err) {
       console.error('Error updating vocabulary:', err);
@@ -209,14 +229,23 @@ export const VocabularyDetail = () => {
       setIsEditing(false);
       // Reset custom fields
       const fields = [];
+      const configs = {};
       if (vocabulary.config?.flan?.fields) {
-        Object.keys(vocabulary.config.flan.fields).forEach(fieldName => {
+        Object.entries(vocabulary.config.flan.fields).forEach(([fieldName, fieldConfig]) => {
           if (fieldName.toLowerCase() !== 'form') {
             fields.push(fieldName);
+            // Handle both old boolean format and new object format
+            if (typeof fieldConfig === 'object' && fieldConfig !== null) {
+              configs[fieldName] = fieldConfig;
+            } else {
+              // Legacy boolean format - convert to object
+              configs[fieldName] = { inline: false };
+            }
           }
         });
       }
       setCustomFields(fields);
+      setFieldConfigs(configs);
     }
   };
 
@@ -258,18 +287,32 @@ export const VocabularyDetail = () => {
 
   const handleRemoveField = async (fieldName) => {
     const updatedFields = customFields.filter(field => field !== fieldName);
-    await saveCustomFields(updatedFields);
+    const updatedConfigs = { ...fieldConfigs };
+    delete updatedConfigs[fieldName];
+    await saveCustomFields(updatedFields, updatedConfigs);
   };
 
-  const saveCustomFields = async (fields) => {
+  const handleToggleInline = async (fieldName) => {
+    const updatedConfigs = {
+      ...fieldConfigs,
+      [fieldName]: {
+        ...fieldConfigs[fieldName],
+        inline: !fieldConfigs[fieldName]?.inline
+      }
+    };
+    await saveCustomFields(customFields, updatedConfigs);
+  };
+
+  const saveCustomFields = async (fields, configs = fieldConfigs) => {
     try {
       setCustomFields(fields);
+      setFieldConfigs(configs);
       
       // Save to server if not a new vocabulary
       if (!isNewVocabulary) {
         const fieldsConfig = {};
         fields.forEach(field => {
-          fieldsConfig[field] = true;
+          fieldsConfig[field] = configs[field] || { inline: false };
         });
         
         if (Object.keys(fieldsConfig).length > 0) {
@@ -458,7 +501,16 @@ export const VocabularyDetail = () => {
                         <Stack spacing="xs">
                           {customFields.map(field => (
                             <Group key={field} justify="space-between">
-                              <Text>{field}</Text>
+                              <Group>
+                                <Text>{field}</Text>
+                                <Switch
+                                  size="xs"
+                                  label="Show inline"
+                                  labelPosition="left"
+                                  checked={fieldConfigs[field]?.inline || false}
+                                  onChange={() => handleToggleInline(field)}
+                                />
+                              </Group>
                               <Button
                                 size="xs"
                                 variant="light"
@@ -533,7 +585,16 @@ export const VocabularyDetail = () => {
                 <Stack spacing="xs">
                   {customFields.map(field => (
                     <Group key={field} justify="space-between">
-                      <Text>{field}</Text>
+                      <Group>
+                        <Text>{field}</Text>
+                        <Switch
+                          size="xs"
+                          label="Show inline"
+                          labelPosition="left"
+                          checked={fieldConfigs[field]?.inline || false}
+                          onChange={() => handleToggleInline(field)}
+                        />
+                      </Group>
                       <Button
                         size="xs"
                         variant="light"
