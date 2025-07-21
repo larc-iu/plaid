@@ -7,31 +7,30 @@
   /* Let Mantine handle the Paper styling */
 }
 
-.sentence-grid {
+.token-grid-container {
   display: flex;
-  overflow-x: auto;
-  min-width: fit-content;
+  align-items: flex-start;
+}
+
+.tokens-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  flex: 1;
 }
 
 .labels-column {
   display: flex;
   flex-direction: column;
   min-width: 100px;
-  border-right: 1px solid #dee2e6;
-  background-color: #f8f9fa;
   flex: 0 0 auto;
 }
 
 .token-column {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #dee2e6;
   flex: 0 0 auto;
   min-width: 0; /* Allow column to shrink */
-}
-
-.token-column:last-child {
-  border-right: none;
 }
 
 /* Label styles */
@@ -39,11 +38,12 @@
   height: 40px;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   padding: 8px;
-  border-bottom: 1px solid #dee2e6;
   font-weight: bold;
   font-size: 12px;
   color: #374151;
+  text-align: left;
 }
 
 /* Token form (baseline) */
@@ -52,9 +52,6 @@
   display: flex;
   align-items: center;
   padding: 8px;
-  border-bottom: 1px solid #dee2e6;
-  background-color: #f8f9fa;
-  font-family: monospace;
   font-size: 14px;
   justify-content: center;
   text-align: center;
@@ -66,13 +63,11 @@
   display: flex;
   align-items: center;
   padding: 4px;
-  border-bottom: 1px solid #dee2e6;
 }
 
 /* Editable content */
 .editable-field {
-  width: 100%;
-  min-width: 60px;
+  min-width: 20px;
   padding: 4px 8px;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -93,19 +88,16 @@
 }
 
 .editable-field--empty {
-  background-color: #f8f9fa;
   color: #999;
   font-style: italic;
 }
 
 .editable-field--filled {
-  background-color: #fff;
   color: #000;
   font-style: normal;
 }
 
 .editable-field--disabled {
-  background-color: #f8f9fa;
   cursor: default;
   opacity: 0.6;
 }
