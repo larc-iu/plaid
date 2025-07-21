@@ -30,6 +30,7 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [pristineValue, setPristineValue] = useState(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -46,13 +47,23 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
     setIsEditing(false);
     const newValue = localValue.trim();
     
-    if (newValue !== (value || '')) {
+    // Compare against pristine value (what it was when focus was gained)
+    if (newValue !== (pristineValue || '')) {
       setIsUpdating(true);
       try {
         await onUpdate(newValue || null);
       } catch (error) {
         console.error('Failed to update annotation:', error);
         setLocalValue(value || '');
+        
+        // Check if it's a non-connection error that requires reload
+        const isConnectionError = error.name === 'TypeError' || error.message?.includes('fetch') || error.message?.includes('network');
+        if (!isConnectionError) {
+          // Non-connection error - reload the document data
+          reloadDocument();
+          return;
+        }
+        
         notifications.show({
           title: 'Error',
           message: 'Failed to update annotation',
@@ -64,6 +75,9 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
     } else {
       setLocalValue(value || '');
     }
+    
+    // Clear pristine value
+    setPristineValue(null);
   };
 
   const handleKeyDown = (e) => {
@@ -90,6 +104,7 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
   const handleFocus = () => {
     if (!isReadOnly && !isUpdating && !isSaving) {
       setIsEditing(true);
+      setPristineValue(value || ''); // Capture pristine value on focus
       setTimeout(() => {
         inputRef.current?.select();
       }, 0);
@@ -151,25 +166,48 @@ const isTokenIgnored = (token, text, ignoredTokensConfig) => {
   return false;
 };
 
-export const DocumentAnalyze = ({ document, parsedDocument, project, client }) => {
+export const DocumentAnalyze = ({ document, parsedDocument, project, client, onDocumentReload }) => {
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const sentences = parsedDocument?.sentences || [];
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
+
+  // Helper function to reload document data
+  const reloadDocument = useCallback(async () => {
+    if (onDocumentReload) {
+      try {
+        await onDocumentReload();
+      } catch (error) {
+        console.error('Failed to reload document:', error);
+      }
+    }
+  }, [onDocumentReload]);
   
   // Extract available annotation fields from parsed sentences
   const sentenceFields = useMemo(() => {
     if (!sentences.length) return [];
     const firstSentence = sentences[0];
-    return Object.keys(firstSentence.annotations || {}).map(name => ({ name, id: name }));
-  }, [sentences]);
+    const sentenceSpanLayers = parsedDocument?.layers?.spanLayers?.sentence || [];
+    
+    return Object.keys(firstSentence.annotations || {}).map(name => {
+      // Find the actual span layer with this name to get the UUID
+      const layer = sentenceSpanLayers.find(layer => layer.name === name);
+      return { name, id: layer?.id || name };
+    });
+  }, [sentences, parsedDocument?.layers]);
   
   const tokenFields = useMemo(() => {
     if (!sentences.length || !sentences[0].tokens?.length) return [];
     const firstToken = sentences[0].tokens[0];
-    return Object.keys(firstToken.annotations || {}).map(name => ({ name, id: name }));
-  }, [sentences]);
+    const tokenSpanLayers = parsedDocument?.layers?.spanLayers?.token || [];
+    
+    return Object.keys(firstToken.annotations || {}).map(name => {
+      // Find the actual span layer with this name to get the UUID
+      const layer = tokenSpanLayers.find(layer => layer.name === name);
+      return { name, id: layer?.id || name };
+    });
+  }, [sentences, parsedDocument?.layers]);
   
   // Extract available orthographies from parsed tokens
   const orthographyFields = useMemo(() => {
@@ -192,7 +230,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
 
 
   // API update handlers
-  const handleTokenAnnotationUpdate = useCallback(async (tokenId, layerName, value) => {
+  const handleTokenAnnotationUpdate = useCallback(async (token, layerName, value) => {
     if (saving) return; // Prevent concurrent updates
     
     setSaving(true);
@@ -202,22 +240,35 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
         throw new Error(`Token annotation layer '${layerName}' not found`);
       }
       
-      if (value && value.trim()) {
-        // Create or update span annotation
-        await client.spans.create(layer.id, [tokenId], value.trim());
-      } else {
-        // TODO: Handle deletion of spans when value is empty
-        console.log('TODO: Delete span annotation');
-      }
+      // Get existing span information from the token
+      const existingSpan = token?.spans?.[layerName];
       
-      notifications.show({
-        title: 'Success',
-        message: `${layerName} updated`,
-        color: 'green',
-        autoClose: 2000
-      });
+      if (value && value.trim()) {
+        if (existingSpan) {
+          // Update existing span
+          await client.spans.update(existingSpan.id, value.trim());
+        } else {
+          // Create new span annotation
+          await client.spans.create(layer.id, [token.id], value.trim());
+        }
+      } else {
+        if (existingSpan) {
+          // Delete existing span
+          await client.spans.delete(existingSpan.id);
+        }
+        // If no existing span and no value, nothing to do
+      }
     } catch (error) {
       console.error('Failed to update token annotation:', error);
+      
+      // Check if it's a non-connection error that requires reload
+      const isConnectionError = error.name === 'TypeError' || error.message?.includes('fetch') || error.message?.includes('network');
+      if (!isConnectionError) {
+        // Non-connection error - reload the document data
+        reloadDocument();
+        return;
+      }
+      
       notifications.show({
         title: 'Error', 
         message: `Failed to update ${layerName}: ${error.message}`,
@@ -228,9 +279,9 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
     } finally {
       setSaving(false);
     }
-  }, [client, tokenFields, saving]);
+  }, [client, tokenFields, saving, sentences]);
   
-  const handleSentenceAnnotationUpdate = useCallback(async (sentenceTokens, layerName, value) => {
+  const handleSentenceAnnotationUpdate = useCallback(async (sentence, layerName, value) => {
     if (saving) return; // Prevent concurrent updates
     
     setSaving(true);
@@ -240,21 +291,35 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
         throw new Error(`Sentence annotation layer '${layerName}' not found`);
       }
       
-      if (value && value.trim()) {
-        const tokenIds = sentenceTokens.map(token => token.id);
-        await client.spans.create(layer.id, tokenIds, value.trim());
-      } else {
-        console.log('TODO: Delete span annotation');
-      }
+      // Get existing span for this field
+      const existingSpan = sentence?.spans?.[layerName];
       
-      notifications.show({
-        title: 'Success',
-        message: `Sentence ${layerName} updated`,
-        color: 'green',
-        autoClose: 2000
-      });
+      if (value && value.trim()) {
+        if (existingSpan) {
+          // Update existing span
+          await client.spans.update(existingSpan.id, value.trim());
+        } else {
+          // Create new span annotation anchored on the sentence token
+          await client.spans.create(layer.id, [sentence.sentenceToken.id], value.trim());
+        }
+      } else {
+        if (existingSpan) {
+          // Delete existing span
+          await client.spans.delete(existingSpan.id);
+        }
+        // If no existing span and no value, nothing to do
+      }
     } catch (error) {
       console.error('Failed to update sentence annotation:', error);
+      
+      // Check if it's a non-connection error that requires reload
+      const isConnectionError = error.name === 'TypeError' || error.message?.includes('fetch') || error.message?.includes('network');
+      if (!isConnectionError) {
+        // Non-connection error - reload the document data
+        reloadDocument();
+        return;
+      }
+      
       notifications.show({
         title: 'Error',
         message: `Failed to update ${layerName}: ${error.message}`,
@@ -265,7 +330,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
     } finally {
       setSaving(false);
     }
-  }, [client, sentenceFields, saving]);
+  }, [client, sentenceFields, saving, sentences]);
 
   const handleAutoTokenize = async () => {
     setProcessing(true);
@@ -307,11 +372,12 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
         {orthographyFields.map(ortho => (
           <div key={`${token.id}-${ortho.name}`} className="annotation-cell">
             <EditableCell
+              key={`${token.id}-${ortho.name}`}
               value={token.orthographies?.[ortho.name] || ''}
               tokenId={token.id}
               field={ortho.name}
               tabIndex={getTabIndex ? getTabIndex(tokenIndex, ortho.name) : undefined}
-              onUpdate={(value) => onOrthographyUpdate(token.id, ortho.name, value)}
+              onUpdate={(value) => onOrthographyUpdate(token, ortho.name, value)}
               placeholder={``}
               isSaving={isSaving}
               isReadOnly={isReadOnly}
@@ -324,11 +390,12 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
         {!tokenIsIgnored && tokenFields.map(field => (
           <div key={`${token.id}-${field.id}`} className="annotation-cell">
             <EditableCell
+              key={`${token.id}-${field.id}`}
               value={token.annotations[field.name] || ''}
               tokenId={token.id}
               field={field.name}
               tabIndex={getTabIndex ? getTabIndex(tokenIndex, field.name) : undefined}
-              onUpdate={(value) => onAnnotationUpdate(token.id, field.name, value)}
+              onUpdate={(value) => onAnnotationUpdate(token, field.name, value)}
               placeholder={``}
               isSaving={isSaving}
               isReadOnly={isReadOnly}
@@ -422,10 +489,47 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
     }, [orthographyFields, tokenFields, sentences, sentenceIndex, tokens.length]);
 
     // Handle orthography updates
-    const handleOrthographyUpdate = useCallback(async (tokenId, orthographyName, value) => {
-      console.log('TODO: Update orthography', tokenId, orthographyName, value);
-      // TODO: Implement orthography update logic
-    }, []);
+    const handleOrthographyUpdate = useCallback(async (token, orthographyName, value) => {
+      if (saving) return; // Prevent concurrent updates
+      
+      setSaving(true);
+      try {
+        // Get current metadata and update the orthography key
+        const currentMetadata = { ...token.metadata } || {};
+        const metadataKey = `orthog:${orthographyName}`;
+        
+        if (value && value.trim()) {
+          // Set the orthography in metadata using orthog:${name} key pattern
+          currentMetadata[metadataKey] = value.trim();
+        } else {
+          // Remove the orthography from metadata
+          delete currentMetadata[metadataKey];
+        }
+        
+        // Update the entire metadata object
+        await client.tokens.setMetadata(token.id, currentMetadata);
+      } catch (error) {
+        console.error('Failed to update orthography:', error);
+        
+        // Check if it's a non-connection error that requires reload
+        const isConnectionError = error.name === 'TypeError' || error.message?.includes('fetch') || error.message?.includes('network');
+        if (!isConnectionError) {
+          // Non-connection error - reload the document data
+          reloadDocument();
+          return;
+        }
+        
+        notifications.show({
+          title: 'Error', 
+          message: `Failed to update ${orthographyName}: ${error.message}`,
+          color: 'red',
+          autoClose: 5000
+        });
+        throw error;
+      } finally {
+        setSaving(false);
+      }
+    }, [client, saving, reloadDocument, sentences]);
 
     // Detect if we're in read-only mode
     const isReadOnly = false; // TODO: Implement read-only detection
@@ -491,8 +595,9 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client }) =
               </div>
               <div style={{ flex: 1 }}>
                 <EditableCell
+                  key={`sentence-${sentenceIndex}-${field.id}`}
                   value={sentence.annotations[field.name] || ''}
-                  onUpdate={(value) => handleSentenceAnnotationUpdate(sentence.tokens, field.name, value)}
+                  onUpdate={(value) => handleSentenceAnnotationUpdate(sentence, field.name, value)}
                   placeholder=""
                   isSaving={saving}
                   columnWidth={null}
