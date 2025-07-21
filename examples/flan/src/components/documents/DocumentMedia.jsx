@@ -129,6 +129,7 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [mediaError, setMediaError] = useState(null);
+  const animationFrameRef = useRef(null);
 
   // Expose media element reference to parent
   useEffect(() => {
@@ -174,6 +175,33 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
   const [mediaType, setMediaType] = useState('video');
   const [isSupported, setIsSupported] = useState(true);
 
+  // RAF-based smooth time updates for progress bar
+  useEffect(() => {
+    const updateTime = () => {
+      if (mediaRef.current && onTimeUpdate) {
+        onTimeUpdate(mediaRef.current.currentTime);
+      }
+      
+      if (isPlaying && mediaRef.current) {
+        animationFrameRef.current = requestAnimationFrame(updateTime);
+      }
+    };
+
+    if (isPlaying && mediaRef.current) {
+      animationFrameRef.current = requestAnimationFrame(updateTime);
+    } else {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    }
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isPlaying, onTimeUpdate]);
+
   return (
     <Paper withBorder p="md">
       <Stack spacing="md">
@@ -204,7 +232,7 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
             borderRadius: '8px',
             display: mediaType === 'audio' ? 'none' : 'block'
           }}
-          onTimeUpdate={(e) => onTimeUpdate && onTimeUpdate(e.target.currentTime)}
+          onTimeUpdate={() => {}} // RAF handles time updates now
           onPlay={() => {
             setIsPlaying(true);
             onPlayingChange && onPlayingChange(true);
