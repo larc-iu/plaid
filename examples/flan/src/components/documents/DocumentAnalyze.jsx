@@ -60,7 +60,7 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
         const isConnectionError = error.name === 'TypeError' || error.message?.includes('fetch') || error.message?.includes('network');
         if (!isConnectionError) {
           // Non-connection error - reload the document data
-          reloadDocument();
+          onDocumentReload();
           return;
         }
         
@@ -210,7 +210,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
   
   // Extract available orthographies from parsed tokens
   const orthographyFields = useMemo(() => {
-    return parsedDocument.layers.primaryTokenLayer.config.flan.orthographies.map(x => x.name);
+    return parsedDocument.layers.primaryTokenLayer.config.flan.orthographies;
   }, [JSON.stringify(parsedDocument.layers.primaryTokenLayer.config)]);
   
   // API update handlers
@@ -383,6 +383,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               isSaving={isSaving}
               isReadOnly={isReadOnly}
               columnWidth={columnWidth}
+              onDocumentReload={onDocumentReload}
             />
           </div>
         ))}
@@ -400,6 +401,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               isSaving={isSaving}
               isReadOnly={isReadOnly}
               columnWidth={columnWidth}
+              onDocumentReload={onDocumentReload}
             />
           </div>
         ))}
@@ -486,7 +488,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
 
     // Detect if we're in read-only mode
     const isReadOnly = false; // TODO: Implement read-only detection
-    
+
     return (
       <div className="token-grid-container">
         {/* Fixed labels column */}
@@ -562,6 +564,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
                   placeholder=""
                   isSaving={saving}
                   columnWidth={null}
+                  onDocumentReload={onDocumentReload}
                 />
               </div>
             </Group>
