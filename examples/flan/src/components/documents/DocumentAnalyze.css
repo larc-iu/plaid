@@ -30,7 +30,8 @@
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
-  min-width: 0; /* Allow column to shrink */
+  min-width: 40px;
+  width: min-content;
 }
 
 /* Label styles */
@@ -62,12 +63,14 @@
   height: 40px;
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: 4px;
 }
 
 /* Editable content */
 .editable-field {
-  min-width: 20px;
+  display: inline-block;
+  width: 100%;
   padding: 4px 8px;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -75,10 +78,10 @@
   background-color: transparent;
   cursor: text;
   outline: none;
-  text-align: center;
   transition: border-color 0.2s, background-color 0.2s;
   font-family: inherit;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .editable-field:focus {
@@ -90,11 +93,21 @@
 .editable-field--empty {
   color: #999;
   font-style: italic;
+  display: flex;
+  border-bottom: 1px dotted rgba(153, 153, 153, 0.5);
 }
 
 .editable-field--filled {
   color: #000;
   font-style: normal;
+}
+
+/* Sentence-level editable fields */
+.editable-field--sentence {
+  width: 100%;
+  min-width: 200px;
+  text-align: left;
+  white-space: normal;
 }
 
 .editable-field--disabled {

@@ -34,6 +34,7 @@ export const DocumentDetail = () => {
   const [project, setProject] = useState(null);
   const [parsedDocument, setParsedDocument] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tabLoading, setTabLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('metadata');
 
@@ -207,8 +208,10 @@ export const DocumentDetail = () => {
         </div>
 
         <Tabs value={activeTab} onChange={async (newTab) => {
+          setTabLoading(true);
           await refreshDocumentData();
           setActiveTab(newTab);
+          setTabLoading(false);
         }}>
           <Tabs.List>
             <Tabs.Tab value="metadata" leftSection={<IconFileText size={16} />}>
@@ -229,53 +232,83 @@ export const DocumentDetail = () => {
           </Tabs.List>
 
           <Tabs.Panel value="metadata">
-            {activeTab === "metadata" && <DocumentMetadata
-              document={document}
-              parsedDocument={parsedDocument}
-              project={project}
-              client={client}
-              onDocumentUpdated={setDocument}
-            />}
+            {tabLoading ? (
+              <Center py="xl">
+                <Loader size="lg" />
+              </Center>
+            ) : (
+              activeTab === "metadata" && <DocumentMetadata
+                document={document}
+                parsedDocument={parsedDocument}
+                project={project}
+                client={client}
+                onDocumentUpdated={setDocument}
+              />
+            )}
           </Tabs.Panel>
 
           <Tabs.Panel value="baseline">
-            {activeTab === "baseline" && <DocumentBaseline
-              document={document}
-              parsedDocument={parsedDocument}
-              project={project}
-              client={client}
-              onTextUpdated={refreshDocumentData}
-            />}
+            {tabLoading ? (
+              <Center py="xl">
+                <Loader size="lg" />
+              </Center>
+            ) : (
+              activeTab === "baseline" && <DocumentBaseline
+                document={document}
+                parsedDocument={parsedDocument}
+                project={project}
+                client={client}
+                onTextUpdated={refreshDocumentData}
+              />
+            )}
           </Tabs.Panel>
 
           <Tabs.Panel value="tokenize">
-            {activeTab === "tokenize" && <DocumentTokenize
-              document={document}
-              parsedDocument={parsedDocument}
-              project={project}
-              client={client}
-              onTokenizationComplete={refreshDocumentData}
-            />}
+            {tabLoading ? (
+              <Center py="xl">
+                <Loader size="lg" />
+              </Center>
+            ) : (
+              activeTab === "tokenize" && <DocumentTokenize
+                document={document}
+                parsedDocument={parsedDocument}
+                project={project}
+                client={client}
+                onTokenizationComplete={refreshDocumentData}
+              />
+            )}
           </Tabs.Panel>
 
           <Tabs.Panel value="analyze">
-            {activeTab === "analyze" && <DocumentAnalyze
-              document={document}
-              parsedDocument={parsedDocument}
-              project={project}
-              client={client}
-              setParsedDocumentKey={setParsedDocumentKey}
-            />}
+            {tabLoading ? (
+              <Center py="xl">
+                <Loader size="lg" />
+              </Center>
+            ) : (
+              activeTab === "analyze" && <DocumentAnalyze
+                document={document}
+                parsedDocument={parsedDocument}
+                project={project}
+                client={client}
+                setParsedDocumentKey={setParsedDocumentKey}
+              />
+            )}
           </Tabs.Panel>
 
           <Tabs.Panel value="media">
-            {activeTab === "media" && <DocumentMedia
-              document={document}
-              parsedDocument={parsedDocument}
-              project={project}
-              client={client}
-              onMediaUpdated={refreshDocumentData}
-            />}
+            {tabLoading ? (
+              <Center py="xl">
+                <Loader size="lg" />
+              </Center>
+            ) : (
+              activeTab === "media" && <DocumentMedia
+                document={document}
+                parsedDocument={parsedDocument}
+                project={project}
+                client={client}
+                onMediaUpdated={refreshDocumentData}
+              />
+            )}
           </Tabs.Panel>
         </Tabs>
       </Stack>
