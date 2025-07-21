@@ -24,7 +24,7 @@ import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
 let lastGlobalTabPress = 0;
 
 // EditableCell component for annotation fields
-const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, placeholder, isSaving, columnWidth, onDocumentReload }) => {
+const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, placeholder, isSaving, onDocumentReload, isSentenceLevel }) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -39,17 +39,16 @@ const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, p
     }
   }, [value]);
 
-  const handleChange = (e) => {
-    setLocalValue(e.target.value);
+  const handleInput = (e) => {
+    setLocalValue(e.target.textContent);
   };
 
   const handleBlur = async (e) => {
     setIsEditing(false);
-    const newValue = localValue.trim();
-    const editStartValue = e.target.dataset.editStartValue || '';
-    
+    const newValue = (e.target.textContent || '').trim();
+
     // Compare against what the value was when focus was gained
-    if (newValue !== editStartValue) {
+    if (newValue !== pristineValue) {
       setIsUpdating(true);
       try {
         await onUpdate(newValue || "");
@@ -76,8 +75,6 @@ const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, p
       } finally {
         setIsUpdating(false);
       }
-    } else {
-      setLocalValue(value || '');
     }
   };
 
@@ -98,7 +95,10 @@ const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, p
     } else if (e.key === 'Escape') {
       setLocalValue(value || '');
       setIsEditing(false);
-      inputRef.current?.blur();
+      if (inputRef.current) {
+        inputRef.current.textContent = value || '';
+        inputRef.current.blur();
+      }
     }
   };
 
@@ -110,7 +110,14 @@ const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, p
         inputRef.current.dataset.editStartValue = localValue;
       }
       setTimeout(() => {
-        inputRef.current?.select();
+        // Select all text content in contentEditable
+        if (inputRef.current) {
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(inputRef.current);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
       }, 0);
     }
   };
@@ -125,24 +132,30 @@ const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, p
     isDisabled ? 'editable-field--disabled' : ''
   } ${
     isUpdating || isSaving ? 'editable-field--updating' : ''
+  } ${
+    isSentenceLevel ? 'editable-field--sentence' : ''
   }`.trim();
+
+  // Update the div content only when not editing and when external value changes
+  useEffect(() => {
+    if (inputRef.current && !isEditing) {
+      inputRef.current.textContent = displayValue;
+    }
+  }, [displayValue, isEditing]);
   
   return (
-    <input
+    <div
       ref={inputRef}
       id={tokenId && field ? `${tokenId}-${field}` : undefined}
-      type="text"
-      value={displayValue}
-      onChange={handleChange}
+      contentEditable={!isDisabled}
+      onInput={handleInput}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       onFocus={handleFocus}
       className={className}
-      style={columnWidth ? { width: `${columnWidth - 8}px` } : undefined}
       title={isDisabled ? (isUpdating ? 'Saving...' : '') : `Edit ${field || 'annotation'}`}
       tabIndex={tabIndex}
-      readOnly={isDisabled}
-      disabled={isUpdating || isSaving}
+      suppressContentEditableWarning={true}
     />
   );
 };
@@ -216,7 +229,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
   const orthographyFields = parsedDocument.layers.primaryTokenLayer.config.flan.orthographies;
 
   // TokenColumn component for displaying individual token annotations
-  const TokenColumn = ({ token, tokenIndex, sentenceIndex, columnWidth, getTabIndex, tokenFields, orthographyFields, isSaving, isReadOnly }) => {
+  const TokenColumn = ({ token, tokenIndex, getTabIndex, tokenFields, orthographyFields, isSaving, isReadOnly }) => {
     // Check if this token should be ignored
     const tokenIsIgnored = isTokenIgnored(token, ignoredTokensConfig);
 
@@ -235,9 +248,10 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         await client.spans.update(extantSpan.id, value)
       }
     };
+
     
     return (
-      <div className="token-column" style={{ width: `${columnWidth}px` }}>
+      <div className="token-column">
         {/* Baseline token text (read-only) */}
         <div className="token-form">
           {token.content}
@@ -254,7 +268,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               placeholder={``}
               isSaving={isSaving}
               isReadOnly={isReadOnly}
-              columnWidth={columnWidth}
               onDocumentReload={onDocumentReload}
               onUpdate={(value) => handleOrthoUpdate(token, ortho, value)}
             />
@@ -272,7 +285,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               placeholder={``}
               isSaving={isSaving}
               isReadOnly={isReadOnly}
-              columnWidth={columnWidth}
               onDocumentReload={onDocumentReload}
               onUpdate={(value) => handleSpanUpdate(token, field, value)}
             />
@@ -300,41 +312,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
     }
 
     const tokens = sentence.tokens;
-    
-    // Calculate column widths based on content
-    const columnWidths = useMemo(() => {
-      return tokens.map(token => {
-        const charWidth = 8;
-        const padding = 16;
-        const minWidth = 40;
-
-        // Check if token should be ignored
-        const tokenIsIgnored = isTokenIgnored(token, ignoredTokensConfig);
-
-        if (tokenIsIgnored) {
-          // Minimal width for ignored tokens
-          const tokenText = token.content;
-          const tokenWidth = (tokenText.length * charWidth) + padding;
-          return Math.max(24, tokenWidth); // Very minimal width
-        }
-
-        // Get actual token text content
-        const tokenText = token.content;
-        const tokenWidth = (tokenText.length * charWidth) + padding;
-
-        const annotationWidths = tokenFields.map(field => {
-          const value = token.annotations[field.name] || '';
-          return (value.length * charWidth) + padding;
-        });
-
-        const orthographyWidths = orthographyFields.map(ortho => {
-          const value = token.orthographies?.[ortho.name] || '';
-          return (value.length * charWidth) + padding;
-        });
-
-        return Math.max(minWidth, tokenWidth, ...annotationWidths, ...orthographyWidths);
-      });
-    }, [tokens, tokenFields, orthographyFields, ignoredTokensConfig]);
 
     // Calculate tab indices for navigation - made purely local to this sentence
     const getTabIndex = (tokenIndex, field) => {
@@ -382,8 +359,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               key={token.id}
               token={token}
               tokenIndex={tokenIndex}
-              sentenceIndex={sentenceIndex}
-              columnWidth={columnWidths[tokenIndex]}
               getTabIndex={getTabIndex}
               tokenFields={tokenFields}
               orthographyFields={orthographyFields}
@@ -424,7 +399,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
                   value={sentence.annotations[field.name]?.value || ''}
                   placeholder=""
                   isSaving={saving}
-                  columnWidth={null}
+                  isSentenceLevel={true}
                   onDocumentReload={onDocumentReload}
                   onUpdate={(value) => handleSpanUpdate(sentence, field, value)}
                 />
@@ -449,9 +424,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
             <Group justify="space-between" align="center">
               <div>
                 <Title order={3}>Annotation Grid</Title>
-                <Text size="sm" c="dimmed">
-                  Edit linguistic annotations for tokens and sentences
-                </Text>
               </div>
               <Group>
                 <Tooltip label="Refresh data">
