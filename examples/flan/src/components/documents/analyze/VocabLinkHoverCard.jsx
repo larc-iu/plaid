@@ -195,18 +195,17 @@ export const VocabLinkHoverCard = ({
           <div>
             {children}
           </div>
-          {/* Vocabulary item form display */}
-          {displayVocabItem && (
-            <div style={{
-              fontSize: '0.85em',
-              color: '#666666',
-              fontStyle: 'italic',
-              marginTop: '2px',
-              lineHeight: '1.1'
-            }}>
-              {displayVocabItem.form}
-            </div>
-          )}
+          {/* Vocabulary item form display - always render div for alignment */}
+          <div style={{
+            fontSize: '0.85em',
+            color: '#666666',
+            fontStyle: 'italic',
+            marginTop: '2px',
+            lineHeight: '1.1',
+            minHeight: '1.1em' // Ensure consistent height even when empty
+          }}>
+            {displayVocabItem?.form || '\u00A0'} {/* Non-breaking space when no item */}
+          </div>
         </div>
       </HoverCard.Target>
       
@@ -366,6 +365,8 @@ const CreateNewItemForm = ({
 };
 
 const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem }) => {
+  const [searchQuery, setSearchQuery] = React.useState('');
+  
   if (!vocab?.items || vocab.items.length === 0) {
     return (
       <Text size="sm" c="dimmed" ta="center" py="md">
@@ -384,8 +385,26 @@ const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem }) => {
     });
   }
 
+  // Filter items based on search query
+  const filteredItems = vocab.items.filter(item => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    
+    // Search in form
+    if (item.form?.toLowerCase().includes(query)) return true;
+    
+    // Search in metadata fields
+    if (item.metadata) {
+      for (const [key, value] of Object.entries(item.metadata)) {
+        if (value?.toString().toLowerCase().includes(query)) return true;
+      }
+    }
+    
+    return false;
+  });
+  
   // Sort items - existing vocab item first, then others
-  const sortedItems = [...vocab.items];
+  const sortedItems = [...filteredItems];
   if (existingVocabItem && existingVocabItem.id) {
     const existingIndex = sortedItems.findIndex(item => item.id === existingVocabItem.id);
     if (existingIndex > -1) {
@@ -412,27 +431,39 @@ const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem }) => {
   ];
 
   return (
-    <ScrollArea h={200}>
-      <DataTable
-        textSelectionDisabled
-        withTableBorder
-        withRowBorders
-        highlightOnHover
-        columns={columns}
-        records={sortedItems}
-        minHeight={150}
-        onRowClick={({ record }) => onItemClick(record)}
-        rowStyle={(record) => {
-          // Highlight existing vocab item in green
-          if (record.id === existingVocabItem?.id) {
-            return { backgroundColor: '#d3f9d8' }; // Light green
-          }
-          return {};
-        }}
+    <Stack spacing="xs">
+      <TextInput
+        placeholder="Search items..."
+        size="xs"
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.currentTarget.value)}
         styles={{
-          table: { cursor: 'pointer' }
+          input: { height: 28 }
         }}
       />
-    </ScrollArea>
+      <ScrollArea h={200}>
+        <DataTable
+          textSelectionDisabled
+          withTableBorder
+          withRowBorders
+          highlightOnHover
+          columns={columns}
+          records={sortedItems}
+          minHeight={150}
+          noRecordsText={searchQuery ? "No items match your search" : "No vocabulary items available"}
+          onRowClick={({ record }) => onItemClick(record)}
+          rowStyle={(record) => {
+            // Highlight existing vocab item in green
+            if (record.id === existingVocabItem?.id) {
+              return { backgroundColor: '#d3f9d8' }; // Light green
+            }
+            return {};
+          }}
+          styles={{
+            table: { cursor: 'pointer' }
+          }}
+        />
+      </ScrollArea>
+    </Stack>
   );
 };
