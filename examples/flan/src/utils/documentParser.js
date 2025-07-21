@@ -306,9 +306,9 @@ function collectAnnotations(item, spanLayers, scope) {
       }
     });
     
-    // Store the annotation value if found
+    // Store the entire span record if found
     if (matchingSpans.length > 0) {
-      annotations[spanLayer.name] = matchingSpans[0].value || '';
+      annotations[spanLayer.name] = matchingSpans[0];
     }
   });
   

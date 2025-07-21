@@ -16,8 +16,6 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
-import IconFileText from '@tabler/icons-react/dist/esm/icons/IconFileText.mjs';
-import IconLetterA from '@tabler/icons-react/dist/esm/icons/IconLetterA.mjs';
 import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
 import './DocumentAnalyze.css';
 import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
@@ -26,18 +24,20 @@ import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
 let lastGlobalTabPress = 0;
 
 // EditableCell component for annotation fields
-const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, placeholder, isSaving, columnWidth }) => {
+const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, placeholder, isSaving, columnWidth, onDocumentReload }) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [pristineValue, setPristineValue] = useState(null);
+  const [pristineValue, setPristineValue] = useState(value || '');
   const inputRef = useRef(null);
 
+  // Only reset local state when value changes from external source (document reload), not from our own updates
   useEffect(() => {
-    if (!isEditing) {
+    if (!isEditing && !isUpdating && value !== pristineValue) {
       setLocalValue(value || '');
+      setPristineValue(value || '');
     }
-  }, [value, isEditing]);
+  }, [value]);
 
   const handleChange = (e) => {
     setLocalValue(e.target.value);
@@ -46,12 +46,16 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
   const handleBlur = async (e) => {
     setIsEditing(false);
     const newValue = localValue.trim();
+    const editStartValue = e.target.dataset.editStartValue || '';
     
-    // Compare against pristine value (what it was when focus was gained)
-    if (newValue !== (pristineValue || '')) {
+    // Compare against what the value was when focus was gained
+    if (newValue !== editStartValue) {
       setIsUpdating(true);
       try {
-        await onUpdate(newValue || null);
+        await onUpdate(newValue || "");
+        // Update successful - update our baseline pristine value
+        setPristineValue(newValue || '');
+        setLocalValue(newValue || '')
       } catch (error) {
         console.error('Failed to update annotation:', error);
         setLocalValue(value || '');
@@ -75,9 +79,6 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
     } else {
       setLocalValue(value || '');
     }
-    
-    // Clear pristine value
-    setPristineValue(null);
   };
 
   const handleKeyDown = (e) => {
@@ -104,7 +105,10 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
   const handleFocus = () => {
     if (!isReadOnly && !isUpdating && !isSaving) {
       setIsEditing(true);
-      setPristineValue(value || ''); // Capture pristine value on focus
+      // Store the value at edit start for comparison on blur
+      if (inputRef.current) {
+        inputRef.current.dataset.editStartValue = localValue;
+      }
       setTimeout(() => {
         inputRef.current?.select();
       }, 0);
@@ -212,156 +216,27 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
   const orthographyFields = useMemo(() => {
     return parsedDocument.layers.primaryTokenLayer.config.flan.orthographies;
   }, [JSON.stringify(parsedDocument.layers.primaryTokenLayer.config)]);
-  
-  // API update handlers
-  const handleTokenAnnotationUpdate = useCallback(async (sentenceIndex, tokenIndex, token, layerName, value) => {
-    if (saving) return;
-    
-    setSaving(true);
-    try {
-      const layer = tokenFields.find(field => field.name === layerName);
-      if (!layer) {
-        throw new Error(`Token annotation layer '${layerName}' not found`);
-      }
-      
-      // Get existing span information from the token
-      const existingSpan = token?.spans?.[layerName];
-      
-      if (value && value.trim()) {
-        if (existingSpan) {
-          // Update existing span
-          await client.spans.update(existingSpan.id, value.trim());
-        } else {
-          // Create new span annotation
-          await client.spans.create(layer.id, [token.id], value.trim());
-        }
-      } else {
-        if (existingSpan) {
-          // Delete existing span
-          await client.spans.delete(existingSpan.id);
-        }
-      }
-      
-      // Update the local state using setParsedDocumentKey
-      if (setParsedDocumentKey) {
-        const trimmedValue = value ? value.trim() : '';
-        setParsedDocumentKey(
-          ["sentences", sentenceIndex, "tokens", tokenIndex, "annotations", layerName],
-          trimmedValue
-        );
-      }
-    } catch (error) {
-      console.error('Failed to update token annotation:', error);
-      notifications.show({
-        title: 'Error', 
-        message: `Failed to update ${layerName}: ${error.message}`,
-        color: 'red',
-        autoClose: 5000
-      });
-      throw error;
-    } finally {
-      setSaving(false);
-    }
-  }, [tokenFields]);
-  
-  const handleSentenceAnnotationUpdate = useCallback(async (sentenceIndex, sentence, layerName, value) => {
-    if (saving) return; // Prevent concurrent updates
-    
-    setSaving(true);
-    try {
-      const layer = sentenceFields.find(field => field.name === layerName);
-      if (!layer) {
-        throw new Error(`Sentence annotation layer '${layerName}' not found`);
-      }
-      
-      // Get existing span for this field
-      const existingSpan = sentence?.spans?.[layerName];
-      
-      if (value && value.trim()) {
-        if (existingSpan) {
-          // Update existing span
-          await client.spans.update(existingSpan.id, value.trim());
-        } else {
-          // Create new span annotation anchored on the sentence token
-          await client.spans.create(layer.id, [sentence.sentenceToken.id], value.trim());
-        }
-      } else {
-        if (existingSpan) {
-          // Delete existing span
-          await client.spans.delete(existingSpan.id);
-        }
-        // If no existing span and no value, nothing to do
-      }
-      
-      // Update the local state using setParsedDocumentKey
-      if (setParsedDocumentKey) {
-        const trimmedValue = value ? value.trim() : '';
-        setParsedDocumentKey(
-          ["sentences", sentenceIndex, "annotations", layerName],
-          trimmedValue
-        );
-      }
-    } catch (error) {
-      console.error('Failed to update sentence annotation:', error);
-      notifications.show({
-        title: 'Error',
-        message: `Failed to update ${layerName}: ${error.message}`,
-        color: 'red',
-        autoClose: 5000
-      });
-      throw error;
-    } finally {
-      setSaving(false);
-    }
-  }, [sentenceFields]);
-
-  // Handle orthography updates
-  const handleOrthographyUpdate = useCallback(async (tokenIndex, token, orthographyName, value) => {
-    if (saving) return; // Prevent concurrent updates
-
-    setSaving(true);
-    try {
-      // Get current metadata and update the orthography key
-      const currentMetadata = { ...token.metadata } || {};
-      const metadataKey = `orthog:${orthographyName}`;
-
-      if (value && value.trim()) {
-        // Set the orthography in metadata using orthog:${name} key pattern
-        currentMetadata[metadataKey] = value.trim();
-      } else {
-        // Remove the orthography from metadata
-        delete currentMetadata[metadataKey];
-      }
-
-      // Update the entire metadata object
-      await client.tokens.setMetadata(token.id, currentMetadata);
-
-      // Update the local state using setParsedDocumentKey
-      if (setParsedDocumentKey) {
-        const trimmedValue = value ? value.trim() : '';
-        setParsedDocumentKey(
-            ["sentences", sentenceIndex, "tokens", tokenIndex, "orthographies", orthographyName],
-            trimmedValue
-        );
-      }
-    } catch (error) {
-      console.error('Failed to update orthography:', error);
-      notifications.show({
-        title: 'Error',
-        message: `Failed to update ${orthographyName}: ${error.message}`,
-        color: 'red',
-        autoClose: 5000
-      });
-      throw error;
-    } finally {
-      setSaving(false);
-    }
-  }, [orthographyFields]);
 
   // TokenColumn component for displaying individual token annotations
-  const TokenColumn = React.memo(({ token, tokenIndex, sentenceIndex, columnWidth, getTabIndex, tokenFields, orthographyFields, onAnnotationUpdate, onOrthographyUpdate, isSaving, isReadOnly }) => {
+  const TokenColumn = React.memo(({ token, tokenIndex, sentenceIndex, columnWidth, getTabIndex, tokenFields, orthographyFields, isSaving, isReadOnly }) => {
     // Check if this token should be ignored
     const tokenIsIgnored = isTokenIgnored(token, ignoredTokensConfig);
+
+    const handleOrthoUpdate = async (token, ortho, value) => {
+      const k = `orthog:${ortho.name}`
+      const metadata = token.metadata
+      metadata[k] = value
+      await client.tokens.setMetadata(token.id, metadata)
+    };
+
+    const handleSpanUpdate = async (token, field, value) => {
+      const extantSpan = token.annotations[field.name];
+      if (!extantSpan) {
+        await client.spans.create(field.id, [token.id], value)
+      } else {
+        await client.spans.update(extantSpan.id, value)
+      }
+    };
     
     return (
       <div className="token-column" style={{ width: `${columnWidth}px` }}>
@@ -378,12 +253,12 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               tokenId={token.id}
               field={ortho.name}
               tabIndex={getTabIndex ? getTabIndex(tokenIndex, ortho.name) : undefined}
-              onUpdate={(value) => onOrthographyUpdate(tokenIndex, token, ortho.name, value)}
               placeholder={``}
               isSaving={isSaving}
               isReadOnly={isReadOnly}
               columnWidth={columnWidth}
               onDocumentReload={onDocumentReload}
+              onUpdate={(value) => handleOrthoUpdate(token, ortho, value)}
             />
           </div>
         ))}
@@ -392,16 +267,16 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         {!tokenIsIgnored && tokenFields.map(field => (
           <div key={`${token.id}-${field.id}`} className="annotation-cell">
             <EditableCell
-              value={token.annotations[field.name] || ''}
+              value={token.annotations[field.name]?.value || ''}
               tokenId={token.id}
               field={field.name}
               tabIndex={getTabIndex ? getTabIndex(tokenIndex, field.name) : undefined}
-              onUpdate={(value) => onAnnotationUpdate(sentenceIndex, tokenIndex, token, field.name, value)}
               placeholder={``}
               isSaving={isSaving}
               isReadOnly={isReadOnly}
               columnWidth={columnWidth}
               onDocumentReload={onDocumentReload}
+              onUpdate={(value) => handleSpanUpdate(token, field, value)}
             />
           </div>
         ))}
@@ -420,9 +295,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
       prevProps.tokenIndex === nextProps.tokenIndex &&
       prevProps.columnWidth === nextProps.columnWidth &&
       prevProps.isSaving === nextProps.isSaving &&
-      prevProps.isReadOnly === nextProps.isReadOnly &&
-      prevProps.onAnnotationUpdate === nextProps.onAnnotationUpdate &&
-      prevProps.onOrthographyUpdate === nextProps.onOrthographyUpdate
+      prevProps.isReadOnly === nextProps.isReadOnly
     );
   });
 
@@ -435,7 +308,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         </Alert>
       );
     }
-    
+
     const tokens = sentence.tokens;
     
     // Calculate column widths based on content
@@ -444,31 +317,31 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         const charWidth = 8;
         const padding = 16;
         const minWidth = 40;
-        
+
         // Check if token should be ignored
         const tokenIsIgnored = isTokenIgnored(token, ignoredTokensConfig);
-        
+
         if (tokenIsIgnored) {
           // Minimal width for ignored tokens
           const tokenText = token.content;
           const tokenWidth = (tokenText.length * charWidth) + padding;
           return Math.max(24, tokenWidth); // Very minimal width
         }
-        
+
         // Get actual token text content
         const tokenText = token.content;
         const tokenWidth = (tokenText.length * charWidth) + padding;
-        
+
         const annotationWidths = tokenFields.map(field => {
           const value = token.annotations[field.name] || '';
           return (value.length * charWidth) + padding;
         });
-        
+
         const orthographyWidths = orthographyFields.map(ortho => {
           const value = token.orthographies?.[ortho.name] || '';
           return (value.length * charWidth) + padding;
         });
-        
+
         return Math.max(minWidth, tokenWidth, ...annotationWidths, ...orthographyWidths);
       });
     }, [tokens, tokenFields, orthographyFields, ignoredTokensConfig]);
@@ -524,8 +397,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               getTabIndex={getTabIndex}
               tokenFields={tokenFields}
               orthographyFields={orthographyFields}
-              onAnnotationUpdate={handleTokenAnnotationUpdate}
-              onOrthographyUpdate={handleOrthographyUpdate}
               isSaving={saving}
               isReadOnly={isReadOnly}
             />
@@ -548,6 +419,15 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
     if (!sentence) {
       return null;
     }
+
+    const handleSpanUpdate = async (sentence, field, value) => {
+      const extantSpan = sentence.annotations[field.name];
+      if (!extantSpan) {
+        await client.spans.create(field.id, [sentence.id], value)
+      } else {
+        await client.spans.update(extantSpan.id, value)
+      }
+    };
     
     return (
       <Stack spacing="xs" style={{ marginTop: '8px' }}>
@@ -559,12 +439,12 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               </div>
               <div style={{ flex: 1 }}>
                 <EditableCell
-                  value={sentence.annotations[field.name] || ''}
-                  onUpdate={(value) => handleSentenceAnnotationUpdate(sentenceIndex, sentence, field.name, value)}
+                  value={sentence.annotations[field.name]?.value || ''}
                   placeholder=""
                   isSaving={saving}
                   columnWidth={null}
                   onDocumentReload={onDocumentReload}
+                  onUpdate={(value) => handleSpanUpdate(sentence, field, value)}
                 />
               </div>
             </Group>
