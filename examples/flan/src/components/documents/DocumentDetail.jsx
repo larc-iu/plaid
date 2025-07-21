@@ -36,7 +36,6 @@ export const DocumentDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('metadata');
-  console.log(client.strictModeDocumentId)
 
   // Fetch document and project data
   useEffect(() => {

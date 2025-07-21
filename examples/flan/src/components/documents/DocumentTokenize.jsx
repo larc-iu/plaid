@@ -59,7 +59,7 @@ const TokenComponent = ({
           margin: '1px'
         }}
       >
-        {Array.from(text.slice(span.begin, span.end)).map((char, index) => (
+        {Array.from(span.content || text.slice(span.begin, span.end)).map((char, index) => (
           <Box key={`split-char-${span.begin}-${index}`} style={{ display: 'flex', alignItems: 'center' }}>
             <Text 
               style={{ 
@@ -75,7 +75,7 @@ const TokenComponent = ({
             >
               {char === ' ' ? '·' : char}
             </Text>
-            {index < Array.from(text.slice(span.begin, span.end)).length - 1 && (
+            {index < Array.from(span.content || text.slice(span.begin, span.end)).length - 1 && (
               <Box
                 style={{
                   width: '20px',
@@ -140,7 +140,7 @@ const TokenComponent = ({
         userSelect: 'none'
       }}
     >
-      {span.text}
+      {span.content || span.text}
     </Box>
   );
 };
@@ -150,9 +150,6 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
   const [tokenizationProgress, setTokenizationProgress] = useState(0);
   const [currentOperation, setCurrentOperation] = useState('');
   const [algorithm, setAlgorithm] = useState('rule-based-punctuation');
-  
-  // Local state for optimistic updates
-  const [localParsedDocument, setLocalParsedDocument] = useState(parsedDocument);
   
   // Drag selection state (for untokenized text)
   const [isDragging, setIsDragging] = useState(false);
@@ -173,19 +170,14 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
   const primaryTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.flan?.primary);
   const sentenceTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.flan?.sentence);
   
-  const text = localParsedDocument?.document?.text?.body || '';
-  const existingTokens = localParsedDocument?.sentences?.flatMap(s => s.tokens) || [];
-  const existingSentenceTokens = localParsedDocument?.sentences || [];
+  const text = parsedDocument?.document?.text?.body || '';
+  const existingTokens = parsedDocument?.sentences?.flatMap(s => s.tokens) || [];
+  const existingSentenceTokens = parsedDocument?.sentences || [];
   
   // Get text ID from document structure
   const textId = document?.textLayers?.find(layer => layer.config?.flan?.primary)?.text?.id;
   
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
-
-  // Sync local state when parsedDocument prop changes and also use strict mode
-  useEffect(() => {
-    setLocalParsedDocument(parsedDocument);
-  }, [parsedDocument]);
   // Fallback function to reload from server on error
   const handleOperationError = (error, operationName) => {
     console.error(`${operationName} failed:`, error);
@@ -240,41 +232,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
         return;
       }
 
-      // Generate a temporary ID for the new sentence
-      const tempNewSentenceId = `temp-sentence-${Date.now()}`;
-
-      // Optimistically update local state
-      setLocalParsedDocument(prev => {
-        const newSentences = prev.sentences.map(sentence => {
-          if (sentence.id === containingSentence.id) {
-            // Update existing sentence to end at token position
-            return {
-              ...sentence,
-              end: token.begin,
-              tokens: sentence.tokens.filter(t => t.end <= token.begin)
-            };
-          }
-          return sentence;
-        });
-
-        // Add the new sentence
-        const newSentence = {
-          id: tempNewSentenceId,
-          begin: token.begin,
-          end: containingSentence.end,
-          tokens: containingSentence.tokens.filter(t => t.begin >= token.begin)
-        };
-
-        newSentences.push(newSentence);
-        newSentences.sort((a, b) => a.begin - b.begin);
-
-        return {
-          ...prev,
-          sentences: newSentences
-        };
-      });
-
-      // Perform the actual API call
+      // Perform the API call
       client.beginBatch();
 
       // Update the existing sentence to end at the token's position
@@ -292,17 +250,11 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
         containingSentence.end
       );
       
-      const results = await client.submitBatch();
-
-      // Update the local state with the real ID
-      setLocalParsedDocument(prev => ({
-        ...prev,
-        sentences: prev.sentences.map(sentence => 
-          sentence.id === tempNewSentenceId 
-            ? { ...sentence, id: results[1].body.id }
-            : sentence
-        )
-      }));
+      await client.submitBatch();
+      
+      if (onTokenizationComplete) {
+        onTokenizationComplete();
+      }
       
     } catch (error) {
       handleOperationError(error, 'Create sentence boundary');
@@ -327,32 +279,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
       
       const previousSentence = sortedSentences[sentenceIndex - 1];
       
-      // Optimistically update local state
-      setLocalParsedDocument(prev => {
-        const newSentences = prev.sentences
-          .filter(s => s.id !== sentence.id)
-          .map(s => {
-            if (s.id === previousSentence.id) {
-              // Expand previous sentence to cover deleted sentence's range
-              return {
-                ...s,
-                end: sentence.end,
-                tokens: [
-                  ...s.tokens,
-                  ...sentence.tokens
-                ].sort((a, b) => a.begin - b.begin)
-              };
-            }
-            return s;
-          });
-
-        return {
-          ...prev,
-          sentences: newSentences
-        };
-      });
-
-      // Perform the actual API call
+      // Perform the API call
       client.beginBatch();
       
       // Expand the previous sentence to cover the deleted sentence's range
@@ -367,6 +294,10 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
       
       await client.submitBatch();
       
+      if (onTokenizationComplete) {
+        onTokenizationComplete();
+      }
+      
     } catch (error) {
       handleOperationError(error, 'Delete sentence boundary');
     }
@@ -377,17 +308,12 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
     event.preventDefault();
     
     try {
-      // Optimistically update local state
-      setLocalParsedDocument(prev => ({
-        ...prev,
-        sentences: prev.sentences.map(sentence => ({
-          ...sentence,
-          tokens: sentence.tokens.filter(t => t.id !== token.id)
-        }))
-      }));
-
-      // Perform the actual API call
+      // Perform the API call
       await client.tokens.delete(token.id);
+      
+      if (onTokenizationComplete) {
+        onTokenizationComplete();
+      }
       
     } catch (error) {
       handleOperationError(error, 'Delete token');
@@ -458,21 +384,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
       const lastToken = tokensToMerge[tokensToMerge.length - 1];
       const tokensToDelete = tokensToMerge.slice(1);
       
-      // Optimistically update local state
-      setLocalParsedDocument(prev => ({
-        ...prev,
-        sentences: prev.sentences.map(sentence => ({
-          ...sentence,
-          tokens: sentence.tokens
-            .filter(t => !tokensToDelete.some(td => td.id === t.id))
-            .map(t => t.id === firstToken.id 
-              ? { ...t, end: lastToken.end }
-              : t
-            )
-        }))
-      }));
-      
-      // Perform the actual API call
+      // Perform the API call
       client.beginBatch();
       
       // Expand the first token to cover the entire range
@@ -488,6 +400,10 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
       }
       
       await client.submitBatch();
+      
+      if (onTokenizationComplete) {
+        onTokenizationComplete();
+      }
       
     } catch (error) {
       handleOperationError(error, 'Merge tokens');
@@ -528,34 +444,10 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
   // Handle token splitting at character position
   const handleTokenSplit = async (token, splitPosition) => {
     try {
-      const tokenText = text.slice(token.begin, token.end);
+      const tokenText = token.content || text.slice(token.begin, token.end);
       const actualSplitPosition = token.begin + splitPosition;
-      const tempNewTokenId = `temp-token-${Date.now()}`;
       
-      // Optimistically update local state
-      setLocalParsedDocument(prev => ({
-        ...prev,
-        sentences: prev.sentences.map(sentence => ({
-          ...sentence,
-          tokens: sentence.tokens.flatMap(t => {
-            if (t.id === token.id) {
-              // Split this token into two
-              return [
-                { ...t, end: actualSplitPosition },
-                {
-                  id: tempNewTokenId,
-                  begin: actualSplitPosition,
-                  end: token.end,
-                  text: text.slice(actualSplitPosition, token.end)
-                }
-              ];
-            }
-            return [t];
-          })
-        }))
-      }));
-      
-      // Perform the actual API call
+      // Perform the API call
       client.beginBatch();
       
       // Update the original token to end at the split position
@@ -573,24 +465,15 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
         token.end
       );
       
-     const results = await client.submitBatch();
+      await client.submitBatch();
 
       // Clear splitting state after successful API call
       setSplittingToken(null);
       setHoveredSplitPosition(null);
-
-      // Update the local state with the real ID
-      setLocalParsedDocument(prev => ({
-        ...prev,
-        sentences: prev.sentences.map(sentence => ({
-          ...sentence,
-          tokens: sentence.tokens.map(t => 
-            t.id === tempNewTokenId 
-              ? { ...t, id: results[1].body.id }
-              : t
-          )
-        }))
-      }));
+      
+      if (onTokenizationComplete) {
+        onTokenizationComplete();
+      }
       
     } catch (error) {
       handleOperationError(error, 'Split token');
@@ -653,51 +536,17 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
         throw new Error('Selection too small');
       }
       
-      const tempNewTokenId = `temp-token-${Date.now()}`;
-      
-      // Optimistically update local state
-      setLocalParsedDocument(prev => ({
-        ...prev,
-        sentences: prev.sentences.map(sentence => {
-          // Check if this token should be added to this sentence
-          if (start >= sentence.begin && end <= sentence.end) {
-            return {
-              ...sentence,
-              tokens: [
-                ...sentence.tokens,
-                {
-                  id: tempNewTokenId,
-                  begin: start,
-                  end: end,
-                  text: text.slice(start, end)
-                }
-              ].sort((a, b) => a.begin - b.begin)
-            };
-          }
-          return sentence;
-        })
-      }));
-      
       // Create a new token for the selected range
-      const newTokenResult = await client.tokens.create(
+      await client.tokens.create(
         primaryTokenLayer.id,
         textId,
         start,
         end
       );
-
-      // Update the local state with the real ID
-      setLocalParsedDocument(prev => ({
-        ...prev,
-        sentences: prev.sentences.map(sentence => ({
-          ...sentence,
-          tokens: sentence.tokens.map(t => 
-            t.id === tempNewTokenId 
-              ? { ...t, id: newTokenResult.id }
-              : t
-          )
-        }))
-      }));
+      
+      if (onTokenizationComplete) {
+        onTokenizationComplete();
+      }
       
     } catch (error) {
       handleOperationError(error, 'Create token from selection');
@@ -713,7 +562,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
   const renderTextWithTokens = useMemo(() => {
     if (!text) return null;
 
-    const sentences = localParsedDocument?.sentences || [];
+    const sentences = parsedDocument?.sentences || [];
     
     if (sentences.length === 0) {
       // No sentences yet, render as before with all tokens
@@ -734,7 +583,8 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
 
         // Add the token (extract text content using begin/end indices)
         spans.push({
-          text: text.slice(token.begin, token.end),
+          ...token,
+          content: token.content || text.slice(token.begin, token.end),
           isToken: true,
           begin: token.begin,
           end: token.end
@@ -888,7 +738,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
                   // Add the token
                   spans.push({
                     ...token,
-                    text: text.slice(token.begin, token.end),
+                    content: token.content || text.slice(token.begin, token.end),
                     isToken: true
                   });
 
@@ -945,7 +795,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
         ))}
       </Box>
     );
-  }, [text, localParsedDocument?.sentences, existingTokens, isDragging, dragStart, dragEnd, hoveredSplitPosition, selectedTokens, isTokenDragging, splittingToken]);
+  }, [text, parsedDocument?.sentences, existingTokens, isDragging, dragStart, dragEnd, hoveredSplitPosition, selectedTokens, isTokenDragging, splittingToken]);
 
   const handleTokenize = async () => {
     setIsTokenizing(true);
