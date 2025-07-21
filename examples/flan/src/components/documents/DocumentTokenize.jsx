@@ -176,11 +176,6 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
   const [currentOperation, setCurrentOperation] = useState('');
   const [algorithm, setAlgorithm] = useState('rule-based-punctuation');
   
-  // Drag selection state (for untokenized text)
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState(null);
-  const [dragEnd, setDragEnd] = useState(null);
-  
   // Token drag selection state
   const [isTokenDragging, setIsTokenDragging] = useState(false);
   const [selectedTokens, setSelectedTokens] = useState(new Set());
@@ -528,66 +523,65 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
     }
   };
 
-  // Handle drag selection on untokenized text
-  const handleDragStart = (event, span) => {
-    if (span.isToken) return; // Only drag on untokenized text
+  // Handle text selection on untokenized text
+  const handleTextSelection = async (event) => {
+    const selection = window.getSelection();
     
-    // Calculate character-level position within the span
-    const spanElement = event.target;
-    const rect = spanElement.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const spanWidth = rect.width;
-    const spanText = span.text;
-    
-    // Estimate character position based on click position
-    const charPosition = Math.round((clickX / spanWidth) * spanText.length);
-    const actualPosition = span.begin + Math.max(0, Math.min(charPosition, spanText.length));
-    
-    setIsDragging(true);
-    setDragStart(actualPosition);
-    setDragEnd(actualPosition);
-  };
-
-  const handleDragMove = (event, span) => {
-    if (!isDragging || span.isToken) return;
-    
-    // Calculate character-level position within the span for drag end
-    const spanElement = event.target;
-    const rect = spanElement.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const spanWidth = rect.width;
-    const spanText = span.text;
-    
-    // Estimate character position based on mouse position
-    const charPosition = Math.round((clickX / spanWidth) * spanText.length);
-    const actualPosition = span.begin + Math.max(0, Math.min(charPosition, spanText.length));
-    
-    setDragEnd(actualPosition);
-  };
-
-  const handleDragEnd = async (event, span) => {
-    if (!isDragging || !dragStart || dragEnd === null) {
-      setIsDragging(false);
-      setDragStart(null);
-      setDragEnd(null);
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
       return;
     }
     
+    const range = selection.getRangeAt(0);
+    const selectedText = selection.toString();
+    
+    if (!selectedText || selectedText.trim().length === 0) {
+      return;
+    }
+    
+    // Find the parent span with data attributes by traversing up the DOM
+    let spanElement = event.target;
+    while (spanElement && !spanElement.hasAttribute('data-begin')) {
+      spanElement = spanElement.parentElement;
+    }
+    
+    if (!spanElement) {
+      return;
+    }
+    
+    // Get the span's data attributes that should contain begin/end positions
+    const spanBegin = parseInt(spanElement.getAttribute('data-begin'));
+    const spanEnd = parseInt(spanElement.getAttribute('data-end'));
+    
+    if (isNaN(spanBegin) || isNaN(spanEnd)) {
+      return;
+    }
+    
+    // Get the selected text and its position within the span
+    const spanText = spanElement.textContent;
+    const selectionStart = spanText.indexOf(selectedText);
+    
+    if (selectionStart === -1) {
+      return;
+    }
+    
+    const actualStart = spanBegin + selectionStart;
+    const actualEnd = actualStart + selectedText.length;
+    
     try {
-      const start = Math.min(dragStart, dragEnd);
-      const end = Math.max(dragStart, dragEnd);
-      
-      if (end - start < 1) {
-        throw new Error('Selection too small');
+      if (actualEnd - actualStart < 1) {
+        return;
       }
       
       // Create a new token for the selected range
       await client.tokens.create(
         primaryTokenLayer.id,
         textId,
-        start,
-        end
+        actualStart,
+        actualEnd
       );
+      
+      // Clear the selection
+      selection.removeAllRanges();
       
       if (onTokenizationComplete) {
         onTokenizationComplete();
@@ -595,10 +589,6 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
       
     } catch (error) {
       handleOperationError(error, 'Create token from selection');
-    } finally {
-      setIsDragging(false);
-      setDragStart(null);
-      setDragEnd(null);
     }
   };
 
@@ -677,14 +667,14 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
             ) : (
               <span 
                 key={`text-${span.begin}-${span.end}`}
+                data-begin={span.begin}
+                data-end={span.end}
                 style={{
                   cursor: 'text',
                   userSelect: 'text'
                 }}
-                onMouseDown={(e) => handleDragStart(e, span)}
-                onMouseMove={(e) => handleDragMove(e, span)}
-                onMouseUp={(e) => handleDragEnd(e, span)}
-                title="Drag to select and create token"
+                onMouseUp={handleTextSelection}
+                title="Select text to create token"
               >
                 <TextWithVisibleWhitespace text={span.text} />
               </span>
@@ -821,14 +811,14 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
                   ) : (
                     <span
                       key={`text-${span.begin}-${span.end}`}
+                      data-begin={span.begin}
+                      data-end={span.end}
                       style={{
                         cursor: 'text',
                         userSelect: 'text'
                       }}
-                      onMouseDown={(e) => handleDragStart(e, span)}
-                      onMouseMove={(e) => handleDragMove(e, span)}
-                      onMouseUp={(e) => handleDragEnd(e, span)}
-                      title="Drag to select and create token"
+                      onMouseUp={handleTextSelection}
+                      title="Select text to create token"
                     >
                       <TextWithVisibleWhitespace text={span.text} />
                     </span>
@@ -840,7 +830,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
         ))}
       </Box>
     );
-  }, [text, parsedDocument?.sentences, existingTokens, isDragging, dragStart, dragEnd, hoveredSplitPosition, selectedTokens, isTokenDragging, splittingToken]);
+  }, [text, parsedDocument?.sentences, existingTokens, hoveredSplitPosition, selectedTokens, isTokenDragging, splittingToken]);
 
   const handleTokenize = async () => {
     setIsTokenizing(true);
