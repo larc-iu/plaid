@@ -18,7 +18,7 @@
   ([db-like id]
    (get db-like id false))
   ([db-like id include-items?]
-   (when-let [record (pxc/entity (pxc/->db db-like) id)]
+   (when-let [record (pxc/find-entity (pxc/->db db-like) {:vocab/id id})]
      (-> record
          (dissoc :xt/id)
          (cond-> include-items?
