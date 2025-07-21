@@ -447,23 +447,43 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
       const tokenText = token.content || text.slice(token.begin, token.end);
       const actualSplitPosition = token.begin + splitPosition;
       
+      // Get the text for both parts
+      const leftText = text.slice(token.begin, actualSplitPosition);
+      const rightText = text.slice(actualSplitPosition, token.end);
+      
+      // Trim whitespace from both parts
+      const leftTrimmed = leftText.trimEnd();
+      const rightTrimmed = rightText.trimStart();
+      
+      // Calculate new boundaries after trimming
+      const leftEnd = token.begin + leftTrimmed.length;
+      const rightStart = token.end - rightTrimmed.length;
+      
       // Perform the API call
       client.beginBatch();
       
-      // Update the original token to end at the split position
-      client.tokens.update(
-        token.id,
-        token.begin,
-        actualSplitPosition
-      );
+      // Only update/create tokens if they have content after trimming
+      if (leftTrimmed.length > 0) {
+        // Update the original token to end at the trimmed position
+        client.tokens.update(
+          token.id,
+          token.begin,
+          leftEnd
+        );
+      } else {
+        // If left part is empty after trimming, delete the original token
+        client.tokens.delete(token.id);
+      }
       
-      // Create a new token for the remaining part
-      await client.tokens.create(
-        primaryTokenLayer.id,
-        textId,
-        actualSplitPosition,
-        token.end
-      );
+      if (rightTrimmed.length > 0) {
+        // Create a new token for the remaining part (trimmed)
+        client.tokens.create(
+          primaryTokenLayer.id,
+          textId,
+          rightStart,
+          token.end
+        );
+      }
       
       await client.submitBatch();
 
