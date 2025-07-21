@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
-import { 
-  Stack, 
-  Text, 
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Stack,
+  Text,
   Paper,
   Button,
   Group,
@@ -11,7 +11,7 @@ import {
   Tooltip,
   Slider,
   FileButton,
-  Center
+  Center, Title
 } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
 import { TimeAlignmentPopover } from './media/TimeAlignmentPopover.jsx';
@@ -124,7 +124,7 @@ const clearOldWaveformCache = () => {
 };
 
 // Media Player Component  
-const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, mediaElement, isPlaying: parentIsPlaying, onSeek }) => {
+const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, mediaElement, isPlaying: parentIsPlaying, onSeek, onDeleteMedia }) => {
   const mediaRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -206,6 +206,26 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
 
   return (
     <Paper withBorder p="md">
+      <Group justify="space-between" align="center" mb="1rem">
+        <div>
+          <Title order={3}>Time Alignment</Title>
+        </div>
+        {mediaUrl && (
+          <Group>
+            <Tooltip label="Delete media file">
+              <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="md"
+                  onClick={onDeleteMedia}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        )}
+      </Group>
+
       <Stack spacing="md">
         {/* Format warning */}
         {!isSupported && (
@@ -1122,7 +1142,7 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
 
   const handleDeleteMedia = async () => {
     if (!parsedDocument?.document?.id || !client) return;
-    
+
     if (!confirm('Are you sure you want to delete this media file? This action cannot be undone.')) {
       return;
     }
@@ -1134,7 +1154,7 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
         message: 'Media file has been deleted successfully',
         color: 'green'
       });
-      
+
       if (onMediaUpdated) {
         onMediaUpdated();
       }
@@ -1174,6 +1194,7 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
         mediaElement={mediaElement}
         isPlaying={isPlaying}
         onSeek={handleSeek}
+        onDeleteMedia={handleDeleteMedia}
       />
 
       {/* Timeline */}
@@ -1201,23 +1222,6 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
           handleAlignmentCreated={handleAlignmentCreated}
           timelineContainerRef={timelineContainerRef}
         />
-
-        
-        {/* Delete media button */}
-        {parsedDocument?.document?.mediaUrl && (
-          <div style={{ position: 'absolute', bottom: '-100px', right: '16px' }}>
-            <Tooltip label="Delete media file">
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="md"
-                onClick={handleDeleteMedia}
-              >
-                <IconTrash size={16} />
-              </ActionIcon>
-            </Tooltip>
-          </div>
-        )}
       </Box>
 
     </Stack>
