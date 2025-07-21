@@ -27,6 +27,31 @@ import {
   validateTokenization
 } from '../../utils/tokenizationUtils';
 
+// Helper component to render text with visible whitespace
+const TextWithVisibleWhitespace = ({ text, style = {} }) => {
+  // Split text into spans, marking whitespace with special styling
+  const parts = text.split(/(\s+)/);
+  
+  return (
+    <>
+      {parts.map((part, index) => (
+        <span
+          key={index}
+          style={{
+            ...style,
+            ...(part.match(/^\s+$/) ? {
+              borderBottom: '1px dotted #aaa',
+              paddingBottom: '1px'
+            } : {})
+          }}
+        >
+          {part}
+        </span>
+      ))}
+    </>
+  );
+};
+
 // Individual token component with inline splitting
 const TokenComponent = ({ 
   span, 
@@ -140,7 +165,7 @@ const TokenComponent = ({
         userSelect: 'none'
       }}
     >
-      {span.content || span.text}
+      <TextWithVisibleWhitespace text={span.content || span.text} />
     </Box>
   );
 };
@@ -661,7 +686,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
                 onMouseUp={(e) => handleDragEnd(e, span)}
                 title="Drag to select and create token"
               >
-                {span.text}
+                <TextWithVisibleWhitespace text={span.text} />
               </span>
             )
           )}
@@ -805,7 +830,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, client, on
                       onMouseUp={(e) => handleDragEnd(e, span)}
                       title="Drag to select and create token"
                     >
-                      {span.text}
+                      <TextWithVisibleWhitespace text={span.text} />
                     </span>
                   )
                 );
