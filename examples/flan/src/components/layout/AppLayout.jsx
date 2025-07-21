@@ -44,6 +44,13 @@ export function AppLayout({ children }) {
           active={location.pathname === '/projects'}
           onClick={() => toggle()}
         />
+        <NavLink
+          label="Vocabularies"
+          component={Link}
+          to="/vocabularies"
+          active={location.pathname.startsWith('/vocabularies')}
+          onClick={() => toggle()}
+        />
       </AppShell.Navbar>
 
       <AppShell.Main>

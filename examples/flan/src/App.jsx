@@ -7,6 +7,8 @@ import { ProjectDetail } from './components/projects/ProjectDetail';
 import { ProjectSetup } from './components/projects/ProjectSetup';
 import { DocumentDetail } from './components/documents/DocumentDetail';
 import { UserProfile } from './components/auth/UserProfile';
+import { VocabularyList } from './components/vocabularies/VocabularyList';
+import { VocabularyDetail } from './components/vocabularies/VocabularyDetail';
 import { AppLayout } from './components/layout/AppLayout';
 
 function App() {
@@ -62,6 +64,30 @@ function App() {
             <ProtectedRoute>
               <AppLayout>
                 <ProjectDetail />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/vocabularies" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <VocabularyList />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/vocabularies/new" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <VocabularyDetail />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/vocabularies/:vocabularyId" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <VocabularyDetail />
               </AppLayout>
             </ProtectedRoute>
           } />
