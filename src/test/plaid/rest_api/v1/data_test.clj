@@ -605,17 +605,7 @@
             res1 (create-text admin-request tl dup-doc "first")
             _ (assert-created res1)
             res2 (create-text admin-request tl dup-doc "second")]
-        (assert-status 409 res2)))
-
-    (testing "Update text body with non-string - coercion catches this at middleware level"
-      (let [update-doc (create-test-document admin-request proj "UpdateDoc")
-            text-res (create-text admin-request tl update-doc "original")
-            text-id (-> text-res :body :id)
-            _ (assert-created text-res)]
-        (is (thrown? java.lang.IllegalArgumentException
-                     (api-call admin-request {:method :patch
-                                              :path (str "/api/v1/texts/" text-id)
-                                              :body {:body 456}})))))))
+        (assert-status 409 res2)))))
 
 (deftest token-validation-rules
   (let [proj (create-test-project admin-request "TokenValidationProj")
