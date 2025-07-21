@@ -25,7 +25,8 @@ export function parseDocument(rawDocument) {
     const enrichedSentences = mapTokensToSentences(
       sentences,
       layers.primaryTokenLayer,
-      layers.spanLayers
+      layers.spanLayers,
+      documentData.text.body
     );
 
     // Process alignment tokens
@@ -238,9 +239,10 @@ function collectOrthographies(token, primaryTokenLayer, tokenSpanLayers) {
  * @param {Array} sentences - Array of sentence boundaries
  * @param {Object} primaryTokenLayer - Primary token layer with word tokens
  * @param {Object} spanLayers - Categorized span layers
+ * @param {string} text - The full document text for computing token content
  * @returns {Array} Sentences with tokens and annotations
  */
-function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers) {
+function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text) {
   const wordTokens = primaryTokenLayer.tokens || [];
   
   // Sort word tokens by begin position
@@ -250,6 +252,7 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers) {
       text: token.text || '',
       begin: token.begin,
       end: token.end,
+      content: text.slice(token.begin, token.end), // Pre-compute token content
       annotations: {}, // Will be populated later
       orthographies: {} // Will be populated later
     }))
