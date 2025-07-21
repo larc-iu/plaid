@@ -144,10 +144,10 @@ const EditableCell = React.memo(({ value, tokenId, field, tabIndex, onUpdate, is
 });
 
 // Function to determine if a token should be ignored for annotation
-const isTokenIgnored = (token, text, ignoredTokensConfig) => {
+const isTokenIgnored = (token, ignoredTokensConfig) => {
   if (!ignoredTokensConfig) return false;
   
-  const tokenText = text.substring(token.begin, token.end);
+  const tokenText = token.content;
   
   if (ignoredTokensConfig.type === 'unicodePunctuation') {
     // Check if token is all punctuation and not in whitelist
@@ -166,8 +166,7 @@ const isTokenIgnored = (token, text, ignoredTokensConfig) => {
   return false;
 };
 
-export const DocumentAnalyze = ({ document, parsedDocument, project, client, onDocumentReload }) => {
-  const [processing, setProcessing] = useState(false);
+export const DocumentAnalyze = ({ document, parsedDocument, project, client, onDocumentReload, setParsedDocumentKey }) => {
   const [saving, setSaving] = useState(false);
 
   const sentences = parsedDocument?.sentences || [];
@@ -184,7 +183,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
     }
   }, [onDocumentReload]);
   
-  // Extract available annotation fields from parsed sentences
+  // Extract available annotation fields from parsed sentences - computed once, stable
   const sentenceFields = useMemo(() => {
     if (!sentences.length) return [];
     const firstSentence = sentences[0];
@@ -195,30 +194,28 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
       const layer = sentenceSpanLayers.find(layer => layer.name === name);
       return { name, id: layer?.id || name };
     });
-  }, [sentences, parsedDocument?.layers]);
+  }, [JSON.stringify(parsedDocument.layers.spanLayers.sentence)]);
   
   const tokenFields = useMemo(() => {
     if (!sentences.length || !sentences[0].tokens?.length) return [];
     const firstToken = sentences[0].tokens[0];
     const tokenSpanLayers = parsedDocument?.layers?.spanLayers?.token || [];
-    
+
     return Object.keys(firstToken.annotations || {}).map(name => {
       // Find the actual span layer with this name to get the UUID
       const layer = tokenSpanLayers.find(layer => layer.name === name);
       return { name, id: layer?.id || name };
     });
-  }, [sentences, parsedDocument?.layers]);
+  }, [JSON.stringify(parsedDocument.layers.spanLayers.token)]);
   
   // Extract available orthographies from parsed tokens
   const orthographyFields = useMemo(() => {
-    if (!sentences.length || !sentences[0].tokens?.length) return [];
-    const firstToken = sentences[0].tokens[0];
-    return Object.keys(firstToken.orthographies || {}).map(name => ({ name, id: name }));
-  }, [sentences]);
+    return parsedDocument.layers.primaryTokenLayer.config.flan.orthographies.map(x => x.name);
+  }, [JSON.stringify(parsedDocument.layers.primaryTokenLayer.config)]);
   
   // API update handlers
-  const handleTokenAnnotationUpdate = useCallback(async (token, layerName, value) => {
-    if (saving) return; // Prevent concurrent updates
+  const handleTokenAnnotationUpdate = useCallback(async (sentenceIndex, tokenIndex, token, layerName, value) => {
+    if (saving) return;
     
     setSaving(true);
     try {
@@ -243,19 +240,18 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
           // Delete existing span
           await client.spans.delete(existingSpan.id);
         }
-        // If no existing span and no value, nothing to do
+      }
+      
+      // Update the local state using setParsedDocumentKey
+      if (setParsedDocumentKey) {
+        const trimmedValue = value ? value.trim() : '';
+        setParsedDocumentKey(
+          ["sentences", sentenceIndex, "tokens", tokenIndex, "annotations", layerName],
+          trimmedValue
+        );
       }
     } catch (error) {
       console.error('Failed to update token annotation:', error);
-      
-      // Check if it's a non-connection error that requires reload
-      const isConnectionError = error.name === 'TypeError' || error.message?.includes('fetch') || error.message?.includes('network');
-      if (!isConnectionError) {
-        // Non-connection error - reload the document data
-        reloadDocument();
-        return;
-      }
-      
       notifications.show({
         title: 'Error', 
         message: `Failed to update ${layerName}: ${error.message}`,
@@ -266,9 +262,9 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
     } finally {
       setSaving(false);
     }
-  }, [client, tokenFields, saving, sentences]);
+  }, [tokenFields]);
   
-  const handleSentenceAnnotationUpdate = useCallback(async (sentence, layerName, value) => {
+  const handleSentenceAnnotationUpdate = useCallback(async (sentenceIndex, sentence, layerName, value) => {
     if (saving) return; // Prevent concurrent updates
     
     setSaving(true);
@@ -296,17 +292,17 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         }
         // If no existing span and no value, nothing to do
       }
+      
+      // Update the local state using setParsedDocumentKey
+      if (setParsedDocumentKey) {
+        const trimmedValue = value ? value.trim() : '';
+        setParsedDocumentKey(
+          ["sentences", sentenceIndex, "annotations", layerName],
+          trimmedValue
+        );
+      }
     } catch (error) {
       console.error('Failed to update sentence annotation:', error);
-      
-      // Check if it's a non-connection error that requires reload
-      const isConnectionError = error.name === 'TypeError' || error.message?.includes('fetch') || error.message?.includes('network');
-      if (!isConnectionError) {
-        // Non-connection error - reload the document data
-        reloadDocument();
-        return;
-      }
-      
       notifications.show({
         title: 'Error',
         message: `Failed to update ${layerName}: ${error.message}`,
@@ -317,36 +313,55 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
     } finally {
       setSaving(false);
     }
-  }, [client, sentenceFields, saving, sentences]);
+  }, [sentenceFields]);
 
-  const handleAutoTokenize = async () => {
-    setProcessing(true);
-    try {
-      console.log('Auto-tokenizing document...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    } catch (error) {
-      console.error('Failed to auto-tokenize:', error);
-    } finally {
-      setProcessing(false);
-    }
-  };
+  // Handle orthography updates
+  const handleOrthographyUpdate = useCallback(async (tokenIndex, token, orthographyName, value) => {
+    if (saving) return; // Prevent concurrent updates
 
-  const handleAutoSegment = async () => {
-    setProcessing(true);
+    setSaving(true);
     try {
-      console.log('Auto-segmenting sentences...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Get current metadata and update the orthography key
+      const currentMetadata = { ...token.metadata } || {};
+      const metadataKey = `orthog:${orthographyName}`;
+
+      if (value && value.trim()) {
+        // Set the orthography in metadata using orthog:${name} key pattern
+        currentMetadata[metadataKey] = value.trim();
+      } else {
+        // Remove the orthography from metadata
+        delete currentMetadata[metadataKey];
+      }
+
+      // Update the entire metadata object
+      await client.tokens.setMetadata(token.id, currentMetadata);
+
+      // Update the local state using setParsedDocumentKey
+      if (setParsedDocumentKey) {
+        const trimmedValue = value ? value.trim() : '';
+        setParsedDocumentKey(
+            ["sentences", sentenceIndex, "tokens", tokenIndex, "orthographies", orthographyName],
+            trimmedValue
+        );
+      }
     } catch (error) {
-      console.error('Failed to auto-segment:', error);
+      console.error('Failed to update orthography:', error);
+      notifications.show({
+        title: 'Error',
+        message: `Failed to update ${orthographyName}: ${error.message}`,
+        color: 'red',
+        autoClose: 5000
+      });
+      throw error;
     } finally {
-      setProcessing(false);
+      setSaving(false);
     }
-  };
+  }, [orthographyFields]);
 
   // TokenColumn component for displaying individual token annotations
-  const TokenColumn = React.memo(({ token, tokenIndex, columnWidth, getTabIndex, tokenFields, orthographyFields, onAnnotationUpdate, onOrthographyUpdate, isSaving, isReadOnly }) => {
+  const TokenColumn = React.memo(({ token, tokenIndex, sentenceIndex, columnWidth, getTabIndex, tokenFields, orthographyFields, onAnnotationUpdate, onOrthographyUpdate, isSaving, isReadOnly }) => {
     // Check if this token should be ignored
-    const tokenIsIgnored = isTokenIgnored(token, parsedDocument?.document?.text?.body || '', ignoredTokensConfig);
+    const tokenIsIgnored = isTokenIgnored(token, ignoredTokensConfig);
     
     return (
       <div className="token-column" style={{ width: `${columnWidth}px` }}>
@@ -359,12 +374,11 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         {orthographyFields.map(ortho => (
           <div key={`${token.id}-${ortho.name}`} className="annotation-cell">
             <EditableCell
-              key={`${token.id}-${ortho.name}`}
               value={token.orthographies?.[ortho.name] || ''}
               tokenId={token.id}
               field={ortho.name}
               tabIndex={getTabIndex ? getTabIndex(tokenIndex, ortho.name) : undefined}
-              onUpdate={(value) => onOrthographyUpdate(token, ortho.name, value)}
+              onUpdate={(value) => onOrthographyUpdate(tokenIndex, token, ortho.name, value)}
               placeholder={``}
               isSaving={isSaving}
               isReadOnly={isReadOnly}
@@ -377,12 +391,11 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         {!tokenIsIgnored && tokenFields.map(field => (
           <div key={`${token.id}-${field.id}`} className="annotation-cell">
             <EditableCell
-              key={`${token.id}-${field.id}`}
               value={token.annotations[field.name] || ''}
               tokenId={token.id}
               field={field.name}
               tabIndex={getTabIndex ? getTabIndex(tokenIndex, field.name) : undefined}
-              onUpdate={(value) => onAnnotationUpdate(token, field.name, value)}
+              onUpdate={(value) => onAnnotationUpdate(sentenceIndex, tokenIndex, token, field.name, value)}
               placeholder={``}
               isSaving={isSaving}
               isReadOnly={isReadOnly}
@@ -412,7 +425,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
   });
 
   // TokenGrid component for displaying tokens with annotations
-  const TokenGrid = ({ sentence, sentenceIndex }) => {
+  const TokenGrid = React.memo(({ sentence, sentenceIndex, tokenFields, orthographyFields, ignoredTokensConfig }) => {
     if (!sentence || !sentence.tokens || sentence.tokens.length === 0) {
       return (
         <Alert icon={<IconInfoCircle size={16} />} color="yellow">
@@ -431,7 +444,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         const minWidth = 40;
         
         // Check if token should be ignored
-        const tokenIsIgnored = isTokenIgnored(token, parsedDocument?.document?.text?.body || '', ignoredTokensConfig);
+        const tokenIsIgnored = isTokenIgnored(token, ignoredTokensConfig);
         
         if (tokenIsIgnored) {
           // Minimal width for ignored tokens
@@ -456,67 +469,20 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         
         return Math.max(minWidth, tokenWidth, ...annotationWidths, ...orthographyWidths);
       });
-    }, [tokens, tokenFields, orthographyFields, parsedDocument?.document?.text?.body, ignoredTokensConfig]);
+    }, [tokens, tokenFields, orthographyFields, ignoredTokensConfig]);
 
-    // Calculate tab indices for navigation
+    // Calculate tab indices for navigation - made purely local to this sentence
     const getTabIndex = useCallback((tokenIndex, field) => {
       const allFields = [...orthographyFields.map(o => o.name), ...tokenFields.map(f => f.name)];
       const fieldIndex = allFields.indexOf(field);
       const tokensInSentence = tokens.length;
       
-      // Calculate offset from all previous sentences
-      const sentenceOffset = sentences.slice(0, sentenceIndex).reduce((total, prevSentence) => {
-        const prevTokenCount = prevSentence.tokens?.length || 0;
-        const totalFields = allFields.length;
-        return total + (prevTokenCount * totalFields);
-      }, 0);
+      // Calculate offset from all previous sentences - passed as prop to avoid dependency
+      const sentenceOffset = sentenceIndex * 1000; // Simple offset, each sentence gets 1000 tab indices
       
       // Row-wise navigation: field type determines row, token index determines position in row
       return sentenceOffset + (fieldIndex * tokensInSentence) + tokenIndex + 1;
-    }, [orthographyFields, tokenFields, sentences, sentenceIndex, tokens.length]);
-
-    // Handle orthography updates
-    const handleOrthographyUpdate = useCallback(async (token, orthographyName, value) => {
-      if (saving) return; // Prevent concurrent updates
-      
-      setSaving(true);
-      try {
-        // Get current metadata and update the orthography key
-        const currentMetadata = { ...token.metadata } || {};
-        const metadataKey = `orthog:${orthographyName}`;
-        
-        if (value && value.trim()) {
-          // Set the orthography in metadata using orthog:${name} key pattern
-          currentMetadata[metadataKey] = value.trim();
-        } else {
-          // Remove the orthography from metadata
-          delete currentMetadata[metadataKey];
-        }
-        
-        // Update the entire metadata object
-        await client.tokens.setMetadata(token.id, currentMetadata);
-      } catch (error) {
-        console.error('Failed to update orthography:', error);
-        
-        // Check if it's a non-connection error that requires reload
-        const isConnectionError = error.name === 'TypeError' || error.message?.includes('fetch') || error.message?.includes('network');
-        if (!isConnectionError) {
-          // Non-connection error - reload the document data
-          reloadDocument();
-          return;
-        }
-        
-        notifications.show({
-          title: 'Error', 
-          message: `Failed to update ${orthographyName}: ${error.message}`,
-          color: 'red',
-          autoClose: 5000
-        });
-        throw error;
-      } finally {
-        setSaving(false);
-      }
-    }, [client, saving, reloadDocument, sentences]);
+    }, [orthographyFields, tokenFields, sentenceIndex, tokens.length]); // Removed global sentences dependency
 
     // Detect if we're in read-only mode
     const isReadOnly = false; // TODO: Implement read-only detection
@@ -551,6 +517,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               key={token.id}
               token={token}
               tokenIndex={tokenIndex}
+              sentenceIndex={sentenceIndex}
               columnWidth={columnWidths[tokenIndex]}
               getTabIndex={getTabIndex}
               tokenFields={tokenFields}
@@ -564,10 +531,18 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         </div>
       </div>
     );
-  };
+  }, (prevProps, nextProps) => {
+    return (
+      prevProps.sentence === nextProps.sentence &&
+      prevProps.sentenceIndex === nextProps.sentenceIndex &&
+      prevProps.tokenFields === nextProps.tokenFields &&
+      prevProps.orthographyFields === nextProps.orthographyFields &&
+      prevProps.ignoredTokensConfig === nextProps.ignoredTokensConfig
+    );
+  });
   
   // SentenceGrid component for sentence-level annotations
-  const SentenceGrid = ({ sentence, sentenceIndex }) => {
+  const SentenceGrid = React.memo(({ sentence, sentenceIndex, sentenceFields }) => {
     if (!sentence) {
       return null;
     }
@@ -582,9 +557,8 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
               </div>
               <div style={{ flex: 1 }}>
                 <EditableCell
-                  key={`sentence-${sentenceIndex}-${field.id}`}
                   value={sentence.annotations[field.name] || ''}
-                  onUpdate={(value) => handleSentenceAnnotationUpdate(sentence, field.name, value)}
+                  onUpdate={(value) => handleSentenceAnnotationUpdate(sentenceIndex, sentence, field.name, value)}
                   placeholder=""
                   isSaving={saving}
                   columnWidth={null}
@@ -599,7 +573,13 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         )}
       </Stack>
     );
-  };
+  }, (prevProps, nextProps) => {
+    return (
+      prevProps.sentence === nextProps.sentence &&
+      prevProps.sentenceIndex === nextProps.sentenceIndex &&
+      prevProps.sentenceFields === nextProps.sentenceFields
+    );
+  });
   
   return (
     <div className="document-analyze-container">
@@ -640,7 +620,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
                     {/* Render all sentences */}
                     {sentences.map((sentence, sentenceIndex) => (
                       <Box
-                        key={sentenceIndex}
+                        key={sentence.id}
                         style={{ 
                           position: 'relative',
                           backgroundColor: sentenceIndex % 2 === 0 ? '#ffffff' : '#f8faff',
@@ -667,10 +647,20 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
                         {/* Sentence content */}
                         <Box>
                           {/* Token grid */}
-                          <TokenGrid sentence={sentence} sentenceIndex={sentenceIndex} />
+                          <TokenGrid 
+                            sentence={sentence} 
+                            sentenceIndex={sentenceIndex}
+                            tokenFields={tokenFields}
+                            orthographyFields={orthographyFields}
+                            ignoredTokensConfig={ignoredTokensConfig}
+                          />
                           
                           {/* Sentence-level annotations */}
-                          <SentenceGrid sentence={sentence} sentenceIndex={sentenceIndex} />
+                          <SentenceGrid 
+                            sentence={sentence} 
+                            sentenceIndex={sentenceIndex}
+                            sentenceFields={sentenceFields}
+                          />
                         </Box>
                       </Box>
                     ))}
