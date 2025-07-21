@@ -216,19 +216,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
     return Object.keys(firstToken.orthographies || {}).map(name => ({ name, id: name }));
   }, [sentences]);
   
-  // Helper function to get token text content
-  const getTokenText = useCallback((token) => {
-    const textBody = parsedDocument?.document?.text?.body || '';
-    return textBody.substring(token.begin, token.end);
-  }, [parsedDocument?.document?.text?.body]);
-  
-  // Helper function to get sentence text content
-  const getSentenceText = useCallback((sentence) => {
-    if (!sentence?.tokens) return '';
-    return sentence.tokens.map(token => getTokenText(token)).join(' ');
-  }, [getTokenText]);
-
-
   // API update handlers
   const handleTokenAnnotationUpdate = useCallback(async (token, layerName, value) => {
     if (saving) return; // Prevent concurrent updates
@@ -365,7 +352,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
       <div className="token-column" style={{ width: `${columnWidth}px` }}>
         {/* Baseline token text (read-only) */}
         <div className="token-form">
-          {getTokenText(token)}
+          {token.content}
         </div>
         
         {/* Orthography rows - always show for ignored tokens */}
@@ -448,13 +435,13 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         
         if (tokenIsIgnored) {
           // Minimal width for ignored tokens
-          const tokenText = getTokenText(token);
+          const tokenText = token.content;
           const tokenWidth = (tokenText.length * charWidth) + padding;
           return Math.max(24, tokenWidth); // Very minimal width
         }
         
         // Get actual token text content
-        const tokenText = getTokenText(token);
+        const tokenText = token.content;
         const tokenWidth = (tokenText.length * charWidth) + padding;
         
         const annotationWidths = tokenFields.map(field => {
@@ -469,7 +456,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
         
         return Math.max(minWidth, tokenWidth, ...annotationWidths, ...orthographyWidths);
       });
-    }, [tokens, getTokenText, tokenFields, orthographyFields, parsedDocument?.document?.text?.body, ignoredTokensConfig]);
+    }, [tokens, tokenFields, orthographyFields, parsedDocument?.document?.text?.body, ignoredTokensConfig]);
 
     // Calculate tab indices for navigation
     const getTabIndex = useCallback((tokenIndex, field) => {
