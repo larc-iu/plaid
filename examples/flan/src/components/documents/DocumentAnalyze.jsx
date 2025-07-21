@@ -465,8 +465,8 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, client, onD
                           c="dimmed"
                           style={{
                             position: 'absolute',
-                            left: '16px',
-                            top: '16px',
+                            left: '4px',
+                            top: '12px',
                             fontWeight: 500,
                             minWidth: '24px',
                             textAlign: 'right'
