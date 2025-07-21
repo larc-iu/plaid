@@ -36,6 +36,7 @@ export const DocumentDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('metadata');
+  console.log(client.strictModeDocumentId)
 
   // Fetch document and project data
   useEffect(() => {
@@ -157,7 +158,9 @@ export const DocumentDetail = () => {
           <Text c="dimmed" size="xs" mb="lg">{document.id}</Text>
         </div>
 
-        <Tabs value={activeTab} onChange={setActiveTab}>
+        <Tabs value={activeTab} onChange={(e) => {
+          setActiveTab(e)
+        }}>
           <Tabs.List>
             <Tabs.Tab value="metadata" leftSection={<IconFileText size={16} />}>
               Metadata
@@ -177,116 +180,106 @@ export const DocumentDetail = () => {
           </Tabs.List>
 
           <Tabs.Panel value="metadata">
-            {activeTab === 'metadata' && (
-              <DocumentMetadata 
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                client={client}
-                onDocumentUpdated={setDocument}
-              />
-            )}
+            <DocumentMetadata
+              document={document}
+              parsedDocument={parsedDocument}
+              project={project}
+              client={client}
+              onDocumentUpdated={setDocument}
+            />
           </Tabs.Panel>
 
           <Tabs.Panel value="baseline">
-            {activeTab === 'baseline' && (
-              <DocumentBaseline 
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                client={client}
-                onTextUpdated={() => {
-                  // Refresh the document data after text update
-                  const fetchData = async () => {
-                    try {
-                      const [documentData, projectData] = await Promise.all([
-                        client.documents.get(documentId, true),
-                        client.projects.get(projectId)
-                      ]);
-                      
-                      const parsed = parseDocument(documentData);
-                      setParsedDocument(parsed);
-                      setDocument(documentData);
-                      setProject(projectData);
-                    } catch (error) {
-                      console.error('Error refreshing document after text update:', error);
-                    }
-                  };
-                  fetchData();
-                }}
-              />
-            )}
+            <DocumentBaseline
+              document={document}
+              parsedDocument={parsedDocument}
+              project={project}
+              client={client}
+              onTextUpdated={() => {
+                // Refresh the document data after text update
+                const fetchData = async () => {
+                  try {
+                    const [documentData, projectData] = await Promise.all([
+                      client.documents.get(documentId, true),
+                      client.projects.get(projectId)
+                    ]);
+
+                    const parsed = parseDocument(documentData);
+                    setParsedDocument(parsed);
+                    setDocument(documentData);
+                    setProject(projectData);
+                  } catch (error) {
+                    console.error('Error refreshing document after text update:', error);
+                  }
+                };
+                fetchData();
+              }}
+            />
           </Tabs.Panel>
 
           <Tabs.Panel value="tokenize">
-            {activeTab === 'tokenize' && (
-              <DocumentTokenize 
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                client={client}
-                onTokenizationComplete={() => {
-                  // Refresh the document data after tokenization
-                  const fetchData = async () => {
-                    try {
-                      const [documentData, projectData] = await Promise.all([
-                        client.documents.get(documentId, true),
-                        client.projects.get(projectId)
-                      ]);
-                      
-                      const parsed = parseDocument(documentData);
-                      setParsedDocument(parsed);
-                      setDocument(documentData);
-                      setProject(projectData);
-                    } catch (error) {
-                      console.error('Error refreshing document after tokenization:', error);
-                    }
-                  };
-                  fetchData();
-                }}
-              />
-            )}
+            <DocumentTokenize
+              document={document}
+              parsedDocument={parsedDocument}
+              project={project}
+              client={client}
+              onTokenizationComplete={() => {
+                // Refresh the document data after tokenization
+                const fetchData = async () => {
+                  try {
+                    const [documentData, projectData] = await Promise.all([
+                      client.documents.get(documentId, true),
+                      client.projects.get(projectId)
+                    ]);
+
+                    const parsed = parseDocument(documentData);
+                    setParsedDocument(parsed);
+                    setDocument(documentData);
+                    setProject(projectData);
+                  } catch (error) {
+                    console.error('Error refreshing document after tokenization:', error);
+                  }
+                };
+                fetchData();
+              }}
+            />
           </Tabs.Panel>
 
           <Tabs.Panel value="analyze">
-            {activeTab === 'analyze' && (
-              <DocumentAnalyze 
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                client={client}
-              />
-            )}
+            <DocumentAnalyze
+              document={document}
+              parsedDocument={parsedDocument}
+              project={project}
+              client={client}
+            />
           </Tabs.Panel>
 
           <Tabs.Panel value="media">
-            {activeTab === 'media' && (
-              <DocumentMedia 
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                client={client}
-                onMediaUpdated={() => {
-                  // Refresh the document data after media operations
-                  const fetchData = async () => {
-                    try {
-                      const [documentData, projectData] = await Promise.all([
-                        client.documents.get(documentId, true),
-                        client.projects.get(projectId)
-                      ]);
-                      
-                      const parsed = parseDocument(documentData);
-                      setParsedDocument(parsed);
-                      setDocument(documentData);
-                      setProject(projectData);
-                    } catch (error) {
-                      console.error('Error refreshing document after media operation:', error);
-                    }
-                  };
-                  fetchData();
-                }}
-              />
-            )}
+            <DocumentMedia
+              document={document}
+              parsedDocument={parsedDocument}
+              project={project}
+              client={client}
+              onMediaUpdated={() => {
+                // Refresh the document data after media operations
+                const fetchData = async () => {
+                  try {
+                    const [documentData, projectData] = await Promise.all([
+                      client.documents.get(documentId, true),
+                      client.projects.get(projectId)
+                    ]);
+
+                    const parsed = parseDocument(documentData);
+                    setParsedDocument(parsed);
+                    setDocument(documentData);
+                    setProject(projectData);
+                  } catch (error) {
+                    console.error('Error refreshing document after media operation:', error);
+                  }
+                };
+                fetchData();
+              }}
+            />
           </Tabs.Panel>
         </Tabs>
       </Stack>
