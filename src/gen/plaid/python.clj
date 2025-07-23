@@ -701,6 +701,19 @@
                 )
             
             results = response.json()
+            
+            # Extract document versions from each batch response
+            for result in results:
+                if isinstance(result, dict) and 'headers' in result and 'X-Document-Versions' in result['headers']:
+                    try:
+                        versions_map = json.loads(result['headers']['X-Document-Versions'])
+                        if isinstance(versions_map, dict):
+                            # Update internal document versions map with latest versions
+                            self._document_versions.update(versions_map)
+                    except (json.JSONDecodeError, TypeError) as e:
+                        # Log malformed header issues but continue processing
+                        print(f\"Warning: Failed to parse document versions header from batch response: {e}\")
+            
             return [self._transform_response(result) for result in results]
         finally:
             self._is_batching = False
@@ -758,6 +771,19 @@
                         )
                     
                     results = await response.json()
+                    
+                    # Extract document versions from each batch response
+                    for result in results:
+                        if isinstance(result, dict) and 'headers' in result and 'X-Document-Versions' in result['headers']:
+                            try:
+                                versions_map = json.loads(result['headers']['X-Document-Versions'])
+                                if isinstance(versions_map, dict):
+                                    # Update internal document versions map with latest versions
+                                    self._document_versions.update(versions_map)
+                            except (json.JSONDecodeError, TypeError) as e:
+                                # Log malformed header issues but continue processing
+                                print(f\"Warning: Failed to parse document versions header from batch response: {e}\")
+                    
                     return [self._transform_response(result) for result in results]
         finally:
             self._is_batching = False

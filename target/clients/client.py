@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Fri Jul 18 13:55:30 EDT 2025
+Generated on: Wed Jul 23 10:36:40 EDT 2025
 """
 
 import requests
@@ -7583,9 +7583,13 @@ body: the string which is the content of this text.
                 {'original_error': str(e)}
             )
 
-    def update(self, text_id: str, body: str) -> Any:
+    def update(self, text_id: str, body: Any) -> Any:
         """
         Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
+
+If preferred, body can instead be a list of edit directives such as:
+  {type: "delete", index: 5, value: 3} (delete 3 chars at index 5)
+  {type: "insert", index: 0, value: "abc"} (insert "abc" at the front)
 
         Args:
             text_id: Path parameter
@@ -7666,9 +7670,13 @@ body: the string which is the content of this text.
                 {'original_error': str(e)}
             )
 
-    async def update_async(self, text_id: str, body: str) -> Any:
+    async def update_async(self, text_id: str, body: Any) -> Any:
         """
         Update a text's body. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.
+
+If preferred, body can instead be a list of edit directives such as:
+  {type: "delete", index: 5, value: 3} (delete 3 chars at index 5)
+  {type: "insert", index: 0, value: "abc"} (insert "abc" at the front)
 
         Args:
             text_id: Path parameter
@@ -20467,6 +20475,19 @@ class PlaidClient:
                 )
             
             results = response.json()
+            
+            # Extract document versions from each batch response
+            for result in results:
+                if isinstance(result, dict) and 'headers' in result and 'X-Document-Versions' in result['headers']:
+                    try:
+                        versions_map = json.loads(result['headers']['X-Document-Versions'])
+                        if isinstance(versions_map, dict):
+                            # Update internal document versions map with latest versions
+                            self._document_versions.update(versions_map)
+                    except (json.JSONDecodeError, TypeError) as e:
+                        # Log malformed header issues but continue processing
+                        print(f"Warning: Failed to parse document versions header from batch response: {e}")
+            
             return [self._transform_response(result) for result in results]
         finally:
             self._is_batching = False
@@ -20524,6 +20545,19 @@ class PlaidClient:
                         )
                     
                     results = await response.json()
+                    
+                    # Extract document versions from each batch response
+                    for result in results:
+                        if isinstance(result, dict) and 'headers' in result and 'X-Document-Versions' in result['headers']:
+                            try:
+                                versions_map = json.loads(result['headers']['X-Document-Versions'])
+                                if isinstance(versions_map, dict):
+                                    # Update internal document versions map with latest versions
+                                    self._document_versions.update(versions_map)
+                            except (json.JSONDecodeError, TypeError) as e:
+                                # Log malformed header issues but continue processing
+                                print(f"Warning: Failed to parse document versions header from batch response: {e}")
+                    
                     return [self._transform_response(result) for result in results]
         finally:
             self._is_batching = False

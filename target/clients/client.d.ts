@@ -88,7 +88,7 @@ interface TextsBundle {
   create(textLayerId: string, documentId: string, body: string, metadata?: any): Promise<any>;
   get(textId: string, asOf?: string): Promise<any>;
   delete(textId: string): Promise<any>;
-  update(textId: string, body: string): Promise<any>;
+  update(textId: string, body: any): Promise<any>;
 }
 
 interface UsersBundle {
