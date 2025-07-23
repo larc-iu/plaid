@@ -91,7 +91,8 @@
               if (typeof versionsMap === 'object' && versionsMap !== null) {
                 // Update internal document versions map with latest versions
                 Object.entries(versionsMap).forEach(([docId, version]) => {
-                  this.documentVersions.set(docId, version);
+                  this.documentVersions = {...this.documentVersions}
+                  this.documentVersions[docId] = version;
                 });
               }
             } catch (e) {
@@ -165,7 +166,8 @@
         if (typeof versionsMap === 'object' && versionsMap !== null) {
           // Update internal document versions map
           Object.entries(versionsMap).forEach(([docId, version]) => {
-            this.documentVersions.set(docId, version);
+            this.documentVersions = {...this.documentVersions};
+            this.documentVersions[docId] = version;
           });
         }
       } catch (e) {
@@ -174,11 +176,11 @@
       }
     }
     
-    // Special case: if response body has \"id\", \"name\", and \"version\", assume it's a document
-    if (responseBody && typeof responseBody === 'object' && responseBody !== null) {
-      if (responseBody.id && responseBody.name && responseBody.version) {
-        // Update the map so that \"id\" is associated with \"version\"
-        this.documentVersions.set(responseBody.id, responseBody.version);
+    // Special case: if response body
+    if (responseBody && typeof responseBody === 'object') {
+      if (responseBody[\"document/id\"] && responseBody[\"document/version\"]) {
+        this.documentVersions = {...this.documentVersions};
+        this.documentVersions[responseBody[\"document/id\"]] = responseBody[\"document/version\"];
       }
     }
   }
@@ -648,8 +650,8 @@
              "    // Add document-version parameter in strict mode for non-GET requests\n"
              "    if (this.strictModeDocumentId && 'GET' !== '" (str/upper-case (name http-method)) "') {\n"
              "      const docId = this.strictModeDocumentId;\n"
-             "      if (this.documentVersions.has(docId)) {\n"
-             "        const docVersion = this.documentVersions.get(docId);\n"
+             "      if (this.documentVersions[docId]) {\n"
+             "        const docVersion = this.documentVersions[docId];\n"
              "        const separator = " url-var ".includes('?') ? '&' : '?';\n"
              "        " url-var " += `${separator}document-version=${encodeURIComponent(docVersion)}`;\n"
              "      }\n"
@@ -1342,7 +1344,7 @@
          "    this.batchOperations = [];\n"
          "    \n"
          "    // Initialize document version tracking\n"
-         "    this.documentVersions = new Map(); // Map of document-id -> version\n"
+         "    this.documentVersions = {}; // Map of document-id -> version\n"
          "    this.strictModeDocumentId = null;  // Document ID for strict mode\n"
          "    \n"
          "    // Initialize API bundles\n"

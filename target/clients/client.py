@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Wed Jul 23 11:33:36 EDT 2025
+Generated on: Wed Jul 23 12:51:05 EDT 2025
 """
 
 import requests
@@ -20855,11 +20855,10 @@ class PlaidClient:
                 # Log malformed header issues
                 print(f"Warning: Failed to parse document versions header: {e}")
         
-        # Special case: if response body has "id", "name", and "version", assume it's a document
+        # Special case: if response body
         if response_body and isinstance(response_body, dict):
-            if response_body.get('id') and response_body.get('name') and response_body.get('version'):
-                # Update the map so that "id" is associated with "version"
-                self._document_versions[response_body['id']] = response_body['version']
+            if response_body.get("document/id") and response_body.get("document/version"):
+                self._document_versions[response_body["document/id"]] = response_body["document/version"]
     
     def _transform_request(self, obj: Any) -> Any:
         """Transform request data from Python conventions to API conventions"""
