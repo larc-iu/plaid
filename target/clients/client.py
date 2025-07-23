@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Wed Jul 23 12:51:05 EDT 2025
+Generated on: Wed Jul 23 15:27:30 EDT 2025
 """
 
 import requests
@@ -193,7 +193,7 @@ class VocabLinksResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -355,7 +355,7 @@ class VocabLinksResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -511,7 +511,7 @@ class VocabLinksResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -685,7 +685,7 @@ class VocabLinksResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -841,7 +841,7 @@ class VocabLinksResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -1030,7 +1030,7 @@ class VocabLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -1186,7 +1186,7 @@ class VocabLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -1358,7 +1358,7 @@ class VocabLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -1524,7 +1524,7 @@ class VocabLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -1684,7 +1684,7 @@ class VocabLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -1856,7 +1856,7 @@ class VocabLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -2026,7 +2026,7 @@ class VocabLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -2184,7 +2184,7 @@ class VocabLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -2342,7 +2342,7 @@ class VocabLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -2513,7 +2513,7 @@ class RelationsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -2669,7 +2669,7 @@ class RelationsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -2841,7 +2841,7 @@ class RelationsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -3015,7 +3015,7 @@ class RelationsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -3171,7 +3171,7 @@ class RelationsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -3343,7 +3343,7 @@ class RelationsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -3515,7 +3515,7 @@ class RelationsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -3711,7 +3711,7 @@ target_id: the target span this relation goes to
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -3881,7 +3881,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -4041,7 +4041,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -4216,7 +4216,7 @@ class SpanLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -4376,7 +4376,7 @@ class SpanLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -4550,7 +4550,7 @@ class SpanLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -4706,7 +4706,7 @@ class SpanLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -4878,7 +4878,7 @@ class SpanLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -5052,7 +5052,7 @@ class SpanLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -5224,7 +5224,7 @@ class SpanLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -5405,7 +5405,7 @@ class SpansResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -5597,7 +5597,7 @@ metadata: optional key-value pairs for additional annotation data.
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -5771,7 +5771,7 @@ metadata: optional key-value pairs for additional annotation data.
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -5927,7 +5927,7 @@ metadata: optional key-value pairs for additional annotation data.
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -6099,7 +6099,7 @@ metadata: optional key-value pairs for additional annotation data.
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -6267,7 +6267,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -6427,7 +6427,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -6589,7 +6589,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -6745,7 +6745,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -6902,7 +6902,7 @@ class BatchResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -7073,7 +7073,7 @@ class TextsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -7229,7 +7229,7 @@ class TextsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -7419,7 +7419,7 @@ body: the string which is the content of this text.
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -7593,7 +7593,7 @@ body: the string which is the content of this text.
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -7749,7 +7749,7 @@ body: the string which is the content of this text.
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -7929,7 +7929,7 @@ If preferred, body can instead be a list of edit directives such as:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -8110,7 +8110,7 @@ class UsersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -8288,7 +8288,7 @@ class UsersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -8474,7 +8474,7 @@ class UsersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -8648,7 +8648,7 @@ class UsersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -8804,7 +8804,7 @@ class UsersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -8984,7 +8984,7 @@ class UsersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -9165,7 +9165,7 @@ class TokenLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -9339,7 +9339,7 @@ class TokenLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -9505,7 +9505,7 @@ class TokenLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -9665,7 +9665,7 @@ class TokenLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -9839,7 +9839,7 @@ class TokenLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -9995,7 +9995,7 @@ class TokenLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -10167,7 +10167,7 @@ class TokenLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -10350,7 +10350,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -10506,7 +10506,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -10662,7 +10662,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -10977,7 +10977,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -11123,7 +11123,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -11285,7 +11285,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -11441,7 +11441,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -11627,7 +11627,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -11807,7 +11807,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -11963,7 +11963,7 @@ class DocumentsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -12139,7 +12139,7 @@ name: update a document's name.
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -12317,7 +12317,7 @@ name: update a document's name.
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -12488,7 +12488,7 @@ class MessagesResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -12648,7 +12648,7 @@ class MessagesResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -13319,7 +13319,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -13477,7 +13477,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -13635,7 +13635,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -13793,7 +13793,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -13959,7 +13959,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -14119,7 +14119,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -14277,7 +14277,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -14435,7 +14435,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -14621,7 +14621,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -14779,7 +14779,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -14937,7 +14937,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -15117,7 +15117,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -15273,7 +15273,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -15445,7 +15445,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -15617,7 +15617,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -15787,7 +15787,7 @@ class ProjectsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -15962,7 +15962,7 @@ class TextLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -16122,7 +16122,7 @@ class TextLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -16296,7 +16296,7 @@ class TextLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -16452,7 +16452,7 @@ class TextLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -16624,7 +16624,7 @@ class TextLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -16796,7 +16796,7 @@ class TextLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -16970,7 +16970,7 @@ class TextLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -17151,7 +17151,7 @@ class LoginResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -17322,7 +17322,7 @@ class VocabItemsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -17478,7 +17478,7 @@ class VocabItemsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -17656,7 +17656,7 @@ class VocabItemsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -17830,7 +17830,7 @@ class VocabItemsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -17986,7 +17986,7 @@ class VocabItemsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -18158,7 +18158,7 @@ class VocabItemsResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -18339,7 +18339,7 @@ class RelationLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -18513,7 +18513,7 @@ class RelationLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -18679,7 +18679,7 @@ class RelationLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -18839,7 +18839,7 @@ class RelationLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -19013,7 +19013,7 @@ class RelationLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -19169,7 +19169,7 @@ class RelationLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -19341,7 +19341,7 @@ class RelationLayersResource:
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -19552,7 +19552,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -19726,7 +19726,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -19882,7 +19882,7 @@ precedence: used for tokens with the same begin value in order to indicate their
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -20070,7 +20070,7 @@ precedence: ordering value for the token relative to other tokens with the same 
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -20242,7 +20242,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -20402,7 +20402,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return self.client._transform_response(data)
+                        return self.client._transform_response(data)
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -20564,7 +20564,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
@@ -20720,7 +20720,7 @@ metadata, an optional map of metadata
                         data = await response.json()
                         # Extract document versions from response headers and body
                         self.client._extract_document_versions(dict(response.headers), data)
-                return data
+                        return data
                     else:
                         # Extract document versions from response headers only
                         self.client._extract_document_versions(dict(response.headers))
