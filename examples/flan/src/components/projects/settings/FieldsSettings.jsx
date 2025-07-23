@@ -44,15 +44,23 @@ export const FieldsSettings = ({ projectId, client }) => {
         return null;
       }
       
-      // Get the first token layer (assuming main token layer)
-      const tokenLayer = textLayer.tokenLayers[0];
+      // Get the primary token layer and sentence token layer
+      const primaryTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.flan?.primary);
+      const sentenceTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.flan?.sentence);
       
-      // Extract ignored tokens configuration from token layer
-      const ignoredTokensConfig = tokenLayer.config?.flan?.ignoredTokens;
+      if (!primaryTokenLayer) {
+        return null;
+      }
       
-      // Extract fields configuration from span layers
-      const spanLayers = tokenLayer.spanLayers || [];
-      const fieldsWithScope = spanLayers
+      // Extract ignored tokens configuration from primary token layer
+      const ignoredTokensConfig = primaryTokenLayer.config?.flan?.ignoredTokens;
+      
+      // Extract fields configuration from span layers under both token layers
+      const primarySpanLayers = primaryTokenLayer.spanLayers || [];
+      const sentenceSpanLayers = sentenceTokenLayer?.spanLayers || [];
+      const allSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers];
+      
+      const fieldsWithScope = allSpanLayers
         .filter(spanLayer => spanLayer.config?.flan?.scope) // Only span layers with flan scope config
         .map(spanLayer => ({
           name: spanLayer.name,
@@ -123,8 +131,14 @@ export const FieldsSettings = ({ projectId, client }) => {
         throw new Error('No token layers found in project');
       }
       
-      const tokenLayer = textLayer.tokenLayers[0];
-      const tokenLayerId = tokenLayer.id;
+      const primaryTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.flan?.primary);
+      const sentenceTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.flan?.sentence);
+      
+      if (!primaryTokenLayer) {
+        throw new Error('No primary token layer found in project');
+      }
+      
+      const primaryTokenLayerId = primaryTokenLayer.id;
       
       // Save ignored tokens configuration to token layer
       if (data.ignoredTokens) {
@@ -138,11 +152,13 @@ export const FieldsSettings = ({ projectId, client }) => {
           ignoredTokensConfig.blacklist = data.ignoredTokens.explicitIgnoredTokens || [];
         }
         
-        await client.tokenLayers.setConfig(tokenLayerId, "flan", "ignoredTokens", ignoredTokensConfig);
+        await client.tokenLayers.setConfig(primaryTokenLayerId, "flan", "ignoredTokens", ignoredTokensConfig);
       }
       
       // Handle span layers for fields
-      const existingSpanLayers = tokenLayer.spanLayers || [];
+      const primarySpanLayers = primaryTokenLayer.spanLayers || [];
+      const sentenceSpanLayers = sentenceTokenLayer?.spanLayers || [];
+      const existingSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers];
       const currentFields = data.fields || [];
       
       // Find span layers that have flan scope config (these are managed by us)
@@ -153,8 +169,14 @@ export const FieldsSettings = ({ projectId, client }) => {
         const existingLayer = managedSpanLayers.find(layer => layer.name === field.name);
         
         if (!existingLayer) {
+          // Choose parent layer based on field scope
+          const parentLayerId = field.scope === 'Sentence' ? sentenceTokenLayer?.id : primaryTokenLayerId;
+          if (!parentLayerId) {
+            throw new Error(`No ${field.scope === 'Sentence' ? 'sentence' : 'primary'} token layer found for field ${field.name}`);
+          }
+          
           // Create new span layer
-          const spanLayer = await client.spanLayers.create(tokenLayerId, field.name);
+          const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
           await client.spanLayers.setConfig(spanLayer.id, "flan", "scope", field.scope);
         } else {
           // Update existing span layer scope if changed
