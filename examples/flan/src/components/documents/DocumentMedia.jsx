@@ -983,8 +983,6 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
     autoScrollToTime(time); // Auto-scroll timeline to show seeked position
   };
 
-  console.log(client.strictModeDocumentId, client.documentVersions)
-
   const handleMediaUpload = async (file) => {
     if (!file) return;
 
