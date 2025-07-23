@@ -21,9 +21,11 @@ import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTrian
 import { useStrictClient } from '../../contexts/StrictModeContext';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
+import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 
-export const DocumentMetadata = ({ document, parsedDocument, project, onDocumentUpdated }) => {
+export const DocumentMetadata = ({ document, parsedDocument, project, onDocumentUpdated, onDocumentReload }) => {
   const client = useStrictClient();
+  const handleStrictModeError = useStrictModeErrorHandler(onDocumentReload);
   const navigate = useNavigate();
   const { projectId } = useParams();
   const [isEditing, setIsEditing] = useState(false);
@@ -64,7 +66,8 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
       
       setIsEditing(false);
     } catch (error) {
-      console.error('Failed to save metadata:', error);
+      setIsEditing(false);
+      handleStrictModeError(error, 'save document metadata');
     } finally {
       setSaving(false);
     }
@@ -107,12 +110,7 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
       // Navigate back to the project page
       navigate(`/projects/${projectId}`);
     } catch (error) {
-      console.error('Failed to delete document:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete document. Please try again.',
-        color: 'red'
-      });
+      handleStrictModeError(error, 'delete document');
     } finally {
       setDeleting(false);
       closeDeleteModal();

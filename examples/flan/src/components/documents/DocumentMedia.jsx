@@ -29,6 +29,7 @@ import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import { notifications } from '@mantine/notifications';
 import { useStrictClient } from '../../contexts/StrictModeContext';
+import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 
 // Constants
 const TIMELINE_HEIGHT = 100;
@@ -942,6 +943,7 @@ const MediaUpload = ({ onUpload, isUploading }) => {
 
 export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
   const client = useStrictClient();
+  const handleStrictModeError = useStrictModeErrorHandler(onMediaUpdated);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -994,17 +996,12 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
         message: 'Media file uploaded successfully',
         color: 'green'
       });
-      
+
       if (onMediaUpdated) {
         onMediaUpdated();
       }
     } catch (error) {
-      console.error('Failed to upload media:', error);
-      notifications.show({
-        title: 'Upload Failed',
-        message: error.message || 'Failed to upload media file',
-        color: 'red'
-      });
+      handleStrictModeError(error, 'upload media file');
     } finally {
       setIsUploading(false);
     }
@@ -1160,12 +1157,7 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
         onMediaUpdated();
       }
     } catch (error) {
-      console.error('Failed to delete media:', error);
-      notifications.show({
-        title: 'Delete Failed',
-        message: error.message || 'Failed to delete media file',
-        color: 'red'
-      });
+      handleStrictModeError(error, 'delete media file');
     }
   };
 

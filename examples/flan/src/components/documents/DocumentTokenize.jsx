@@ -12,13 +12,16 @@ import {
   Box,
   ActionIcon,
   Tooltip,
-  Kbd
+  Kbd,
+  Title,
+  Collapse
 } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
 import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
 import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
 import IconChevronUp from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';
 import IconCut from '@tabler/icons-react/dist/esm/icons/IconCut.mjs';
+import IconQuestionMark from '@tabler/icons-react/dist/esm/icons/IconQuestionMark.mjs';
 import { notifications } from '@mantine/notifications';
 import {
   tokenizeText,
@@ -27,6 +30,7 @@ import {
   validateTokenization
 } from '../../utils/tokenizationUtils';
 import { useStrictClient } from '../../contexts/StrictModeContext';
+import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 
 // Helper component to render text with visible whitespace
 const TextWithVisibleWhitespace = ({ text, style = {} }) => {
@@ -136,7 +140,7 @@ const TokenComponent = ({
     <Box
       component="span"
       onClick={(e) => {
-        if (e.ctrlKey) {
+        if (e.ctrlKey || e.metaKey) {
           onTokenClick(span, e);
         } else {
           onTokenSplit(span);
@@ -144,7 +148,7 @@ const TokenComponent = ({
       }}
       onContextMenu={(e) => onTokenRightClick(span, e)}
       onMouseDown={(e) => {
-        if (!e.ctrlKey) {
+        if (!e.ctrlKey && !e.metaKey) {
           onTokenDragStart(span, e);
         }
       }}
@@ -173,6 +177,7 @@ const TokenComponent = ({
 
 export const DocumentTokenize = ({ document, parsedDocument, project, onTokenizationComplete }) => {
   const client = useStrictClient();
+  const handleStrictModeError = useStrictModeErrorHandler(onTokenizationComplete);
   const [isTokenizing, setIsTokenizing] = useState(false);
   const [tokenizationProgress, setTokenizationProgress] = useState(0);
   const [currentOperation, setCurrentOperation] = useState('');
@@ -186,6 +191,9 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
   // Token splitting state
   const [splittingToken, setSplittingToken] = useState(null);
   const [hoveredSplitPosition, setHoveredSplitPosition] = useState(null);
+  
+  // Help section collapse state
+  const [helpOpened, setHelpOpened] = useState(false);
 
   // Get layer information
   const primaryTextLayer = project?.textLayers?.find(layer => layer.config?.flan?.primary);
@@ -200,27 +208,15 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
   const textId = document?.textLayers?.find(layer => layer.config?.flan?.primary)?.text?.id;
   
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
-  // Fallback function to reload from server on error
-  const handleOperationError = (error, operationName) => {
-    console.error(`${operationName} failed:`, error);
-    notifications.show({
-      title: 'Error',
-      message: `${operationName} failed, reloading document`,
-      color: 'red'
-    });
-    if (onTokenizationComplete) {
-      onTokenizationComplete();
-    }
-  };
 
-  // Handle escape key to cancel token splitting
+  // Handle keyboard shortcuts
   useHotkeys([
     ['escape', () => {
       if (splittingToken) {
         setSplittingToken(null);
         setHoveredSplitPosition(null);
       }
-    }]
+    }],
   ]);
 
   const updateProgress = (percent, operation) => {
@@ -230,7 +226,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
 
   // Handle CTRL+click on token to create new sentence
   const handleTokenClick = async (token, event) => {
-    if (!event.ctrlKey) return;
+    if (!event.ctrlKey && !event.metaKey) return;
     
     event.preventDefault();
     
@@ -279,7 +275,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
       }
       
     } catch (error) {
-      handleOperationError(error, 'Create sentence boundary');
+      handleStrictModeError(error, 'Create sentence boundary');
     }
   };
 
@@ -321,7 +317,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
       }
       
     } catch (error) {
-      handleOperationError(error, 'Delete sentence boundary');
+      handleStrictModeError(error, 'Delete sentence boundary');
     }
   };
 
@@ -338,13 +334,13 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
       }
       
     } catch (error) {
-      handleOperationError(error, 'Delete token');
+      handleStrictModeError(error, 'Delete token');
     }
   };
 
   // Handle token drag selection
   const handleTokenDragStart = (token, event) => {
-    if (event.ctrlKey) return; // Don't start drag on ctrl+click (sentence creation)
+    if (event.ctrlKey || event.metaKey) return; // Don't start drag on ctrl/cmd+click (sentence creation)
     
     setIsTokenDragging(true);
     setDragStartToken(token);
@@ -428,7 +424,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
       }
       
     } catch (error) {
-      handleOperationError(error, 'Merge tokens');
+      handleStrictModeError(error, 'Merge tokens');
     } finally {
       setIsTokenDragging(false);
       setSelectedTokens(new Set());
@@ -518,7 +514,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
       }
       
     } catch (error) {
-      handleOperationError(error, 'Split token');
+      handleStrictModeError(error, 'Split token');
       // Clear splitting state on error too
       setSplittingToken(null);
       setHoveredSplitPosition(null);
@@ -528,15 +524,15 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
   // Handle text selection on untokenized text
   const handleTextSelection = async (event) => {
     const selection = window.getSelection();
-    
+
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
       return;
     }
     
     const range = selection.getRangeAt(0);
-    const selectedText = selection.toString();
+    const selectedText = selection.toString().trim();
     
-    if (!selectedText || selectedText.trim().length === 0) {
+    if (!selectedText) {
       return;
     }
     
@@ -551,26 +547,31 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
     }
     
     // Get the span's data attributes that should contain begin/end positions
-    const spanBegin = parseInt(spanElement.getAttribute('data-begin'));
-    const spanEnd = parseInt(spanElement.getAttribute('data-end'));
+    const spanBegin = parseInt(spanElement.getAttribute('data-begin'), 10);
+    const spanEnd = parseInt(spanElement.getAttribute('data-end'), 10);
     
     if (isNaN(spanBegin) || isNaN(spanEnd)) {
       return;
     }
     
-    // Get the selected text and its position within the span
-    const spanText = spanElement.textContent;
-    const selectionStart = spanText.indexOf(selectedText);
-    
-    if (selectionStart === -1) {
-      return;
-    }
-    
-    const actualStart = spanBegin + selectionStart;
-    const actualEnd = actualStart + selectedText.length;
-    
     try {
-      if (actualEnd - actualStart < 1) {
+      // Calculate the actual selection offset within the span using Range API
+      const spanRange = window.document.createRange();
+      spanRange.setStart(spanElement.firstChild || spanElement, 0);
+      spanRange.setEnd(range.startContainer, range.startOffset);
+      
+      const selectionStart = spanRange.toString().length;
+      const selectionLength = selectedText.length;
+      
+      // Validate that the selection is within the span bounds
+      if (selectionStart < 0 || selectionStart + selectionLength > spanElement.textContent.length) {
+        return;
+      }
+      
+      const actualStart = spanBegin + selectionStart;
+      const actualEnd = actualStart + selectionLength;
+      
+      if (actualEnd <= actualStart) {
         return;
       }
       
@@ -582,15 +583,15 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
         actualEnd
       );
       
-      // Clear the selection
-      selection.removeAllRanges();
-      
       if (onTokenizationComplete) {
         onTokenizationComplete();
       }
       
     } catch (error) {
-      handleOperationError(error, 'Create token from selection');
+      handleStrictModeError(error, 'Create token from selection');
+    } finally {
+      // Always clear the selection, whether successful or not
+      selection.removeAllRanges();
     }
   };
 
@@ -903,29 +904,46 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
     <Stack spacing="lg" mt="md" style={{ height: 'calc(100vh - 200px)' }}>
       {/* Text Visualization */}
       <Paper withBorder style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Box p="md" style={{ borderBottom: '1px solid #e0e0e0', flexShrink: 0 }}>
-          <Text fw={500} mb="xs">Text with Tokens</Text>
-          <Text size="sm" c="dimmed" mb="sm">
-            Existing tokens are highlighted. Untokenized text appears as plain text.
-          </Text>
-          <Stack gap="0.4rem" mb="xs">
-            <div>
-              <Kbd size="md">Left Click</Kbd>: <Text component="span" size="sm" c="dimmed">Split Token</Text>
-            </div>
-            <div>
-              <Kbd size="md">Right Click</Kbd>: <Text component="span" size="sm" c="dimmed">Delete Token</Text>
-            </div>
+        <Box p="md" style={{ borderBottom: '1px solid #e0e0e0' }}>
+          <Group gap="xs" align="center">
+            <Title order={3}>Tokens</Title>
+            <Tooltip label={helpOpened ? "Hide help" : "Show help"}>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="md"
+                onClick={() => setHelpOpened(!helpOpened)}
+              >
+                <IconQuestionMark size={20} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
 
-            <div>
-              <Kbd size="md">Ctrl</Kbd> + <Kbd size="md">Left Click</Kbd>: <Text component="span" size="sm" c="dimmed">New Sentence</Text>
-            </div>
-            <div>
-              <Kbd size="md">Left Click</Kbd> + <Kbd size="md">Drag</Kbd>: <Text component="span" size="sm" c="dimmed">Create token from selection, or merge tokens</Text>
-            </div>
-            <div>
-              <Kbd size="md">Hover</Kbd>: <Text component="span" size="sm" c="dimmed">Delete Sentence</Text>
-            </div>
-          </Stack>
+          <Collapse in={helpOpened}>
+            <Text size="md" mb="sm" mt="sm">
+              Existing tokens are highlighted. Untokenized text appears as plain text.
+            </Text>
+            <Stack gap="0.4rem" mb="xs">
+              <div>
+                <Kbd size="md">Left Click</Kbd> + <Kbd size="md">Drag</Kbd>: Create token from selection, or merge tokens
+              </div>
+              <div>
+                <Kbd size="md">Left Click</Kbd>: Split Token
+              </div>
+              <div>
+                <Kbd size="md">Esc</Kbd>: Cancel token splitting
+              </div>
+              <div>
+                <Kbd size="md">Right Click</Kbd>: Delete Token
+              </div>
+              <div>
+                <Kbd size="md">Ctrl</Kbd>/<Kbd size="md">Cmd</Kbd> + <Kbd size="md">Left Click</Kbd> on token: New Sentence
+              </div>
+              <div>
+                <Kbd size="md"><IconChevronUp size={12} /></Kbd>: Merge sentence with previous
+              </div>
+            </Stack>
+          </Collapse>
         </Box>
 
         <Box style={{ flex: 1, paddingLeft: '70px' }}>

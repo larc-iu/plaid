@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
 // Import the PlaidClient
@@ -12,8 +13,9 @@ const StrictModeContext = createContext(null);
  * for a specific document. This ensures that all operations within this context
  * will use document versioning to prevent concurrent modification conflicts.
  */
-export const StrictModeProvider = ({ documentId, children }) => {
+export const StrictModeProvider = ({ children }) => {
   const { user } = useAuth();
+  const { documentId } = useParams();
   
   // Get credentials from localStorage (same as auth service does)
   const baseUrl = import.meta.env.VITE_API_URL || window.location.origin;

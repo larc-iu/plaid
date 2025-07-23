@@ -1,5 +1,6 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { StrictModeProvider } from './contexts/StrictModeContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { ProjectList } from './components/projects/ProjectList';
@@ -55,7 +56,9 @@ function App() {
           <Route path="/projects/:projectId/documents/:documentId" element={
             <ProtectedRoute>
               <AppLayout>
-                <DocumentDetail />
+                <StrictModeProvider>
+                  <DocumentDetail />
+                </StrictModeProvider>
               </AppLayout>
             </ProtectedRoute>
           } />
