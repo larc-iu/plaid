@@ -82,6 +82,25 @@
         }
 
         const results = await response.json();
+        
+        // Extract document versions from each batch response
+        for (const result of results) {
+          if (result.headers && result.headers['X-Document-Versions']) {
+            try {
+              const versionsMap = JSON.parse(result.headers['X-Document-Versions']);
+              if (typeof versionsMap === 'object' && versionsMap !== null) {
+                // Update internal document versions map with latest versions
+                Object.entries(versionsMap).forEach(([docId, version]) => {
+                  this.documentVersions.set(docId, version);
+                });
+              }
+            } catch (e) {
+              // Log malformed header issues but continue processing
+              console.warn('Failed to parse document versions header from batch response:', e);
+            }
+          }
+        }
+        
         return results.map(result => this._transformResponse(result));
       } catch (error) {
         // Check if it's already our formatted HTTP error

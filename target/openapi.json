@@ -2263,60 +2263,16 @@
                 "requestBody": {
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "body": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "body"
-                                ],
-                                "additionalProperties": false
-                            }
+                            "schema": {}
                         },
                         "application/transit+msgpack": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "body": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "body"
-                                ],
-                                "additionalProperties": false
-                            }
+                            "schema": {}
                         },
                         "application/transit+json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "body": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "body"
-                                ],
-                                "additionalProperties": false
-                            }
+                            "schema": {}
                         },
                         "application/edn": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "body": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "body"
-                                ],
-                                "additionalProperties": false
-                            }
+                            "schema": {}
                         }
                     }
                 },
@@ -2325,7 +2281,7 @@
                         "description": "Response"
                     }
                 },
-                "summary": "Update a text's <body>body</body>. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.",
+                "summary": "Update a text's <body>body</body>. A diff is computed between the new and old bodies, and a best effort is made to minimize Levenshtein distance between the two. Token indices are updated so that tokens remain intact. Tokens which fall within a range of deleted text are either shrunk appropriately if there is partial overlap or else deleted if there is whole overlap.\n\nIf preferred, body can instead be a list of edit directives such as:\n  {type: \"delete\", index: 5, value: 3} (delete 3 chars at index 5)\n  {type: \"insert\", index: 0, value: \"abc\"} (insert \"abc\" at the front)",
                 "security": [
                     {
                         "auth": []
