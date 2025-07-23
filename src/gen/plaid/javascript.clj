@@ -156,7 +156,7 @@
     return key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
   }
 
-  _extractDocumentVersions(responseHeaders) {
+  _extractDocumentVersions(responseHeaders, responseBody = null) {
     // Extract and update document versions from response headers
     const docVersionsHeader = responseHeaders.get('X-Document-Versions');
     if (docVersionsHeader) {
@@ -171,6 +171,14 @@
       } catch (e) {
         // Log malformed header issues
         console.warn('Failed to parse document versions header:', e);
+      }
+    }
+    
+    // Special case: if response body has \"id\", \"name\", and \"version\", assume it's a document
+    if (responseBody && typeof responseBody === 'object' && responseBody !== null) {
+      if (responseBody.id && responseBody.name && responseBody.version) {
+        // Update the map so that \"id\" is associated with \"version\"
+        this.documentVersions.set(responseBody.id, responseBody.version);
       }
     }
   }
@@ -682,15 +690,21 @@
              "        throw error;\n"
              "      }\n"
              "      \n"
-             "      // Extract document versions from response headers\n"
-             "      this._extractDocumentVersions(response.headers);\n"
-             "      \n"
              (if (and (:is-binary-response? special-endpoints) (= http-method :get))
-               "      // Return raw binary content for media downloads\n      return await response.arrayBuffer();\n"
+               (str "      // Extract document versions from response headers\n"
+                    "      this._extractDocumentVersions(response.headers);\n"
+                    "      \n"
+                    "      // Return raw binary content for media downloads\n"
+                    "      return await response.arrayBuffer();\n")
                (str "      const contentType = response.headers.get('content-type');\n"
                     "      if (contentType && contentType.includes('application/json')) {\n"
                     "        const data = await response.json();\n"
+                    "        // Extract document versions from response headers and body\n"
+                    "        this._extractDocumentVersions(response.headers, data);\n"
                     transform-response-code
+                    "      } else {\n"
+                    "        // Extract document versions from response headers only\n"
+                    "        this._extractDocumentVersions(response.headers);\n"
                     "      }\n"
                     "      return await response.text();\n"))
              "    } catch (error) {\n"
