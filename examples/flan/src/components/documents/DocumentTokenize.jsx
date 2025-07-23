@@ -31,6 +31,7 @@ import {
 } from '../../utils/tokenizationUtils';
 import { useStrictClient } from '../../contexts/StrictModeContext';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
+import { useServiceRequest } from './hooks/useServiceRequest';
 
 // Helper component to render text with visible whitespace
 const TextWithVisibleWhitespace = ({ text, style = {} }) => {
@@ -181,7 +182,21 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
   const [isTokenizing, setIsTokenizing] = useState(false);
   const [tokenizationProgress, setTokenizationProgress] = useState(0);
   const [currentOperation, setCurrentOperation] = useState('');
-  const [algorithm, setAlgorithm] = useState('rule-based-punctuation');
+  const [algorithm, setAlgorithm] = useState('');
+  const [algorithmOptions, setAlgorithmOptions] = useState([]);
+  const [hasRestoredCache, setHasRestoredCache] = useState(false);
+  
+  // NLP service hook
+  const {
+    availableServices,
+    isDiscovering,
+    discoverServices,
+    isProcessing,
+    requestService,
+    hasServices,
+    progressPercent,
+    progressMessage
+  } = useServiceRequest();
   
   // Token drag selection state
   const [isTokenDragging, setIsTokenDragging] = useState(false);
@@ -208,6 +223,90 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
   const textId = document?.textLayers?.find(layer => layer.config?.flan?.primary)?.text?.id;
   
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
+  
+  // Check if the current selection is an NLP service
+  const isUsingNlpService = algorithm && algorithm.startsWith('service:');
+  
+  // Clear tokens handler
+  const handleClearTokens = async () => {
+    if (!existingTokens.length) return;
+    
+    try {
+      setIsTokenizing(true);
+      updateProgress(25, 'Deleting tokens...');
+      
+      const tokenIds = existingTokens.map(token => token.id);
+      await client.tokens.bulkDelete(tokenIds);
+      
+      updateProgress(100, 'Tokens cleared!');
+      
+      notifications.show({
+        title: 'Success',
+        message: `Deleted ${tokenIds.length} tokens`,
+        color: 'green'
+      });
+      
+      if (onTokenizationComplete) {
+        onTokenizationComplete();
+      }
+      
+    } catch (error) {
+      handleStrictModeError(error, 'Clear tokens');
+    } finally {
+      setIsTokenizing(false);
+      setTokenizationProgress(0);
+      setCurrentOperation('');
+    }
+  };
+  
+  // Clear sentences handler - replace all sentences with single sentence covering entire text
+  const handleClearSentences = async () => {
+    if (!existingSentenceTokens.length || !sentenceTokenLayer) return;
+    
+    try {
+      setIsTokenizing(true);
+      updateProgress(25, 'Resetting sentence tokens...');
+      
+      client.beginBatch();
+      
+      // Delete all existing sentence tokens
+      const sentenceIds = existingSentenceTokens.map(sentence => sentence.id);
+      for (const sentenceId of sentenceIds) {
+        client.tokens.delete(sentenceId);
+      }
+      
+      updateProgress(50, 'Creating single sentence token...');
+      
+      // Create a single sentence token covering the entire text
+      await client.tokens.create(
+        sentenceTokenLayer.id,
+        textId,
+        0,
+        text.length
+      );
+      
+      await client.submitBatch();
+      
+      updateProgress(100, 'Sentence tokens reset!');
+      
+      notifications.show({
+        title: 'Success',
+        message: `Reset to single sentence token`,
+        color: 'green'
+      });
+      
+      if (onTokenizationComplete) {
+        onTokenizationComplete();
+      }
+      
+    } catch (error) {
+      handleStrictModeError(error, 'Clear sentence tokens');
+    } finally {
+      setIsTokenizing(false);
+      setTokenizationProgress(0);
+      setCurrentOperation('');
+    }
+  };
 
   // Handle keyboard shortcuts
   useHotkeys([
@@ -753,7 +852,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
             )}
             
             {/* Sentence content */}
-            <Box style={{ flex: 1, paddingLeft: '70px' }}>
+            <Box style={{ flex: 1, paddingLeft: '70px', whiteSpace: "pre-wrap" }}>
               {/* Render tokens and untokenized text within this sentence */}
               {(() => {
                 const sentenceTokens = sentence.tokens || [];
@@ -835,11 +934,95 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
     );
   }, [text, parsedDocument?.sentences, existingTokens, hoveredSplitPosition, selectedTokens, isTokenDragging, splittingToken]);
 
+  // Handle algorithm dropdown click to discover services
+  const handleAlgorithmDropdownClick = useCallback(async () => {
+    if (!project?.id || isDiscovering) return;
+    await discoverServices(project.id);
+  }, [project?.id, isDiscovering, discoverServices]);
+  
+  // Discover services on component mount
+  useEffect(() => {
+    if (project?.id) {
+      discoverServices(project.id);
+    }
+  }, [project?.id, discoverServices]);
+
+  // Populate tokenization options when available services change
+  useEffect(() => {
+    // Build options list with discovered services
+    const options = [
+      { value: 'rule-based-punctuation', label: 'Rule-based Punctuation' }
+    ];
+    
+    // Add discovered tokenization services (filter by tok: prefix)
+    availableServices.forEach(service => {
+      if (service.serviceId.startsWith('tok:')) {
+        options.push({
+          value: `service:${service.serviceId}`,
+          label: service.serviceName
+        });
+      }
+    });
+    
+    setAlgorithmOptions(options);
+  }, [availableServices]);
+
+  // Restore cached selection when options are available
+  useEffect(() => {
+    // Wait for service discovery and only run once
+    if (algorithmOptions.length <= 1 || hasRestoredCache) return;
+    
+    const cached = localStorage.getItem('flan_tokenization_algorithm');
+    const isAvailable = cached && algorithmOptions.some(opt => opt.value === cached);
+    
+    if (isAvailable) {
+      setAlgorithm(cached);
+    } else {
+      if (cached) localStorage.removeItem('flan_tokenization_algorithm');
+      setAlgorithm('rule-based-punctuation');
+    }
+    
+    setHasRestoredCache(true);
+  }, [algorithmOptions, hasRestoredCache]);
+
   const handleTokenize = async () => {
     setIsTokenizing(true);
     setTokenizationProgress(0);
 
     try {
+      // Check if using an NLP service
+      if (algorithm.startsWith('service:')) {
+        const serviceId = algorithm.substring(8); // Remove 'service:' prefix
+        
+        updateProgress(10, 'Requesting tokenization from NLP service...');
+        
+        await requestService(
+          project.id,
+          document.id,
+          serviceId,
+          {
+            documentId: document.id,
+            primaryTokenLayerId: primaryTokenLayer.id,
+            sentenceLayerId: sentenceTokenLayer?.id
+          },
+          {
+            successTitle: 'Tokenization Complete',
+            successMessage: 'Document has been tokenized successfully',
+            errorTitle: 'Tokenization Failed',
+            errorMessage: 'An error occurred during tokenization'
+          }
+        );
+        
+        updateProgress(100, 'Tokenization complete!');
+        
+        if (onTokenizationComplete) {
+          onTokenizationComplete();
+        }
+        
+        return;
+      }
+      
+      // Otherwise use built-in tokenization
       // Tokenize words only
       updateProgress(25, 'Analyzing text for tokens...');
       const untokenizedRanges = findUntokenizedRanges(text, existingTokens);
@@ -952,41 +1135,75 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
       </Paper>
 
       {/* Controls */}
-      <Paper withBorder p="md" style={{ flexShrink: 0 }}>
-        <Group justify="space-between" align="flex-end">
-          <Select
-              label="Tokenization Algorithm"
-              value={algorithm}
-              onChange={setAlgorithm}
-              data={[
-                { value: 'rule-based-punctuation', label: 'Rule-based Punctuation' }
-              ]}
-              style={{ flex: 1, maxWidth: 300 }}
-          />
+      <Paper withBorder p="md" style={{ flexShrink: 0 }} onMouseEnter={() => discoverServices(project.id)}>
+        <Group justify="space-between" align="flex-end" mb="md">
+          <Group align="flex-end" gap="sm">
+            <Select
+                label="Tokenization Algorithm"
+                value={algorithm}
+                onChange={(value) => {
+                  console.log('[TOK-CACHE] User selected algorithm', { value });
+                  setAlgorithm(value);
+                  // Cache the selection
+                  if (value) {
+                    console.log('[TOK-CACHE] Caching selection to localStorage', value);
+                    localStorage.setItem('flan_tokenization_algorithm', value);
+                  } else {
+                    console.log('[TOK-CACHE] Removing cached selection from localStorage');
+                    localStorage.removeItem('flan_tokenization_algorithm');
+                  }
+                }}
+                data={algorithmOptions}
+                style={{ width: 280 }}
+                onMouseEnter={handleAlgorithmDropdownClick}
+            />
 
-          <Button
-              leftSection={<IconPlayerPlay size={16} />}
-              onClick={handleTokenize}
-              loading={isTokenizing}
-              disabled={!text || !primaryTokenLayer}
-          >
-            Tokenize
-          </Button>
+            <Button
+                leftSection={<IconPlayerPlay size={16} />}
+                onClick={handleTokenize}
+                loading={isTokenizing || isProcessing}
+                disabled={!text || !primaryTokenLayer || isProcessing}
+            >
+              Tokenize
+            </Button>
+          </Group>
+
+          <Group align="flex-end" gap="sm">
+            <Button
+                variant="default"
+                onClick={handleClearTokens}
+                disabled={isTokenizing || isProcessing || !existingTokens.length}
+            >
+              Clear Tokens
+            </Button>
+            
+            <Button
+                variant="default"
+                onClick={handleClearSentences}
+                disabled={isTokenizing || isProcessing || !existingSentenceTokens.length || existingSentenceTokens.length === 1}
+            >
+              Clear Sentences
+            </Button>
+          </Group>
       </Group>
 
       {/* Progress */}
-      {isTokenizing && (
-        <Paper withBorder p="md">
+      <Paper withBorder p="md" style={{ minHeight: '120px' }}>
+        {(isTokenizing || isProcessing) ? (
           <Stack spacing="sm">
             <Group>
               <IconPlayerPlay size={16} />
-              <Text fw={500}>Processing...</Text>
+              <Text fw={500}>{progressMessage || 'Processing...'}</Text>
             </Group>
-            <Progress value={tokenizationProgress} animated />
+            <Progress value={progressPercent || tokenizationProgress} animated />
             <Text size="sm" c="dimmed">{currentOperation}</Text>
           </Stack>
-        </Paper>
-      )}
+        ) : (
+          <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Text size="sm" c="dimmed"></Text>
+          </Box>
+        )}
+      </Paper>
 
       {!primaryTokenLayer && (
           <>

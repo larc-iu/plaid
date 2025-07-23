@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Stack,
   Text,
@@ -11,7 +11,10 @@ import {
   Tooltip,
   Slider,
   FileButton,
-  Center, Title
+  Center, 
+  Title,
+  Select,
+  Progress
 } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
 import { TimeAlignmentPopover } from './media/TimeAlignmentPopover.jsx';
@@ -27,9 +30,11 @@ import IconPlayerTrackPrev from '@tabler/icons-react/dist/esm/icons/IconPlayerTr
 import IconPlayerTrackNext from '@tabler/icons-react/dist/esm/icons/IconPlayerTrackNext.mjs';
 import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
+import IconMicrophone from '@tabler/icons-react/dist/esm/icons/IconMicrophone.mjs';
 import { notifications } from '@mantine/notifications';
 import { useStrictClient } from '../../contexts/StrictModeContext';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
+import { useServiceRequest } from './hooks/useServiceRequest';
 
 // Constants
 const TIMELINE_HEIGHT = 100;
@@ -369,6 +374,14 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
   const [waveformImage, setWaveformImage] = useState(null);
   const [isLoadingWaveform, setIsLoadingWaveform] = useState(false);
   const animationFrameRef = useRef(null);
+  
+  // Resize state management
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizingToken, setResizingToken] = useState(null);
+  const [resizingHandle, setResizingHandle] = useState(null); // 'left' or 'right'
+  const [resizeStartTime, setResizeStartTime] = useState(null);
+  const [tempTokenBounds, setTempTokenBounds] = useState(null);
+  const [persistedTokenBounds, setPersistedTokenBounds] = useState(new Map()); // Keep bounds after API call until refresh
 
   const getTimeFromPosition = (clientX) => {
     if (!timelineRef.current) return 0;
@@ -380,6 +393,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
 
   const handleMouseDown = (event) => {
     if (event.button !== 0) return; // Only left mouse button
+    if (isResizing) return; // Don't start new drag while resizing
     
     const time = getTimeFromPosition(event.clientX);
     
@@ -395,6 +409,11 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
   };
 
   const handleMouseMove = (event) => {
+    if (isResizing) {
+      handleResizeMove(event);
+      return;
+    }
+    
     if (!isDragging) return;
     
     const time = getTimeFromPosition(event.clientX);
@@ -407,6 +426,11 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
   };
 
   const handleMouseUp = (event) => {
+    if (isResizing) {
+      handleResizeEnd(event);
+      return;
+    }
+    
     if (!isDragging) return;
     
     const time = getTimeFromPosition(event.clientX);
@@ -426,6 +450,85 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
     
     setDragStart(null);
     setDragEnd(null);
+  };
+
+  // Resize event handlers
+  const handleResizeStart = (event, token, handle) => {
+    event.stopPropagation();
+    event.preventDefault();
+    
+    setIsResizing(true);
+    setResizingToken(token);
+    setResizingHandle(handle);
+    setResizeStartTime(getTimeFromPosition(event.clientX));
+    setTempTokenBounds({
+      start: token.metadata?.timeBegin || 0,
+      end: token.metadata?.timeEnd || 0
+    });
+  };
+
+  const handleResizeMove = (event) => {
+    if (!isResizing || !resizingToken || !tempTokenBounds) return;
+    
+    const currentTime = getTimeFromPosition(event.clientX);
+    let newStart = tempTokenBounds.start;
+    let newEnd = tempTokenBounds.end;
+    
+    if (resizingHandle === 'left') {
+      newStart = Math.max(0, Math.min(currentTime, tempTokenBounds.end - 0.1)); // Min 0.1s width
+    } else if (resizingHandle === 'right') {
+      newEnd = Math.min(duration, Math.max(currentTime, tempTokenBounds.start + 0.1)); // Min 0.1s width
+    }
+    
+    setTempTokenBounds({ start: newStart, end: newEnd });
+  };
+
+  const handleResizeEnd = async (event) => {
+    if (!isResizing || !resizingToken || !tempTokenBounds) return;
+    
+    try {
+      // Store the bounds to maintain visual state during refresh
+      setPersistedTokenBounds(prev => {
+        const newMap = new Map(prev);
+        newMap.set(resizingToken.id, {
+          start: tempTokenBounds.start,
+          end: tempTokenBounds.end
+        });
+        return newMap;
+      });
+      
+      // Update token metadata via API
+      await client.tokens.setMetadata(resizingToken.id, {
+        timeBegin: tempTokenBounds.start,
+        timeEnd: tempTokenBounds.end
+      });
+      
+      // Refresh document to show changes
+      if (handleAlignmentCreated) {
+        handleAlignmentCreated();
+      }
+    } catch (error) {
+      console.error('Failed to update token bounds:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update alignment boundaries',
+        color: 'red'
+      });
+      
+      // Clear the persisted bounds on error
+      setPersistedTokenBounds(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(resizingToken.id);
+        return newMap;
+      });
+    } finally {
+      // Reset resize state
+      setIsResizing(false);
+      setResizingToken(null);
+      setResizingHandle(null);
+      setResizeStartTime(null);
+      setTempTokenBounds(null);
+    }
   };
 
   // Handle wheel events with proper passive listener setup
@@ -520,6 +623,13 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
       }
     };
   }, [waveformImage]);
+
+  // Clear persisted token bounds when alignment tokens change (after refresh)
+  useEffect(() => {
+    if (alignmentTokens.length > 0) {
+      setPersistedTokenBounds(new Map());
+    }
+  }, [alignmentTokens]);
 
   // Generate canvas-based waveform image
   useEffect(() => {
@@ -863,41 +973,99 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
             />
 
             {/* Alignment tokens */}
-            {alignmentTokens.map((token, index) => (
-              <div
-                key={token.id || index}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Create selection from alignment token
-                  const tokenSelection = {
-                    start: token.metadata?.timeBegin || 0,
-                    end: token.metadata?.timeEnd || 0
-                  };
-                  onSelectionCreate(tokenSelection.start, tokenSelection.end);
-                }}
-                style={{
-                  position: 'absolute',
-                  left: `${(token.metadata?.timeBegin || 0) * pixelsPerSecond}px`,
-                  width: `${((token.metadata?.timeEnd || token.metadata?.timeBegin || 1) - (token.metadata?.timeBegin || 0)) * pixelsPerSecond}px`,
-                  top: 0,
-                  bottom: 0,
-                  backgroundColor: 'rgba(25, 118, 210, 0.15)',
-                  border: '1px solid #1976d2',
-                  borderRadius: '0px',
-                  padding: '4px 4px',
-                  lineHeight: '14px',
-                  fontSize: '12px',
-                  overflow: 'hidden',
-                  cursor: 'pointer',
-                  color: '#000',
-                  fontWeight: 500,
-                  zIndex: 3
-                }}
-                title={`${parsedDocument?.document?.text?.body?.substring(token.begin, token.end) || ''} (${formatTime(token.metadata?.timeBegin || 0)} - ${formatTime(token.metadata?.timeEnd || 0)})`}
-              >
-                {parsedDocument?.document?.text?.body?.substring(token.begin, token.end) || ''}
-              </div>
-            ))}
+            {alignmentTokens.map((token, index) => {
+              const tokenStart = token.metadata?.timeBegin || 0;
+              const tokenEnd = token.metadata?.timeEnd || token.metadata?.timeBegin || 1;
+              const tokenWidth = (tokenEnd - tokenStart) * pixelsPerSecond;
+              const isBeingResized = isResizing && resizingToken?.id === token.id;
+              const persistedBounds = persistedTokenBounds.get(token.id);
+              
+              // Use temp bounds if actively resizing, persisted bounds if waiting for refresh, or original bounds
+              const displayStart = isBeingResized ? tempTokenBounds.start : 
+                                  persistedBounds ? persistedBounds.start : tokenStart;
+              const displayEnd = isBeingResized ? tempTokenBounds.end : 
+                                persistedBounds ? persistedBounds.end : tokenEnd;
+              const displayWidth = (displayEnd - displayStart) * pixelsPerSecond;
+              
+              return (
+                <div
+                  key={token.id || index}
+                  style={{
+                    position: 'absolute',
+                    left: `${displayStart * pixelsPerSecond}px`,
+                    width: `${displayWidth}px`,
+                    top: 0,
+                    bottom: 0,
+                    backgroundColor: isBeingResized ? 'rgba(25, 118, 210, 0.25)' : 
+                                    persistedBounds ? 'rgba(25, 118, 210, 0.2)' : 'rgba(25, 118, 210, 0.15)',
+                    border: '1px solid #1976d2',
+                    borderRadius: '0px',
+                    padding: '4px 4px',
+                    lineHeight: '14px',
+                    fontSize: '12px',
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                    color: '#000',
+                    fontWeight: 500,
+                    zIndex: 3
+                  }}
+                  onClick={(e) => {
+                    if (isResizing) return;
+                    e.stopPropagation();
+                    // Create selection from alignment token
+                    const tokenSelection = {
+                      start: displayStart,
+                      end: displayEnd
+                    };
+                    onSelectionCreate(tokenSelection.start, tokenSelection.end);
+                  }}
+                  title={`${parsedDocument?.document?.text?.body?.substring(token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
+                >
+                  {/* Left resize handle */}
+                  <div
+                    onMouseDown={(e) => handleResizeStart(e, token, 'left')}
+                    style={{
+                      position: 'absolute',
+                      left: '-2px',
+                      top: 0,
+                      bottom: 0,
+                      width: '4px',
+                      backgroundColor: '#1976d2',
+                      cursor: 'ew-resize',
+                      zIndex: 5,
+                      opacity: tokenWidth > 20 ? 1 : 0 // Hide on very small tokens
+                    }}
+                  />
+                  
+                  {/* Token content */}
+                  <div style={{ 
+                    height: '100%', 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    paddingLeft: tokenWidth > 20 ? '6px' : '2px',
+                    paddingRight: tokenWidth > 20 ? '6px' : '2px'
+                  }}>
+                    {parsedDocument?.document?.text?.body?.substring(token.begin, token.end) || ''}
+                  </div>
+                  
+                  {/* Right resize handle */}
+                  <div
+                    onMouseDown={(e) => handleResizeStart(e, token, 'right')}
+                    style={{
+                      position: 'absolute',
+                      right: '-2px',
+                      top: 0,
+                      bottom: 0,
+                      width: '4px',
+                      backgroundColor: '#1976d2',
+                      cursor: 'ew-resize',
+                      zIndex: 5,
+                      opacity: tokenWidth > 20 ? 1 : 0 // Hide on very small tokens
+                    }}
+                  />
+                </div>
+              );
+            })}
           </Box>
         </Box>
       </Stack>
@@ -956,6 +1124,24 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
   const [popoverOpened, setPopoverOpened] = useState(false);
   const selectionMonitorRef = useRef(null);
   const timelineContainerRef = useRef(null);
+  
+  // ASR state
+  const [asrAlgorithm, setAsrAlgorithm] = useState('');
+  const [asrAlgorithmOptions, setAsrAlgorithmOptions] = useState([]);
+  const [transcriptionProgress, setTranscriptionProgress] = useState(0);
+  const [currentOperation, setCurrentOperation] = useState('');
+  
+  // ASR service hook
+  const {
+    availableServices,
+    isDiscovering,
+    discoverServices,
+    isProcessing,
+    requestService,
+    hasServices,
+    progressPercent,
+    progressMessage
+  } = useServiceRequest();
 
   // Get authenticated media URL with proper base path handling
   const getAuthenticatedMediaUrl = (serverUrl) => {
@@ -1031,7 +1217,14 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
     if (selection && mediaElement) {
       mediaElement.currentTime = selection.start;
       setPlayingSelection(selection);
-      mediaElement.play();
+      
+      // Wait for seek to complete before starting playback
+      const handleSeeked = () => {
+        mediaElement.removeEventListener('seeked', handleSeeked);
+        mediaElement.play();
+      };
+      
+      mediaElement.addEventListener('seeked', handleSeeked);
     }
   };
 
@@ -1160,6 +1353,157 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
       handleStrictModeError(error, 'delete media file');
     }
   };
+  
+  // Handle ASR algorithm dropdown interaction
+  const handleAsrDropdownInteraction = useCallback(async () => {
+    if (!project?.id || isDiscovering) return;
+    await discoverServices(project.id);
+  }, [project?.id, discoverServices]);
+  
+  // Update progress helper
+  const updateProgress = (percent, operation) => {
+    setTranscriptionProgress(percent);
+    setCurrentOperation(operation);
+  };
+  
+  // Handle ASR transcription
+  const handleTranscribe = async () => {
+    if (!asrAlgorithm.startsWith('service:')) return;
+    
+    const serviceId = asrAlgorithm.substring(8); // Remove 'service:' prefix
+    const documentId = parsedDocument?.document?.id;
+    
+    if (!documentId) {
+      notifications.show({
+        title: 'Error',
+        message: 'Document ID not found',
+        color: 'red'
+      });
+      return;
+    }
+    
+    // Find text, alignment token, and sentence token layers
+    const primaryTextLayer = parsedDocument.layers.primaryTextLayer;
+    const alignmentTokenLayer = parsedDocument.layers.alignmentTokenLayer;
+    const sentenceTokenLayer = parsedDocument.layers.sentenceTokenLayer;
+
+    try {
+      updateProgress(10, 'Starting transcription...');
+      
+      const result = await requestService(
+        project.id,
+        documentId,
+        serviceId,
+        {
+          documentId: documentId,
+          textLayerId: primaryTextLayer.id,
+          alignmentTokenLayerId: alignmentTokenLayer.id,
+          sentenceTokenLayerId: sentenceTokenLayer.id,
+        },
+        {
+          successTitle: 'Transcription Complete',
+          successMessage: 'Audio has been transcribed successfully',
+          errorTitle: 'Transcription Failed',
+          errorMessage: 'An error occurred during transcription'
+        }
+      );
+      
+      updateProgress(100, 'Transcription complete!');
+      
+      if (onMediaUpdated) {
+        onMediaUpdated();
+      }
+      
+    } catch (error) {
+      console.error('Transcription failed:', error);
+      updateProgress(0, '');
+    }
+  };
+  
+  // Handle clear alignments
+  const handleClearAlignments = async () => {
+    if (!alignmentTokens.length) return;
+    
+    if (!confirm('Are you sure you want to clear all time alignments? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      updateProgress(25, 'Clearing alignments...');
+      
+      // Delete all alignment tokens
+      const alignmentIds = alignmentTokens.map(token => token.id);
+      await client.tokens.bulkDelete(alignmentIds);
+      
+      updateProgress(100, 'Alignments cleared!');
+      
+      notifications.show({
+        title: 'Success',
+        message: `Cleared ${alignmentIds.length} time alignments`,
+        color: 'green'
+      });
+      
+      if (onMediaUpdated) {
+        onMediaUpdated();
+      }
+      
+    } catch (error) {
+      handleStrictModeError(error, 'clear alignments');
+    } finally {
+      setTranscriptionProgress(0);
+      setCurrentOperation('');
+    }
+  };
+  
+  // Trigger service discovery on component mount
+  useEffect(() => {
+    if (project?.id) {
+      discoverServices(project.id);
+    }
+  }, [project?.id, discoverServices]);
+
+  // Populate ASR options when available services change
+  useEffect(() => {
+    // Build options list with discovered ASR services
+    const options = [];
+    
+    // Add discovered ASR services (filter by asr: prefix)
+    availableServices.forEach(service => {
+      if (service.serviceId.startsWith('asr:')) {
+        options.push({
+          value: `service:${service.serviceId}`,
+          label: service.serviceName
+        });
+      }
+    });
+    
+    setAsrAlgorithmOptions(options);
+  }, [availableServices]);
+
+  // Restore cached selection when options are available
+  useEffect(() => {
+    if (asrAlgorithmOptions.length === 0) {
+      return;
+    }
+    
+    const cached = localStorage.getItem('flan_asr_algorithm');
+    
+    if (cached) {
+      const isAvailable = asrAlgorithmOptions.some(opt => opt.value === cached);
+      
+      if (isAvailable) {
+        // Cached selection is available, restore it
+        setAsrAlgorithm(cached);
+      } else {
+        // Cached selection no longer available, clear it
+        setAsrAlgorithm('');
+        localStorage.removeItem('flan_asr_algorithm');
+      }
+    }
+  }, [asrAlgorithmOptions]);
+
+  // Check if using ASR service
+  const isUsingAsrService = asrAlgorithm && asrAlgorithm.startsWith('service:');
 
   // If no media, show upload interface
   if (!parsedDocument?.document?.mediaUrl) {
@@ -1193,30 +1537,93 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
       {/* Timeline */}
       <Box style={{ position: 'relative' }}>
         <Timeline
-          duration={duration}
-          currentTime={currentTime}
-          pixelsPerSecond={pixelsPerSecond}
-          onPixelsPerSecondChange={setPixelsPerSecond}
-          alignmentTokens={alignmentTokens}
-          onTimelineClick={handleTimelineClick}
-          onSelectionCreate={handleSelectionCreate}
-          selection={selection}
-          onPlaySelection={handlePlaySelection}
-          onClearSelection={handleClearSelection}
-          mediaUrl={authenticatedMediaUrl}
-          mediaElement={mediaElement}
-          isPlaying={isPlaying}
-          onEditSelection={handleEditSelection}
-          popoverOpened={popoverOpened}
-          setPopoverOpened={setPopoverOpened}
-          client={client}
-          parsedDocument={parsedDocument}
-          project={project}
-          handleAlignmentCreated={handleAlignmentCreated}
-          timelineContainerRef={timelineContainerRef}
+            duration={duration}
+            currentTime={currentTime}
+            pixelsPerSecond={pixelsPerSecond}
+            onPixelsPerSecondChange={setPixelsPerSecond}
+            alignmentTokens={alignmentTokens}
+            onTimelineClick={handleTimelineClick}
+            onSelectionCreate={handleSelectionCreate}
+            selection={selection}
+            onPlaySelection={handlePlaySelection}
+            onClearSelection={handleClearSelection}
+            mediaUrl={authenticatedMediaUrl}
+            mediaElement={mediaElement}
+            isPlaying={isPlaying}
+            onEditSelection={handleEditSelection}
+            popoverOpened={popoverOpened}
+            setPopoverOpened={setPopoverOpened}
+            client={client}
+            parsedDocument={parsedDocument}
+            project={project}
+            handleAlignmentCreated={handleAlignmentCreated}
+            timelineContainerRef={timelineContainerRef}
         />
       </Box>
 
+      {/* ASR Controls */}
+      <Paper withBorder p="md" style={{ backgroundColor: '#f8f9fa' }}>
+        <Group justify="space-between" align="flex-end" mb="md">
+          <Group align="flex-end" gap="sm">
+            <Select
+                label="Transcription Service"
+                value={asrAlgorithm}
+                onChange={(value) => {
+                  setAsrAlgorithm(value);
+                  // Cache the selection
+                  if (value) {
+                    localStorage.setItem('flan_asr_algorithm', value);
+                  } else {
+                    localStorage.removeItem('flan_asr_algorithm');
+                  }
+                }}
+                data={asrAlgorithmOptions}
+                style={{ width: 280 }}
+                onMouseEnter={handleAsrDropdownInteraction}
+            />
+
+            <Button
+                leftSection={<IconMicrophone size={16} />}
+                onClick={handleTranscribe}
+                loading={isProcessing}
+                disabled={!isUsingAsrService || isProcessing || isUploading}
+            >
+              Transcribe
+            </Button>
+          </Group>
+
+          <Button
+              variant="default"
+              onClick={handleClearAlignments}
+              disabled={isProcessing || isUploading || !alignmentTokens.length}
+          >
+            Clear Alignments
+          </Button>
+        </Group>
+        
+        {/* Progress */}
+        <Box style={{ minHeight: '80px' }}>
+          {(isProcessing || isUploading) ? (
+            <Stack spacing="sm">
+              <Group>
+                <IconMicrophone size={16} />
+                <Text fw={500}>{progressMessage || 'Processing...'}</Text>
+              </Group>
+              <Progress value={progressPercent || transcriptionProgress} animated />
+              <Text size="sm" c="dimmed">{currentOperation}</Text>
+            </Stack>
+          ) : (
+            <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Text size="sm" c="dimmed">
+                {alignmentTokens.length > 0 
+                  ? `${alignmentTokens.length} time alignments` 
+                  : 'No time alignments yet'
+                }
+              </Text>
+            </Box>
+          )}
+        </Box>
+      </Paper>
     </Stack>
   );
 };

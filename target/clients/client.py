@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Wed Jul 23 15:27:30 EDT 2025
+Generated on: Wed Jul 23 19:25:09 EDT 2025
 """
 
 import requests
@@ -12889,7 +12889,8 @@ class MessagesResource:
                         'service_id': message.get('serviceId'),
                         'service_name': message.get('serviceName'),
                         'description': message.get('description'),
-                        'timestamp': message.get('timestamp')
+                        'timestamp': message.get('timestamp'),
+                        'extras': message.get('extras', {})
                     })
             
             # Check if we should stop listening
@@ -12930,7 +12931,7 @@ class MessagesResource:
         
         return discovered_services
     
-    def serve(self, project_id: str, service_info: Dict[str, str], on_service_request: Callable[[Dict[str, Any], Any], None]) -> Dict[str, Any]:
+    def serve(self, project_id: str, service_info: Dict[str, str], on_service_request: Callable[[Dict[str, Any], Any], None], extras: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Register as a service and handle incoming requests
         
@@ -12941,6 +12942,7 @@ class MessagesResource:
             project_id: The UUID of the project to serve
             service_info: Dict with serviceId, serviceName, description
             on_service_request: Callback to handle service requests (data, response_helper)
+            extras: Optional dict of additional service metadata
             
         Returns:
             Service registration object with stop(), is_running(), service_info
@@ -12950,6 +12952,7 @@ class MessagesResource:
         service_id = service_info['serviceId']
         service_name = service_info['serviceName']
         description = service_info['description']
+        extras = extras or {}
         
         is_running = threading.Event()
         is_running.set()
@@ -13013,7 +13016,8 @@ class MessagesResource:
                         requestId=message.get('requestId'),
                         serviceId=service_id,
                         serviceName=service_name,
-                        description=description
+                        description=description,
+                        extras=extras
                     )
                     try:
                         self.send_message(project_id, registration_msg)
@@ -13075,7 +13079,8 @@ class MessagesResource:
             'service_info': {
                 'service_id': service_id, 
                 'service_name': service_name, 
-                'description': description
+                'description': description,
+                'extras': extras
             }
         }
         

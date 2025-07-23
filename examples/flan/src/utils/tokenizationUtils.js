@@ -109,11 +109,15 @@ export function tokenizeText(text, config, untokenizedRanges) {
         // Create token for accumulated text
         if (i > currentStart) {
           const tokenText = text.slice(currentStart, i);
-          if (tokenText.trim().length > 0) {
+          const trimmed = tokenText.trim();
+          if (trimmed.length > 0) {
+            // Find the actual start and end positions of the trimmed text
+            const leadingSpaces = tokenText.length - tokenText.trimStart().length;
+            const trailingSpaces = tokenText.length - tokenText.trimEnd().length;
             tokens.push({
-              text: tokenText,
-              begin: currentStart,
-              end: i
+              text: trimmed,
+              begin: currentStart + leadingSpaces,
+              end: i - trailingSpaces
             });
           }
         }
@@ -141,11 +145,15 @@ export function tokenizeText(text, config, untokenizedRanges) {
     // Handle final token in range
     if (currentStart < range.end) {
       const tokenText = text.slice(currentStart, range.end);
-      if (tokenText.trim().length > 0) {
+      const trimmed = tokenText.trim();
+      if (trimmed.length > 0) {
+        // Find the actual start and end positions of the trimmed text
+        const leadingSpaces = tokenText.length - tokenText.trimStart().length;
+        const trailingSpaces = tokenText.length - tokenText.trimEnd().length;
         tokens.push({
-          text: tokenText,
-          begin: currentStart,
-          end: range.end
+          text: trimmed,
+          begin: currentStart + leadingSpaces,
+          end: range.end - trailingSpaces
         });
       }
     }

@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Wed Jul 23 12:51:02 EDT 2025
+ * Generated on: Wed Jul 23 19:25:08 EDT 2025
  */
 
 class PlaidClient {
@@ -849,6 +849,7 @@ metadata, an optional map of metadata
        * @param {string} projectId - The UUID of the project to serve
        * @param {Object} serviceInfo - Service information {serviceId, serviceName, description}
        * @param {function} onServiceRequest - Callback to handle service requests
+       * @param {Object} [extras] - Optional additional service metadata
        * @returns {Object} Service registration object with .stop() method
        */
       serve: this._messagesServe.bind(this),
@@ -11572,7 +11573,8 @@ metadata, an optional map of metadata
                 serviceId: message.serviceId,
                 serviceName: message.serviceName,
                 description: message.description,
-                timestamp: message.timestamp
+                timestamp: message.timestamp,
+                extras: message.extras || {}
               });
             }
           }
@@ -11598,7 +11600,7 @@ metadata, an optional map of metadata
   }
 
   // Service registration implementation
-  _messagesServe(projectId, serviceInfo, onServiceRequest) {
+  _messagesServe(projectId, serviceInfo, onServiceRequest, extras = {}) {
     const { serviceId, serviceName, description } = serviceInfo;
     let connection = null;
     let isRunning = true;
@@ -11609,7 +11611,7 @@ metadata, an optional map of metadata
         if (connection) connection.close();
       },
       isRunning: () => isRunning,
-      serviceInfo: { serviceId, serviceName, description }
+      serviceInfo: { serviceId, serviceName, description, extras }
     };
     
     try {
@@ -11625,7 +11627,8 @@ metadata, an optional map of metadata
               requestId: message.requestId,
               serviceId,
               serviceName,
-              description
+              description,
+              extras
             });
             try {
               this._messagesSendMessage(projectId, registrationMessage);
