@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Wed Jul 23 10:36:37 EDT 2025
+ * Generated on: Wed Jul 23 11:33:34 EDT 2025
  */
 
 class PlaidClient {
@@ -880,7 +880,7 @@ metadata, an optional map of metadata
     return key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
   }
 
-  _extractDocumentVersions(responseHeaders) {
+  _extractDocumentVersions(responseHeaders, responseBody = null) {
     // Extract and update document versions from response headers
     const docVersionsHeader = responseHeaders.get('X-Document-Versions');
     if (docVersionsHeader) {
@@ -895,6 +895,14 @@ metadata, an optional map of metadata
       } catch (e) {
         // Log malformed header issues
         console.warn('Failed to parse document versions header:', e);
+      }
+    }
+    
+    // Special case: if response body has "id", "name", and "version", assume it's a document
+    if (responseBody && typeof responseBody === 'object' && responseBody !== null) {
+      if (responseBody.id && responseBody.name && responseBody.version) {
+        // Update the map so that "id" is associated with "version"
+        this.documentVersions.set(responseBody.id, responseBody.version);
       }
     }
   }
@@ -1149,13 +1157,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1231,13 +1241,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1310,13 +1322,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1395,13 +1409,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1474,13 +1490,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1562,13 +1580,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1641,13 +1661,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1728,13 +1750,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1810,13 +1834,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1889,13 +1915,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -1974,13 +2002,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2061,13 +2091,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2140,13 +2172,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2219,13 +2253,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2301,13 +2337,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2380,13 +2418,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2467,13 +2507,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2552,13 +2594,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2631,13 +2675,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2718,13 +2764,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2805,13 +2853,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2901,13 +2951,15 @@ targetId: the target span this relation goes to
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -2988,13 +3040,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3070,13 +3124,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3152,13 +3208,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3231,13 +3289,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3316,13 +3376,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3395,13 +3457,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3482,13 +3546,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3570,13 +3636,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3657,13 +3725,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3744,13 +3814,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3839,13 +3911,15 @@ metadata: optional key-value pairs for additional annotation data.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -3924,13 +3998,15 @@ metadata: optional key-value pairs for additional annotation data.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4003,13 +4079,15 @@ metadata: optional key-value pairs for additional annotation data.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4090,13 +4168,15 @@ metadata: optional key-value pairs for additional annotation data.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4176,13 +4256,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4258,13 +4340,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4340,13 +4424,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4419,13 +4505,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4495,13 +4583,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4577,13 +4667,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4656,13 +4748,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4750,13 +4844,15 @@ body: the string which is the content of this text.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4835,13 +4931,15 @@ body: the string which is the content of this text.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -4914,13 +5012,15 @@ body: the string which is the content of this text.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5005,13 +5105,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5090,13 +5192,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5179,13 +5283,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5270,13 +5376,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5355,13 +5463,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5434,13 +5544,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5523,13 +5635,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5610,13 +5724,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5698,13 +5814,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5780,13 +5898,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5859,13 +5979,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -5944,13 +6066,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6023,13 +6147,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6110,13 +6236,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6195,13 +6323,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6274,13 +6404,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6353,13 +6485,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6507,13 +6641,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6581,13 +6717,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6663,13 +6801,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6742,13 +6882,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6833,13 +6975,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -6921,13 +7065,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7000,13 +7146,15 @@ If preferred, body can instead be a list of edit directives such as:
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7089,13 +7237,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7178,13 +7328,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7260,13 +7412,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7341,13 +7495,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7581,13 +7737,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7660,13 +7818,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7739,13 +7899,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7818,13 +7980,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7900,13 +8064,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -7979,13 +8145,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8058,13 +8226,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8137,13 +8307,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8228,13 +8400,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8307,13 +8481,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8386,13 +8562,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8474,13 +8652,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8553,13 +8733,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8640,13 +8822,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8725,13 +8909,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8812,13 +8998,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8894,13 +9082,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -8973,13 +9163,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9058,13 +9250,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9137,13 +9331,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9224,13 +9420,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9311,13 +9509,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9399,13 +9599,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9486,13 +9688,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9568,13 +9772,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9647,13 +9853,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9736,13 +9944,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9821,13 +10031,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9900,13 +10112,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -9987,13 +10201,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10074,13 +10290,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10162,13 +10380,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10244,13 +10464,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10323,13 +10545,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10408,13 +10632,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10487,13 +10713,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10574,13 +10802,15 @@ name: update a document's name.
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10672,13 +10902,15 @@ precedence: used for tokens with the same begin value in order to indicate their
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10757,13 +10989,15 @@ precedence: used for tokens with the same begin value in order to indicate their
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10836,13 +11070,15 @@ precedence: used for tokens with the same begin value in order to indicate their
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -10929,13 +11165,15 @@ precedence: ordering value for the token relative to other tokens with the same 
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -11017,13 +11255,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -11099,13 +11339,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return this._transformResponse(data);
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -11181,13 +11423,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {
@@ -11260,13 +11504,15 @@ metadata, an optional map of metadata
         throw error;
       }
       
-      // Extract document versions from response headers
-      this._extractDocumentVersions(response.headers);
-      
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
+        // Extract document versions from response headers and body
+        this._extractDocumentVersions(response.headers, data);
         return data;
+      } else {
+        // Extract document versions from response headers only
+        this._extractDocumentVersions(response.headers);
       }
       return await response.text();
     } catch (error) {

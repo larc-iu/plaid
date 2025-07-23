@@ -1,7 +1,7 @@
 """
 plaid-api-v1 - Plaid's REST API
 Version: v1.0
-Generated on: Wed Jul 23 10:36:40 EDT 2025
+Generated on: Wed Jul 23 11:33:36 EDT 2025
 """
 
 import requests
@@ -99,12 +99,14 @@ class VocabLinksResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -186,13 +188,15 @@ class VocabLinksResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -265,12 +269,14 @@ class VocabLinksResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -344,13 +350,15 @@ class VocabLinksResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -420,12 +428,14 @@ class VocabLinksResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -496,13 +506,15 @@ class VocabLinksResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -581,12 +593,14 @@ class VocabLinksResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -666,13 +680,15 @@ class VocabLinksResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -742,12 +758,14 @@ class VocabLinksResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -818,13 +836,15 @@ class VocabLinksResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -915,12 +935,14 @@ class VocabLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -1003,13 +1025,15 @@ class VocabLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1079,12 +1103,14 @@ class VocabLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -1155,13 +1181,15 @@ class VocabLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1239,12 +1267,14 @@ class VocabLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -1323,13 +1353,15 @@ class VocabLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1404,12 +1436,14 @@ class VocabLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -1485,13 +1519,15 @@ class VocabLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1563,12 +1599,14 @@ class VocabLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -1641,13 +1679,15 @@ class VocabLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1725,12 +1765,14 @@ class VocabLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -1809,13 +1851,15 @@ class VocabLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -1892,12 +1936,14 @@ class VocabLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -1975,13 +2021,15 @@ class VocabLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2052,12 +2100,14 @@ class VocabLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -2129,13 +2179,15 @@ class VocabLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2206,12 +2258,14 @@ class VocabLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -2283,13 +2337,15 @@ class VocabLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2371,12 +2427,14 @@ class RelationsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -2450,13 +2508,15 @@ class RelationsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2526,12 +2586,14 @@ class RelationsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -2602,13 +2664,15 @@ class RelationsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2686,12 +2750,14 @@ class RelationsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -2770,13 +2836,15 @@ class RelationsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -2855,12 +2923,14 @@ class RelationsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -2940,13 +3010,15 @@ class RelationsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3016,12 +3088,14 @@ class RelationsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -3092,13 +3166,15 @@ class RelationsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3176,12 +3252,14 @@ class RelationsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -3260,13 +3338,15 @@ class RelationsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3344,12 +3424,14 @@ class RelationsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -3428,13 +3510,15 @@ class RelationsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3524,12 +3608,14 @@ target_id: the target span this relation goes to
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -3620,13 +3706,15 @@ target_id: the target span this relation goes to
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3703,12 +3791,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -3786,13 +3876,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -3864,12 +3956,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -3942,13 +4036,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4032,12 +4128,14 @@ class SpanLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -4113,13 +4211,15 @@ class SpanLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4191,12 +4291,14 @@ class SpanLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -4269,13 +4371,15 @@ class SpanLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4354,12 +4458,14 @@ class SpanLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -4439,13 +4545,15 @@ class SpanLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4515,12 +4623,14 @@ class SpanLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -4591,13 +4701,15 @@ class SpanLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4675,12 +4787,14 @@ class SpanLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -4759,13 +4873,15 @@ class SpanLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -4844,12 +4960,14 @@ class SpanLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -4929,13 +5047,15 @@ class SpanLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5013,12 +5133,14 @@ class SpanLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -5097,13 +5219,15 @@ class SpanLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5190,12 +5314,14 @@ class SpansResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -5274,13 +5400,15 @@ class SpansResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5368,12 +5496,14 @@ metadata: optional key-value pairs for additional annotation data.
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -5462,13 +5592,15 @@ metadata: optional key-value pairs for additional annotation data.
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5547,12 +5679,14 @@ metadata: optional key-value pairs for additional annotation data.
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -5632,13 +5766,15 @@ metadata: optional key-value pairs for additional annotation data.
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5708,12 +5844,14 @@ metadata: optional key-value pairs for additional annotation data.
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -5784,13 +5922,15 @@ metadata: optional key-value pairs for additional annotation data.
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -5868,12 +6008,14 @@ metadata: optional key-value pairs for additional annotation data.
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -5952,13 +6094,15 @@ metadata: optional key-value pairs for additional annotation data.
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6034,12 +6178,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -6116,13 +6262,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6194,12 +6342,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -6272,13 +6422,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6351,12 +6503,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -6430,13 +6584,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6506,12 +6662,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -6582,13 +6740,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6663,12 +6823,14 @@ class BatchResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -6735,13 +6897,15 @@ class BatchResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6823,12 +6987,14 @@ class TextsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -6902,13 +7068,15 @@ class TextsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -6978,12 +7146,14 @@ class TextsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -7054,13 +7224,15 @@ class TextsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7147,12 +7319,14 @@ body: the string which is the content of this text.
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -7240,13 +7414,15 @@ body: the string which is the content of this text.
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7325,12 +7501,14 @@ body: the string which is the content of this text.
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -7410,13 +7588,15 @@ body: the string which is the content of this text.
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7486,12 +7666,14 @@ body: the string which is the content of this text.
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -7562,13 +7744,15 @@ body: the string which is the content of this text.
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7650,12 +7834,14 @@ If preferred, body can instead be a list of edit directives such as:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -7738,13 +7924,15 @@ If preferred, body can instead be a list of edit directives such as:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -7831,12 +8019,14 @@ class UsersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -7915,13 +8105,15 @@ class UsersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8002,12 +8194,14 @@ class UsersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -8089,13 +8283,15 @@ class UsersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8180,12 +8376,14 @@ class UsersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -8271,13 +8469,15 @@ class UsersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8356,12 +8556,14 @@ class UsersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -8441,13 +8643,15 @@ class UsersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8517,12 +8721,14 @@ class UsersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -8593,13 +8799,15 @@ class UsersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8681,12 +8889,14 @@ class UsersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -8769,13 +8979,15 @@ class UsersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -8862,12 +9074,14 @@ class TokenLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -8946,13 +9160,15 @@ class TokenLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9031,12 +9247,14 @@ class TokenLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -9116,13 +9334,15 @@ class TokenLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9197,12 +9417,14 @@ class TokenLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -9278,13 +9500,15 @@ class TokenLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9356,12 +9580,14 @@ class TokenLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -9434,13 +9660,15 @@ class TokenLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9519,12 +9747,14 @@ class TokenLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -9604,13 +9834,15 @@ class TokenLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9680,12 +9912,14 @@ class TokenLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -9756,13 +9990,15 @@ class TokenLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -9840,12 +10076,14 @@ class TokenLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -9924,13 +10162,15 @@ class TokenLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10018,12 +10258,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -10103,13 +10345,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10179,12 +10423,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -10255,13 +10501,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10331,12 +10579,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -10407,13 +10657,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10640,12 +10892,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -10718,13 +10972,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10789,12 +11045,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -10860,13 +11118,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -10939,12 +11199,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -11018,13 +11280,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11094,12 +11358,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -11170,13 +11436,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11261,12 +11529,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -11352,13 +11622,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11440,12 +11712,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -11528,13 +11802,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11604,12 +11880,14 @@ class DocumentsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -11680,13 +11958,15 @@ class DocumentsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11766,12 +12046,14 @@ name: update a document's name.
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -11852,13 +12134,15 @@ name: update a document's name.
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -11939,12 +12223,14 @@ name: update a document's name.
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -12026,13 +12312,15 @@ name: update a document's name.
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -12114,12 +12402,14 @@ class MessagesResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -12193,13 +12483,15 @@ class MessagesResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -12271,12 +12563,14 @@ class MessagesResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -12349,13 +12643,15 @@ class MessagesResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -12939,12 +13235,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -13016,13 +13314,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13093,12 +13393,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -13170,13 +13472,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13247,12 +13551,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -13324,13 +13630,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13401,12 +13709,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -13478,13 +13788,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13559,12 +13871,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -13640,13 +13954,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13718,12 +14034,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -13796,13 +14114,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -13873,12 +14193,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -13950,13 +14272,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14027,12 +14351,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -14104,13 +14430,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14195,12 +14523,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -14286,13 +14616,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14363,12 +14695,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -14440,13 +14774,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14517,12 +14853,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -14594,13 +14932,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14682,12 +15022,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -14770,13 +15112,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -14846,12 +15190,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -14922,13 +15268,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15006,12 +15354,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -15090,13 +15440,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15174,12 +15526,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -15258,13 +15612,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15341,12 +15697,14 @@ class ProjectsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -15424,13 +15782,15 @@ class ProjectsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15514,12 +15874,14 @@ class TextLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -15595,13 +15957,15 @@ class TextLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15673,12 +16037,14 @@ class TextLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -15751,13 +16117,15 @@ class TextLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15836,12 +16204,14 @@ class TextLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -15921,13 +16291,15 @@ class TextLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -15997,12 +16369,14 @@ class TextLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -16073,13 +16447,15 @@ class TextLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16157,12 +16533,14 @@ class TextLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -16241,13 +16619,15 @@ class TextLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16325,12 +16705,14 @@ class TextLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -16409,13 +16791,15 @@ class TextLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16494,12 +16878,14 @@ class TextLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -16579,13 +16965,15 @@ class TextLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16672,12 +17060,14 @@ class LoginResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -16756,13 +17146,15 @@ class LoginResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16844,12 +17236,14 @@ class VocabItemsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -16923,13 +17317,15 @@ class VocabItemsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -16999,12 +17395,14 @@ class VocabItemsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -17075,13 +17473,15 @@ class VocabItemsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17162,12 +17562,14 @@ class VocabItemsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -17249,13 +17651,15 @@ class VocabItemsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17334,12 +17738,14 @@ class VocabItemsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -17419,13 +17825,15 @@ class VocabItemsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17495,12 +17903,14 @@ class VocabItemsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -17571,13 +17981,15 @@ class VocabItemsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17655,12 +18067,14 @@ class VocabItemsResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -17739,13 +18153,15 @@ class VocabItemsResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -17832,12 +18248,14 @@ class RelationLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -17916,13 +18334,15 @@ class RelationLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18001,12 +18421,14 @@ class RelationLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -18086,13 +18508,15 @@ class RelationLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18167,12 +18591,14 @@ class RelationLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -18248,13 +18674,15 @@ class RelationLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18326,12 +18754,14 @@ class RelationLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -18404,13 +18834,15 @@ class RelationLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18489,12 +18921,14 @@ class RelationLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -18574,13 +19008,15 @@ class RelationLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18650,12 +19086,14 @@ class RelationLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -18726,13 +19164,15 @@ class RelationLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -18810,12 +19250,14 @@ class RelationLayersResource:
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -18894,13 +19336,15 @@ class RelationLayersResource:
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19002,12 +19446,14 @@ precedence: used for tokens with the same begin value in order to indicate their
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -19101,13 +19547,15 @@ precedence: used for tokens with the same begin value in order to indicate their
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19186,12 +19634,14 @@ precedence: used for tokens with the same begin value in order to indicate their
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -19271,13 +19721,15 @@ precedence: used for tokens with the same begin value in order to indicate their
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19347,12 +19799,14 @@ precedence: used for tokens with the same begin value in order to indicate their
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -19423,13 +19877,15 @@ precedence: used for tokens with the same begin value in order to indicate their
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19515,12 +19971,14 @@ precedence: ordering value for the token relative to other tokens with the same 
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -19607,13 +20065,15 @@ precedence: ordering value for the token relative to other tokens with the same 
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19691,12 +20151,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -19775,13 +20237,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -19853,12 +20317,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -19931,13 +20397,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return self.client._transform_response(data)
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -20010,12 +20478,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -20089,13 +20559,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -20165,12 +20637,14 @@ metadata, an optional map of metadata
                     error_data
                 )
             
-            # Extract document versions from response headers
-            self.client._extract_document_versions(dict(response.headers))
-            
             if 'application/json' in response.headers.get('content-type', '').lower():
                 data = response.json()
+                # Extract document versions from response headers and body
+                self.client._extract_document_versions(dict(response.headers), data)
                 return data
+            else:
+                # Extract document versions from response headers only
+                self.client._extract_document_versions(dict(response.headers))
             return response.text
         
         except requests.exceptions.RequestException as e:
@@ -20241,13 +20715,15 @@ metadata, an optional map of metadata
                             error_data
                         )
                     
-                    # Extract document versions from response headers
-                    self.client._extract_document_versions(dict(response.headers))
-                    
                     content_type = response.headers.get('content-type', '').lower()
                     if 'application/json' in content_type:
                         data = await response.json()
+                        # Extract document versions from response headers and body
+                        self.client._extract_document_versions(dict(response.headers), data)
                 return data
+                    else:
+                        # Extract document versions from response headers only
+                        self.client._extract_document_versions(dict(response.headers))
                     return await response.text
         
         except aiohttp.ClientError as e:
@@ -20367,7 +20843,7 @@ class PlaidClient:
         """Convert snake_case back to kebab-case"""
         return key.replace('_', '-')
     
-    def _extract_document_versions(self, response_headers: Dict[str, str]) -> None:
+    def _extract_document_versions(self, response_headers: Dict[str, str], response_body: Any = None) -> None:
         """Extract and update document versions from response headers"""
         doc_versions_header = response_headers.get('X-Document-Versions')
         if doc_versions_header:
@@ -20378,6 +20854,12 @@ class PlaidClient:
             except (json.JSONDecodeError, TypeError) as e:
                 # Log malformed header issues
                 print(f"Warning: Failed to parse document versions header: {e}")
+        
+        # Special case: if response body has "id", "name", and "version", assume it's a document
+        if response_body and isinstance(response_body, dict):
+            if response_body.get('id') and response_body.get('name') and response_body.get('version'):
+                # Update the map so that "id" is associated with "version"
+                self._document_versions[response_body['id']] = response_body['version']
     
     def _transform_request(self, obj: Any) -> Any:
         """Transform request data from Python conventions to API conventions"""

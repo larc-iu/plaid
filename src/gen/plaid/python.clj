@@ -543,14 +543,20 @@
                 "                    error_data\n"
                 "                )\n"
                 "            \n"
-                "            # Extract document versions from response headers\n"
-                "            self.client._extract_document_versions(dict(response.headers))\n"
-                "            \n"
                 (if (and (:is-binary-response? special-endpoints) (= http-method :get))
-                  "            # Return raw binary content for media downloads\n            return response.content\n"
+                  (str "            # Extract document versions from response headers\n"
+                       "            self.client._extract_document_versions(dict(response.headers))\n"
+                       "            \n"
+                       "            # Return raw binary content for media downloads\n"
+                       "            return response.content\n")
                   (str "            if 'application/json' in response.headers.get('content-type', '').lower():\n"
                        "                data = " response-json "\n"
+                       "                # Extract document versions from response headers and body\n"
+                       "                self.client._extract_document_versions(dict(response.headers), data)\n"
                        transform-response-code
+                       "            else:\n"
+                       "                # Extract document versions from response headers only\n"
+                       "                self.client._extract_document_versions(dict(response.headers))\n"
                        "            return " response-text "\n"))
                 "        \n"
                 "        except requests.exceptions.RequestException as e:\n"
@@ -591,15 +597,21 @@
                 "                            error_data\n"
                 "                        )\n"
                 "                    \n"
-                "                    # Extract document versions from response headers\n"
-                "                    self.client._extract_document_versions(dict(response.headers))\n"
-                "                    \n"
                 (if (and (:is-binary-response? special-endpoints) (= http-method :get))
-                  "                    # Return raw binary content for media downloads\n                    return await response.read()\n"
+                  (str "                    # Extract document versions from response headers\n"
+                       "                    self.client._extract_document_versions(dict(response.headers))\n"
+                       "                    \n"
+                       "                    # Return raw binary content for media downloads\n"
+                       "                    return await response.read()\n")
                   (str "                    content_type = response.headers.get('content-type', '').lower()\n"
                        "                    if 'application/json' in content_type:\n"
                        "                        data = " response-json "\n"
+                       "                        # Extract document versions from response headers and body\n"
+                       "                        self.client._extract_document_versions(dict(response.headers), data)\n"
                        transform-response-code
+                       "                    else:\n"
+                       "                        # Extract document versions from response headers only\n"
+                       "                        self.client._extract_document_versions(dict(response.headers))\n"
                        "                    return " response-text "\n"))
                 "        \n"
                 "        except aiohttp.ClientError as e:\n"
@@ -820,7 +832,7 @@
         \"\"\"Convert snake_case back to kebab-case\"\"\"
         return key.replace('_', '-')
     
-    def _extract_document_versions(self, response_headers: Dict[str, str]) -> None:
+    def _extract_document_versions(self, response_headers: Dict[str, str], response_body: Any = None) -> None:
         \"\"\"Extract and update document versions from response headers\"\"\"
         doc_versions_header = response_headers.get('X-Document-Versions')
         if doc_versions_header:
@@ -831,6 +843,12 @@
             except (json.JSONDecodeError, TypeError) as e:
                 # Log malformed header issues
                 print(f\"Warning: Failed to parse document versions header: {e}\")
+        
+        # Special case: if response body has \"id\", \"name\", and \"version\", assume it's a document
+        if response_body and isinstance(response_body, dict):
+            if response_body.get('id') and response_body.get('name') and response_body.get('version'):
+                # Update the map so that \"id\" is associated with \"version\"
+                self._document_versions[response_body['id']] = response_body['version']
     
     def _transform_request(self, obj: Any) -> Any:
         \"\"\"Transform request data from Python conventions to API conventions\"\"\"
