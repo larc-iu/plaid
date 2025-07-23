@@ -13,25 +13,53 @@
     {:uri uri
      :query-string query}))
 
-(defn remove-duplicate-document-versions
-  "Remove duplicate document-version query parameters from a query string.
-   Keeps only the first occurrence of each unique document-version value."
+(defn extract-document-version
+  "Extract document-version value from a query string, if present"
+  [query-string]
+  (when query-string
+    (some (fn [param]
+            (when (str/starts-with? param "document-version=")
+              (subs param (count "document-version="))))
+          (str/split query-string #"&"))))
+
+(defn remove-document-version-from-query
+  "Remove document-version parameter from a query string"
   [query-string]
   (if (nil? query-string)
-    query-string
+    nil
     (let [params (str/split query-string #"&")
-          seen-versions (atom #{})
-          filtered-params (filter (fn [param]
-                                    (if (str/starts-with? param "document-version=")
-                                      (let [version-value (subs param (count "document-version="))]
-                                        (if (contains? @seen-versions version-value)
-                                          false ; Skip duplicate
-                                          (do
-                                            (swap! seen-versions conj version-value)
-                                            true))) ; Keep first occurrence
-                                      true)) ; Keep non-document-version params
-                                  params)]
-      (str/join "&" filtered-params))))
+          filtered-params (remove #(str/starts-with? % "document-version=") params)]
+      (when (seq filtered-params)
+        (str/join "&" filtered-params)))))
+
+(defn preprocess-batch-operations
+  "Remove duplicate document-version query parameters across all operations in the batch.
+   Keeps only the first occurrence of each unique document-version value."
+  [operations]
+  (loop [remaining-ops operations
+         seen-versions #{}
+         result []]
+    (if (empty? remaining-ops)
+      result
+      (let [operation (first remaining-ops)
+            {:keys [uri query-string]} (parse-path-and-query (:path operation))
+            doc-version (extract-document-version query-string)]
+        (if (and doc-version (contains? seen-versions doc-version))
+          ;; Remove document-version from this operation since we've seen it before
+          (let [clean-query (remove-document-version-from-query query-string)
+                new-path (if clean-query
+                           (str uri "?" clean-query)
+                           uri)
+                updated-operation (assoc operation :path new-path)]
+            (recur (rest remaining-ops)
+                   seen-versions
+                   (conj result updated-operation)))
+          ;; Keep operation as-is and track the version if present
+          (recur (rest remaining-ops)
+                 (if doc-version
+                   (conj seen-versions doc-version)
+                   seen-versions)
+                 (conj result operation)))))))
 
 (defn decode-response-body
   "Decode response body based on content type"
@@ -50,29 +78,28 @@
   "Build a Ring request map from a batch operation spec and the original request"
   [original-request operation]
   (let [{:keys [uri query-string]} (parse-path-and-query (:path operation))
-        clean-query-string (remove-duplicate-document-versions query-string)
         method (keyword (.toLowerCase (:method operation)))
         headers (merge (select-keys (:headers original-request)
                                     ["authorization" "accept"])
                        (when (:body operation)
                          {"content-type" "application/json"}))]
     (merge
-      {:request-method method
-       :uri uri
-       :scheme (:scheme original-request)
-       :server-name (:server-name original-request)
-       :server-port (:server-port original-request)
-       :headers headers
+     {:request-method method
+      :uri uri
+      :scheme (:scheme original-request)
+      :server-name (:server-name original-request)
+      :server-port (:server-port original-request)
+      :headers headers
        ;; Preserve important context from original request
-       :rest-handler (:rest-handler original-request)
-       :xtdb (:xtdb original-request)
-       :db (:db original-request)
-       :jwt-data (:jwt-data original-request)
-       :secret-key (:secret-key original-request)}
-      (when clean-query-string
-        {:query-string clean-query-string})
-      (when-let [body (:body operation)]
-        {:body-params body}))))
+      :rest-handler (:rest-handler original-request)
+      :xtdb (:xtdb original-request)
+      :db (:db original-request)
+      :jwt-data (:jwt-data original-request)
+      :secret-key (:secret-key original-request)}
+     (when query-string
+       {:query-string query-string})
+     (when-let [body (:body operation)]
+       {:body-params body}))))
 
 (defn process-batch-operation
   "Process a single batch operation through the rest handler"
@@ -94,7 +121,7 @@
    all changes are rolled back and no audit entries are created."
   [{:keys [rest-handler parameters xtdb] :as request}]
   (let [batch-id (random-uuid)
-        operations (:body parameters)
+        operations (preprocess-batch-operations (:body parameters))
         start-tx-id (atom nil)]
     (try
       ;; 1. Request permission to start batch using async coordination
@@ -172,7 +199,7 @@
 (defn batch-handler
   "Legacy non-atomic batch handler - processes operations sequentially but without rollback"
   [{:keys [rest-handler parameters] :as request}]
-  (let [operations (:body parameters)
+  (let [operations (preprocess-batch-operations (:body parameters))
         responses (mapv #(process-batch-operation rest-handler request %) operations)]
     {:status 200
      :body responses}))
