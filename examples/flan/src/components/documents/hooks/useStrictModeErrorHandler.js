@@ -12,7 +12,6 @@ export const useStrictModeErrorHandler = (documentReload) => {
     
     // Check if this is a 409 conflict due to concurrent modifications
     // Also could be a 400 if user is trying to modify something that got deleted.
-    console.dir(error)
     if (error.status === 409
         || (error.status === 400 && error?.responseData?.error.startsWith("document-version was provided but"))) {
       notifications.show({
