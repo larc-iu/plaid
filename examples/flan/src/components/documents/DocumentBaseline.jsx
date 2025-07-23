@@ -17,6 +17,7 @@ import IconDeviceFloppy from '@tabler/icons-react/dist/esm/icons/IconDeviceFlopp
 import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 import { notifications } from '@mantine/notifications';
 import { useStrictClient } from '../../contexts/StrictModeContext';
+import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 
 /**
  * Ensures sentence tokens properly partition the entire text body
@@ -85,8 +86,9 @@ const ensureSentencePartitioning = async (client, document, project, textContent
  * @param {Object} document - Document data
  * @param {Object} project - Project data
  * @param {Object} parsedDocument - Parsed document data
+ * @param {Function} handleError - Error handler function
  */
-const checkAndFixTokenization = async (client, document, project, parsedDocument) => {
+const checkAndFixTokenization = async (client, document, project, parsedDocument, handleError) => {
   const textLayer = document?.textLayers?.find(layer => layer.config?.flan?.primary);
   const text = textLayer?.text;
   
@@ -111,7 +113,11 @@ const checkAndFixTokenization = async (client, document, project, parsedDocument
     await client.submitBatch();
     return true; // Fix was applied
   } catch (error) {
-    console.error('Failed to fix tokenization:', error);
+    if (handleError) {
+      handleError(error, 'fix tokenization');
+    } else {
+      console.error('Failed to fix tokenization:', error);
+    }
     return false;
   } finally {
     // Release document lock
@@ -125,6 +131,7 @@ const checkAndFixTokenization = async (client, document, project, parsedDocument
 
 export const DocumentBaseline = ({ document, parsedDocument, project, onTextUpdated }) => {
   const client = useStrictClient();
+  const handleStrictModeError = useStrictModeErrorHandler(onTextUpdated);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -136,7 +143,7 @@ export const DocumentBaseline = ({ document, parsedDocument, project, onTextUpda
   useEffect(() => {
     const checkDirtyTokenization = async () => {
       if (document && project && parsedDocument && client) {
-        const wasFixed = await checkAndFixTokenization(client, document, project, parsedDocument);
+        const wasFixed = await checkAndFixTokenization(client, document, project, parsedDocument, handleStrictModeError);
         if (wasFixed && onTextUpdated) {
           onTextUpdated(); // Trigger parent component refresh
         }
@@ -208,12 +215,8 @@ export const DocumentBaseline = ({ document, parsedDocument, project, onTextUpda
       
       setIsEditing(false);
     } catch (error) {
-      console.error('Failed to save baseline text:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to save baseline text: ' + error.message,
-        color: 'red'
-      });
+      setIsEditing(false);
+      handleStrictModeError(error, 'save baseline text');
     } finally {
       // Release document lock
       try {

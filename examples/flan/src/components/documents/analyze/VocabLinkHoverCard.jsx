@@ -14,6 +14,7 @@ import { DataTable } from 'mantine-datatable';
 import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
 import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs';
 import { useStrictClient } from '../../../contexts/StrictModeContext';
+import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler';
 
 export const VocabLinkHoverCard = ({ 
   vocabularies, 
@@ -22,6 +23,7 @@ export const VocabLinkHoverCard = ({
   children 
 }) => {
   const client = useStrictClient();
+  const handleStrictModeError = useStrictModeErrorHandler(onDocumentReload);
   const [selectedVocab, setSelectedVocab] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
   const [localVocabItem, setLocalVocabItem] = useState(null);
@@ -66,9 +68,7 @@ export const VocabLinkHoverCard = ({
         try {
           await client.vocabLinks.delete(existingItem.linkId);
         } catch (error) {
-          console.error('Failed to delete vocab link:', error);
-          // Reload document on error
-          onDocumentReload();
+          handleStrictModeError(error, 'delete vocab link');
         }
         return;
       }
@@ -91,13 +91,11 @@ export const VocabLinkHoverCard = ({
         const result = await client.submitBatch();
         setLocalVocabItem({ ...vocabItem, linkId: result[result.length - 1].body.id })
       } catch (batchError) {
-        // If batch fails, reset local state and trigger document reload
-        onDocumentReload();
+        handleStrictModeError(batchError, 'create vocab link');
         throw batchError;
       }
     } catch (error) {
-      console.error('Failed to create vocab link:', error);
-      // Reset local state on error
+      handleStrictModeError(error, 'create vocab link');
       setLocalVocabItem(null);
     }
   };
@@ -161,13 +159,12 @@ export const VocabLinkHoverCard = ({
         const batchResult = await client.submitBatch();
         setLocalVocabItem({ ...vocabItem, linkId: batchResult[result.length - 1].body.id })
       } catch (batchError) {
-        onDocumentReload();
+        handleStrictModeError(batchError, 'create new vocab item');
         throw batchError;
       }
       
     } catch (error) {
-      console.error('Failed to create new vocab item:', error);
-      // Reset local state on error
+      handleStrictModeError(error, 'create new vocab item');
       setLocalVocabItem(null);
     }
   };

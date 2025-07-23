@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { StrictModeProvider } from '../../contexts/StrictModeContext';
+import { useStrictClient } from '../../contexts/StrictModeContext';
 import { 
   Container, 
   Title, 
@@ -30,7 +30,8 @@ import { parseDocument, validateParsedDocument } from '../../utils/documentParse
 export const DocumentDetail = () => {
   const { projectId, documentId } = useParams();
   const navigate = useNavigate();
-  const { user, client } = useAuth();
+  const { user } = useAuth();
+  const client = useStrictClient();
   const [document, setDocument] = useState(null);
   const [project, setProject] = useState(null);
   const [parsedDocument, setParsedDocument] = useState(null);
@@ -273,8 +274,7 @@ export const DocumentDetail = () => {
   }
 
   return (
-    <StrictModeProvider documentId={documentId}>
-      <Container size="lg" py="xl">
+    <Container size="lg" py="xl">
         <Stack spacing="lg">
           <Breadcrumbs>
             {breadcrumbItems}
@@ -320,6 +320,7 @@ export const DocumentDetail = () => {
                   parsedDocument={parsedDocument}
                   project={project}
                   onDocumentUpdated={setDocument}
+                  onDocumentReload={refreshDocumentData}
                 />
               )}
             </Tabs.Panel>
@@ -387,7 +388,6 @@ export const DocumentDetail = () => {
             </Tabs.Panel>
           </Tabs>
         </Stack>
-      </Container>
-    </StrictModeProvider>
+    </Container>
   );
 };

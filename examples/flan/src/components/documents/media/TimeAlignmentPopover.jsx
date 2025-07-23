@@ -12,6 +12,7 @@ import {
 import { useFocusTrap, useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useStrictClient } from '../../../contexts/StrictModeContext';
+import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler';
 
 
 export const TimeAlignmentPopover = ({ 
@@ -24,6 +25,7 @@ export const TimeAlignmentPopover = ({
   selectionBox
 }) => {
   const client = useStrictClient();
+  const handleStrictModeError = useStrictModeErrorHandler(onAlignmentCreated);
   const [mode, setMode] = useState('new'); // 'new', 'edit', or 'align'
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -184,12 +186,7 @@ export const TimeAlignmentPopover = ({
       }
       
     } catch (error) {
-      console.error('Failed to save alignment:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to save alignment: ' + error.message,
-        color: 'red'
-      });
+      handleStrictModeError(error, 'save alignment');
     } finally {
       setSaving(false);
     }
@@ -257,12 +254,7 @@ export const TimeAlignmentPopover = ({
       }
       
     } catch (error) {
-      console.error('Failed to delete alignment:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete alignment: ' + error.message,
-        color: 'red'
-      });
+      handleStrictModeError(error, 'delete alignment');
     } finally {
       setSaving(false);
     }
@@ -285,7 +277,7 @@ export const TimeAlignmentPopover = ({
     const beforeText = currentText.substring(0, tokenBegin);
     const afterText = currentText.substring(tokenEnd);
     const newText = beforeText + text.trim() + afterText;
-    
+
     // Update the text
     try {
       // Editing text might have caused the token to shrink--new content at the end will not automatically cause the
@@ -377,7 +369,8 @@ export const TimeAlignmentPopover = ({
     const primaryTextLayer = parsedDocument?.layers?.primaryTextLayer;
     const alignmentTokenLayer = parsedDocument?.layers?.alignmentTokenLayer;
     const sentenceTokenLayer = parsedDocument?.layers?.sentenceTokenLayer;
-    
+    console.log(client.documentVersions)
+
     if (!primaryTextLayer || !alignmentTokenLayer || !sentenceTokenLayer) {
       throw new Error('Required layers not found');
     }

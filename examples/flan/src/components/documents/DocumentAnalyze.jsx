@@ -21,12 +21,14 @@ import './DocumentAnalyze.css';
 import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
 import { VocabLinkHoverCard } from './analyze/VocabLinkHoverCard.jsx';
 import { useStrictClient } from '../../contexts/StrictModeContext';
+import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 
 // Shared throttle for tab navigation across all EditableCell instances
 let lastGlobalTabPress = 0;
 
 // EditableCell component for annotation fields
 const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, placeholder, isSaving, onDocumentReload, isSentenceLevel }) => {
+  const handleStrictModeError = useStrictModeErrorHandler(onDocumentReload);
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -58,22 +60,8 @@ const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, p
         setPristineValue(newValue || '');
         setLocalValue(newValue || '')
       } catch (error) {
-        console.error('Failed to update annotation:', error);
         setLocalValue(value || '');
-        
-        // Check if it's a non-connection error that requires reload
-        const isConnectionError = error.name === 'TypeError' || error.message?.includes('fetch') || error.message?.includes('network');
-        if (!isConnectionError) {
-          // Non-connection error - reload the document data
-          onDocumentReload();
-          return;
-        }
-        
-        notifications.show({
-          title: 'Error',
-          message: 'Failed to update annotation',
-          color: 'red'
-        });
+        handleStrictModeError(error, 'update annotation');
       } finally {
         setIsUpdating(false);
       }
