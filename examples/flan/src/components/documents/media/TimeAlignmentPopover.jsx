@@ -222,6 +222,7 @@ export const TimeAlignmentPopover = ({
         }
       }
       beforeText = beforeText.substring(0, trimIndex);
+      trimIndex = 0;
       for (let i = 0; i < afterText.length; i++) {
         if (/\s/.test(afterText[i])) {
           trimIndex = i;
@@ -388,24 +389,45 @@ export const TimeAlignmentPopover = ({
         (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0)
     );
 
-    // Find where to insert based on time
+    // Find where to insert based on time while maintaining temporal ordering
     let insertPosition = existingText.length;
     let insertAfterToken = null;
+    let insertBeforeToken = null;
 
+    // Find the tokens that temporally bracket our selection
     for (let i = 0; i < sortedTokens.length; i++) {
       const token = sortedTokens[i];
-      if (token.metadata?.timeBegin && token.metadata.timeBegin <= selection.start) {
+      const tokenTime = token.metadata?.timeBegin || 0;
+      
+      if (tokenTime <= selection.start) {
         insertAfterToken = token;
-      } else {
+      } else if (tokenTime > selection.start && !insertBeforeToken) {
+        insertBeforeToken = token;
         break;
       }
     }
 
-    if (insertAfterToken) {
-      insertPosition = insertAfterToken.end;
-    } else if (sortedTokens.length > 0 && selection.start < (sortedTokens[0].metadata?.timeBegin || 0)) {
-      // Insert at beginning
+    // Determine insertion position
+    if (!insertAfterToken && !insertBeforeToken) {
+      // No existing tokens, insert at end
+      insertPosition = existingText.length;
+    } else if (!insertAfterToken && insertBeforeToken) {
+      // Insert before first token temporally
       insertPosition = 0;
+    } else if (insertAfterToken && !insertBeforeToken) {
+      // Insert after last token temporally
+      insertPosition = insertAfterToken.end;
+    } else if (insertAfterToken && insertBeforeToken) {
+      // We have tokens on both sides temporally
+      // Check if there's a positional conflict (temporal ordering violation)
+      if (insertBeforeToken.begin < insertAfterToken.end) {
+        // Tokens are out of order positionally - insert before the "before" token
+        console.warn('Detected temporal ordering violation, inserting before conflicting token');
+        insertPosition = insertBeforeToken.begin;
+      } else {
+        // Normal case - insert after the "after" token
+        insertPosition = insertAfterToken.end;
+      }
     }
 
     // Insert text with proper spacing

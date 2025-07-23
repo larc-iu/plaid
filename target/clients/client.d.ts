@@ -2,6 +2,7 @@ interface ServiceInfo {
   serviceId: string;
   serviceName: string;
   description: string;
+  extras?: any;
 }
 
 interface DiscoveredService {
@@ -9,12 +10,13 @@ interface DiscoveredService {
   serviceName: string;
   description: string;
   timestamp: string;
+  extras: any;
 }
 
 interface ServiceRegistration {
   stop(): void;
   isRunning(): boolean;
-  serviceInfo: ServiceInfo;
+  serviceInfo: ServiceInfo & { extras: any };
 }
 
 interface ResponseHelper {
@@ -131,7 +133,7 @@ interface MessagesBundle {
   heartbeat(id: string, clientId: string): Promise<any>;
   listen(id: string, onEvent: (eventType: string, data: any) => void): { close(): void; getStats(): any; readyState: number; };
   discoverServices(projectId: string, timeout?: number): Promise<DiscoveredService[]>;
-  serve(projectId: string, serviceInfo: ServiceInfo, onServiceRequest: (data: any, responseHelper: ResponseHelper) => void): ServiceRegistration;
+  serve(projectId: string, serviceInfo: ServiceInfo, onServiceRequest: (data: any, responseHelper: ResponseHelper) => void, extras?: any): ServiceRegistration;
   requestService(projectId: string, serviceId: string, data: any, timeout?: number): Promise<any>;
 }
 
