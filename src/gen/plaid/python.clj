@@ -608,7 +608,7 @@
                        "                        data = " response-json "\n"
                        "                        # Extract document versions from response headers and body\n"
                        "                        self.client._extract_document_versions(dict(response.headers), data)\n"
-                       transform-response-code
+                       (str "        " transform-response-code)
                        "                    else:\n"
                        "                        # Extract document versions from response headers only\n"
                        "                        self.client._extract_document_versions(dict(response.headers))\n"
