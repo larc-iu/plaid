@@ -418,34 +418,48 @@ export const TimeAlignmentPopover = ({
 
     // Insert text with proper spacing
     let insertedText;
-    let actualInsertBegin, actualInsertEnd;
+    let insertBegin, insertEnd;
+    let tokenBegin, tokenEnd;
+    // Insert at the front
     if (insertPosition === 0) {
-      insertedText = text.trim() + (existingText ? ' ' : '');
-      actualInsertBegin = 0
-      actualInsertEnd = existingText ? text.trim().length + 1 : text.trim().length;
-    } else if (insertPosition >= existingText.length) {
-      // Insert at end
+      const spaceAfter = (existingText ? ' ' : '')
+      insertedText = text.trim() + spaceAfter;
+
+      tokenBegin = 0;
+      insertBegin = 0;
+      tokenEnd = text.trim().length
+      insertEnd = tokenEnd + (existingText ? 1 : 0);
+    }
+    // Insert at end
+    else if (insertPosition >= existingText.length) {
       const spaceBefore = existingText ? ' ' : '';
       insertedText = spaceBefore + text.trim();
-      actualInsertBegin = existingText.length;
-      actualInsertEnd = actualInsertBegin + spaceBefore.length + text.trim().length;
-    } else {
-      // Insert in middle
+
+      insertBegin = existingText.length;
+      tokenBegin = existingText.length + (spaceBefore ? 1 : 0);
+      insertEnd = insertBegin + (spaceBefore ? 1 : 0) + text.trim().length;
+      tokenEnd = insertEnd
+    }
+    // Insert in middle
+    else {
       const before = existingText.substring(0, insertPosition);
       const after = existingText.substring(insertPosition);
       const spaceBefore = before.endsWith(' ') ? '' : ' ';
       const spaceAfter = after.startsWith(' ') ? '' : ' ';
+
       insertedText = spaceBefore + text.trim() + spaceAfter;
-      actualInsertBegin = insertPosition;
-      actualInsertEnd = actualInsertBegin + spaceBefore.length + text.trim().length + spaceAfter.length;
+      insertBegin = insertPosition;
+      insertEnd = insertBegin + spaceBefore.length + text.trim().length + spaceAfter.length;
+      tokenBegin = insertPosition + (spaceBefore ? 1 : 0);
+      tokenEnd = tokenBegin + text.trim().length + (spaceAfter ? 1 : 0)
     }
 
-    await client.texts.update(textId, [{type: "insert", index: actualInsertBegin, value: insertedText}]);
+    await client.texts.update(textId, [{type: "insert", index: insertBegin, value: insertedText}]);
     await client.tokens.create(
         alignmentTokenLayer.id,
         textId,
-        actualInsertBegin,
-        actualInsertEnd,
+        tokenBegin,
+        tokenEnd,
         undefined,
         {
           timeBegin: selection.start,
@@ -455,8 +469,8 @@ export const TimeAlignmentPopover = ({
     await client.tokens.create(
         sentenceTokenLayer.id,
         textId,
-        actualInsertBegin,
-        actualInsertEnd
+        insertBegin,
+        insertEnd
     )
 
     await client.submitBatch();
