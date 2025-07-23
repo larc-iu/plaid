@@ -13,6 +13,26 @@
     {:uri uri
      :query-string query}))
 
+(defn remove-duplicate-document-versions
+  "Remove duplicate document-version query parameters from a query string.
+   Keeps only the first occurrence of each unique document-version value."
+  [query-string]
+  (if (nil? query-string)
+    query-string
+    (let [params (str/split query-string #"&")
+          seen-versions (atom #{})
+          filtered-params (filter (fn [param]
+                                    (if (str/starts-with? param "document-version=")
+                                      (let [version-value (subs param (count "document-version="))]
+                                        (if (contains? @seen-versions version-value)
+                                          false ; Skip duplicate
+                                          (do
+                                            (swap! seen-versions conj version-value)
+                                            true))) ; Keep first occurrence
+                                      true)) ; Keep non-document-version params
+                                  params)]
+      (str/join "&" filtered-params))))
+
 (defn decode-response-body
   "Decode response body based on content type"
   [body content-type]
@@ -30,6 +50,7 @@
   "Build a Ring request map from a batch operation spec and the original request"
   [original-request operation]
   (let [{:keys [uri query-string]} (parse-path-and-query (:path operation))
+        clean-query-string (remove-duplicate-document-versions query-string)
         method (keyword (.toLowerCase (:method operation)))
         headers (merge (select-keys (:headers original-request)
                                     ["authorization" "accept"])
@@ -48,8 +69,8 @@
        :db (:db original-request)
        :jwt-data (:jwt-data original-request)
        :secret-key (:secret-key original-request)}
-      (when query-string
-        {:query-string query-string})
+      (when clean-query-string
+        {:query-string clean-query-string})
       (when-let [body (:body operation)]
         {:body-params body}))))
 
