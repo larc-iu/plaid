@@ -13,14 +13,15 @@ import {
 import { DataTable } from 'mantine-datatable';
 import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
 import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs';
+import { useStrictClient } from '../../../contexts/StrictModeContext';
 
 export const VocabLinkHoverCard = ({ 
   vocabularies, 
   token, 
-  client, 
   onDocumentReload,
   children 
 }) => {
+  const client = useStrictClient();
   const [selectedVocab, setSelectedVocab] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
   const [localVocabItem, setLocalVocabItem] = useState(null);

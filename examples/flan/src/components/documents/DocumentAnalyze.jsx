@@ -20,6 +20,7 @@ import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
 import './DocumentAnalyze.css';
 import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
 import { VocabLinkHoverCard } from './analyze/VocabLinkHoverCard.jsx';
+import { useStrictClient } from '../../contexts/StrictModeContext';
 
 // Shared throttle for tab navigation across all EditableCell instances
 let lastGlobalTabPress = 0;
@@ -184,7 +185,8 @@ const isTokenIgnored = (token, ignoredTokensConfig) => {
   return false;
 };
 
-export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularies, client, onDocumentReload, setParsedDocumentKey }) => {
+export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularies, onDocumentReload, setParsedDocumentKey }) => {
+  const client = useStrictClient();
   const [saving, setSaving] = useState(false);
 
   const sentences = parsedDocument?.sentences || [];
@@ -247,7 +249,6 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
           <VocabLinkHoverCard
             vocabularies={vocabularies}
             token={token}
-            client={client}
             onDocumentReload={onDocumentReload}
           >
             {token.content}

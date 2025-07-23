@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { 
   Stack, 
   Title, 
@@ -8,18 +9,29 @@ import {
   Button,
   Group,
   Alert,
-  Divider
+  Divider,
+  Modal
 } from '@mantine/core';
 import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
 import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import IconDeviceFloppy from '@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs';
 import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
+import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
+import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
+import { useStrictClient } from '../../contexts/StrictModeContext';
+import { notifications } from '@mantine/notifications';
+import { useDisclosure } from '@mantine/hooks';
 
-export const DocumentMetadata = ({ document, parsedDocument, project, client, onDocumentUpdated }) => {
+export const DocumentMetadata = ({ document, parsedDocument, project, onDocumentUpdated }) => {
+  const client = useStrictClient();
+  const navigate = useNavigate();
+  const { projectId } = useParams();
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(document?.name || '');
   const [editedMetadata, setEditedMetadata] = useState({});
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
 
   // Get metadata fields configuration from project
   const metadataFields = project?.config?.flan?.documentMetadata || [];
@@ -77,6 +89,36 @@ export const DocumentMetadata = ({ document, parsedDocument, project, client, on
     setIsEditing(true);
   };
 
+  const handleDeleteClick = () => {
+    openDeleteModal();
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await client.documents.delete(document.id);
+      
+      notifications.show({
+        title: 'Document deleted',
+        message: `"${document.name}" has been successfully deleted.`,
+        color: 'green'
+      });
+      
+      // Navigate back to the project page
+      navigate(`/projects/${projectId}`);
+    } catch (error) {
+      console.error('Failed to delete document:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete document. Please try again.',
+        color: 'red'
+      });
+    } finally {
+      setDeleting(false);
+      closeDeleteModal();
+    }
+  };
+
   return (
     <Stack spacing="lg" mt="md">
       <Paper withBorder p="md">
@@ -120,23 +162,35 @@ export const DocumentMetadata = ({ document, parsedDocument, project, client, on
                 />
               ))}
 
-              <Group justify="flex-end">
+              <Group justify="space-between">
                 <Button
                   variant="outline"
-                  leftSection={<IconX size={16} />}
-                  onClick={handleCancel}
-                  disabled={saving}
+                  color="gray"
+                  leftSection={<IconTrash size={16} />}
+                  onClick={handleDeleteClick}
+                  disabled={saving || deleting}
+                  style={{ opacity: 0.7 }}
                 >
-                  Cancel
+                  Delete
                 </Button>
-                <Button
-                  leftSection={<IconDeviceFloppy size={16} />}
-                  onClick={handleSave}
-                  loading={saving}
-                  disabled={!editedName.trim()}
-                >
-                  Save Changes
-                </Button>
+                <Group>
+                  <Button
+                    variant="outline"
+                    leftSection={<IconX size={16} />}
+                    onClick={handleCancel}
+                    disabled={saving || deleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    leftSection={<IconDeviceFloppy size={16} />}
+                    onClick={handleSave}
+                    loading={saving}
+                    disabled={!editedName.trim() || deleting}
+                  >
+                    Save Changes
+                  </Button>
+                </Group>
               </Group>
             </Stack>
           ) : (
@@ -172,6 +226,49 @@ export const DocumentMetadata = ({ document, parsedDocument, project, client, on
           )}
         </Stack>
       </Paper>
+
+      <Modal
+        opened={deleteModalOpened}
+        onClose={closeDeleteModal}
+        title="Delete Document"
+        size="md"
+        centered
+      >
+        <Stack spacing="md">
+          <Alert
+            icon={<IconAlertTriangle size={16} />}
+            title="This action is irreversible"
+            color="red"
+            variant="light"
+          >
+            <Text size="sm">
+              You are about to permanently delete the document <strong>"{document?.name}"</strong> and 
+              all of its associated data including annotations and text content.
+            </Text>
+            <Text size="sm" mt="xs">
+              This action cannot be undone.
+            </Text>
+          </Alert>
+
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={closeDeleteModal}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              onClick={handleDelete}
+              loading={deleting}
+              leftSection={<IconTrash size={16} />}
+            >
+              {deleting ? 'Deleting...' : 'Delete Document'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 };

@@ -26,6 +26,7 @@ import {
   getIgnoredTokensConfig,
   validateTokenization
 } from '../../utils/tokenizationUtils';
+import { useStrictClient } from '../../contexts/StrictModeContext';
 
 // Helper component to render text with visible whitespace
 const TextWithVisibleWhitespace = ({ text, style = {} }) => {
@@ -170,7 +171,8 @@ const TokenComponent = ({
   );
 };
 
-export const DocumentTokenize = ({ document, parsedDocument, project, client, onTokenizationComplete }) => {
+export const DocumentTokenize = ({ document, parsedDocument, project, onTokenizationComplete }) => {
+  const client = useStrictClient();
   const [isTokenizing, setIsTokenizing] = useState(false);
   const [tokenizationProgress, setTokenizationProgress] = useState(0);
   const [currentOperation, setCurrentOperation] = useState('');

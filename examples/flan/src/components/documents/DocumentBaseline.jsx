@@ -16,6 +16,7 @@ import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import IconDeviceFloppy from '@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs';
 import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 import { notifications } from '@mantine/notifications';
+import { useStrictClient } from '../../contexts/StrictModeContext';
 
 /**
  * Ensures sentence tokens properly partition the entire text body
@@ -122,7 +123,8 @@ const checkAndFixTokenization = async (client, document, project, parsedDocument
   }
 };
 
-export const DocumentBaseline = ({ document, parsedDocument, project, client, onTextUpdated }) => {
+export const DocumentBaseline = ({ document, parsedDocument, project, onTextUpdated }) => {
+  const client = useStrictClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
   const [saving, setSaving] = useState(false);

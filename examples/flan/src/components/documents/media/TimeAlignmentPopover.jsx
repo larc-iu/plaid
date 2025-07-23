@@ -11,18 +11,19 @@ import {
 } from '@mantine/core';
 import { useFocusTrap, useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { useStrictClient } from '../../../contexts/StrictModeContext';
 
 
 export const TimeAlignmentPopover = ({ 
   opened, 
   onClose, 
   selection,
-  client,
   parsedDocument,
   project,
   onAlignmentCreated,
   selectionBox
 }) => {
+  const client = useStrictClient();
   const [mode, setMode] = useState('new'); // 'new', 'edit', or 'align'
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
