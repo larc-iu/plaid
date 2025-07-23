@@ -369,7 +369,6 @@ export const TimeAlignmentPopover = ({
     const primaryTextLayer = parsedDocument?.layers?.primaryTextLayer;
     const alignmentTokenLayer = parsedDocument?.layers?.alignmentTokenLayer;
     const sentenceTokenLayer = parsedDocument?.layers?.sentenceTokenLayer;
-    console.log(client.documentVersions)
 
     if (!primaryTextLayer || !alignmentTokenLayer || !sentenceTokenLayer) {
       throw new Error('Required layers not found');
