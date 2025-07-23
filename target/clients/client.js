@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Wed Jul 23 11:33:34 EDT 2025
+ * Generated on: Wed Jul 23 12:51:02 EDT 2025
  */
 
 class PlaidClient {
@@ -20,7 +20,7 @@ class PlaidClient {
     this.batchOperations = [];
     
     // Initialize document version tracking
-    this.documentVersions = new Map(); // Map of document-id -> version
+    this.documentVersions = {}; // Map of document-id -> version
     this.strictModeDocumentId = null;  // Document ID for strict mode
     
     // Initialize API bundles
@@ -889,7 +889,8 @@ metadata, an optional map of metadata
         if (typeof versionsMap === 'object' && versionsMap !== null) {
           // Update internal document versions map
           Object.entries(versionsMap).forEach(([docId, version]) => {
-            this.documentVersions.set(docId, version);
+            this.documentVersions = {...this.documentVersions};
+            this.documentVersions[docId] = version;
           });
         }
       } catch (e) {
@@ -898,11 +899,11 @@ metadata, an optional map of metadata
       }
     }
     
-    // Special case: if response body has "id", "name", and "version", assume it's a document
-    if (responseBody && typeof responseBody === 'object' && responseBody !== null) {
-      if (responseBody.id && responseBody.name && responseBody.version) {
-        // Update the map so that "id" is associated with "version"
-        this.documentVersions.set(responseBody.id, responseBody.version);
+    // Special case: if response body
+    if (responseBody && typeof responseBody === 'object') {
+      if (responseBody["document/id"] && responseBody["document/version"]) {
+        this.documentVersions = {...this.documentVersions};
+        this.documentVersions[responseBody["document/id"]] = responseBody["document/version"];
       }
     }
   }
@@ -1046,7 +1047,8 @@ metadata, an optional map of metadata
               if (typeof versionsMap === 'object' && versionsMap !== null) {
                 // Update internal document versions map with latest versions
                 Object.entries(versionsMap).forEach(([docId, version]) => {
-                  this.documentVersions.set(docId, version);
+                  this.documentVersions = {...this.documentVersions}
+                  this.documentVersions[docId] = version;
                 });
               }
             } catch (e) {
@@ -1109,8 +1111,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1193,8 +1195,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1276,8 +1278,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1363,8 +1365,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1444,8 +1446,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1534,8 +1536,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1615,8 +1617,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1702,8 +1704,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1786,8 +1788,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1869,8 +1871,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -1956,8 +1958,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2043,8 +2045,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2126,8 +2128,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2207,8 +2209,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2289,8 +2291,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2372,8 +2374,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2459,8 +2461,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2548,8 +2550,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2629,8 +2631,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2716,8 +2718,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2805,8 +2807,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2903,8 +2905,8 @@ targetId: the target span this relation goes to
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -2992,8 +2994,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3076,8 +3078,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3160,8 +3162,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3243,8 +3245,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3330,8 +3332,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3411,8 +3413,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3498,8 +3500,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3588,8 +3590,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3677,8 +3679,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3766,8 +3768,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3863,8 +3865,8 @@ metadata: optional key-value pairs for additional annotation data.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -3952,8 +3954,8 @@ metadata: optional key-value pairs for additional annotation data.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4033,8 +4035,8 @@ metadata: optional key-value pairs for additional annotation data.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4120,8 +4122,8 @@ metadata: optional key-value pairs for additional annotation data.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4208,8 +4210,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4292,8 +4294,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4376,8 +4378,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4459,8 +4461,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4541,8 +4543,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4619,8 +4621,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4702,8 +4704,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4796,8 +4798,8 @@ body: the string which is the content of this text.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4885,8 +4887,8 @@ body: the string which is the content of this text.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -4966,8 +4968,8 @@ body: the string which is the content of this text.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5057,8 +5059,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5146,8 +5148,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5235,8 +5237,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5330,8 +5332,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5417,8 +5419,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5498,8 +5500,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5587,8 +5589,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5676,8 +5678,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5766,8 +5768,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5850,8 +5852,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -5933,8 +5935,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6020,8 +6022,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6101,8 +6103,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6188,8 +6190,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6277,8 +6279,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6358,8 +6360,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6439,8 +6441,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6526,8 +6528,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6599,8 +6601,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6676,8 +6678,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6753,8 +6755,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6836,8 +6838,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -6929,8 +6931,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7019,8 +7021,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7100,8 +7102,8 @@ If preferred, body can instead be a list of edit directives such as:
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7189,8 +7191,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7280,8 +7282,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7364,8 +7366,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7453,8 +7455,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7691,8 +7693,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7772,8 +7774,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7853,8 +7855,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -7934,8 +7936,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8016,8 +8018,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8099,8 +8101,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8180,8 +8182,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8261,8 +8263,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8354,8 +8356,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8435,8 +8437,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8516,8 +8518,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8606,8 +8608,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8687,8 +8689,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8774,8 +8776,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8863,8 +8865,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -8950,8 +8952,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9034,8 +9036,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9117,8 +9119,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9204,8 +9206,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9285,8 +9287,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9372,8 +9374,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9461,8 +9463,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9551,8 +9553,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9641,8 +9643,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9724,8 +9726,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9807,8 +9809,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9896,8 +9898,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -9985,8 +9987,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10066,8 +10068,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10153,8 +10155,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10242,8 +10244,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10332,8 +10334,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10416,8 +10418,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10499,8 +10501,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10586,8 +10588,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10667,8 +10669,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10754,8 +10756,8 @@ name: update a document's name.
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10854,8 +10856,8 @@ precedence: used for tokens with the same begin value in order to indicate their
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -10943,8 +10945,8 @@ precedence: used for tokens with the same begin value in order to indicate their
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'GET') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = finalUrl.includes('?') ? '&' : '?';
         finalUrl += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -11024,8 +11026,8 @@ precedence: used for tokens with the same begin value in order to indicate their
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -11117,8 +11119,8 @@ precedence: ordering value for the token relative to other tokens with the same 
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PATCH') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -11207,8 +11209,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'POST') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -11291,8 +11293,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -11375,8 +11377,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'PUT') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
@@ -11458,8 +11460,8 @@ metadata, an optional map of metadata
     // Add document-version parameter in strict mode for non-GET requests
     if (this.strictModeDocumentId && 'GET' !== 'DELETE') {
       const docId = this.strictModeDocumentId;
-      if (this.documentVersions.has(docId)) {
-        const docVersion = this.documentVersions.get(docId);
+      if (this.documentVersions[docId]) {
+        const docVersion = this.documentVersions[docId];
         const separator = url.includes('?') ? '&' : '?';
         url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       }
