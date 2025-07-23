@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { StrictModeProvider } from '../../contexts/StrictModeContext';
 import { 
   Container, 
   Title, 
@@ -272,124 +273,121 @@ export const DocumentDetail = () => {
   }
 
   return (
-    <Container size="lg" py="xl">
-      <Stack spacing="lg">
-        <Breadcrumbs>
-          {breadcrumbItems}
-        </Breadcrumbs>
+    <StrictModeProvider documentId={documentId}>
+      <Container size="lg" py="xl">
+        <Stack spacing="lg">
+          <Breadcrumbs>
+            {breadcrumbItems}
+          </Breadcrumbs>
 
-        <div>
-          <Title order={1} mb="xs">{document.name}</Title>
-          <Text c="dimmed" size="xs" mb="lg">{document.id}</Text>
-        </div>
+          <div>
+            <Title order={1} mb="xs">{document.name}</Title>
+            <Text c="dimmed" size="xs" mb="lg">{document.id}</Text>
+          </div>
 
-        <Tabs value={activeTab} onChange={async (newTab) => {
-          setTabLoading(true);
-          await refreshDocumentData();
-          setActiveTab(newTab);
-          setTabLoading(false);
-        }}>
-          <Tabs.List>
-            <Tabs.Tab value="metadata" leftSection={<IconFileText size={16} />}>
-              Metadata
-            </Tabs.Tab>
-            <Tabs.Tab value="media" leftSection={<IconPlayerPlay size={16} />}>
-              Media
-            </Tabs.Tab>
-            <Tabs.Tab value="baseline" leftSection={<IconEdit size={16} />}>
-              Baseline
-            </Tabs.Tab>
-            <Tabs.Tab value="tokenize" leftSection={<IconLetterA size={16} />} disabled={parsedDocument?.layers?.primaryTextLayer?.text?.body.length === 0}>
-              Tokenize
-            </Tabs.Tab>
-            <Tabs.Tab value="analyze" leftSection={<IconAnalyze size={16} />} disabled={!parsedDocument?.sentences?.some(s => s.tokens?.length > 0)}>
-              Analyze
-            </Tabs.Tab>
-          </Tabs.List>
+          <Tabs value={activeTab} onChange={async (newTab) => {
+            setTabLoading(true);
+            await refreshDocumentData();
+            setActiveTab(newTab);
+            setTabLoading(false);
+          }}>
+            <Tabs.List>
+              <Tabs.Tab value="metadata" leftSection={<IconFileText size={16} />}>
+                Metadata
+              </Tabs.Tab>
+              <Tabs.Tab value="media" leftSection={<IconPlayerPlay size={16} />}>
+                Media
+              </Tabs.Tab>
+              <Tabs.Tab value="baseline" leftSection={<IconEdit size={16} />}>
+                Baseline
+              </Tabs.Tab>
+              <Tabs.Tab value="tokenize" leftSection={<IconLetterA size={16} />} disabled={parsedDocument?.layers?.primaryTextLayer?.text?.body.length === 0}>
+                Tokenize
+              </Tabs.Tab>
+              <Tabs.Tab value="analyze" leftSection={<IconAnalyze size={16} />} disabled={!parsedDocument?.sentences?.some(s => s.tokens?.length > 0)}>
+                Analyze
+              </Tabs.Tab>
+            </Tabs.List>
 
-          <Tabs.Panel value="metadata">
-            {tabLoading ? (
-              <Center py="xl">
-                <Loader size="lg" />
-              </Center>
-            ) : (
-              activeTab === "metadata" && <DocumentMetadata
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                client={client}
-                onDocumentUpdated={setDocument}
-              />
-            )}
-          </Tabs.Panel>
+            <Tabs.Panel value="metadata">
+              {tabLoading ? (
+                <Center py="xl">
+                  <Loader size="lg" />
+                </Center>
+              ) : (
+                activeTab === "metadata" && <DocumentMetadata
+                  document={document}
+                  parsedDocument={parsedDocument}
+                  project={project}
+                  onDocumentUpdated={setDocument}
+                />
+              )}
+            </Tabs.Panel>
 
-          <Tabs.Panel value="baseline">
-            {tabLoading ? (
-              <Center py="xl">
-                <Loader size="lg" />
-              </Center>
-            ) : (
-              activeTab === "baseline" && <DocumentBaseline
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                client={client}
-                onTextUpdated={refreshDocumentData}
-              />
-            )}
-          </Tabs.Panel>
+            <Tabs.Panel value="baseline">
+              {tabLoading ? (
+                <Center py="xl">
+                  <Loader size="lg" />
+                </Center>
+              ) : (
+                activeTab === "baseline" && <DocumentBaseline
+                  document={document}
+                  parsedDocument={parsedDocument}
+                  project={project}
+                  onTextUpdated={refreshDocumentData}
+                />
+              )}
+            </Tabs.Panel>
 
-          <Tabs.Panel value="tokenize">
-            {tabLoading ? (
-              <Center py="xl">
-                <Loader size="lg" />
-              </Center>
-            ) : (
-              activeTab === "tokenize" && <DocumentTokenize
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                client={client}
-                onTokenizationComplete={refreshDocumentData}
-              />
-            )}
-          </Tabs.Panel>
+            <Tabs.Panel value="tokenize">
+              {tabLoading ? (
+                <Center py="xl">
+                  <Loader size="lg" />
+                </Center>
+              ) : (
+                activeTab === "tokenize" && <DocumentTokenize
+                  document={document}
+                  parsedDocument={parsedDocument}
+                  project={project}
+                  onTokenizationComplete={refreshDocumentData}
+                />
+              )}
+            </Tabs.Panel>
 
-          <Tabs.Panel value="analyze">
-            {tabLoading ? (
-              <Center py="xl">
-                <Loader size="lg" />
-              </Center>
-            ) : (
-              activeTab === "analyze" && <DocumentAnalyze
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                vocabularies={vocabularies}
-                client={client}
-                setParsedDocumentKey={setParsedDocumentKey}
-                onDocumentReload={refreshDocumentData}
-              />
-            )}
-          </Tabs.Panel>
+            <Tabs.Panel value="analyze">
+              {tabLoading ? (
+                <Center py="xl">
+                  <Loader size="lg" />
+                </Center>
+              ) : (
+                activeTab === "analyze" && <DocumentAnalyze
+                  document={document}
+                  parsedDocument={parsedDocument}
+                  project={project}
+                  vocabularies={vocabularies}
+                  setParsedDocumentKey={setParsedDocumentKey}
+                  onDocumentReload={refreshDocumentData}
+                />
+              )}
+            </Tabs.Panel>
 
-          <Tabs.Panel value="media">
-            {tabLoading ? (
-              <Center py="xl">
-                <Loader size="lg" />
-              </Center>
-            ) : (
-              activeTab === "media" && <DocumentMedia
-                document={document}
-                parsedDocument={parsedDocument}
-                project={project}
-                client={client}
-                onMediaUpdated={refreshDocumentData}
-              />
-            )}
-          </Tabs.Panel>
-        </Tabs>
-      </Stack>
-    </Container>
+            <Tabs.Panel value="media">
+              {tabLoading ? (
+                <Center py="xl">
+                  <Loader size="lg" />
+                </Center>
+              ) : (
+                activeTab === "media" && <DocumentMedia
+                  document={document}
+                  parsedDocument={parsedDocument}
+                  project={project}
+                  onMediaUpdated={refreshDocumentData}
+                />
+              )}
+            </Tabs.Panel>
+          </Tabs>
+        </Stack>
+      </Container>
+    </StrictModeProvider>
   );
 };

@@ -28,6 +28,7 @@ import IconPlayerTrackNext from '@tabler/icons-react/dist/esm/icons/IconPlayerTr
 import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import { notifications } from '@mantine/notifications';
+import { useStrictClient } from '../../contexts/StrictModeContext';
 
 // Constants
 const TIMELINE_HEIGHT = 100;
@@ -124,7 +125,7 @@ const clearOldWaveformCache = () => {
 };
 
 // Media Player Component  
-const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, mediaElement, isPlaying: parentIsPlaying, onSeek, onDeleteMedia }) => {
+const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, onSeek, onDeleteMedia }) => {
   const mediaRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -762,7 +763,6 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
                 opened={popoverOpened}
                 onClose={() => setPopoverOpened(false)}
                 selection={selection}
-                client={client}
                 parsedDocument={parsedDocument}
                 project={project}
                 onAlignmentCreated={handleAlignmentCreated}
@@ -940,7 +940,8 @@ const MediaUpload = ({ onUpload, isUploading }) => {
   );
 };
 
-export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated }) => {
+export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
+  const client = useStrictClient();
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -981,6 +982,8 @@ export const DocumentMedia = ({ parsedDocument, project, client, onMediaUpdated 
     setPlayingSelection(null); // Clear any playing selection
     autoScrollToTime(time); // Auto-scroll timeline to show seeked position
   };
+
+  console.log(client.strictModeDocumentId, client.documentVersions)
 
   const handleMediaUpload = async (file) => {
     if (!file) return;
