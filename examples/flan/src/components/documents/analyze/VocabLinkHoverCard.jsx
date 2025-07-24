@@ -16,6 +16,31 @@ import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs'
 import { useStrictClient } from '../contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler';
 
+// Levenshtein distance function for string similarity
+const levenshteinDistance = (str1, str2) => {
+  const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+
+  for (let i = 0; i <= str1.length; i++) {
+    matrix[0][i] = i;
+  }
+  for (let j = 0; j <= str2.length; j++) {
+    matrix[j][0] = j;
+  }
+
+  for (let j = 1; j <= str2.length; j++) {
+    for (let i = 1; i <= str1.length; i++) {
+      const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1, // deletion
+        matrix[j - 1][i] + 1, // insertion
+        matrix[j - 1][i - 1] + indicator // substitution
+      );
+    }
+  }
+
+  return matrix[str2.length][str1.length];
+};
+
 export const VocabLinkHoverCard = ({ 
   vocabularies, 
   token, 
@@ -157,7 +182,7 @@ export const VocabLinkHoverCard = ({
         client.vocabLinks.create(newVocabItem.id, [token.id]);
         
         const batchResult = await client.submitBatch();
-        setLocalVocabItem({ ...vocabItem, linkId: batchResult[result.length - 1].body.id })
+        setLocalVocabItem({ ...newVocabItem, linkId: batchResult[batchResult.length - 1].body.id })
       } catch (batchError) {
         handleStrictModeError(batchError, 'create new vocab item');
         throw batchError;
@@ -207,7 +232,7 @@ export const VocabLinkHoverCard = ({
       </HoverCard.Target>
       
       <HoverCard.Dropdown>
-        <Stack spacing="sm">
+        <Stack spacing="sm" style={{ minHeight: 300 }}>
           {isCreating ? (
             // Create new vocab item form
             <>
@@ -246,7 +271,9 @@ export const VocabLinkHoverCard = ({
             // Vocab items list
             <>
               <Group justify="space-between">
-                <Text size="sm" fw={500}>Link to vocabulary item</Text>
+                <Text size="sm" fw={500}>
+                  {displayVocabItem ? 'Linked item' : 'Link to vocabulary item'}
+                </Text>
                 <Button
                   size="xs"
                   variant="light"
@@ -256,7 +283,7 @@ export const VocabLinkHoverCard = ({
                   Create New
                 </Button>
               </Group>
-              
+
               {vocabsArray.length > 1 ? (
                 <Tabs value={selectedVocab} onChange={setSelectedVocab}>
                   <Tabs.List>
@@ -273,6 +300,7 @@ export const VocabLinkHoverCard = ({
                         vocab={vocab} 
                         onItemClick={handleVocabItemClick}
                         existingVocabItem={displayVocabItem}
+                        tokenForm={token.content}
                       />
                     </Tabs.Panel>
                   ))}
@@ -282,6 +310,7 @@ export const VocabLinkHoverCard = ({
                   vocab={selectedVocabData} 
                   onItemClick={handleVocabItemClick}
                   existingVocabItem={displayVocabItem}
+                  tokenForm={token.content}
                 />
               )}
             </>
@@ -361,7 +390,7 @@ const CreateNewItemForm = ({
   );
 };
 
-const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem }) => {
+const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem, tokenForm }) => {
   const [searchQuery, setSearchQuery] = React.useState('');
   
   if (!vocab?.items || vocab.items.length === 0) {
@@ -400,12 +429,24 @@ const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem }) => {
     return false;
   });
   
-  // Sort items - existing vocab item first, then others
+  // Sort items - existing vocab item first, then by edit distance to token form
   const sortedItems = [...filteredItems];
+  
+  // Calculate edit distances and sort by similarity to token form
+  if (tokenForm) {
+    const tokenFormLower = tokenForm.toLowerCase();
+    sortedItems.forEach(item => {
+      item._editDistance = levenshteinDistance(tokenFormLower, item.form?.toLowerCase() || '');
+    });
+    
+    // Sort by edit distance (smaller distance = more similar = higher priority)
+    sortedItems.sort((a, b) => a._editDistance - b._editDistance);
+  }
+  
+  // Move existing vocab item to front regardless of edit distance
   if (existingVocabItem && existingVocabItem.id) {
     const existingIndex = sortedItems.findIndex(item => item.id === existingVocabItem.id);
     if (existingIndex > -1) {
-      // Move existing item to front
       const [existingItem] = sortedItems.splice(existingIndex, 1);
       sortedItems.unshift(existingItem);
     }
