@@ -1,7 +1,7 @@
 /**
  * plaid-api-v1 - Plaid's REST API
  * Version: v1.0
- * Generated on: Wed Jul 23 19:25:08 EDT 2025
+ * Generated on: Wed Jul 23 20:31:31 EDT 2025
  */
 
 class PlaidClient {
@@ -7673,8 +7673,10 @@ name: update a document's name.
         }
         
       } catch (error) {
-        // Log SSE connection error or abort
-        console.warn('SSE connection error:', error);
+        // Only log unexpected errors, not deliberate aborts
+        if (error.name !== 'AbortError') {
+          console.warn('SSE connection error:', error);
+        }
       } finally {
         isConnected = false;
         isClosed = true;
