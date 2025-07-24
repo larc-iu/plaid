@@ -233,7 +233,7 @@ export const VocabLinkHoverCard = ({
       </HoverCard.Target>
       
       <HoverCard.Dropdown>
-        <Stack spacing="sm" style={{ minHeight: 300 }}>
+        <Stack spacing="sm" style={{ minHeight: 400 }}>
           {isCreating ? (
             // Create new vocab item form
             <>
@@ -480,7 +480,7 @@ const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem, tokenForm }) =>
           input: { height: 28 }
         }}
       />
-      <ScrollArea h={200}>
+      <ScrollArea h={250}>
         <DataTable
           textSelectionDisabled
           withTableBorder
@@ -488,7 +488,6 @@ const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem, tokenForm }) =>
           highlightOnHover
           columns={columns}
           records={sortedItems}
-          minHeight={150}
           noRecordsText={searchQuery ? "No items match your search" : "No vocabulary items available"}
           onRowClick={({ record }) => onItemClick(record)}
           rowStyle={(record) => {
