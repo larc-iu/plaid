@@ -67,6 +67,19 @@ export const DocumentDetail = () => {
   // Use historical document if viewing historical state, otherwise use current document
   const activeDocument = viewingHistoricalState ? historicalDocument : document;
 
+  // Function to refresh a single vocabulary by ID
+  const refreshVocabulary = useCallback(async (vocabId) => {
+    try {
+      const fullVocab = await client.vocabLayers.get(vocabId, true);
+      setVocabularies(prev => ({
+        ...prev,
+        [vocabId]: fullVocab
+      }));
+    } catch (error) {
+      console.warn(`Error refreshing vocabulary ${vocabId}:`, error);
+    }
+  }, [client]);
+
   // Function to refresh document data
   const refreshDocumentData = useCallback(async () => {
     try {
@@ -507,6 +520,7 @@ export const DocumentDetail = () => {
                   vocabularies={vocabularies}
                   setParsedDocumentKey={setParsedDocumentKey}
                   onDocumentReload={refreshDocumentData}
+                  onVocabularyRefresh={refreshVocabulary}
                 />
               )}
             </Tabs.Panel>
