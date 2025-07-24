@@ -23,7 +23,7 @@ export const VocabularySettings = ({ projectId, client }) => {
       
       // Get the project to see which vocabularies are linked
       const project = await client.projects.get(projectId);
-      const linkedVocabIds = project.vocabLayers || [];
+      const linkedVocabIds = (project.vocabs || []).map(v => v.id);
       
       // Transform to component format
       const vocabularies = allVocabs.map(vocab => ({
@@ -55,7 +55,7 @@ export const VocabularySettings = ({ projectId, client }) => {
       
       // Get current project state
       const project = await client.projects.get(projectId);
-      const currentLinkedVocabIds = project.vocabLayers || [];
+      const currentLinkedVocabIds = (project.vocabs || []).map(v => v.id);
       
       // Determine which vocabularies should be linked
       const targetLinkedVocabIds = data.vocabularies
@@ -70,6 +70,8 @@ export const VocabularySettings = ({ projectId, client }) => {
           const newVocab = await client.vocabLayers.create(customVocab.name);
           // Link to project
           await client.projects.linkVocab(projectId, newVocab.id);
+          // Add the new vocab ID to the target list so it doesn't get unlinked
+          targetLinkedVocabIds.push(newVocab.id);
         }
       }
       

@@ -195,11 +195,11 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         
         for (const vocab of enabledVocabs) {
           try {
-            if (vocab.isCustom) {
+            if (vocab.isCustom && vocab.id.startsWith('new-')) {
               // Create new vocabulary
               updateProgress(70, `Creating vocabulary: ${vocab.name}...`);
               const newVocab = await client.vocabLayers.create(vocab.name);
-              // Link to project
+              // Link to project using the actual ID from the created vocabulary
               await client.projects.linkVocab(currentProjectId, newVocab.id);
               vocabulariesProcessed.push(newVocab);
             } else {
