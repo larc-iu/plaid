@@ -98,7 +98,7 @@
          :delete {:summary "Delete a vocab link"
                   :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-vocab-link-path]
                                [pra/wrap-writer-required get-project-id-from-vocab-link]
-                               [prm/wrap-document-version get-document-id-from-tokens]]
+                               [prm/wrap-document-version get-document-id-from-vocab-link]]
                   :parameters {:query [:map [:document-version {:optional true} :uuid]]}
                   :handler (fn [{{{:keys [id]} :path} :parameters
                                  xtdb :xtdb
