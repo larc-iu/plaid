@@ -333,7 +333,7 @@ def process_tokenization(client, document_id, primary_token_layer_id, sentence_l
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: `python tokenization_service.py PROJECT_ID [URL]`", file=sys.stderr)
+        print("Usage: `python tok_punkt.py PROJECT_ID [URL]`", file=sys.stderr)
         sys.exit(1)
     
     client = get_client(sys.argv[2] if len(sys.argv) > 2 else "http://localhost:8085")
