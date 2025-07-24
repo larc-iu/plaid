@@ -356,25 +356,46 @@ export const DocumentDetail = () => {
       
       {/* History Tab Trigger */}
       {!isHistoryDrawerOpen && (
-        <Button
-          variant="filled"
-          color="gray"
-          size="xs"
+        <Box
           style={{
             position: 'fixed',
             left: 0,
             top: '50%',
             transform: 'translateY(-50%)',
             zIndex: 1000,
-            borderTopLeftRadius: 0,
-            borderBottomLeftRadius: 0,
-            paddingLeft: '8px',
-            paddingRight: '12px'
+            width: '6px',
+            height: '120px',
+            backgroundColor: '#868e96',
+            borderTopRightRadius: '6px',
+            borderBottomRightRadius: '6px',
+            cursor: 'pointer',
+            transition: 'width 200ms ease, background-color 200ms ease',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.width = '40px';
+            e.currentTarget.style.backgroundColor = '#495057';
+            const icon = e.currentTarget.querySelector('svg');
+            if (icon) icon.style.opacity = '1';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.width = '6px';
+            e.currentTarget.style.backgroundColor = '#868e96';
+            const icon = e.currentTarget.querySelector('svg');
+            if (icon) icon.style.opacity = '0';
           }}
           onClick={handleOpenHistory}
         >
-          <IconHistory size={16} />
-        </Button>
+          <IconHistory size={16} style={{ 
+            opacity: 0,
+            transition: 'opacity 200ms ease',
+            color: 'white',
+            minWidth: '16px'
+          }} />
+        </Box>
       )}
       
       {/* Main content area - shifted when drawer is open */}

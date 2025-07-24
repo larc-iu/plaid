@@ -32,7 +32,7 @@ import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import IconMicrophone from '@tabler/icons-react/dist/esm/icons/IconMicrophone.mjs';
 import { notifications } from '@mantine/notifications';
-import { useStrictClient } from './contexts/StrictModeContext.jsx';
+import { useStrictClient, useIsViewingHistorical } from './contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 import { useServiceRequest } from './hooks/useServiceRequest';
 
@@ -131,7 +131,7 @@ const clearOldWaveformCache = () => {
 };
 
 // Media Player Component  
-const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, onSeek, onDeleteMedia }) => {
+const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange, currentTime, volume, onVolumeChange, onSkipToBeginning, onSkipToEnd, onMediaElementReady, onSeek, onDeleteMedia, isViewingHistorical }) => {
   const mediaRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -225,6 +225,7 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
                   color="gray"
                   size="md"
                   onClick={onDeleteMedia}
+                  disabled={isViewingHistorical}
               >
                 <IconTrash size={16} />
               </ActionIcon>
@@ -1075,7 +1076,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
 };
 
 // Media Upload Component
-const MediaUpload = ({ onUpload, isUploading }) => {
+const MediaUpload = ({ onUpload, isUploading, isViewingHistorical }) => {
   return (
     <Paper withBorder p="xl">
       <Center>
@@ -1088,13 +1089,14 @@ const MediaUpload = ({ onUpload, isUploading }) => {
             </Text>
           </div>
           
-          <FileButton onChange={onUpload} accept="audio/*,video/*">
+          <FileButton onChange={onUpload} accept="audio/*,video/*" disabled={isViewingHistorical}>
             {(props) => (
               <Button 
                 {...props} 
                 leftSection={<IconUpload size={16} />}
                 loading={isUploading}
                 size="lg"
+                disabled={isViewingHistorical}
               >
                 Choose Media File
               </Button>
@@ -1112,6 +1114,7 @@ const MediaUpload = ({ onUpload, isUploading }) => {
 
 export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
   const client = useStrictClient();
+  const isViewingHistorical = useIsViewingHistorical();
   const handleStrictModeError = useStrictModeErrorHandler(onMediaUpdated);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -1147,7 +1150,7 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
   // Get authenticated media URL with proper base path handling
   const getAuthenticatedMediaUrl = (serverUrl) => {
     if (!serverUrl || !client?.token) return serverUrl;
-    return `${serverUrl}?token=${client.token}`;
+    return `${serverUrl}?token=${localStorage.get('token')}`;
   };
 
   const authenticatedMediaUrl = getAuthenticatedMediaUrl(parsedDocument?.document?.mediaUrl);
@@ -1510,7 +1513,7 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
   if (!parsedDocument?.document?.mediaUrl) {
     return (
       <Stack spacing="lg">
-        <MediaUpload onUpload={handleMediaUpload} isUploading={isUploading} />
+        <MediaUpload onUpload={handleMediaUpload} isUploading={isUploading} isViewingHistorical={isViewingHistorical} />
       </Stack>
     );
   }
@@ -1533,6 +1536,7 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
         isPlaying={isPlaying}
         onSeek={handleSeek}
         onDeleteMedia={handleDeleteMedia}
+        isViewingHistorical={isViewingHistorical}
       />
 
       {/* Timeline */}
@@ -1581,13 +1585,14 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
                 data={asrAlgorithmOptions}
                 style={{ width: 280 }}
                 onMouseEnter={handleAsrDropdownInteraction}
+                disabled={isViewingHistorical}
             />
 
             <Button
                 leftSection={<IconMicrophone size={16} />}
                 onClick={handleTranscribe}
                 loading={isProcessing}
-                disabled={!isUsingAsrService || isProcessing || isUploading}
+                disabled={!isUsingAsrService || isProcessing || isUploading || isViewingHistorical}
             >
               Transcribe
             </Button>
@@ -1596,7 +1601,7 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
           <Button
               variant="default"
               onClick={handleClearAlignments}
-              disabled={isProcessing || isUploading || !alignmentTokens.length}
+              disabled={isProcessing || isUploading || !alignmentTokens.length || isViewingHistorical}
           >
             Clear Alignments
           </Button>

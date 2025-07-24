@@ -69,3 +69,11 @@ export const useStrictClient = () => {
   // Use strict client if available, otherwise fall back to auth client
   return strictClient || authClient;
 };
+
+/**
+ * Hook to check if the user is currently viewing historical state.
+ * Returns true when viewing historical document state, false otherwise.
+ */
+export const useIsViewingHistorical = () => {
+  return useContext(HistoricalModeContext);
+};
