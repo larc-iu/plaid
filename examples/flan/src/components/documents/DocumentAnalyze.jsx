@@ -174,7 +174,7 @@ const isTokenIgnored = (token, ignoredTokensConfig) => {
   return false;
 };
 
-export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularies, onDocumentReload, setParsedDocumentKey }) => {
+export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularies, onDocumentReload, onVocabularyRefresh, setParsedDocumentKey }) => {
   const client = useStrictClient();
   const isViewingHistorical = useIsViewingHistorical();
   const [saving, setSaving] = useState(false);
@@ -263,6 +263,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
             vocabularies={vocabularies}
             token={token}
             onDocumentReload={onDocumentReload}
+            onVocabularyRefresh={onVocabularyRefresh}
           >
             {token.content}
           </VocabLinkHoverCard>

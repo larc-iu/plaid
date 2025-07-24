@@ -45,6 +45,7 @@ export const VocabLinkHoverCard = ({
   vocabularies, 
   token, 
   onDocumentReload,
+  onVocabularyRefresh,
   children 
 }) => {
   const client = useStrictClient();
@@ -183,6 +184,11 @@ export const VocabLinkHoverCard = ({
         
         const batchResult = await client.submitBatch();
         setLocalVocabItem({ ...newVocabItem, linkId: batchResult[batchResult.length - 1].body.id })
+        
+        // Refresh the vocabulary to update vocabulary items
+        if (onVocabularyRefresh) {
+          onVocabularyRefresh(selectedVocab);
+        }
       } catch (batchError) {
         handleStrictModeError(batchError, 'create new vocab item');
         throw batchError;
