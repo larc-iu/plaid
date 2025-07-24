@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  HoverCard, 
+  Popover, 
   Text, 
   Stack, 
   Tabs,
@@ -8,11 +8,14 @@ import {
   Button,
   TextInput,
   Group,
-  Divider
+  Divider,
+  ActionIcon
 } from '@mantine/core';
+import { useHotkeys } from '@mantine/hooks';
 import { DataTable } from 'mantine-datatable';
 import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
 import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs';
+import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 import { useStrictClient } from '../contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler';
 
@@ -41,7 +44,7 @@ const levenshteinDistance = (str1, str2) => {
   return matrix[str2.length][str1.length];
 };
 
-export const VocabLinkHoverCard = ({ 
+export const VocabLinkPopover = ({ 
   vocabularies, 
   token, 
   onDocumentReload,
@@ -51,8 +54,9 @@ export const VocabLinkHoverCard = ({
   const client = useStrictClient();
   const handleStrictModeError = useStrictModeErrorHandler(onDocumentReload);
   const [selectedVocab, setSelectedVocab] = useState(null);
-  const [isOpen, setIsOpen] = useState(false);
   const [localState, setLocalState] = useState({ type: 'none' });
+  const [opened, setOpened] = useState(false);
+  const popoverIdRef = useRef(`vocab-popover-${Math.random().toString(36).substr(2, 9)}`);
   
   const [isCreating, setIsCreating] = useState(false);
   const [newItemForm, setNewItemForm] = useState('');
@@ -74,22 +78,52 @@ export const VocabLinkHoverCard = ({
     setIsCreating(false);
     setNewItemForm('');
     setNewItemFields({});
+    setOpened(false);
   }, [token.id]);
+
+  // Listen for close events from other popovers
+  useEffect(() => {
+    const handleCloseOtherPopovers = (event) => {
+      if (event.detail !== popoverIdRef.current) {
+        setOpened(false);
+      }
+    };
+
+    window.addEventListener('closeVocabPopovers', handleCloseOtherPopovers);
+    return () => {
+      window.removeEventListener('closeVocabPopovers', handleCloseOtherPopovers);
+    };
+  }, []);
+
+  // Hotkey to close popover with Escape
+  useHotkeys([
+    ['Escape', () => {
+      if (opened) {
+        setOpened(false);
+      }
+    }]
+  ]);
 
   // Determine which vocab item to display based on local state
   const displayVocabItem = localState.type === 'unlinked' ? null :
     localState.type === 'linked' ? localState.item : token.vocabItem;
 
+  const handleClick = (event) => {
+    // Close all other vocab popovers
+    window.dispatchEvent(new CustomEvent('closeVocabPopovers', { detail: popoverIdRef.current }));
+    setOpened(true);
+  };
+
   const handleVocabItemClick = async (vocabItem) => {
-    // Immediately close the hover card
-    setIsOpen(false);
-    
+    // Close popover
+    setOpened(false);
+
     // Check if this is the currently selected item - if so, unlink it
     const existingItem = displayVocabItem; // Use what the user actually sees
     if (existingItem && existingItem.id === vocabItem.id) {
       // Unlink the selected item
       setLocalState({ type: 'unlinked' });
-      
+
       try {
         await client.vocabLinks.delete(existingItem.linkId);
       } catch (error) {
@@ -144,8 +178,8 @@ export const VocabLinkHoverCard = ({
       return;
     }
 
-    // Immediately close the hover card and reset create state
-    setIsOpen(false);
+    // Reset create state
+    setOpened(false);
     setIsCreating(false);
     setNewItemForm('');
     setNewItemFields({});
@@ -203,18 +237,19 @@ export const VocabLinkHoverCard = ({
   const selectedVocabData = vocabsArray.find(v => v.id === selectedVocab);
 
   return (
-    <HoverCard 
-      width={400} 
+    <Popover 
+      width={300}
       shadow="md" 
-      position="top"
+      position="bottom"
       withArrow
-      openDelay={100}
-      closeDelay={100}
-      opened={isOpen}
-      onChange={setIsOpen}
+      opened={opened}
+      onClose={() => setOpened(false)}
+      closeOnClickOutside={false}
+      closeOnEscape={true}
+      trapFocus={false}
     >
-      <HoverCard.Target>
-        <div style={{ display: 'inline-block', cursor: 'pointer' }}>
+      <Popover.Target>
+        <div style={{ display: 'inline-block', cursor: 'pointer' }} onClick={handleClick}>
           <div>
             {children}
           </div>
@@ -230,10 +265,27 @@ export const VocabLinkHoverCard = ({
             {displayVocabItem?.form || '\u00A0'} {/* Non-breaking space when no item */}
           </div>
         </div>
-      </HoverCard.Target>
+      </Popover.Target>
       
-      <HoverCard.Dropdown>
-        <Stack spacing="sm" style={{ minHeight: 400 }}>
+      <Popover.Dropdown>
+        <div style={{ position: 'relative' }}>
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            onClick={() => setOpened(false)}
+            style={{
+              position: 'absolute',
+              top: -21,
+              right: -25,
+              zIndex: 1000,
+              backgroundColor: 'white',
+              border: '1px solid #dee2e6',
+              borderRadius: '50%'
+            }}
+          >
+            <IconX size={14} />
+          </ActionIcon>
+          <Stack spacing="sm" style={{ minHeight: 300 }}>
           {isCreating ? (
             // Create new vocab item form
             <>
@@ -271,22 +323,18 @@ export const VocabLinkHoverCard = ({
           ) : (
             // Vocab items list
             <>
-              <Group justify="space-between">
-                <Text size="sm" fw={500}>
-                  {displayVocabItem ? 'Linked item' : 'Link to vocabulary item'}
-                </Text>
-                <Button
-                  size="xs"
-                  variant="light"
-                  leftSection={<IconPlus size={12} />}
-                  onClick={handleCreateNew}
-                >
-                  Create New
-                </Button>
-              </Group>
-
               {vocabsArray.length > 1 ? (
                 <Tabs value={selectedVocab} onChange={setSelectedVocab}>
+                  {vocabsArray.map(vocab => (
+                      <Tabs.Panel key={vocab.id} value={vocab.id} pt="sm">
+                        <VocabItemsGrid
+                            vocab={vocab}
+                            onItemClick={handleVocabItemClick}
+                            existingVocabItem={displayVocabItem}
+                            tokenForm={token.content}
+                        />
+                      </Tabs.Panel>
+                  ))}
                   <Tabs.List>
                     {vocabsArray.map(vocab => (
                       <Tabs.Tab key={vocab.id} value={vocab.id}>
@@ -294,31 +342,30 @@ export const VocabLinkHoverCard = ({
                       </Tabs.Tab>
                     ))}
                   </Tabs.List>
-                  
-                  {vocabsArray.map(vocab => (
-                    <Tabs.Panel key={vocab.id} value={vocab.id} pt="sm">
-                      <VocabItemsGrid 
-                        vocab={vocab} 
-                        onItemClick={handleVocabItemClick}
-                        existingVocabItem={displayVocabItem}
-                        tokenForm={token.content}
-                      />
-                    </Tabs.Panel>
-                  ))}
                 </Tabs>
               ) : (
-                <VocabItemsGrid 
-                  vocab={selectedVocabData} 
+                <VocabItemsGrid
+                  vocab={selectedVocabData}
                   onItemClick={handleVocabItemClick}
                   existingVocabItem={displayVocabItem}
                   tokenForm={token.content}
                 />
               )}
+
+              <Button
+                  size="xs"
+                  variant="light"
+                  leftSection={<IconPlus size={12} />}
+                  onClick={handleCreateNew}
+              >
+                Create New
+              </Button>
             </>
           )}
-        </Stack>
-      </HoverCard.Dropdown>
-    </HoverCard>
+          </Stack>
+        </div>
+      </Popover.Dropdown>
+    </Popover>
   );
 };
 
@@ -471,15 +518,6 @@ const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem, tokenForm }) =>
 
   return (
     <Stack spacing="xs">
-      <TextInput
-        placeholder="Search items..."
-        size="xs"
-        value={searchQuery}
-        onChange={(event) => setSearchQuery(event.currentTarget.value)}
-        styles={{
-          input: { height: 28 }
-        }}
-      />
       <ScrollArea h={250}>
         <DataTable
           textSelectionDisabled
@@ -502,6 +540,15 @@ const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem, tokenForm }) =>
           }}
         />
       </ScrollArea>
+      <TextInput
+          placeholder="Search items..."
+          size="xs"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.currentTarget.value)}
+          styles={{
+            input: { height: 28 }
+          }}
+      />
     </Stack>
   );
 };

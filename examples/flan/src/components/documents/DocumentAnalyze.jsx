@@ -20,7 +20,7 @@ import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mj
 import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
 import './DocumentAnalyze.css';
 import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
-import { VocabLinkHoverCard } from './analyze/VocabLinkHoverCard.jsx';
+import { VocabLinkPopover } from './analyze/VocabLinkPopover.jsx';
 import { useStrictClient, useIsViewingHistorical } from './contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 
@@ -259,14 +259,14 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
       <div className="token-column">
         {/* Baseline token text (read-only) */}
         <div className="token-form">
-          <VocabLinkHoverCard
+          <VocabLinkPopover
             vocabularies={vocabularies}
             token={token}
             onDocumentReload={onDocumentReload}
             onVocabularyRefresh={onVocabularyRefresh}
           >
             {token.content}
-          </VocabLinkHoverCard>
+          </VocabLinkPopover>
         </div>
         
         {/* Orthography rows - always show for ignored tokens */}
