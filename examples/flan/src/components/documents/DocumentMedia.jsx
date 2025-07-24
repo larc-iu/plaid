@@ -182,7 +182,6 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
   };
 
   const [mediaType, setMediaType] = useState('video');
-  const [isSupported, setIsSupported] = useState(true);
 
   // RAF-based smooth time updates for progress bar
   useEffect(() => {
@@ -235,15 +234,6 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
       </Group>
 
       <Stack spacing="md">
-        {/* Format warning */}
-        {!isSupported && (
-          <Alert color="orange" title="Unsupported Media Format">
-            This media format may not be supported by your browser. For best results, please use:
-            <br />• Video: MP4, WebM, OGV, MOV
-            <br />• Audio: MP3, WAV, OGG, M4A, AAC
-          </Alert>
-        )}
-
         {/* Media error */}
         {mediaError && (
           <Alert color="red" title="Playback Error">
@@ -292,7 +282,6 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
           onError={(e) => {
             console.error('Media error:', e);
             setMediaError('Failed to load media. This format may not be supported.');
-            setIsSupported(false);
           }}
           preload="auto"
         />
@@ -384,6 +373,33 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
   const [resizeStartTime, setResizeStartTime] = useState(null);
   const [tempTokenBounds, setTempTokenBounds] = useState(null);
   const [persistedTokenBounds, setPersistedTokenBounds] = useState(new Map()); // Keep bounds after API call until refresh
+  
+  // Virtualization state
+  const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
+  
+  // Calculate visible tokens for virtualization
+  const getVisibleTokens = () => {
+    if (!timelineContainerRef.current || !duration || pixelsPerSecond <= 0) {
+      return alignmentTokens;
+    }
+    
+    const containerWidth = timelineContainerRef.current.clientWidth;
+    const scrollLeft = timelineScrollLeft;
+    
+    // Calculate visible time range with buffer
+    const bufferTime = 10; // seconds of buffer on each side
+    const visibleTimeStart = Math.max(0, scrollLeft / pixelsPerSecond - bufferTime);
+    const visibleTimeEnd = Math.min(duration, (scrollLeft + containerWidth) / pixelsPerSecond + bufferTime);
+    
+    // Filter tokens that intersect with visible range
+    return alignmentTokens.filter(token => {
+      const tokenStart = token.metadata?.timeBegin || 0;
+      const tokenEnd = token.metadata?.timeEnd || token.metadata?.timeBegin || 1;
+      
+      // Check if token intersects with visible range
+      return tokenEnd >= visibleTimeStart && tokenStart <= visibleTimeEnd;
+    });
+  };
 
   const getTimeFromPosition = (clientX) => {
     if (!timelineRef.current) return 0;
@@ -820,6 +836,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
         <Box 
           ref={timelineContainerRef} 
           style={{ overflowX: 'auto', border: '1px solid #e0e0e0', borderRadius: '4px', paddingTop: '50px' }}
+          onScroll={(e) => setTimelineScrollLeft(e.target.scrollLeft)}
         >
           <Box 
             ref={timelineRef}
@@ -975,7 +992,7 @@ const Timeline = ({ duration, currentTime, pixelsPerSecond, onPixelsPerSecondCha
             />
 
             {/* Alignment tokens */}
-            {alignmentTokens.map((token, index) => {
+            {getVisibleTokens().map((token, index) => {
               const tokenStart = token.metadata?.timeBegin || 0;
               const tokenEnd = token.metadata?.timeEnd || token.metadata?.timeBegin || 1;
               const tokenWidth = (tokenEnd - tokenStart) * pixelsPerSecond;
@@ -1150,7 +1167,7 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
   // Get authenticated media URL with proper base path handling
   const getAuthenticatedMediaUrl = (serverUrl) => {
     if (!serverUrl || !client?.token) return serverUrl;
-    return `${serverUrl}?token=${localStorage.get('token')}`;
+    return `${serverUrl}?token=${localStorage.getItem('token')}`;
   };
 
   const authenticatedMediaUrl = getAuthenticatedMediaUrl(parsedDocument?.document?.mediaUrl);
