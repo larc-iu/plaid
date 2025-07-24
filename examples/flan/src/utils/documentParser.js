@@ -37,11 +37,19 @@ export function parseDocument(rawDocument, client) {
     // Validate sentence token partitioning
     validateSentencePartitioning(sentences, documentData.text.body);
 
+    // Pre-compute optimizations for rendering performance
+    const sortedSentences = [...enrichedSentences].sort((a, b) => a.begin - b.begin);
+    const findSentenceForToken = createSentenceLookup(sortedSentences);
+    const lookupMaps = createLookupMaps(enrichedSentences);
+
     return {
       document: documentData,
       sentences: enrichedSentences,
+      sortedSentences: sortedSentences,
+      findSentenceForToken: findSentenceForToken,
       alignmentTokens: alignmentTokens,
-      layers: layers // Include layer metadata for debugging
+      layers: layers, // Include layer metadata for debugging
+      ...lookupMaps // Add lookup maps for O(1) operations
     };
   } catch (error) {
     console.error('Document parsing failed:', error);
@@ -348,10 +356,14 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, cl
     // Collect sentence-level annotations for the sentence
     const sentenceAnnotations = collectAnnotations(sentence, spanLayers.sentence, 'Sentence');
     
+    // Pre-compute spans (tokens + gaps) for efficient rendering
+    const spans = computeSpansForSentence(sentence, tokensWithAnnotations, text);
+    
     return {
       ...sentence,
       annotations: sentenceAnnotations,
-      tokens: tokensWithAnnotations
+      tokens: tokensWithAnnotations,
+      spans: spans
     };
   });
   
@@ -399,6 +411,135 @@ function collectAnnotations(item, spanLayers, scope) {
   });
   
   return annotations;
+}
+
+/**
+ * Compute spans (tokens + gaps) for a sentence to enable efficient rendering
+ * @param {Object} sentence - Sentence object with begin/end positions
+ * @param {Array} tokens - Array of tokens within this sentence
+ * @param {string} text - Full document text
+ * @returns {Array} Array of span objects (tokens and gaps)
+ */
+function computeSpansForSentence(sentence, tokens, text) {
+  const spans = [];
+  const sortedTokens = [...tokens].sort((a, b) => a.begin - b.begin);
+  let lastEnd = sentence.begin;
+
+  // Create spans for tokens and gaps within this sentence
+  for (const token of sortedTokens) {
+    // Add untokenized text before this token
+    if (token.begin > lastEnd) {
+      spans.push({
+        type: 'gap',
+        text: text.slice(lastEnd, token.begin),
+        isToken: false,
+        begin: lastEnd,
+        end: token.begin
+      });
+    }
+
+    // Add the token
+    spans.push({
+      type: 'token',
+      ...token,
+      isToken: true
+    });
+
+    lastEnd = token.end;
+  }
+
+  // Add final untokenized text within sentence
+  if (lastEnd < sentence.end) {
+    spans.push({
+      type: 'gap',
+      text: text.slice(lastEnd, sentence.end),
+      isToken: false,
+      begin: lastEnd,
+      end: sentence.end
+    });
+  }
+
+  return spans;
+}
+
+/**
+ * Create lookup maps for O(1) operations
+ * @param {Array} sentences - Array of sentences with tokens
+ * @returns {Object} Object containing lookup maps
+ */
+function createLookupMaps(sentences) {
+  const tokenLookup = new Map();
+  const sentenceLookup = new Map();
+  const tokenPositionMaps = new Map();
+  const sentenceIndexLookup = new Map();
+
+  sentences.forEach((sentence, sentenceIndex) => {
+    // Add sentence to lookup by ID
+    sentenceLookup.set(sentence.id, sentence);
+    sentenceIndexLookup.set(sentence.id, sentenceIndex);
+
+    // Create token position map for this sentence
+    const tokenPositionMap = new Map();
+    
+    if (sentence.tokens && Array.isArray(sentence.tokens)) {
+      sentence.tokens.forEach((token, tokenIndex) => {
+        // Add token to global lookup
+        tokenLookup.set(token.id, token);
+        
+        // Add token position within this sentence
+        tokenPositionMap.set(token.id, tokenIndex);
+      });
+    }
+
+    tokenPositionMaps.set(sentence.id, tokenPositionMap);
+  });
+
+  return {
+    tokenLookup,
+    sentenceLookup,
+    tokenPositionMaps,
+    sentenceIndexLookup
+  };
+}
+
+/**
+ * Create an efficient lookup function for finding which sentence contains a token
+ * @param {Array} sortedSentences - Array of sentences sorted by begin position
+ * @returns {Function} Lookup function that takes a token and returns its containing sentence
+ */
+function createSentenceLookup(sortedSentences) {
+  /**
+   * Find the sentence that contains the given token
+   * @param {Object} token - Token object with begin/end positions
+   * @returns {Object|null} The sentence that contains the token, or null if not found
+   */
+  return function findSentenceForToken(token) {
+    if (!token || typeof token.begin !== 'number' || typeof token.end !== 'number') {
+      return null;
+    }
+
+    // Binary search for efficiency (since sentences are sorted and non-overlapping)
+    let left = 0;
+    let right = sortedSentences.length - 1;
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const sentence = sortedSentences[mid];
+
+      if (token.begin >= sentence.begin && token.end <= sentence.end) {
+        // Token is completely within this sentence
+        return sentence;
+      } else if (token.begin < sentence.begin) {
+        // Token starts before this sentence, search left half
+        right = mid - 1;
+      } else {
+        // Token starts after this sentence begins, search right half
+        left = mid + 1;
+      }
+    }
+
+    return null; // Token not found in any sentence
+  };
 }
 
 /**

@@ -171,7 +171,6 @@ export const VocabLinkHoverCard = ({
 
   // Don't render if no vocabularies
   if (!vocabularies || vocabsArray.length === 0) {
-    console.log('No vocabularies available:', vocabularies);
     return children;
   }
   
@@ -183,7 +182,7 @@ export const VocabLinkHoverCard = ({
       shadow="md" 
       position="top"
       withArrow
-      openDelay={200}
+      openDelay={100}
       closeDelay={100}
       opened={isOpen}
       onChange={setIsOpen}

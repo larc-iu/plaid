@@ -73,6 +73,7 @@ export const HistoryDrawer = ({
       size={400}
       withCloseButton={false}
       withOverlay={false}
+      removeScrollProps={{ enabled: false }}
       styles={{
         content: {
           padding: 0,
