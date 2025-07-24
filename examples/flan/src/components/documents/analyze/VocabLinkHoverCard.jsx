@@ -52,7 +52,8 @@ export const VocabLinkHoverCard = ({
   const handleStrictModeError = useStrictModeErrorHandler(onDocumentReload);
   const [selectedVocab, setSelectedVocab] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
-  const [localVocabItem, setLocalVocabItem] = useState(null);
+  const [localState, setLocalState] = useState({ type: 'none' });
+  
   const [isCreating, setIsCreating] = useState(false);
   const [newItemForm, setNewItemForm] = useState('');
   const [newItemFields, setNewItemFields] = useState({});
@@ -67,62 +68,59 @@ export const VocabLinkHoverCard = ({
     }
   }, [vocabsArray, selectedVocab]);
 
-  // Reset local state when token.vocabItem changes from external source (document reload)
+  // Reset on token ID change (document reload)
   useEffect(() => {
-    setLocalVocabItem(null);
+    setLocalState({ type: 'none' });
     setIsCreating(false);
     setNewItemForm('');
     setNewItemFields({});
-  }, [token.vocabItem]);
+  }, [token.id]);
 
-  // Determine which vocab item to display - local state overrides token.vocabItem
-  // If localVocabItem is the special "unlinked" state, don't display any item
-  const displayVocabItem = localVocabItem?.unlinked ? null : (localVocabItem || token.vocabItem);
+  // Determine which vocab item to display based on local state
+  const displayVocabItem = localState.type === 'unlinked' ? null :
+    localState.type === 'linked' ? localState.item : token.vocabItem;
 
   const handleVocabItemClick = async (vocabItem) => {
-    try {
-      // Immediately close the hover card
-      setIsOpen(false);
+    // Immediately close the hover card
+    setIsOpen(false);
+    
+    // Check if this is the currently selected item - if so, unlink it
+    const existingItem = displayVocabItem; // Use what the user actually sees
+    if (existingItem && existingItem.id === vocabItem.id) {
+      // Unlink the selected item
+      setLocalState({ type: 'unlinked' });
       
-      // Check if this is the currently selected item - if so, unlink it
-      const existingItem = displayVocabItem;
-      if (existingItem && existingItem.id === vocabItem.id) {
-        // Unlink the selected item
-        // Set local state to a special "unlinked" state to prevent showing the item
-        setLocalVocabItem({ unlinked: true }); 
-        
-        try {
-          await client.vocabLinks.delete(existingItem.linkId);
-        } catch (error) {
-          handleStrictModeError(error, 'delete vocab link');
-        }
-        return;
+      try {
+        await client.vocabLinks.delete(existingItem.linkId);
+      } catch (error) {
+        handleStrictModeError(error, 'delete vocab link');
+        setLocalState({ type: 'none' }); // Reset on error
       }
-      
-      // Set local state to immediately show the vocab item
-      setLocalVocabItem(vocabItem);
-      
+      return;
+    }
+    
+    // Set local state for immediate UI feedback
+    setLocalState({ type: 'linked', item: vocabItem });
+    
+    try {
       // Use batch operation to delete existing link and create new one
       await client.beginBatch();
       
-      try {
-        // Delete existing vocab link if there is one
-        if (existingItem) {
-          await client.vocabLinks.delete(existingItem.linkId);
-        }
-
-        // Create new vocab link between token and vocab item
-        await client.vocabLinks.create(vocabItem.id, [token.id]);
-        
-        const result = await client.submitBatch();
-        setLocalVocabItem({ ...vocabItem, linkId: result[result.length - 1].body.id })
-      } catch (batchError) {
-        handleStrictModeError(batchError, 'create vocab link');
-        throw batchError;
+      // Delete existing vocab link if there is one
+      if (existingItem) {
+        await client.vocabLinks.delete(existingItem.linkId);
       }
+
+      // Create new vocab link between token and vocab item
+      await client.vocabLinks.create(vocabItem.id, [token.id]);
+      
+      const result = await client.submitBatch();
+      
+      // Update local state with link ID from server response
+      setLocalState({ type: 'linked', item: { ...vocabItem, linkId: result[result.length - 1].body.id } });
     } catch (error) {
       handleStrictModeError(error, 'create vocab link');
-      setLocalVocabItem(null);
+      setLocalState({ type: 'none' }); // Reset on error
     }
   };
 
@@ -141,12 +139,18 @@ export const VocabLinkHoverCard = ({
       return;
     }
 
-    try {
-      const selectedVocabData = vocabsArray.find(v => v.id === selectedVocab);
-      if (!selectedVocabData) {
-        throw new Error('No vocabulary selected');
-      }
+    const selectedVocabData = vocabsArray.find(v => v.id === selectedVocab);
+    if (!selectedVocabData) {
+      return;
+    }
 
+    // Immediately close the hover card and reset create state
+    setIsOpen(false);
+    setIsCreating(false);
+    setNewItemForm('');
+    setNewItemFields({});
+
+    try {
       // Create the vocab item OUTSIDE of the batch
       const metadata = Object.keys(newItemFields).length > 0 ? newItemFields : undefined;
       const createResult = await client.vocabItems.create(selectedVocab, newItemForm.trim(), metadata);
@@ -159,44 +163,35 @@ export const VocabLinkHoverCard = ({
         vocabId: selectedVocab,
         vocabName: selectedVocabData.name
       };
-
-      // Immediately close the hover card and reset create state
-      setIsOpen(false);
-      setIsCreating(false);
-      setNewItemForm('');
-      setNewItemFields({});
       
       // Set local state to immediately show the new vocab item
-      setLocalVocabItem(newVocabItem);
+      setLocalState({ type: 'linked', item: newVocabItem });
       
       // Use batch operation to delete existing link and create new one
-      client.beginBatch();
+      await client.beginBatch();
       
-      try {
-        // Delete existing vocab link if there is one
-        const existingItem = displayVocabItem;
-        if (existingItem) {
-          client.vocabLinks.delete(existingItem.linkId);
-        }
+      // Delete existing vocab link if there is one
+      const existingItem = token.vocabItem; // Always use server state
+      if (existingItem) {
+        await client.vocabLinks.delete(existingItem.linkId);
+      }
 
-        // Create vocab link between token and the new vocab item
-        client.vocabLinks.create(newVocabItem.id, [token.id]);
-        
-        const batchResult = await client.submitBatch();
-        setLocalVocabItem({ ...newVocabItem, linkId: batchResult[batchResult.length - 1].body.id })
-        
-        // Refresh the vocabulary to update vocabulary items
-        if (onVocabularyRefresh) {
-          onVocabularyRefresh(selectedVocab);
-        }
-      } catch (batchError) {
-        handleStrictModeError(batchError, 'create new vocab item');
-        throw batchError;
+      // Create vocab link between token and the new vocab item
+      await client.vocabLinks.create(newVocabItem.id, [token.id]);
+      
+      const batchResult = await client.submitBatch();
+      
+      // Update local state with link ID from server response
+      setLocalState({ type: 'linked', item: { ...newVocabItem, linkId: batchResult[batchResult.length - 1].body.id } });
+      
+      // Refresh document so new item appears everywhere with correct state
+      if (onDocumentReload) {
+        onDocumentReload();
       }
       
     } catch (error) {
       handleStrictModeError(error, 'create new vocab item');
-      setLocalVocabItem(null);
+      setLocalState({ type: 'none' }); // Reset on error
     }
   };
 

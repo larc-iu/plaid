@@ -181,7 +181,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const sentencesPerPage = 100;
+  const sentencesPerPage = 50;
 
   const sentences = parsedDocument?.sentences || [];
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
