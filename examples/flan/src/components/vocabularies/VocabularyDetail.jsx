@@ -35,11 +35,13 @@ export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
   const navigate = useNavigate();
   const { user, client } = useAuth();
+  const isNewVocabulary = !vocabularyId;
+
   const [vocabulary, setVocabulary] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('items');
+  const [activeTab, setActiveTab] = useState(isNewVocabulary ? 'settings' : 'items');
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [customFields, setCustomFields] = useState([]);
@@ -47,8 +49,6 @@ export const VocabularyDetail = () => {
   const [newFieldName, setNewFieldName] = useState('');
   const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
-
-  const isNewVocabulary = vocabularyId === 'new';
 
   const fetchVocabulary = async () => {
     if (isNewVocabulary) {
@@ -68,6 +68,10 @@ export const VocabularyDetail = () => {
       setLoading(true);
       if (!client) {
         throw new Error('Not authenticated');
+      }
+      
+      if (!vocabularyId || vocabularyId === 'undefined') {
+        throw new Error('Invalid vocabulary ID');
       }
       
       const vocabularyData = await client.vocabLayers.get(vocabularyId);
@@ -128,6 +132,10 @@ export const VocabularyDetail = () => {
         throw new Error('Not authenticated');
       }
       
+      if (!vocabularyId || vocabularyId === 'undefined') {
+        throw new Error('Invalid vocabulary ID');
+      }
+      
       const vocabularyData = await client.vocabLayers.get(vocabularyId);
       setVocabulary(vocabularyData);
       
@@ -185,7 +193,7 @@ export const VocabularyDetail = () => {
         if (customFields.length > 0) {
           const fieldsConfig = {};
           customFields.forEach(field => {
-            fieldsConfig[field] = true;
+            fieldsConfig[field] = fieldConfigs[field] || { inline: false };
           });
           await client.vocabLayers.setConfig(savedVocabulary.id, 'plaid', 'fields', fieldsConfig);
         }
@@ -218,34 +226,6 @@ export const VocabularyDetail = () => {
         message: 'Failed to save vocabulary',
         color: 'red'
       });
-    }
-  };
-
-  const handleCancel = () => {
-    if (isNewVocabulary) {
-      navigate('/vocabularies');
-    } else {
-      setEditedName(vocabulary.name);
-      setIsEditing(false);
-      // Reset custom fields
-      const fields = [];
-      const configs = {};
-      if (vocabulary.config?.plaid?.fields) {
-        Object.entries(vocabulary.config.plaid.fields).forEach(([fieldName, fieldConfig]) => {
-          if (fieldName.toLowerCase() !== 'form') {
-            fields.push(fieldName);
-            // Handle both old boolean format and new object format
-            if (typeof fieldConfig === 'object' && fieldConfig !== null) {
-              configs[fieldName] = fieldConfig;
-            } else {
-              // Legacy boolean format - convert to object
-              configs[fieldName] = { inline: false };
-            }
-          }
-        });
-      }
-      setCustomFields(fields);
-      setFieldConfigs(configs);
     }
   };
 
@@ -419,10 +399,12 @@ export const VocabularyDetail = () => {
           {breadcrumbItems}
         </Breadcrumbs>
 
-        <div>
-          <Title order={1} mb="xs">{vocabulary?.name}</Title>
-          <Text c="dimmed" size="xs" mb="lg">{vocabulary?.id}</Text>
-        </div>
+        {!isNewVocabulary && (
+          <div>
+            <Title order={1} mb="xs">{vocabulary?.name}</Title>
+            <Text c="dimmed" size="xs" mb="lg">{vocabulary?.id}</Text>
+          </div>
+        )}
 
         {!isNewVocabulary && !isEditing && (
           <Tabs value={activeTab} onChange={setActiveTab}>
@@ -573,64 +555,98 @@ export const VocabularyDetail = () => {
           </Tabs>
         )}
 
-        {(isNewVocabulary || isEditing) && (
-          <Paper p="md" withBorder>
-            <Stack spacing="md">
-              <Title order={3}>Custom Fields</Title>
-              <Text size="sm" c="dimmed">
-                Add custom fields to vocabulary items. Field names cannot be "form" or duplicate existing fields (case-insensitive).
-              </Text>
-              
-              {customFields.length > 0 && (
-                <Stack spacing="xs">
-                  {customFields.map(field => (
-                    <Group key={field} justify="space-between">
-                      <Group>
-                        <Text>{field}</Text>
-                        <Switch
-                          size="xs"
-                          label="Show inline"
-                          labelPosition="left"
-                          checked={fieldConfigs[field]?.inline || false}
-                          onChange={() => handleToggleInline(field)}
-                        />
-                      </Group>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="red"
-                        leftSection={<IconX size={14} />}
-                        onClick={() => handleRemoveField(field)}
-                      >
-                        Remove
-                      </Button>
-                    </Group>
-                  ))}
-                </Stack>
-              )}
-              
-              <Group>
+        {isNewVocabulary && (
+          <Stack spacing="lg">
+            <Title order={2}>Create New Vocabulary</Title>
+            
+            <Paper p="md" withBorder>
+              <Stack spacing="md">
                 <TextInput
-                  placeholder="Enter field name"
-                  value={newFieldName}
-                  onChange={(event) => setNewFieldName(event.currentTarget.value)}
-                  flex={1}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      handleAddField();
-                    }
-                  }}
+                  label="Vocabulary Name"
+                  placeholder="Enter vocabulary name"
+                  value={editedName}
+                  onChange={(event) => setEditedName(event.currentTarget.value)}
+                  required
+                  autoFocus
+                  description="Choose a descriptive name for your vocabulary"
+                  error={editedName && !editedName.trim() ? "Name cannot be empty" : null}
                 />
-                <Button
-                  leftSection={<IconPlus size={16} />}
-                  onClick={handleAddField}
-                  disabled={!newFieldName.trim()}
-                >
-                  Add Field
-                </Button>
-              </Group>
-            </Stack>
-          </Paper>
+              </Stack>
+            </Paper>
+
+            <Paper p="md" withBorder>
+              <Stack spacing="md">
+                <Title order={3}>Custom Fields (Optional)</Title>
+                <Text size="sm" c="dimmed">
+                  Add custom fields to vocabulary items. Field names cannot be "form" or duplicate existing fields (case-insensitive).
+                </Text>
+                
+                {customFields.length > 0 && (
+                  <Stack spacing="xs">
+                    {customFields.map(field => (
+                      <Group key={field} justify="space-between">
+                        <Group>
+                          <Text>{field}</Text>
+                          <Switch
+                            size="xs"
+                            label="Show inline"
+                            labelPosition="left"
+                            checked={fieldConfigs[field]?.inline || false}
+                            onChange={() => handleToggleInline(field)}
+                          />
+                        </Group>
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="red"
+                          leftSection={<IconX size={14} />}
+                          onClick={() => handleRemoveField(field)}
+                        >
+                          Remove
+                        </Button>
+                      </Group>
+                    ))}
+                  </Stack>
+                )}
+                
+                <Group>
+                  <TextInput
+                    placeholder="Enter field name"
+                    value={newFieldName}
+                    onChange={(event) => setNewFieldName(event.currentTarget.value)}
+                    flex={1}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        handleAddField();
+                      }
+                    }}
+                  />
+                  <Button
+                    leftSection={<IconPlus size={16} />}
+                    onClick={handleAddField}
+                    disabled={!newFieldName.trim()}
+                  >
+                    Add Field
+                  </Button>
+                </Group>
+              </Stack>
+            </Paper>
+
+            <Group justify="flex-end">
+              <Button
+                variant="default"
+                onClick={() => navigate('/vocabularies')}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={!editedName.trim()}
+              >
+                Create Vocabulary
+              </Button>
+            </Group>
+          </Stack>
         )}
       </Stack>
 

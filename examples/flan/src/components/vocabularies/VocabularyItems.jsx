@@ -40,6 +40,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
         throw new Error('Not authenticated');
       }
       
+      if (!vocabularyId || vocabularyId === 'undefined' || vocabularyId === 'new') {
+        throw new Error('Invalid vocabulary ID');
+      }
+      
       const vocabularyData = await client.vocabLayers.get(vocabularyId, true);
       setItems(vocabularyData.items || []);
       setError('');
@@ -52,7 +56,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
   };
 
   useEffect(() => {
-    fetchItems();
+    if (vocabularyId && vocabularyId !== 'new') {
+      fetchItems();
+    } else {
+      setLoading(false);
+      setItems([]);
+    }
   }, [vocabularyId]);
 
   const handleCreateItem = async () => {

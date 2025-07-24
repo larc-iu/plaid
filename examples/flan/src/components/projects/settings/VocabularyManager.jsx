@@ -47,8 +47,8 @@ export const VocabularyManager = ({
         setLoading(true);
         let vocabData = initialData;
         
-        // If no initial data provided, try loading from callback
-        if (!vocabData && onLoadData) {
+        // If no initial data provided or if vocabularies array is missing, try loading from callback
+        if ((!vocabData || !vocabData.vocabularies) && onLoadData) {
           vocabData = await onLoadData();
         }
         
@@ -103,10 +103,10 @@ export const VocabularyManager = ({
     }
   };
 
-  const handleVocabToggle = async (vocabName, enabled) => {
+  const handleVocabToggle = async (vocabId, enabled) => {
     // For settings mode, handle unlinking with confirmation
     if (isSettings && !enabled) {
-      const vocab = vocabularies.find(v => v.name === vocabName);
+      const vocab = vocabularies.find(v => v.id === vocabId);
       if (vocab) {
         setVocabToUnlink(vocab);
         openUnlinkModal();
@@ -115,7 +115,7 @@ export const VocabularyManager = ({
     }
     
     const updatedVocabs = vocabularies.map(vocab =>
-      vocab.name === vocabName ? { ...vocab, enabled } : vocab
+      vocab.id === vocabId ? { ...vocab, enabled } : vocab
     );
     await saveChanges(updatedVocabs);
   };
@@ -124,7 +124,7 @@ export const VocabularyManager = ({
     if (!vocabToUnlink) return;
     
     const updatedVocabs = vocabularies.map(vocab =>
-      vocab.name === vocabToUnlink.name ? { ...vocab, enabled: false } : vocab
+      vocab.id === vocabToUnlink.id ? { ...vocab, enabled: false } : vocab
     );
     await saveChanges(updatedVocabs);
     
@@ -176,13 +176,14 @@ export const VocabularyManager = ({
     });
   };
 
-  const handleDeleteCustomVocab = async (vocabName) => {
-    const updatedVocabs = vocabularies.filter(vocab => vocab.name !== vocabName);
+  const handleDeleteCustomVocab = async (vocabId) => {
+    const vocabToDelete = vocabularies.find(v => v.id === vocabId);
+    const updatedVocabs = vocabularies.filter(vocab => vocab.id !== vocabId);
     await saveChanges(updatedVocabs);
     
     notifications.show({
       title: 'Vocabulary Removed',
-      message: `"${vocabName}" has been removed`,
+      message: `"${vocabToDelete?.name}" has been removed`,
       color: 'blue'
     });
   };
@@ -202,8 +203,8 @@ export const VocabularyManager = ({
     );
   };
 
-  const handleMoveVocab = async (vocabName, direction) => {
-    const currentIndex = vocabularies.findIndex(vocab => vocab.name === vocabName);
+  const handleMoveVocab = async (vocabId, direction) => {
+    const currentIndex = vocabularies.findIndex(vocab => vocab.id === vocabId);
     if (currentIndex === -1) return;
     
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
@@ -252,7 +253,7 @@ export const VocabularyManager = ({
           withRowBorders
           highlightOnHover
           onRowClick={({ record }) => {
-            handleVocabToggle(record.name, !record.enabled);
+            handleVocabToggle(record.id, !record.enabled);
           }}
           styles={{
             table: {
@@ -280,7 +281,7 @@ export const VocabularyManager = ({
                 return (
                   <Group 
                     justify="space-between" 
-                    onMouseEnter={() => setHoveredVocab(record.name)}
+                    onMouseEnter={() => setHoveredVocab(record.id)}
                     onMouseLeave={() => setHoveredVocab(null)}
                     style={{ width: '100%' }}
                   >
@@ -299,14 +300,14 @@ export const VocabularyManager = ({
                             variant="light"
                             color="gray"
                             style={{ 
-                              opacity: hoveredVocab === record.name ? 1 : 0,
+                              opacity: hoveredVocab === record.id ? 1 : 0,
                               transition: 'opacity 0.2s ease'
                             }}
                             onClick={(event) => {
                               event.stopPropagation();
-                              handleMoveVocab(record.name, 'up');
+                              handleMoveVocab(record.id, 'up');
                             }}
-                            disabled={tableData.findIndex(item => item.name === record.name) === 0}
+                            disabled={tableData.findIndex(item => item.id === record.id) === 0}
                           >
                             <IconChevronUp size={12} />
                           </Button>
@@ -315,14 +316,14 @@ export const VocabularyManager = ({
                             variant="light"
                             color="gray"
                             style={{ 
-                              opacity: hoveredVocab === record.name ? 1 : 0,
+                              opacity: hoveredVocab === record.id ? 1 : 0,
                               transition: 'opacity 0.2s ease'
                             }}
                             onClick={(event) => {
                               event.stopPropagation();
-                              handleMoveVocab(record.name, 'down');
+                              handleMoveVocab(record.id, 'down');
                             }}
-                            disabled={tableData.findIndex(item => item.name === record.name) === tableData.length - 1}
+                            disabled={tableData.findIndex(item => item.id === record.id) === tableData.length - 1}
                           >
                             <IconChevronDown size={12} />
                           </Button>
@@ -336,12 +337,12 @@ export const VocabularyManager = ({
                           color="orange"
                           variant="light"
                           style={{ 
-                            opacity: hoveredVocab === record.name ? 1 : 0,
+                            opacity: hoveredVocab === record.id ? 1 : 0,
                             transition: 'opacity 0.2s ease'
                           }}
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleVocabToggle(record.name, false);
+                            handleVocabToggle(record.id, false);
                           }}
                         >
                           <IconUnlink size={14} />
@@ -355,12 +356,12 @@ export const VocabularyManager = ({
                           color="red"
                           variant="light"
                           style={{ 
-                            opacity: hoveredVocab === record.name ? 1 : 0,
+                            opacity: hoveredVocab === record.id ? 1 : 0,
                             transition: 'opacity 0.2s ease'
                           }}
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleDeleteCustomVocab(record.name);
+                            handleDeleteCustomVocab(record.id);
                           }}
                         >
                           <IconTrash size={14} />
