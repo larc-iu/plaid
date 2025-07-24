@@ -16,6 +16,9 @@
 
 (def attr-keys [:document/id
                 :document/name
+                :document/time-created
+                :document/time-modified
+                :document/version
                 :document/project])
 
 ;; Queries ------------------------------------------------------------------------
