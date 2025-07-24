@@ -16,7 +16,7 @@ import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import IconDeviceFloppy from '@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs';
 import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 import { notifications } from '@mantine/notifications';
-import { useStrictClient } from './contexts/StrictModeContext.jsx';
+import { useStrictClient, useIsViewingHistorical } from './contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 
 /**
@@ -131,6 +131,7 @@ const checkAndFixTokenization = async (client, document, project, parsedDocument
 
 export const DocumentBaseline = ({ document, parsedDocument, project, onTextUpdated }) => {
   const client = useStrictClient();
+  const isViewingHistorical = useIsViewingHistorical();
   const handleStrictModeError = useStrictModeErrorHandler(onTextUpdated);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
@@ -251,7 +252,7 @@ export const DocumentBaseline = ({ document, parsedDocument, project, onTextUpda
                 Edit the primary text content for this document
               </Text>
             </div>
-            {!isEditing && (
+            {!isEditing && !isViewingHistorical && (
               <Button
                 leftSection={<IconEdit size={16} />}
                 variant="light"

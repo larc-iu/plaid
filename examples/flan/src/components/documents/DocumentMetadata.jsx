@@ -18,13 +18,14 @@ import IconDeviceFloppy from '@tabler/icons-react/dist/esm/icons/IconDeviceFlopp
 import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
-import { useStrictClient } from './contexts/StrictModeContext.jsx';
+import { useStrictClient, useIsViewingHistorical } from './contexts/StrictModeContext.jsx';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 
 export const DocumentMetadata = ({ document, parsedDocument, project, onDocumentUpdated, onDocumentReload }) => {
   const client = useStrictClient();
+  const isViewingHistorical = useIsViewingHistorical();
   const handleStrictModeError = useStrictModeErrorHandler(onDocumentReload);
   const navigate = useNavigate();
   const { projectId } = useParams();
@@ -123,7 +124,7 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
         <Stack spacing="md">
           <Group justify="space-between" align="center">
             <Title order={3}>Document Information</Title>
-            {!isEditing && (
+            {!isEditing && !isViewingHistorical && (
               <Button
                 leftSection={<IconEdit size={16} />}
                 variant="light"

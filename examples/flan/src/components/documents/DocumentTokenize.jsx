@@ -29,7 +29,7 @@ import {
   getIgnoredTokensConfig,
   validateTokenization
 } from '../../utils/tokenizationUtils';
-import { useStrictClient } from './contexts/StrictModeContext.jsx';
+import { useStrictClient, useIsViewingHistorical } from './contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 import { useServiceRequest } from './hooks/useServiceRequest';
 
@@ -178,6 +178,7 @@ const TokenComponent = ({
 
 export const DocumentTokenize = ({ document, parsedDocument, project, onTokenizationComplete }) => {
   const client = useStrictClient();
+  const isViewingHistorical = useIsViewingHistorical();
   const handleStrictModeError = useStrictModeErrorHandler(onTokenizationComplete);
   const [isTokenizing, setIsTokenizing] = useState(false);
   const [tokenizationProgress, setTokenizationProgress] = useState(0);
@@ -802,8 +803,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
               alignItems: 'flex-start',
               backgroundColor: sentenceIndex % 2 === 0 ? '#ffffff' : '#f8faff',
               padding: '8px 12px',
-              marginLeft: '-70px',
-              marginRight: '-12px'
+              marginLeft: '-70px'
             }}
           >
             {/* Sentence number */}
@@ -1157,13 +1157,14 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
                 data={algorithmOptions}
                 style={{ width: 280 }}
                 onMouseEnter={handleAlgorithmDropdownClick}
+                disabled={isViewingHistorical}
             />
 
             <Button
                 leftSection={<IconPlayerPlay size={16} />}
                 onClick={handleTokenize}
                 loading={isTokenizing || isProcessing}
-                disabled={!text || !primaryTokenLayer || isProcessing}
+                disabled={!text || !primaryTokenLayer || isProcessing || isViewingHistorical}
             >
               Tokenize
             </Button>
@@ -1173,7 +1174,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
             <Button
                 variant="default"
                 onClick={handleClearTokens}
-                disabled={isTokenizing || isProcessing || !existingTokens.length}
+                disabled={isTokenizing || isProcessing || !existingTokens.length || isViewingHistorical}
             >
               Clear Tokens
             </Button>
@@ -1181,7 +1182,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
             <Button
                 variant="default"
                 onClick={handleClearSentences}
-                disabled={isTokenizing || isProcessing || !existingSentenceTokens.length || existingSentenceTokens.length === 1}
+                disabled={isTokenizing || isProcessing || !existingSentenceTokens.length || existingSentenceTokens.length === 1 || isViewingHistorical}
             >
               Clear Sentences
             </Button>
