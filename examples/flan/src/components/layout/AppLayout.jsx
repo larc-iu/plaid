@@ -28,7 +28,7 @@ export function AppLayout({ children }) {
             aria-label="Toggle navigation"
           />
           
-          <Text fw={700}>Flan</Text>
+          <Text fw={700}>Plaid Base</Text>
           
           <Group ml="auto">
             <UserButton user={user} onLogout={logout} />

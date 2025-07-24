@@ -170,8 +170,8 @@ export const ProjectSetup = () => {
           </Title>
           <Text c="dimmed" size="sm">
             {isNewProject
-              ? 'Set up a new Flan project.'
-              : 'Configure your existing project for annotation with Flan.'
+              ? 'Set up a new Plaid Base project.'
+              : 'Configure your existing project for annotation with Plaid Base.'
             }
           </Text>
         </div>

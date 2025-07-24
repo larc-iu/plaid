@@ -110,7 +110,7 @@ export const ProjectDetail = () => {
 
   // Check if project needs setup and redirect if necessary
   useEffect(() => {
-    if (project && !project.config?.flan?.initialized) {
+    if (project && !project.config?.plaid?.initialized) {
       navigate(`/projects/${projectId}/setup`, { replace: true });
     }
   }, [project, projectId, navigate]);

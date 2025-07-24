@@ -32,10 +32,10 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         return null;
       }
       
-      // Find the text layer that has flan configuration
-      const textLayer = project.textLayers.find(layer => layer.config?.flan);
+      // Find the text layer that has plaid configuration
+      const textLayer = project.textLayers.find(layer => layer.config?.plaid);
       if (!textLayer) {
-        // No flan-configured text layer found, return null for defaults
+        // No plaid-configured text layer found, return null for defaults
         return null;
       }
       
@@ -48,10 +48,10 @@ export const OrthographiesSettings = ({ projectId, client }) => {
       const tokenLayer = textLayer.tokenLayers[0];
       
       // Extract current orthographies configuration
-      const currentConfig = tokenLayer.config?.flan?.orthographies;
+      const currentConfig = tokenLayer.config?.plaid?.orthographies;
       
       // Check if orthographies config has been explicitly set (even if empty)
-      const hasOrthographiesConfig = tokenLayer.config?.flan && tokenLayer.config.flan.hasOwnProperty('orthographies');
+      const hasOrthographiesConfig = tokenLayer.config?.plaid && tokenLayer.config.plaid.hasOwnProperty('orthographies');
       
       if (hasOrthographiesConfig) {
         // Config has been set, respect it even if empty
@@ -104,10 +104,10 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         throw new Error('No text layers found in project');
       }
       
-      // Find the text layer that has flan configuration
-      const textLayer = project.textLayers.find(layer => layer.config?.flan);
+      // Find the text layer that has plaid configuration
+      const textLayer = project.textLayers.find(layer => layer.config?.plaid);
       if (!textLayer) {
-        throw new Error('No flan-configured text layer found in project');
+        throw new Error('No plaid-configured text layer found in project');
       }
       
       if (!textLayer.tokenLayers || textLayer.tokenLayers.length === 0) {
@@ -123,7 +123,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
           name: orth.name
         }));
       
-      await client.tokenLayers.setConfig(tokenLayerId, "flan", "orthographies", nonBaselineOrthographies);
+      await client.tokenLayers.setConfig(tokenLayerId, "plaid", "orthographies", nonBaselineOrthographies);
       
       notifications.show({
         title: 'Settings Saved',

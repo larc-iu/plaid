@@ -37,7 +37,7 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
   const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
 
   // Get metadata fields configuration from project
-  const metadataFields = project?.config?.flan?.documentMetadata || [];
+  const metadataFields = project?.config?.plaid?.documentMetadata || [];
 
   const handleSave = async () => {
     setSaving(true);

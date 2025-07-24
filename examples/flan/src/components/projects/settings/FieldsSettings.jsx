@@ -32,10 +32,10 @@ export const FieldsSettings = ({ projectId, client }) => {
         return null;
       }
       
-      // Find the text layer that has flan configuration
-      const textLayer = project.textLayers.find(layer => layer.config?.flan);
+      // Find the text layer that has plaid configuration
+      const textLayer = project.textLayers.find(layer => layer.config?.plaid);
       if (!textLayer) {
-        // No flan-configured text layer found, return null for defaults
+        // No plaid-configured text layer found, return null for defaults
         return null;
       }
       
@@ -45,15 +45,15 @@ export const FieldsSettings = ({ projectId, client }) => {
       }
       
       // Get the primary token layer and sentence token layer
-      const primaryTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.flan?.primary);
-      const sentenceTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.flan?.sentence);
+      const primaryTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.primary);
+      const sentenceTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.sentence);
       
       if (!primaryTokenLayer) {
         return null;
       }
       
       // Extract ignored tokens configuration from primary token layer
-      const ignoredTokensConfig = primaryTokenLayer.config?.flan?.ignoredTokens;
+      const ignoredTokensConfig = primaryTokenLayer.config?.plaid?.ignoredTokens;
       
       // Extract fields configuration from span layers under both token layers
       const primarySpanLayers = primaryTokenLayer.spanLayers || [];
@@ -61,10 +61,10 @@ export const FieldsSettings = ({ projectId, client }) => {
       const allSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers];
       
       const fieldsWithScope = allSpanLayers
-        .filter(spanLayer => spanLayer.config?.flan?.scope) // Only span layers with flan scope config
+        .filter(spanLayer => spanLayer.config?.plaid?.scope) // Only span layers with plaid scope config
         .map(spanLayer => ({
           name: spanLayer.name,
-          scope: spanLayer.config.flan.scope,
+          scope: spanLayer.config.plaid.scope,
           isCustom: !isPredefinedField(spanLayer.name)
         }));
       
@@ -121,18 +121,18 @@ export const FieldsSettings = ({ projectId, client }) => {
         throw new Error('No text layers found in project');
       }
       
-      // Find the text layer that has flan configuration
-      const textLayer = project.textLayers.find(layer => layer.config?.flan);
+      // Find the text layer that has plaid configuration
+      const textLayer = project.textLayers.find(layer => layer.config?.plaid);
       if (!textLayer) {
-        throw new Error('No flan-configured text layer found in project');
+        throw new Error('No plaid-configured text layer found in project');
       }
       
       if (!textLayer.tokenLayers || textLayer.tokenLayers.length === 0) {
         throw new Error('No token layers found in project');
       }
       
-      const primaryTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.flan?.primary);
-      const sentenceTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.flan?.sentence);
+      const primaryTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.primary);
+      const sentenceTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.sentence);
       
       if (!primaryTokenLayer) {
         throw new Error('No primary token layer found in project');
@@ -152,7 +152,7 @@ export const FieldsSettings = ({ projectId, client }) => {
           ignoredTokensConfig.blacklist = data.ignoredTokens.explicitIgnoredTokens || [];
         }
         
-        await client.tokenLayers.setConfig(primaryTokenLayerId, "flan", "ignoredTokens", ignoredTokensConfig);
+        await client.tokenLayers.setConfig(primaryTokenLayerId, "plaid", "ignoredTokens", ignoredTokensConfig);
       }
       
       // Handle span layers for fields
@@ -161,8 +161,8 @@ export const FieldsSettings = ({ projectId, client }) => {
       const existingSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers];
       const currentFields = data.fields || [];
       
-      // Find span layers that have flan scope config (these are managed by us)
-      const managedSpanLayers = existingSpanLayers.filter(layer => layer.config?.flan?.scope);
+      // Find span layers that have plaid scope config (these are managed by us)
+      const managedSpanLayers = existingSpanLayers.filter(layer => layer.config?.plaid?.scope);
       
       // Create new span layers for new fields
       for (const field of currentFields) {
@@ -177,11 +177,11 @@ export const FieldsSettings = ({ projectId, client }) => {
           
           // Create new span layer
           const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
-          await client.spanLayers.setConfig(spanLayer.id, "flan", "scope", field.scope);
+          await client.spanLayers.setConfig(spanLayer.id, "plaid", "scope", field.scope);
         } else {
           // Update existing span layer scope if changed
-          if (existingLayer.config.flan.scope !== field.scope) {
-            await client.spanLayers.setConfig(existingLayer.id, "flan", "scope", field.scope);
+          if (existingLayer.config.plaid.scope !== field.scope) {
+            await client.spanLayers.setConfig(existingLayer.id, "plaid", "scope", field.scope);
           }
         }
       }

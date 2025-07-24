@@ -350,9 +350,9 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
   const sentencesPerPage = 100;
 
   // Get layer information
-  const primaryTextLayer = project?.textLayers?.find(layer => layer.config?.flan?.primary);
-  const primaryTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.flan?.primary);
-  const sentenceTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.flan?.sentence);
+  const primaryTextLayer = project?.textLayers?.find(layer => layer.config?.plaid?.primary);
+  const primaryTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.plaid?.primary);
+  const sentenceTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.plaid?.sentence);
 
   const text = parsedDocument?.document?.text?.body || '';
   
@@ -373,7 +373,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
   const sentenceIndexLookup = parsedDocument?.sentenceIndexLookup;
 
   // Get text ID from document structure
-  const textId = document?.textLayers?.find(layer => layer.config?.flan?.primary)?.text?.id;
+  const textId = document?.textLayers?.find(layer => layer.config?.plaid?.primary)?.text?.id;
 
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
 
@@ -1028,13 +1028,13 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
     // Wait for service discovery and only run once
     if (algorithmOptions.length <= 1 || hasRestoredCache) return;
 
-    const cached = localStorage.getItem('flan_tokenization_algorithm');
+    const cached = localStorage.getItem('plaid_tokenization_algorithm');
     const isAvailable = cached && algorithmOptions.some(opt => opt.value === cached);
 
     if (isAvailable) {
       setAlgorithm(cached);
     } else {
-      if (cached) localStorage.removeItem('flan_tokenization_algorithm');
+      if (cached) localStorage.removeItem('plaid_tokenization_algorithm');
       setAlgorithm('rule-based-punctuation');
     }
 
@@ -1236,10 +1236,10 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
                   // Cache the selection
                   if (value) {
                     console.log('[TOK-CACHE] Caching selection to localStorage', value);
-                    localStorage.setItem('flan_tokenization_algorithm', value);
+                    localStorage.setItem('plaid_tokenization_algorithm', value);
                   } else {
                     console.log('[TOK-CACHE] Removing cached selection from localStorage');
-                    localStorage.removeItem('flan_tokenization_algorithm');
+                    localStorage.removeItem('plaid_tokenization_algorithm');
                   }
                 }}
                 data={algorithmOptions}

@@ -64,7 +64,7 @@ export function parseDocument(rawDocument, client) {
  */
 function extractDocumentData(rawDocument) {
   const primaryTextLayer = rawDocument.textLayers?.find(
-    layer => layer.config?.flan?.primary
+    layer => layer.config?.plaid?.primary
   );
   
   return {
@@ -89,7 +89,7 @@ function findPrimaryLayers(textLayers) {
   
   // Find primary text layer
   const primaryTextLayer = textLayers.find(
-    layer => layer.config?.flan?.primary
+    layer => layer.config?.plaid?.primary
   );
   
   if (!primaryTextLayer) {
@@ -102,17 +102,17 @@ function findPrimaryLayers(textLayers) {
   
   // Find primary token layer (contains word tokens)
   const primaryTokenLayer = primaryTextLayer.tokenLayers.find(
-    layer => layer.config?.flan?.primary
+    layer => layer.config?.plaid?.primary
   );
   
   // Find sentence token layer (contains sentence boundaries)
   const sentenceTokenLayer = primaryTextLayer.tokenLayers.find(
-    layer => layer.config?.flan?.sentence
+    layer => layer.config?.plaid?.sentence
   );
 
   // Find alignment token layer (contains time-aligned tokens)
   const alignmentTokenLayer = primaryTextLayer.tokenLayers.find(
-    layer => layer.config?.flan?.alignment
+    layer => layer.config?.plaid?.alignment
   );
   
   if (!primaryTokenLayer) {
@@ -132,7 +132,7 @@ function findPrimaryLayers(textLayers) {
   // Collect span layers from primary token layer
   if (primaryTokenLayer.spanLayers) {
     primaryTokenLayer.spanLayers.forEach(spanLayer => {
-      const scope = spanLayer.config?.flan?.scope;
+      const scope = spanLayer.config?.plaid?.scope;
       if (scope === 'Token') {
         spanLayers.token.push(spanLayer);
       }
@@ -142,7 +142,7 @@ function findPrimaryLayers(textLayers) {
   // Collect span layers from sentence token layer
   if (sentenceTokenLayer.spanLayers) {
     sentenceTokenLayer.spanLayers.forEach(spanLayer => {
-      const scope = spanLayer.config?.flan?.scope;
+      const scope = spanLayer.config?.plaid?.scope;
       if (scope === 'Sentence') {
         spanLayers.sentence.push(spanLayer);
       }
@@ -216,7 +216,7 @@ function collectOrthographies(token, primaryTokenLayer) {
   const orthographies = {};
   
   // Get orthography configurations from the primary token layer
-  const orthographyConfigs = primaryTokenLayer.config?.flan?.orthographies || [];
+  const orthographyConfigs = primaryTokenLayer.config?.plaid?.orthographies || [];
   
   // Initialize all configured orthographies
   orthographyConfigs.forEach(orthoConfig => {

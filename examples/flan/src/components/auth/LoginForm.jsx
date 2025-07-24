@@ -63,7 +63,7 @@ export const LoginForm = () => {
         <Stack spacing="md">
           <Center>
             <Stack spacing="xs" align="center">
-              <Title order={1} size="h2">Flan Login</Title>
+              <Title order={1} size="h2">Plaid Base Login</Title>
               <Text size="sm" color="dimmed">Plaid Annotation Interface</Text>
             </Stack>
           </Center>

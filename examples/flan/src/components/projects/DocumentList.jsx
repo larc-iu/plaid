@@ -43,7 +43,7 @@ export const DocumentList = ({ documents, projectId, client, onDocumentCreated }
 
       // Get the project data to find the primary text layer
       const projectData = await client.projects.get(projectId);
-      const primaryTextLayer = projectData?.textLayers?.find(layer => layer.config?.flan?.primary);
+      const primaryTextLayer = projectData?.textLayers?.find(layer => layer.config?.plaid?.primary);
 
       if (primaryTextLayer) {
         // Create a blank text for the new document

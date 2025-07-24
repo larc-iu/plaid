@@ -40,7 +40,7 @@ import { useServiceRequest } from './hooks/useServiceRequest';
 const TIMELINE_HEIGHT = 100;
 const WAVEFORM_AVAILABLE_HEIGHT = 90;
 const MIN_BAR_HEIGHT = 2;
-const WAVEFORM_CACHE_PREFIX = 'flan_waveform_';
+const WAVEFORM_CACHE_PREFIX = 'plaid_waveform_';
 const WAVEFORM_CACHE_VERSION = 'v1_'; // Increment when waveform generation logic changes
 
 // Utility function for formatting time
@@ -1507,7 +1507,7 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
       return;
     }
     
-    const cached = localStorage.getItem('flan_asr_algorithm');
+    const cached = localStorage.getItem('plaid_asr_algorithm');
     
     if (cached) {
       const isAvailable = asrAlgorithmOptions.some(opt => opt.value === cached);
@@ -1518,7 +1518,7 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
       } else {
         // Cached selection no longer available, clear it
         setAsrAlgorithm('');
-        localStorage.removeItem('flan_asr_algorithm');
+        localStorage.removeItem('plaid_asr_algorithm');
       }
     }
   }, [asrAlgorithmOptions]);
@@ -1594,9 +1594,9 @@ export const DocumentMedia = ({ parsedDocument, project, onMediaUpdated }) => {
                   setAsrAlgorithm(value);
                   // Cache the selection
                   if (value) {
-                    localStorage.setItem('flan_asr_algorithm', value);
+                    localStorage.setItem('plaid_asr_algorithm', value);
                   } else {
-                    localStorage.removeItem('flan_asr_algorithm');
+                    localStorage.removeItem('plaid_asr_algorithm');
                   }
                 }}
                 data={asrAlgorithmOptions}

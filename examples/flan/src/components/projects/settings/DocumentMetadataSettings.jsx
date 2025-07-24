@@ -26,7 +26,7 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
       const project = await client.projects.get(projectId);
       
       // Extract current metadata configuration
-      const currentConfig = project.config?.flan?.documentMetadata;
+      const currentConfig = project.config?.plaid?.documentMetadata;
       
       if (currentConfig && Array.isArray(currentConfig)) {
         // Convert API format back to component format
@@ -66,7 +66,7 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
         name: field.name
       }));
       
-      await client.projects.setConfig(projectId, "flan", "documentMetadata", apiConfig);
+      await client.projects.setConfig(projectId, "plaid", "documentMetadata", apiConfig);
       
       notifications.show({
         title: 'Settings Saved',
