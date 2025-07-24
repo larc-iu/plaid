@@ -32,7 +32,7 @@ import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import IconMicrophone from '@tabler/icons-react/dist/esm/icons/IconMicrophone.mjs';
 import { notifications } from '@mantine/notifications';
-import { useStrictClient } from '../../contexts/StrictModeContext';
+import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 import { useServiceRequest } from './hooks/useServiceRequest';
 
@@ -249,6 +249,7 @@ const MediaPlayer = ({ mediaUrl, onTimeUpdate, onDurationChange, onPlayingChange
             {mediaError}
           </Alert>
         )}
+
         {/* Media Element - Use video element for everything since it can play both video and audio */}
         <video
           ref={mediaRef}

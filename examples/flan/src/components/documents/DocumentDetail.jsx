@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useStrictClient } from '../../contexts/StrictModeContext';
+import { useStrictClient, HistoricalModeProvider } from './contexts/StrictModeContext.jsx';
 import { 
   Container, 
   Title, 
@@ -12,7 +12,9 @@ import {
   Center,
   Breadcrumbs,
   Anchor,
-  Tabs
+  Tabs,
+  Box,
+  Button
 } from '@mantine/core';
 import IconFileText from '@tabler/icons-react/dist/esm/icons/IconFileText.mjs';
 import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
@@ -20,11 +22,14 @@ import IconAnalyze from '@tabler/icons-react/dist/esm/icons/IconAnalyze.mjs';
 import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs';
 import IconLetterA from '@tabler/icons-react/dist/esm/icons/IconLetterA.mjs';
 import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
+import IconHistory from '@tabler/icons-react/dist/esm/icons/IconHistory.mjs';
 import { DocumentMetadata } from './DocumentMetadata';
 import { DocumentBaseline } from './DocumentBaseline';
 import { DocumentTokenize } from './DocumentTokenize';
 import { DocumentAnalyze } from './DocumentAnalyze';
 import { DocumentMedia } from './DocumentMedia';
+import { HistoryDrawer } from './HistoryDrawer';
+import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { parseDocument, validateParsedDocument } from '../../utils/documentParser';
 
 export const DocumentDetail = () => {
@@ -40,6 +45,27 @@ export const DocumentDetail = () => {
   const [tabLoading, setTabLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('metadata');
+  
+  // History viewer state
+  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
+  const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
+  const [viewingHistoricalState, setViewingHistoricalState] = useState(false);
+
+  // History functionality
+  const {
+    auditEntries,
+    historicalDocument,
+    loadingAudit,
+    loadingHistorical,
+    error: historyError,
+    hasLoadedAudit,
+    fetchHistoricalDocument,
+    clearHistoricalDocument,
+    fetchAuditLog
+  } = useDocumentHistory(documentId, client);
+
+  // Use historical document if viewing historical state, otherwise use current document
+  const activeDocument = viewingHistoricalState ? historicalDocument : document;
 
   // Function to refresh document data
   const refreshDocumentData = useCallback(async () => {
@@ -123,6 +149,36 @@ export const DocumentDetail = () => {
       return newDoc;
     });
   }, []);
+
+  // History drawer handlers
+  const handleOpenHistory = () => {
+    setIsHistoryDrawerOpen(true);
+    if (!hasLoadedAudit) {
+      fetchAuditLog();
+    }
+  };
+
+  const handleCloseHistory = () => {
+    setIsHistoryDrawerOpen(false);
+    if (selectedHistoryEntry) {
+      handleSelectHistoryEntry(null);
+    }
+  };
+
+  const handleSelectHistoryEntry = async (entry) => {
+    if (!entry) {
+      setSelectedHistoryEntry(null);
+      setViewingHistoricalState(false);
+      clearHistoricalDocument();
+      return;
+    }
+
+    setSelectedHistoryEntry(entry);
+    const historicalDoc = await fetchHistoricalDocument(entry.time);
+    if (historicalDoc) {
+      setViewingHistoricalState(true);
+    }
+  };
 
   // Fetch document and project data
   useEffect(() => {
@@ -226,10 +282,22 @@ export const DocumentDetail = () => {
     }
   }, [projectId, documentId, client, navigate]);
 
+  // Update parsed document when switching between current and historical states
+  useEffect(() => {
+    if (activeDocument && client) {
+      try {
+        const parsed = parseDocument(activeDocument, client);
+        setParsedDocument(parsed);
+      } catch (error) {
+        console.error('Error parsing active document:', error);
+      }
+    }
+  }, [activeDocument, client]);
+
   const breadcrumbItems = [
     { title: 'Projects', href: '/projects' },
     { title: project?.name || 'Loading...', href: `/projects/${projectId}` },
-    { title: document?.name || 'Loading...', href: null }
+    { title: activeDocument?.name || 'Loading...', href: null }
   ].map((item, index) => (
     item.href ? (
       <Anchor key={index} component={Link} to={item.href}>
@@ -263,7 +331,7 @@ export const DocumentDetail = () => {
     );
   }
 
-  if (!document) {
+  if (!activeDocument) {
     return (
       <Container size="lg" py="xl">
         <Alert color="red" title="Document Not Found">
@@ -274,15 +342,65 @@ export const DocumentDetail = () => {
   }
 
   return (
-    <Container size="lg" py="xl">
-        <Stack spacing="lg">
+    <>
+      {/* History Drawer */}
+      <HistoryDrawer
+        isOpen={isHistoryDrawerOpen}
+        onClose={handleCloseHistory}
+        auditEntries={auditEntries}
+        loading={loadingAudit}
+        error={historyError}
+        onSelectEntry={handleSelectHistoryEntry}
+        selectedEntry={selectedHistoryEntry}
+      />
+      
+      {/* History Tab Trigger */}
+      {!isHistoryDrawerOpen && (
+        <Button
+          variant="filled"
+          color="gray"
+          size="xs"
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 1000,
+            borderTopLeftRadius: 0,
+            borderBottomLeftRadius: 0,
+            paddingLeft: '8px',
+            paddingRight: '12px'
+          }}
+          onClick={handleOpenHistory}
+        >
+          <IconHistory size={16} />
+        </Button>
+      )}
+      
+      {/* Main content area - shifted when drawer is open */}
+      <Box
+        style={{
+          marginLeft: isHistoryDrawerOpen ? '400px' : '0',
+          transition: 'margin-left 200ms ease',
+          minHeight: '100vh'
+        }}
+      >
+        <HistoricalModeProvider isViewingHistorical={viewingHistoricalState}>
+          <Container size="lg" py="xl">
+          <Stack spacing="lg">
           <Breadcrumbs>
             {breadcrumbItems}
           </Breadcrumbs>
 
           <div>
-            <Title order={1} mb="xs">{document.name}</Title>
-            <Text c="dimmed" size="xs" mb="lg">{document.id}</Text>
+            <Title order={1} mb="xs">{activeDocument.name}</Title>
+            <Text c="dimmed" size="xs" mb="lg">{activeDocument.id}</Text>
+            {viewingHistoricalState && (
+              <Alert color="blue" mb="lg">
+                <Text size="sm" fw={500}>Viewing Historical State</Text>
+                <Text size="xs">Changes cannot be made while viewing historical data</Text>
+              </Alert>
+            )}
           </div>
 
           <Tabs value={activeTab} onChange={async (newTab) => {
@@ -316,7 +434,7 @@ export const DocumentDetail = () => {
                 </Center>
               ) : (
                 activeTab === "metadata" && <DocumentMetadata
-                  document={document}
+                  document={activeDocument}
                   parsedDocument={parsedDocument}
                   project={project}
                   onDocumentUpdated={setDocument}
@@ -332,7 +450,7 @@ export const DocumentDetail = () => {
                 </Center>
               ) : (
                 activeTab === "baseline" && <DocumentBaseline
-                  document={document}
+                  document={activeDocument}
                   parsedDocument={parsedDocument}
                   project={project}
                   onTextUpdated={refreshDocumentData}
@@ -347,7 +465,7 @@ export const DocumentDetail = () => {
                 </Center>
               ) : (
                 activeTab === "tokenize" && <DocumentTokenize
-                  document={document}
+                  document={activeDocument}
                   parsedDocument={parsedDocument}
                   project={project}
                   onTokenizationComplete={refreshDocumentData}
@@ -362,7 +480,7 @@ export const DocumentDetail = () => {
                 </Center>
               ) : (
                 activeTab === "analyze" && <DocumentAnalyze
-                  document={document}
+                  document={activeDocument}
                   parsedDocument={parsedDocument}
                   project={project}
                   vocabularies={vocabularies}
@@ -379,7 +497,7 @@ export const DocumentDetail = () => {
                 </Center>
               ) : (
                 activeTab === "media" && <DocumentMedia
-                  document={document}
+                  document={activeDocument}
                   parsedDocument={parsedDocument}
                   project={project}
                   onMediaUpdated={refreshDocumentData}
@@ -388,6 +506,9 @@ export const DocumentDetail = () => {
             </Tabs.Panel>
           </Tabs>
         </Stack>
-    </Container>
+          </Container>
+        </HistoricalModeProvider>
+      </Box>
+    </>
   );
 };

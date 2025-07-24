@@ -29,7 +29,7 @@ import {
   getIgnoredTokensConfig,
   validateTokenization
 } from '../../utils/tokenizationUtils';
-import { useStrictClient } from '../../contexts/StrictModeContext';
+import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 import { useServiceRequest } from './hooks/useServiceRequest';
 

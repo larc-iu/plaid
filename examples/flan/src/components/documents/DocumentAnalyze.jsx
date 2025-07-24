@@ -20,7 +20,7 @@ import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
 import './DocumentAnalyze.css';
 import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
 import { VocabLinkHoverCard } from './analyze/VocabLinkHoverCard.jsx';
-import { useStrictClient } from '../../contexts/StrictModeContext';
+import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
 
 // Shared throttle for tab navigation across all EditableCell instances

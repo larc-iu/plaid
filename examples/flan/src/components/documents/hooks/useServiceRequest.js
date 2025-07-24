@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { notifications } from '@mantine/notifications';
-import { useStrictClient } from '../../../contexts/StrictModeContext';
+import { useStrictClient } from '../contexts/StrictModeContext.jsx';
 
 export const useServiceRequest = () => {
   const [availableServices, setAvailableServices] = useState([]);

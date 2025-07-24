@@ -13,7 +13,7 @@ import {
 import { DataTable } from 'mantine-datatable';
 import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
 import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs';
-import { useStrictClient } from '../../../contexts/StrictModeContext';
+import { useStrictClient } from '../contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler';
 
 export const VocabLinkHoverCard = ({ 

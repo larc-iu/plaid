@@ -18,7 +18,7 @@ import IconDeviceFloppy from '@tabler/icons-react/dist/esm/icons/IconDeviceFlopp
 import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
-import { useStrictClient } from '../../contexts/StrictModeContext';
+import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
