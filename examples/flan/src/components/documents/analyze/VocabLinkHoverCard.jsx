@@ -307,8 +307,8 @@ const CreateNewItemForm = ({
 
   // Get fields that can be edited inline
   const inlineFields = [];
-  if (selectedVocabData?.config?.flan?.fields) {
-    Object.entries(selectedVocabData.config.flan.fields).forEach(([fieldName, fieldConfig]) => {
+  if (selectedVocabData?.config?.plaid?.fields) {
+    Object.entries(selectedVocabData.config.plaid.fields).forEach(([fieldName, fieldConfig]) => {
       if (fieldName.toLowerCase() !== 'form' && fieldConfig?.inline) {
         inlineFields.push(fieldName);
       }
@@ -374,8 +374,8 @@ const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem }) => {
 
   // Get fields that should be shown inline
   const inlineFields = [];
-  if (vocab.config?.flan?.fields) {
-    Object.entries(vocab.config.flan.fields).forEach(([fieldName, fieldConfig]) => {
+  if (vocab.config?.plaid?.fields) {
+    Object.entries(vocab.config.plaid.fields).forEach(([fieldName, fieldConfig]) => {
       if (fieldName.toLowerCase() !== 'form' && fieldConfig?.inline) {
         inlineFields.push(fieldName);
       }

@@ -221,14 +221,14 @@ export function tokenizeSentences(text, existingSentenceTokens = []) {
  */
 export function getIgnoredTokensConfig(project) {
   const primaryTextLayer = project?.textLayers?.find(
-    layer => layer.config?.flan?.primary
+    layer => layer.config?.plaid?.primary
   );
   
   const primaryTokenLayer = primaryTextLayer?.tokenLayers?.find(
-    layer => layer.config?.flan?.primary
+    layer => layer.config?.plaid?.primary
   );
   
-  return primaryTokenLayer?.config?.flan?.ignoredTokens || null;
+  return primaryTokenLayer?.config?.plaid?.ignoredTokens || null;
 }
 
 /**

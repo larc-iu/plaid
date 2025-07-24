@@ -77,8 +77,8 @@ export const VocabularyDetail = () => {
       // Extract custom fields from config
       const fields = [];
       const configs = {};
-      if (vocabularyData.config?.flan?.fields) {
-        Object.entries(vocabularyData.config.flan.fields).forEach(([fieldName, fieldConfig]) => {
+      if (vocabularyData.config?.plaid?.fields) {
+        Object.entries(vocabularyData.config.plaid.fields).forEach(([fieldName, fieldConfig]) => {
           if (fieldName.toLowerCase() !== 'form') {
             fields.push(fieldName);
             // Handle both old boolean format and new object format
@@ -134,8 +134,8 @@ export const VocabularyDetail = () => {
       // Extract custom fields from config
       const fields = [];
       const configs = {};
-      if (vocabularyData.config?.flan?.fields) {
-        Object.entries(vocabularyData.config.flan.fields).forEach(([fieldName, fieldConfig]) => {
+      if (vocabularyData.config?.plaid?.fields) {
+        Object.entries(vocabularyData.config.plaid.fields).forEach(([fieldName, fieldConfig]) => {
           if (fieldName.toLowerCase() !== 'form') {
             fields.push(fieldName);
             // Handle both old boolean format and new object format
@@ -187,7 +187,7 @@ export const VocabularyDetail = () => {
           customFields.forEach(field => {
             fieldsConfig[field] = true;
           });
-          await client.vocabLayers.setConfig(savedVocabulary.id, 'flan', 'fields', fieldsConfig);
+          await client.vocabLayers.setConfig(savedVocabulary.id, 'plaid', 'fields', fieldsConfig);
         }
         
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
@@ -230,8 +230,8 @@ export const VocabularyDetail = () => {
       // Reset custom fields
       const fields = [];
       const configs = {};
-      if (vocabulary.config?.flan?.fields) {
-        Object.entries(vocabulary.config.flan.fields).forEach(([fieldName, fieldConfig]) => {
+      if (vocabulary.config?.plaid?.fields) {
+        Object.entries(vocabulary.config.plaid.fields).forEach(([fieldName, fieldConfig]) => {
           if (fieldName.toLowerCase() !== 'form') {
             fields.push(fieldName);
             // Handle both old boolean format and new object format
@@ -316,9 +316,9 @@ export const VocabularyDetail = () => {
         });
         
         if (Object.keys(fieldsConfig).length > 0) {
-          await client.vocabLayers.setConfig(vocabularyId, 'flan', 'fields', fieldsConfig);
+          await client.vocabLayers.setConfig(vocabularyId, 'plaid', 'fields', fieldsConfig);
         } else {
-          await client.vocabLayers.deleteConfig(vocabularyId, 'flan', 'fields');
+          await client.vocabLayers.deleteConfig(vocabularyId, 'plaid', 'fields');
         }
         
         notifications.show({

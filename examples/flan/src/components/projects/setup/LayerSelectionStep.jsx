@@ -175,7 +175,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
       {/* Explanatory header */}
       <div>
         <Text>
-          Choose a text layer and a token layer for Flan to use.
+          Choose a text layer and a token layer for Plaid Base to use.
           <strong> Text layers</strong> contain the baseline text content of your documents.
           <strong> Token layers</strong> define the units for analysis (typically morphemes, words, or other linguistic units)
           and serve as the foundation for further annotation layers.

@@ -231,7 +231,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
   })();
   
   // Extract available orthographies from parsed tokens
-  const orthographyFields = parsedDocument.layers.primaryTokenLayer.config.flan.orthographies;
+  const orthographyFields = parsedDocument.layers.primaryTokenLayer.config.plaid.orthographies;
 
   // TokenColumn component for displaying individual token annotations
   const TokenColumn = ({ token, tokenIndex, getTabIndex, tokenFields, orthographyFields, isSaving, isReadOnly }) => {

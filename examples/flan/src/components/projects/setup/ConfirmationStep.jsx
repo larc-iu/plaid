@@ -67,20 +67,20 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         const textLayer = await client.textLayers.create(currentProjectId, 'Main Text');
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
-        // Mark as flan-managed
-        await client.textLayers.setConfig(textLayerId, "flan", "primary", true);
+        // Mark as plaid-managed
+        await client.textLayers.setConfig(textLayerId, "plaid", "primary", true);
       } else if (setupData.layerSelection?.textLayerType === 'new' && setupData.layerSelection?.newTextLayerName) {
         updateProgress(20, 'Creating text layer...');
         const textLayer = await client.textLayers.create(currentProjectId, setupData.layerSelection.newTextLayerName);
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
-        // Mark as flan-managed
-        await client.textLayers.setConfig(textLayerId, "flan", "primary", true);
+        // Mark as plaid-managed
+        await client.textLayers.setConfig(textLayerId, "plaid", "primary", true);
       } else if (setupData.layerSelection?.textLayerType === 'existing' && setupData.layerSelection?.selectedTextLayerId) {
         textLayerId = setupData.layerSelection.selectedTextLayerId;
         updateProgress(20, 'Using existing text layer...');
-        // Mark as flan-managed
-        await client.textLayers.setConfig(textLayerId, "flan", "primary", true);
+        // Mark as plaid-managed
+        await client.textLayers.setConfig(textLayerId, "plaid", "primary", true);
       }
 
       // Step 3: Create/configure token layer
@@ -91,20 +91,20 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         const tokenLayer = await client.tokenLayers.create(textLayerId, 'Main Tokens');
         tokenLayerId = tokenLayer.id;
         resources.tokenLayer = tokenLayer;
-        // Mark as flan-managed
-        await client.tokenLayers.setConfig(tokenLayerId, "flan", "primary", true);
+        // Mark as plaid-managed
+        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "primary", true);
       } else if (setupData.layerSelection?.tokenLayerType === 'new' && setupData.layerSelection?.newTokenLayerName && textLayerId) {
         updateProgress(30, 'Creating token layer...');
         const tokenLayer = await client.tokenLayers.create(textLayerId, setupData.layerSelection.newTokenLayerName);
         tokenLayerId = tokenLayer.id;
         resources.tokenLayer = tokenLayer;
-        // Mark as flan-managed
-        await client.tokenLayers.setConfig(tokenLayerId, "flan", "primary", true);
+        // Mark as plaid-managed
+        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "primary", true);
       } else if (setupData.layerSelection?.tokenLayerType === 'existing' && setupData.layerSelection?.selectedTokenLayerId) {
         tokenLayerId = setupData.layerSelection.selectedTokenLayerId;
         updateProgress(30, 'Using existing token layer...');
-        // Mark as flan-managed
-        await client.tokenLayers.setConfig(tokenLayerId, "flan", "primary", true);
+        // Mark as plaid-managed
+        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "primary", true);
       }
 
       // Step 4: Create sentence token layer
@@ -115,7 +115,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         sentenceTokenLayerId = sentenceTokenLayer.id;
         resources.sentenceTokenLayer = sentenceTokenLayer;
         // Mark as sentence layer
-        await client.tokenLayers.setConfig(sentenceTokenLayerId, "flan", "sentence", true);
+        await client.tokenLayers.setConfig(sentenceTokenLayerId, "plaid", "sentence", true);
       }
 
       // Step 4.5: Create alignment token layer for time-aligned tokens
@@ -126,7 +126,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         alignmentTokenLayerId = alignmentTokenLayer.id;
         resources.alignmentTokenLayer = alignmentTokenLayer;
         // Mark as alignment layer
-        await client.tokenLayers.setConfig(alignmentTokenLayerId, "flan", "alignment", true);
+        await client.tokenLayers.setConfig(alignmentTokenLayerId, "plaid", "alignment", true);
       }
 
       // Step 5: Configure orthographies on token layer
@@ -139,7 +139,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
           }));
         
         // Always save the config to indicate user choice, even if empty
-        await client.tokenLayers.setConfig(tokenLayerId, "flan", "orthographies", orthographiesConfig);
+        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "orthographies", orthographiesConfig);
       }
 
       // Step 6: Create span layers for annotation fields
@@ -159,7 +159,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
               const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
               
               // Set the scope in the span layer's config
-              await client.spanLayers.setConfig(spanLayer.id, "flan", "scope", field.scope);
+              await client.spanLayers.setConfig(spanLayer.id, "plaid", "scope", field.scope);
               
               createdSpanLayers.push(spanLayer);
             } catch (fieldError) {
@@ -184,7 +184,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
           ignoredTokensConfig.blacklist = setupData.fields.ignoredTokens.explicitIgnoredTokens || [];
         }
         
-        await client.tokenLayers.setConfig(tokenLayerId, "flan", "ignoredTokens", ignoredTokensConfig);
+        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "ignoredTokens", ignoredTokensConfig);
       }
 
       // Step 8: Handle vocabularies
@@ -238,11 +238,11 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       const metadataConfig = enabledFields.map(field => ({
         name: field.name
       }));
-      await client.projects.setConfig(currentProjectId, "flan", "documentMetadata", metadataConfig);
+      await client.projects.setConfig(currentProjectId, "plaid", "documentMetadata", metadataConfig);
 
       // Step 10: Mark project as initialized
       updateProgress(90, 'Finalizing setup...');
-      await client.projects.setConfig(currentProjectId, "flan", "initialized", true);
+      await client.projects.setConfig(currentProjectId, "plaid", "initialized", true);
 
       // Complete
       updateProgress(100, 'Setup complete!');
@@ -251,7 +251,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
 
       notifications.show({
         title: 'Setup Complete',
-        message: 'Your project has been successfully configured with Flan.',
+        message: 'Your project has been successfully configured with Plaid Base.',
         color: 'green'
       });
 
@@ -422,7 +422,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     return (
       <Stack spacing="lg">
         <Alert color="green" title="Setup Complete!" icon={<IconCheck size={16} />}>
-          Your project has been successfully configured with Flan. Redirecting to project...
+          Your project has been successfully configured with Plaid Base. Redirecting to project...
         </Alert>
         <Paper p="md" withBorder>
           <Text fw={500} mb="sm">Setup Summary</Text>

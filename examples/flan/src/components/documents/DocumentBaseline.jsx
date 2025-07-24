@@ -28,8 +28,8 @@ import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
  */
 const ensureSentencePartitioning = async (client, document, project, textContent) => {
   // Get the sentence token layer
-  const primaryTextLayer = project?.textLayers?.find(layer => layer.config?.flan?.primary);
-  const sentenceTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.flan?.sentence);
+  const primaryTextLayer = project?.textLayers?.find(layer => layer.config?.plaid?.primary);
+  const sentenceTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.plaid?.sentence);
   
   if (!sentenceTokenLayer) {
     throw new Error('No sentence token layer found');
@@ -37,15 +37,15 @@ const ensureSentencePartitioning = async (client, document, project, textContent
 
   // Get existing sentence tokens from the document data
   const docSentenceTokenLayer = document?.textLayers
-    ?.find(layer => layer.config?.flan?.primary)
-    ?.tokenLayers?.find(layer => layer.config?.flan?.sentence);
+    ?.find(layer => layer.config?.plaid?.primary)
+    ?.tokenLayers?.find(layer => layer.config?.plaid?.sentence);
   
   const existingSentenceTokens = docSentenceTokenLayer?.tokens || [];
   const sortedSentences = [...existingSentenceTokens].sort((a, b) => a.begin - b.begin);
   
   if (sortedSentences.length === 0) {
     // No sentence tokens exist, create one covering the entire text
-    const textId = document?.textLayers?.find(layer => layer.config?.flan?.primary)?.text?.id;
+    const textId = document?.textLayers?.find(layer => layer.config?.plaid?.primary)?.text?.id;
     if (textId && textContent.length > 0) {
       await client.tokens.create(
         sentenceTokenLayer.id,
@@ -89,7 +89,7 @@ const ensureSentencePartitioning = async (client, document, project, textContent
  * @param {Function} handleError - Error handler function
  */
 const checkAndFixTokenization = async (client, document, project, parsedDocument, handleError) => {
-  const textLayer = document?.textLayers?.find(layer => layer.config?.flan?.primary);
+  const textLayer = document?.textLayers?.find(layer => layer.config?.plaid?.primary);
   const text = textLayer?.text;
   
   if (!text || !text.metadata?._tokenizationDirty) {
@@ -138,7 +138,7 @@ export const DocumentBaseline = ({ document, parsedDocument, project, onTextUpda
   const [saving, setSaving] = useState(false);
 
   // Get the primary text layer from project
-  const primaryTextLayer = project?.textLayers?.find(layer => layer.config?.flan?.primary);
+  const primaryTextLayer = project?.textLayers?.find(layer => layer.config?.plaid?.primary);
 
   // Check for dirty tokenization flag on component mount/update
   useEffect(() => {
@@ -174,7 +174,7 @@ export const DocumentBaseline = ({ document, parsedDocument, project, onTextUpda
         await client.texts.update(textId, editedText);
         
         // Get existing metadata and add dirty flag
-        const existingMetadata = document?.textLayers?.find(layer => layer.config?.flan?.primary)?.text?.metadata || {};
+        const existingMetadata = document?.textLayers?.find(layer => layer.config?.plaid?.primary)?.text?.metadata || {};
         const updatedMetadata = { ...existingMetadata, _tokenizationDirty: true };
         await client.texts.setMetadata(textId, updatedMetadata);
       } else {
@@ -193,9 +193,9 @@ export const DocumentBaseline = ({ document, parsedDocument, project, onTextUpda
       await ensureSentencePartitioning(client, updatedDocumentData, project, editedText);
       
       // Remove dirty flag
-      const finalTextId = updatedDocumentData?.textLayers?.find(layer => layer.config?.flan?.primary)?.text?.id;
+      const finalTextId = updatedDocumentData?.textLayers?.find(layer => layer.config?.plaid?.primary)?.text?.id;
       if (finalTextId) {
-        const finalMetadata = updatedDocumentData?.textLayers?.find(layer => layer.config?.flan?.primary)?.text?.metadata || {};
+        const finalMetadata = updatedDocumentData?.textLayers?.find(layer => layer.config?.plaid?.primary)?.text?.metadata || {};
         const cleanedMetadata = { ...finalMetadata };
         delete cleanedMetadata._tokenizationDirty;
         await client.texts.setMetadata(finalTextId, cleanedMetadata);
