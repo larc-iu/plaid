@@ -1002,6 +1002,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
           serviceId,
           {
             documentId: document.id,
+            textLayerId: primaryTextLayer?.id,
             primaryTokenLayerId: primaryTokenLayer.id,
             sentenceLayerId: sentenceTokenLayer?.id
           },
