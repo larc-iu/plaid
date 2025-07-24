@@ -98,11 +98,11 @@
                                             :in [?vi]}
                                           eid))
           vocab-link-deletions (if (seq vocab-link-ids)
-                                 (mapcat (fn [vocab-link-id]
-                                           (when-let [entity (pxc/entity db vocab-link-id)]
-                                             [[::xt/match vocab-link-id entity]
-                                              [::xt/delete vocab-link-id]]))
-                                         vocab-link-ids)
+                                 (vec (mapcat (fn [vocab-link-id]
+                                                (when-let [entity (pxc/entity db vocab-link-id)]
+                                                  [[::xt/match vocab-link-id entity]
+                                                   [::xt/delete vocab-link-id]]))
+                                              vocab-link-ids))
                                  [])]
       (into vocab-link-deletions
             [[::xt/match eid record]
@@ -111,11 +111,12 @@
 (defn delete-operation
   [xt-map eid]
   (let [{:keys [db] :as xt-map} (pxc/ensure-db xt-map)
-        current (pxc/entity db eid)]
+        current (pxc/entity db eid)
+        ops (delete* xt-map eid)]
     (op/make-operation
       {:type :vocab-item/delete
        :description (format "Delete vocab item '%s'" (:vocab-item/form current))
-       :tx-ops (delete* xt-map eid)
+       :tx-ops ops
        :project nil
        :document nil})))
 
