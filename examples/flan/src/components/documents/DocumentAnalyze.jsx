@@ -12,7 +12,8 @@ import {
   Tooltip,
   SimpleGrid,
   ScrollArea,
-  Box
+  Box,
+  Pagination
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
@@ -178,8 +179,31 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
   const isViewingHistorical = useIsViewingHistorical();
   const [saving, setSaving] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const sentencesPerPage = 200;
+
   const sentences = parsedDocument?.sentences || [];
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
+
+  // Memoize pagination calculations
+  const paginationData = useMemo(() => {
+    const totalPages = Math.ceil(sentences.length / sentencesPerPage);
+    const startIndex = (currentPage - 1) * sentencesPerPage;
+    const endIndex = startIndex + sentencesPerPage;
+    const currentPageSentences = sentences.slice(startIndex, endIndex);
+    
+    return { totalPages, startIndex, endIndex, currentPageSentences };
+  }, [sentences, currentPage, sentencesPerPage]);
+
+  const { totalPages, startIndex, endIndex, currentPageSentences } = paginationData;
+
+  // Reset to page 1 if current page is out of bounds
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
 
   // Extract available annotation fields from parsed sentences
   const sentenceFields = (() => {
@@ -289,7 +313,7 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
   };
 
   // TokenGrid component for displaying tokens with annotations
-  const TokenGrid = ({ sentence, sentenceIndex, tokenFields, orthographyFields, ignoredTokensConfig }) => {
+  const TokenGrid = ({ sentence, sentenceIndex, tokenFields, orthographyFields, ignoredTokensConfig, sentencesPerPage }) => {
     if (!sentence || !sentence.tokens || sentence.tokens.length === 0) {
       return (
         <Alert icon={<IconInfoCircle size={16} />} color="yellow">
@@ -306,8 +330,9 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
       const fieldIndex = allFields.indexOf(field);
       const tokensInSentence = tokens.length;
       
-      // Calculate offset from all previous sentences - passed as prop to avoid dependency
-      const sentenceOffset = sentenceIndex * 1000; // Simple offset, each sentence gets 1000 tab indices
+      // Calculate offset from sentences on current page only
+      const pageLocalIndex = sentenceIndex % sentencesPerPage;
+      const sentenceOffset = pageLocalIndex * 1000; // Simple offset, each sentence gets 1000 tab indices
       
       // Row-wise navigation: field type determines row, token index determines position in row
       return sentenceOffset + (fieldIndex * tokensInSentence) + tokenIndex + 1;
@@ -401,6 +426,26 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
       </Stack>
     );
   };
+
+  // Pagination component
+  const PaginationControls = () => {
+    if (sentences.length === 0) return null;
+
+    return (
+      <Group justify="space-between" align="center" p="sm" style={{ borderBottom: '1px solid #e0e0e0' }}>
+        <Text size="sm" c="dimmed">
+          Showing sentences {startIndex + 1}-{Math.min(endIndex, sentences.length)} of {sentences.length}
+        </Text>
+        <Pagination
+          value={currentPage}
+          onChange={setCurrentPage}
+          total={totalPages}
+          size="sm"
+          withEdges
+        />
+      </Group>
+    );
+  };
   
   return (
     <div className="document-analyze-container">
@@ -422,6 +467,9 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
             </Group>
 
             <Divider />
+
+            {/* Top Pagination */}
+            <PaginationControls />
             
             {sentences.length === 0 ? (
               <Alert icon={<IconInfoCircle size={16} />} color="yellow">
@@ -435,58 +483,69 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
                   </Alert>
                 ) : (
                   <Stack spacing="2rem">
-                    {/* Render all sentences */}
-                    {sentences.map((sentence, sentenceIndex) => (
-                      <Box
-                        key={sentence.id}
-                        style={{ 
-                          position: 'relative',
-                          backgroundColor: sentenceIndex % 2 === 0 ? '#ffffff' : '#f8faff',
-                          padding: '12px 16px 12px 50px',
-                          borderRadius: '4px'
-                        }}
-                      >
-                        {/* Sentence number */}
-                        <Text
-                          size="sm"
-                          c="dimmed"
-                          style={{
-                            position: 'absolute',
-                            left: '4px',
-                            top: '12px',
-                            fontWeight: 500,
-                            minWidth: '24px',
-                            textAlign: 'right'
+                    {/* Render current page sentences */}
+                    {currentPageSentences.map((sentence, pageIndex) => {
+                      // Calculate the actual sentence index in the full document
+                      const actualSentenceIndex = startIndex + pageIndex;
+                      
+                      return (
+                        <Box
+                          key={sentence.id}
+                          style={{ 
+                            position: 'relative',
+                            backgroundColor: actualSentenceIndex % 2 === 0 ? '#ffffff' : '#f8faff',
+                            padding: '12px 16px 12px 50px',
+                            borderRadius: '4px'
                           }}
                         >
-                          {sentenceIndex + 1}
-                        </Text>
-                        
-                        {/* Sentence content */}
-                        <Box>
-                          {/* Token grid */}
-                          <TokenGrid 
-                            sentence={sentence} 
-                            sentenceIndex={sentenceIndex}
-                            tokenFields={tokenFields}
-                            orthographyFields={orthographyFields}
-                            ignoredTokensConfig={ignoredTokensConfig}
-                          />
+                          {/* Sentence number */}
+                          <Text
+                            size="sm"
+                            c="dimmed"
+                            style={{
+                              position: 'absolute',
+                              left: '4px',
+                              top: '12px',
+                              fontWeight: 500,
+                              minWidth: '24px',
+                              textAlign: 'right'
+                            }}
+                          >
+                            {actualSentenceIndex + 1}
+                          </Text>
                           
-                          {/* Sentence-level annotations */}
-                          <SentenceGrid 
-                            sentence={sentence} 
-                            sentenceIndex={sentenceIndex}
-                            sentenceFields={sentenceFields}
-                          />
+                          {/* Sentence content */}
+                          <Box>
+                            {/* Token grid */}
+                            <TokenGrid 
+                              sentence={sentence} 
+                              sentenceIndex={actualSentenceIndex}
+                              tokenFields={tokenFields}
+                              orthographyFields={orthographyFields}
+                              ignoredTokensConfig={ignoredTokensConfig}
+                              sentencesPerPage={sentencesPerPage}
+                            />
+                            
+                            {/* Sentence-level annotations */}
+                            <SentenceGrid 
+                              sentence={sentence} 
+                              sentenceIndex={actualSentenceIndex}
+                              sentenceFields={sentenceFields}
+                            />
+                          </Box>
                         </Box>
-                      </Box>
-                    ))}
+                      );
+                    })}
                   </Stack>
                 )}
               </Stack>
             )}
           </Stack>
+
+          {/* Bottom Pagination */}
+          <Box style={{ borderTop: '1px solid #e0e0e0' }}>
+            <PaginationControls />
+          </Box>
         </Paper>
       </Stack>
     </div>
