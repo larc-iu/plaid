@@ -1,6 +1,6 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import { StrictModeProvider } from './contexts/StrictModeContext';
+import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { ProjectList } from './components/projects/ProjectList';

@@ -11,7 +11,7 @@ import {
 } from '@mantine/core';
 import { useFocusTrap, useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useStrictClient } from '../../../contexts/StrictModeContext';
+import { useStrictClient } from '../contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler';
 
 
