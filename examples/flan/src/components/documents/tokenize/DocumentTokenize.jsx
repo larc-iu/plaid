@@ -29,10 +29,10 @@ import {
   findUntokenizedRanges,
   getIgnoredTokensConfig,
   validateTokenization
-} from '../../utils/tokenizationUtils';
-import { useStrictClient, useIsViewingHistorical } from './contexts/StrictModeContext.jsx';
-import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
-import { useServiceRequest } from './hooks/useServiceRequest';
+} from '../../../utils/tokenizationUtils.js';
+import { useStrictClient, useIsViewingHistorical } from '../contexts/StrictModeContext.jsx';
+import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
+import { useServiceRequest } from '../hooks/useServiceRequest.js';
 
 // Helper component to render text with visible whitespace
 const TextWithVisibleWhitespace = ({ text, style = {} }) => {

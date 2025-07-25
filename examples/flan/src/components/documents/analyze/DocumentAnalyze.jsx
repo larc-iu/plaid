@@ -19,10 +19,10 @@ import { notifications } from '@mantine/notifications';
 import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
 import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
 import './DocumentAnalyze.css';
-import { getIgnoredTokensConfig } from '../../utils/tokenizationUtils';
-import { VocabLinkPopover } from './analyze/VocabLinkPopover.jsx';
-import { useStrictClient, useIsViewingHistorical } from './contexts/StrictModeContext.jsx';
-import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
+import { getIgnoredTokensConfig } from '../../../utils/tokenizationUtils.js';
+import { VocabLinkPopover } from './VocabLinkPopover.jsx';
+import { useStrictClient, useIsViewingHistorical } from '../contexts/StrictModeContext.jsx';
+import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
 
 // Shared throttle for tab navigation across all EditableCell instances
 let lastGlobalTabPress = 0;

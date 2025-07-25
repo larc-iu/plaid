@@ -17,7 +17,7 @@ import {
   Progress
 } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
-import { TimeAlignmentPopover } from './media/TimeAlignmentPopover.jsx';
+import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
 import IconPlayerPause from '@tabler/icons-react/dist/esm/icons/IconPlayerPause.mjs';
 import IconPlayerSkipBack from '@tabler/icons-react/dist/esm/icons/IconPlayerSkipBack.mjs';
@@ -32,9 +32,9 @@ import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
 import IconMicrophone from '@tabler/icons-react/dist/esm/icons/IconMicrophone.mjs';
 import { notifications } from '@mantine/notifications';
-import { useStrictClient, useIsViewingHistorical } from './contexts/StrictModeContext.jsx';
-import { useStrictModeErrorHandler } from './hooks/useStrictModeErrorHandler';
-import { useServiceRequest } from './hooks/useServiceRequest';
+import { useStrictClient, useIsViewingHistorical } from '../contexts/StrictModeContext.jsx';
+import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
+import { useServiceRequest } from '../hooks/useServiceRequest.js';
 
 // Constants
 const TIMELINE_HEIGHT = 100;

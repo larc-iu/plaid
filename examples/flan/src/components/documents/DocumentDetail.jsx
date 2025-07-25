@@ -23,11 +23,11 @@ import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs'
 import IconLetterA from '@tabler/icons-react/dist/esm/icons/IconLetterA.mjs';
 import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
 import IconHistory from '@tabler/icons-react/dist/esm/icons/IconHistory.mjs';
-import { DocumentMetadata } from './DocumentMetadata';
-import { DocumentBaseline } from './DocumentBaseline';
-import { DocumentTokenize } from './DocumentTokenize';
-import { DocumentAnalyze } from './DocumentAnalyze';
-import { DocumentMedia } from './DocumentMedia';
+import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
+import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
+import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
+import { DocumentAnalyze } from './analyze/DocumentAnalyze.jsx';
+import { DocumentMedia } from './media/DocumentMedia.jsx';
 import { HistoryDrawer } from './HistoryDrawer';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { parseDocument, validateParsedDocument } from '../../utils/documentParser';
