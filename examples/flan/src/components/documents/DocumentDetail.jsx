@@ -30,7 +30,7 @@ import { DocumentAnalyze } from './analyze/DocumentAnalyze.jsx';
 import { DocumentMedia } from './media/DocumentMedia.jsx';
 import { HistoryDrawer } from './HistoryDrawer';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
-import { parseDocument, validateParsedDocument } from '../../utils/documentParser';
+import { parseDocument } from '../../utils/documentParser';
 
 export const DocumentDetail = () => {
   const { projectId, documentId } = useParams();
@@ -121,7 +121,7 @@ export const DocumentDetail = () => {
         // Continue with empty vocabularies if fetch fails
       }
 
-      const parsed = parseDocument(documentData, client);
+      const parsed = parseDocument(documentData, client, projectData);
       setParsedDocument(parsed);
       setDocument(documentData);
       setProject(projectData);
@@ -257,13 +257,8 @@ export const DocumentDetail = () => {
         
         // Parse the document data into a render-friendly structure
         try {
-          const parsed = parseDocument(documentData, client);
+          const parsed = parseDocument(documentData, client, projectData);
           console.log('DocumentDetail: Document parsed successfully:', parsed);
-          
-          // Validate the parsed structure
-          if (!validateParsedDocument(parsed)) {
-            console.warn('DocumentDetail: Parsed document validation failed');
-          }
           
           setParsedDocument(parsed);
         } catch (parseError) {
@@ -299,13 +294,13 @@ export const DocumentDetail = () => {
   useEffect(() => {
     if (activeDocument && client) {
       try {
-        const parsed = parseDocument(activeDocument, client);
+        const parsed = parseDocument(activeDocument, client, project);
         setParsedDocument(parsed);
       } catch (error) {
         console.error('Error parsing active document:', error);
       }
     }
-  }, [activeDocument, client]);
+  }, [activeDocument, client, project]);
 
   const breadcrumbItems = [
     { title: 'Projects', href: '/projects' },

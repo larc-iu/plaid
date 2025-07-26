@@ -36,7 +36,7 @@ import { useServiceRequest } from '../hooks/useServiceRequest.js';
 
 // Helper component to render text with visible whitespace
 const TextWithVisibleWhitespace = ({ text, style = {} }) => {
-  // Split text into spans, marking whitespace with special styling
+  // Split text into pieces, marking whitespace with special styling
   const parts = text.split(/(\s+)/);
   
   return (
@@ -61,7 +61,7 @@ const TextWithVisibleWhitespace = ({ text, style = {} }) => {
 
 // Individual token component with inline splitting
 const TokenComponent = ({ 
-  span, 
+  piece,
   text, 
   onTokenClick, 
   onTokenRightClick, 
@@ -91,8 +91,8 @@ const TokenComponent = ({
           margin: '1px'
         }}
       >
-        {Array.from(span.content || text.slice(span.begin, span.end)).map((char, index) => (
-          <Box key={`split-char-${span.begin}-${index}`} style={{ display: 'flex', alignItems: 'center' }}>
+        {Array.from(piece.content || text.slice(piece.begin, piece.end)).map((char, index) => (
+          <Box key={`split-char-${piece.begin}-${index}`} style={{ display: 'flex', alignItems: 'center' }}>
             <Text 
               style={{ 
                 fontFamily: 'monospace',
@@ -107,7 +107,7 @@ const TokenComponent = ({
             >
               {char === ' ' ? '·' : char}
             </Text>
-            {index < Array.from(span.content || text.slice(span.begin, span.end)).length - 1 && (
+            {index < Array.from(piece.content || text.slice(piece.begin, piece.end)).length - 1 && (
               <Box
                 style={{
                   width: '20px',
@@ -123,7 +123,7 @@ const TokenComponent = ({
                 }}
                 onMouseEnter={() => setHoveredSplitPosition(index)}
                 onMouseLeave={() => setHoveredSplitPosition(null)}
-                onClick={() => handleTokenSplit(span, index + 1)}
+                onClick={() => handleTokenSplit(piece, index + 1)}
               >
                 <IconCut 
                   size={12} 
@@ -143,20 +143,20 @@ const TokenComponent = ({
       component="span"
       onClick={(e) => {
         if (e.ctrlKey || e.metaKey) {
-          onTokenClick(span, e);
+          onTokenClick(piece, e);
         } else {
-          onTokenSplit(span);
+          onTokenSplit(piece);
         }
       }}
-      onContextMenu={(e) => onTokenRightClick(span, e)}
+      onContextMenu={(e) => onTokenRightClick(piece, e)}
       onMouseDown={(e) => {
         if (!e.ctrlKey && !e.metaKey) {
-          onTokenDragStart(span, e);
+          onTokenDragStart(piece, e);
         }
       }}
       onMouseEnter={(e) => {
         if (isTokenDragging) {
-          onTokenDragEnter(span);
+          onTokenDragEnter(piece);
         }
       }}
       style={{
@@ -172,7 +172,7 @@ const TokenComponent = ({
         userSelect: 'none'
       }}
     >
-      <TextWithVisibleWhitespace text={span.content || span.text} />
+      <TextWithVisibleWhitespace text={piece.content || piece.text} />
     </Box>
   );
 };
@@ -196,8 +196,8 @@ const SentenceComponent = memo(({
   hoveredSplitPosition,
   setHoveredSplitPosition
 }) => {
-  // Use pre-computed spans from documentParser for better performance
-  const spans = sentence.spans || [];
+  // Use pre-computed pieces from documentParser for better performance
+  const pieces = sentence.pieces || [];
 
   return (
     <Box
@@ -257,29 +257,29 @@ const SentenceComponent = memo(({
 
       {/* Sentence content */}
       <Box style={{ flex: 1, paddingLeft: '70px', whiteSpace: "pre-wrap" }}>
-        {spans.map((span, spanIndex) =>
-          span.isToken ? (
+        {pieces.map((piece, pieceIndex) =>
+          piece.isToken ? (
             <TokenComponent
-              key={span.id ? `token-${span.id}` : `sentence-${sentenceIndex}-token-${span.begin}-${span.end}-${spanIndex}`}
-              span={span}
+              key={piece.id ? `token-${piece.id}` : `sentence-${sentenceIndex}-token-${piece.begin}-${piece.end}-${pieceIndex}`}
+              piece={piece}
               text={text}
               onTokenClick={handleTokenClick}
               onTokenRightClick={handleTokenRightClick}
               onTokenSplit={handleTokenSplitStart}
               onTokenDragStart={handleTokenDragStart}
               onTokenDragEnter={handleTokenDragEnter}
-              isSelected={selectedTokens.has(span.id)}
+              isSelected={selectedTokens.has(piece.id)}
               isTokenDragging={isTokenDragging}
-              isSplitting={splittingToken?.id === span.id}
+              isSplitting={splittingToken?.id === piece.id}
               hoveredSplitPosition={hoveredSplitPosition}
               setHoveredSplitPosition={setHoveredSplitPosition}
               handleTokenSplit={handleTokenSplit}
             />
           ) : (
             <span
-              key={`text-${span.begin}-${span.end}`}
-              data-begin={span.begin}
-              data-end={span.end}
+              key={`text-${piece.begin}-${piece.end}`}
+              data-begin={piece.begin}
+              data-end={piece.end}
               style={{
                 cursor: 'text',
                 userSelect: 'text'
@@ -287,7 +287,7 @@ const SentenceComponent = memo(({
               onMouseUp={handleTextSelection}
               title="Select text to create token"
             >
-              <TextWithVisibleWhitespace text={span.text} />
+              <TextWithVisibleWhitespace text={piece.content} />
             </span>
           )
         )}
@@ -298,7 +298,7 @@ const SentenceComponent = memo(({
   // Custom comparison function to ensure re-renders when sentence data changes
   return (
     prevProps.sentence.id === nextProps.sentence.id &&
-    prevProps.sentence.spans === nextProps.sentence.spans && // Check if spans reference changed
+    prevProps.sentence.pieces === nextProps.sentence.pieces && // Check if pieces reference changed
     prevProps.sentenceIndex === nextProps.sentenceIndex &&
     prevProps.text === nextProps.text &&
     prevProps.selectedTokens.size === nextProps.selectedTokens.size &&
@@ -869,91 +869,7 @@ export const DocumentTokenize = ({ document, parsedDocument, project, onTokeniza
   const renderTextWithTokens = () => {
     if (!text) return null;
 
-    if (sentences.length === 0) {
-      // No sentences yet, render as before with all tokens
-      const allTokens = [...existingTokens].sort((a, b) => a.begin - b.begin);
-      const spans = [];
-      let lastEnd = 0;
-
-      for (const token of allTokens) {
-        // Add untokenized text before this token
-        if (token.begin > lastEnd) {
-          spans.push({
-            text: text.slice(lastEnd, token.begin),
-            isToken: false,
-            begin: lastEnd,
-            end: token.begin
-          });
-        }
-
-        // Add the token - use existing content
-        spans.push({
-          ...token,
-          isToken: true,
-          begin: token.begin,
-          end: token.end
-        });
-
-        lastEnd = token.end;
-      }
-
-      // Add final untokenized text
-      if (lastEnd < text.length) {
-        spans.push({
-          text: text.slice(lastEnd),
-          isToken: false,
-          begin: lastEnd,
-          end: text.length
-        });
-      }
-
-      return (
-        <Box p="md" style={{
-          lineHeight: 1.6,
-          fontFamily: 'monospace',
-          fontSize: '14px',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word'
-        }}>
-          {spans.map((span, index) =>
-            span.isToken ? (
-              <TokenComponent
-                key={span.id ? `token-${span.id}` : `token-span-${span.begin}-${span.end}`}
-                span={span}
-                text={text}
-                onTokenClick={handleTokenClick}
-                onTokenRightClick={handleTokenRightClick}
-                onTokenSplit={handleTokenSplitStart}
-                onTokenDragStart={handleTokenDragStart}
-                onTokenDragEnter={handleTokenDragEnter}
-                isSelected={selectedTokens.has(span.id)}
-                isTokenDragging={isTokenDragging}
-                isSplitting={splittingToken?.id === span.id}
-                hoveredSplitPosition={hoveredSplitPosition}
-                setHoveredSplitPosition={setHoveredSplitPosition}
-                handleTokenSplit={handleTokenSplit}
-              />
-            ) : (
-              <span
-                key={`text-${span.begin}-${span.end}`}
-                data-begin={span.begin}
-                data-end={span.end}
-                style={{
-                  cursor: 'text',
-                  userSelect: 'text'
-                }}
-                onMouseUp={handleTextSelection}
-                title="Select text to create token"
-              >
-                <TextWithVisibleWhitespace text={span.text} />
-              </span>
-            )
-          )}
-        </Box>
-      );
-    }
-
-    // Render with sentences - using pre-computed spans from parser
+    // Render with sentences - using pre-computed pieces from parser
     return (
       <Box style={{
         lineHeight: 1.6,
