@@ -331,13 +331,13 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, cl
     const sentenceAnnotations = collectAnnotations(sentence, spanLayers.sentence, 'Sentence');
     
     // Pre-compute spans (tokens + gaps) for efficient rendering
-    const spans = computeSpansForSentence(sentence, tokensWithAnnotations, text);
+    const sentencePieces = computePiecesForSentence(sentence, tokensWithAnnotations, text);
     
     return {
       ...sentence,
       annotations: sentenceAnnotations,
       tokens: tokensWithAnnotations,
-      spans: spans
+      pieces: sentencePieces
     };
   });
   
@@ -388,14 +388,14 @@ function collectAnnotations(item, spanLayers, scope) {
 }
 
 /**
- * Compute spans (tokens + gaps) for a sentence to enable efficient rendering
+ * Compute pieces (tokens + gaps) for a sentence to enable efficient rendering
  * @param {Object} sentence - Sentence object with begin/end positions
  * @param {Array} tokens - Array of tokens within this sentence
  * @param {string} text - Full document text
  * @returns {Array} Array of span objects (tokens and gaps)
  */
-function computeSpansForSentence(sentence, tokens, text) {
-  const spans = [];
+function computePiecesForSentence(sentence, tokens, text) {
+  const pieces = [];
   const sortedTokens = [...tokens].sort((a, b) => a.begin - b.begin);
   let lastEnd = sentence.begin;
 
@@ -403,9 +403,9 @@ function computeSpansForSentence(sentence, tokens, text) {
   for (const token of sortedTokens) {
     // Add untokenized text before this token
     if (token.begin > lastEnd) {
-      spans.push({
+      pieces.push({
         type: 'gap',
-        text: text.slice(lastEnd, token.begin),
+        content: text.slice(lastEnd, token.begin),
         isToken: false,
         begin: lastEnd,
         end: token.begin
@@ -413,7 +413,7 @@ function computeSpansForSentence(sentence, tokens, text) {
     }
 
     // Add the token
-    spans.push({
+    pieces.push({
       type: 'token',
       ...token,
       isToken: true
@@ -424,16 +424,16 @@ function computeSpansForSentence(sentence, tokens, text) {
 
   // Add final untokenized text within sentence
   if (lastEnd < sentence.end) {
-    spans.push({
+    pieces.push({
       type: 'gap',
-      text: text.slice(lastEnd, sentence.end),
+      content: text.slice(lastEnd, sentence.end),
       isToken: false,
       begin: lastEnd,
       end: sentence.end
     });
   }
 
-  return spans;
+  return pieces;
 }
 
 /**
@@ -560,48 +560,4 @@ function validateSentencePartitioning(sentences, text) {
   }
   
   console.log('✅ Sentence token partitioning validation passed');
-}
-
-/**
- * Validate that a parsed document has the expected structure
- * @param {Object} parsedDocument - Parsed document object
- * @returns {boolean} True if valid
- */
-export function validateParsedDocument(parsedDocument) {
-  try {
-    if (!parsedDocument.document || !parsedDocument.document.id) {
-      throw new Error('Missing document data');
-    }
-    
-    if (!Array.isArray(parsedDocument.sentences)) {
-      throw new Error('Sentences must be an array');
-    }
-
-    if (!Array.isArray(parsedDocument.alignmentTokens)) {
-      throw new Error('Alignment tokens must be an array');
-    }
-    
-    // Validate each sentence structure
-    parsedDocument.sentences.forEach((sentence, index) => {
-      if (!sentence.id || typeof sentence.begin !== 'number' || typeof sentence.end !== 'number') {
-        throw new Error(`Invalid sentence structure at index ${index}`);
-      }
-      
-      if (!Array.isArray(sentence.tokens)) {
-        throw new Error(`Sentence tokens must be an array at index ${index}`);
-      }
-      
-      // Validate each token structure
-      sentence.tokens.forEach((token, tokenIndex) => {
-        if (!token.id || typeof token.begin !== 'number' || typeof token.end !== 'number') {
-          throw new Error(`Invalid token structure at sentence ${index}, token ${tokenIndex}`);
-        }
-      });
-    });
-    
-    return true;
-  } catch (error) {
-    console.error('Document validation failed:', error);
-    return false;
-  }
 }
