@@ -9,12 +9,13 @@
  * Main parser function that transforms raw document response
  * @param {Object} rawDocument - Raw document response from API
  * @param {Object} client - Client object for API calls (optional, for cleanup)
+ * @param {Object} project - Project object with configuration (optional, for metadata filtering)
  * @returns {Object} Parsed document structure
  */
-export function parseDocument(rawDocument, client) {
+export function parseDocument(rawDocument, client, project) {
   try {
     // Extract core document data
-    const documentData = extractDocumentData(rawDocument);
+    const documentData = extractDocumentData(rawDocument, project);
     
     // Find and validate required layers
     const layers = findPrimaryLayers(rawDocument.textLayers);
@@ -60,12 +61,24 @@ export function parseDocument(rawDocument, client) {
 /**
  * Extract core document information
  * @param {Object} rawDocument - Raw document response
+ * @param {Object} project - Project object with configuration (optional, for metadata filtering)
  * @returns {Object} Core document data
  */
-function extractDocumentData(rawDocument) {
+function extractDocumentData(rawDocument, project) {
   const primaryTextLayer = rawDocument.textLayers?.find(
     layer => layer.config?.plaid?.primary
   );
+  
+  // Extract configured metadata fields if project config is available
+  const configuredMetadata = {};
+  if (project?.config?.plaid?.documentMetadata && rawDocument.metadata) {
+    const metadataFields = project.config.plaid.documentMetadata;
+    metadataFields.forEach(field => {
+      if (field.name && rawDocument.metadata.hasOwnProperty(field.name)) {
+        configuredMetadata[field.name] = rawDocument.metadata[field.name];
+      }
+    });
+  }
   
   return {
     id: rawDocument.id,
@@ -73,7 +86,8 @@ function extractDocumentData(rawDocument) {
     project: rawDocument.project,
     version: rawDocument.version,
     mediaUrl: rawDocument.mediaUrl,
-    text: primaryTextLayer?.text
+    text: primaryTextLayer?.text,
+    metadata: configuredMetadata
   };
 }
 
@@ -83,46 +97,11 @@ function extractDocumentData(rawDocument) {
  * @returns {Object} Object containing identified layers
  */
 function findPrimaryLayers(textLayers) {
-  if (!textLayers || !Array.isArray(textLayers)) {
-    throw new Error('No text layers found in document');
-  }
-  
-  // Find primary text layer
-  const primaryTextLayer = textLayers.find(
-    layer => layer.config?.plaid?.primary
-  );
-  
-  if (!primaryTextLayer) {
-    throw new Error('No primary text layer found');
-  }
-  
-  if (!primaryTextLayer.tokenLayers || !Array.isArray(primaryTextLayer.tokenLayers)) {
-    throw new Error('No token layers found in primary text layer');
-  }
-  
-  // Find primary token layer (contains word tokens)
-  const primaryTokenLayer = primaryTextLayer.tokenLayers.find(
-    layer => layer.config?.plaid?.primary
-  );
-  
-  // Find sentence token layer (contains sentence boundaries)
-  const sentenceTokenLayer = primaryTextLayer.tokenLayers.find(
-    layer => layer.config?.plaid?.sentence
-  );
+  const primaryTextLayer = textLayers.find(layer => layer.config?.plaid?.primary);
+  const primaryTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.primary);
+  const sentenceTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.sentence);
+  const alignmentTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.alignment);
 
-  // Find alignment token layer (contains time-aligned tokens)
-  const alignmentTokenLayer = primaryTextLayer.tokenLayers.find(
-    layer => layer.config?.plaid?.alignment
-  );
-  
-  if (!primaryTokenLayer) {
-    throw new Error('No primary token layer found');
-  }
-  
-  if (!sentenceTokenLayer) {
-    throw new Error('No sentence token layer found');
-  }
-  
   // Collect all span layers and categorize by scope
   const spanLayers = {
     token: [],
@@ -164,11 +143,6 @@ function findPrimaryLayers(textLayers) {
  * @returns {Array} Array of sentence objects with boundaries
  */
 function processSentenceBoundaries(sentenceTokenLayer) {
-  if (!sentenceTokenLayer.tokens || !Array.isArray(sentenceTokenLayer.tokens)) {
-    console.warn('No sentence tokens found, creating empty sentences array');
-    return [];
-  }
-  
   // Extract sentence tokens and sort by begin position
   const sentences = sentenceTokenLayer.tokens
     .map(token => ({
@@ -198,7 +172,7 @@ function processAlignmentTokens(alignmentTokenLayer) {
   // Extract alignment tokens and sort by begin position
   const alignmentTokens = alignmentTokenLayer.tokens
     .map(token => ({
-      ...token, // Pass through all token data including metadata
+      ...token,
       annotations: {} // Will be populated later if needed
     }))
     .sort((a, b) => a.begin - b.begin);
@@ -328,7 +302,7 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, cl
   const sortedTokens = wordTokens
     .map(token => ({
       id: token.id,
-      text: token.text || '',
+      text: token.text,
       begin: token.begin,
       end: token.end,
       content: text.slice(token.begin, token.end), // Pre-compute token content
@@ -582,23 +556,6 @@ function validateSentencePartitioning(sentences, text) {
       console.warn(`🚨 SENTENCE PARTITIONING VIOLATION: Gap or overlap detected between sentences ${i + 1} and ${i + 2}! Sentence ${i + 1} ends at ${currentSentence.end}, but sentence ${i + 2} starts at ${nextSentence.begin}`);
       console.warn('Current sentence:', currentSentence);
       console.warn('Next sentence:', nextSentence);
-    }
-  }
-  
-  // Check for any sentence with invalid boundaries
-  for (let i = 0; i < sortedSentences.length; i++) {
-    const sentence = sortedSentences[i];
-    
-    if (sentence.begin < 0 || sentence.end < 0) {
-      console.warn(`🚨 SENTENCE PARTITIONING VIOLATION: Sentence ${i + 1} has negative boundaries! Begin: ${sentence.begin}, End: ${sentence.end}`);
-    }
-    
-    if (sentence.begin >= sentence.end) {
-      console.warn(`🚨 SENTENCE PARTITIONING VIOLATION: Sentence ${i + 1} has invalid boundaries! Begin: ${sentence.begin}, End: ${sentence.end}`);
-    }
-    
-    if (sentence.end > text.length) {
-      console.warn(`🚨 SENTENCE PARTITIONING VIOLATION: Sentence ${i + 1} extends beyond text length! End: ${sentence.end}, Text length: ${text.length}`);
     }
   }
   
