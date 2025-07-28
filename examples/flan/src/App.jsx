@@ -1,11 +1,11 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
 import { ProjectSetup } from './components/projects/ProjectSetup';
+import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { DocumentDetail } from './components/documents/DocumentDetail';
 import { UserProfile } from './components/auth/UserProfile';
 import { VocabularyList } from './components/vocabularies/VocabularyList';

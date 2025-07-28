@@ -1,35 +1,40 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useSnapshot } from 'valtio';
 import { 
   Stack, 
   Title, 
   Text, 
   Paper,
-  Button,
   Group,
   Alert,
   Divider,
   ActionIcon,
   Tooltip,
-  SimpleGrid,
-  ScrollArea,
-  Box,
-  Pagination
+  Box
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
 import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
-import './DocumentAnalyze.css';
+import { useAnalyzeOperations } from './useAnalyzeOperations.js';
 import { getIgnoredTokensConfig } from '../../../utils/tokenizationUtils.js';
 import { VocabLinkPopover } from './VocabLinkPopover.jsx';
-import { useStrictClient, useIsViewingHistorical } from '../contexts/StrictModeContext.jsx';
-import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
+import documentsStore from '../../../stores/documentsStore.js';
+import Lazy from '../../lazy.jsx';
+import './DocumentAnalyze.css';
 
 // Shared throttle for tab navigation across all EditableCell instances
 let lastGlobalTabPress = 0;
 
 // EditableCell component for annotation fields
-const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, placeholder, isSaving, onDocumentReload, isSentenceLevel }) => {
-  const handleStrictModeError = useStrictModeErrorHandler(onDocumentReload);
+const EditableCell = ({ 
+  value, 
+  tokenId, 
+  field, 
+  tabIndex, 
+  onUpdate, 
+  isReadOnly, 
+  placeholder, 
+  isSentenceLevel 
+}) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -59,10 +64,10 @@ const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, p
         await onUpdate(newValue || "");
         // Update successful - update our baseline pristine value
         setPristineValue(newValue || '');
-        setLocalValue(newValue || '')
+        setLocalValue(newValue || '');
       } catch (error) {
         setLocalValue(value || '');
-        handleStrictModeError(error, 'update annotation');
+        console.error('Update failed:', error);
       } finally {
         setIsUpdating(false);
       }
@@ -94,7 +99,7 @@ const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, p
   };
 
   const handleFocus = () => {
-    if (!isReadOnly && !isUpdating && !isSaving) {
+    if (!isReadOnly && !isUpdating) {
       setIsEditing(true);
       // Store the value at edit start for comparison on blur
       if (inputRef.current) {
@@ -115,14 +120,14 @@ const EditableCell = ({ value, tokenId, field, tabIndex, onUpdate, isReadOnly, p
 
   const displayValue = localValue || placeholder || '';
   const hasContent = displayValue && displayValue.trim() !== '';
-  const isDisabled = isReadOnly || isUpdating || isSaving;
+  const isDisabled = isReadOnly || isUpdating;
   
   const className = `editable-field ${
     hasContent ? 'editable-field--filled' : 'editable-field--empty'
   } ${
     isDisabled ? 'editable-field--disabled' : ''
   } ${
-    isUpdating || isSaving ? 'editable-field--updating' : ''
+    isUpdating ? 'editable-field--updating' : ''
   } ${
     isSentenceLevel ? 'editable-field--sentence' : ''
   }`.trim();
@@ -158,9 +163,7 @@ const isTokenIgnored = (token, ignoredTokensConfig) => {
   const tokenText = token.content;
   
   if (ignoredTokensConfig.type === 'unicodePunctuation') {
-    // Check if token is all punctuation and not in whitelist
     const isAllPunctuation = [...tokenText].every(char => {
-      // Basic Unicode punctuation check (can be extended)
       return /[\p{P}\p{S}]/u.test(char);
     });
     
@@ -174,86 +177,72 @@ const isTokenIgnored = (token, ignoredTokensConfig) => {
   return false;
 };
 
-export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularies, onDocumentReload, onVocabularyRefresh, setParsedDocumentKey }) => {
-  const client = useStrictClient();
-  const isViewingHistorical = useIsViewingHistorical();
-  const [saving, setSaving] = useState(false);
-
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const sentencesPerPage = 50;
-
-  const sentences = parsedDocument?.sentences || [];
+// Individual sentence component with fine-grained reactivity
+const SentenceRow = ({ 
+  sentenceProxy, 
+  sentenceIndex, 
+  projectId,
+  documentId,
+  project, 
+  vocabularies,
+  operations,
+  isViewingHistorical 
+}) => {
+  const sentenceSnap = useSnapshot(sentenceProxy);
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
-
-  // Memoize pagination calculations
-  const paginationData = useMemo(() => {
-    const totalPages = Math.ceil(sentences.length / sentencesPerPage);
-    const startIndex = (currentPage - 1) * sentencesPerPage;
-    const endIndex = startIndex + sentencesPerPage;
-    const currentPageSentences = sentences.slice(startIndex, endIndex);
-    
-    return { totalPages, startIndex, endIndex, currentPageSentences };
-  }, [sentences, currentPage, sentencesPerPage]);
-
-  const { totalPages, startIndex, endIndex, currentPageSentences } = paginationData;
-
-  // Reset to page 1 if current page is out of bounds
-  useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(1);
-    }
-  }, [currentPage, totalPages]);
-
-  // Extract available annotation fields from parsed sentences
-  const sentenceFields = (() => {
-    if (!sentences.length) return [];
-    const firstSentence = sentences[0];
+  
+  // Extract field information from the parsed document structure
+  const sentenceFields = useMemo(() => {
+    if (!sentenceSnap.annotations) return [];
+    // Access the store directly without subscription to avoid re-renders
+    const parsedDocument = documentsStore[projectId][documentId];
     const sentenceSpanLayers = parsedDocument?.layers?.spanLayers?.sentence || [];
     
-    return Object.keys(firstSentence.annotations || {}).map(name => {
-      // Find the actual span layer with this name to get the UUID
+    return Object.keys(sentenceSnap.annotations).map(name => {
       const layer = sentenceSpanLayers.find(layer => layer.name === name);
       return { name, id: layer?.id || name };
     });
-  })();
+  }, [sentenceSnap.annotations, projectId, documentId]);
   
-  const tokenFields = (() => {
-    if (!sentences.length || !sentences[0].tokens?.length) return [];
-    const firstToken = sentences[0].tokens[0];
+  const tokenFields = useMemo(() => {
+    if (!sentenceSnap.tokens?.length) return [];
+    const firstToken = sentenceSnap.tokens[0];
+    if (!firstToken.annotations) return [];
+    
+    // Access the store directly without subscription to avoid re-renders
+    const parsedDocument = documentsStore[projectId][documentId];
     const tokenSpanLayers = parsedDocument?.layers?.spanLayers?.token || [];
 
-    return Object.keys(firstToken.annotations || {}).map(name => {
-      // Find the actual span layer with this name to get the UUID
+    return Object.keys(firstToken.annotations).map(name => {
       const layer = tokenSpanLayers.find(layer => layer.name === name);
       return { name, id: layer?.id || name };
     });
-  })();
+  }, [sentenceSnap.tokens, projectId, documentId]);
   
-  // Extract available orthographies from parsed tokens
-  const orthographyFields = parsedDocument.layers.primaryTokenLayer.config.plaid.orthographies;
+  const orthographyFields = useMemo(() => {
+    // Access the store directly without subscription to avoid re-renders
+    const parsedDocument = documentsStore[projectId][documentId];
+    return parsedDocument?.layers?.primaryTokenLayer?.config?.plaid?.orthographies || [];
+  }, [projectId, documentId]);
 
   // TokenColumn component for displaying individual token annotations
-  const TokenColumn = ({ token, tokenIndex, getTabIndex, tokenFields, orthographyFields, isSaving, isReadOnly }) => {
-    // Check if this token should be ignored
+  const TokenColumn = ({ token, tokenIndex }) => {
     const tokenIsIgnored = isTokenIgnored(token, ignoredTokensConfig);
 
-    const handleOrthoUpdate = async (token, ortho, value) => {
-      const k = `orthog:${ortho.name}`
-      const metadata = token.metadata
-      metadata[k] = value
-      await client.tokens.setMetadata(token.id, metadata)
+    const handleOrthoUpdate = async (ortho, value) => {
+      await operations.updateOrthography(token, ortho.name, value);
     };
 
-    const handleSpanUpdate = async (token, field, value) => {
-      const extantSpan = token.annotations[field.name];
-      if (!extantSpan) {
-        await client.spans.create(field.id, [token.id], value)
-      } else {
-        await client.spans.update(extantSpan.id, value)
-      }
+    const handleSpanUpdate = async (field, value) => {
+      await operations.updateTokenSpan(token, field, value);
     };
 
+    const getTabIndex = (tokenIndex, field) => {
+      const allFields = [...orthographyFields.map(o => o.name), ...tokenFields.map(f => f.name)];
+      const fieldIndex = allFields.indexOf(field);
+      const baseIndex = sentenceIndex * 1000 + (fieldIndex * 100) + tokenIndex + 1;
+      return baseIndex;
+    };
     
     return (
       <div className="token-column">
@@ -262,26 +251,23 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
           <VocabLinkPopover
             vocabularies={vocabularies}
             token={token}
-            onDocumentReload={onDocumentReload}
-            onVocabularyRefresh={onVocabularyRefresh}
+            operations={operations}
           >
             {token.content}
           </VocabLinkPopover>
         </div>
         
-        {/* Orthography rows - always show for ignored tokens */}
+        {/* Orthography rows */}
         {orthographyFields.map(ortho => (
           <div key={`${token.id}-${ortho.name}`} className="annotation-cell">
             <EditableCell
               value={token.orthographies?.[ortho.name] || ''}
               tokenId={token.id}
               field={ortho.name}
-              tabIndex={getTabIndex ? getTabIndex(tokenIndex, ortho.name) : undefined}
-              placeholder={``}
-              isSaving={isSaving}
-              isReadOnly={isReadOnly}
-              onDocumentReload={onDocumentReload}
-              onUpdate={(value) => handleOrthoUpdate(token, ortho, value)}
+              tabIndex={getTabIndex(tokenIndex, ortho.name)}
+              placeholder=""
+              isReadOnly={isViewingHistorical}
+              onUpdate={(value) => handleOrthoUpdate(ortho, value)}
             />
           </div>
         ))}
@@ -293,12 +279,10 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
               value={token.annotations[field.name]?.value || ''}
               tokenId={token.id}
               field={field.name}
-              tabIndex={getTabIndex ? getTabIndex(tokenIndex, field.name) : undefined}
-              placeholder={``}
-              isSaving={isSaving}
-              isReadOnly={isReadOnly}
-              onDocumentReload={onDocumentReload}
-              onUpdate={(value) => handleSpanUpdate(token, field, value)}
+              tabIndex={getTabIndex(tokenIndex, field.name)}
+              placeholder=""
+              isReadOnly={isViewingHistorical}
+              onUpdate={(value) => handleSpanUpdate(field, value)}
             />
           </div>
         ))}
@@ -314,8 +298,8 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
   };
 
   // TokenGrid component for displaying tokens with annotations
-  const TokenGrid = ({ sentence, sentenceIndex, tokenFields, orthographyFields, ignoredTokensConfig, sentencesPerPage }) => {
-    if (!sentence || !sentence.tokens || sentence.tokens.length === 0) {
+  const TokenGrid = () => {
+    if (!sentenceSnap.tokens || sentenceSnap.tokens.length === 0) {
       return (
         <Alert icon={<IconInfoCircle size={16} />} color="yellow">
           No tokens found in this sentence.
@@ -323,32 +307,12 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
       );
     }
 
-    const tokens = sentence.tokens;
-
-    // Calculate tab indices for navigation - made purely local to this sentence
-    const getTabIndex = (tokenIndex, field) => {
-      const allFields = [...orthographyFields.map(o => o.name), ...tokenFields.map(f => f.name)];
-      const fieldIndex = allFields.indexOf(field);
-      const tokensInSentence = tokens.length;
-      
-      // Calculate offset from sentences on current page only
-      const pageLocalIndex = sentenceIndex % sentencesPerPage;
-      const sentenceOffset = pageLocalIndex * 1000; // Simple offset, each sentence gets 1000 tab indices
-      
-      // Row-wise navigation: field type determines row, token index determines position in row
-      return sentenceOffset + (fieldIndex * tokensInSentence) + tokenIndex + 1;
-    };
-
-    // Detect if we're in read-only mode
-    const isReadOnly = isViewingHistorical;
-
     return (
       <div className="token-grid-container">
         {/* Fixed labels column */}
         <div className="labels-column">
           {/* Baseline row - empty space */}
-          <div className="row-label">
-          </div>
+          <div className="row-label"></div>
           
           {/* Orthography rows */}
           {orthographyFields.map(ortho => (
@@ -367,16 +331,11 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
         
         {/* Wrapping tokens container */}
         <div className="tokens-container">
-          {tokens.map((token, tokenIndex) => (
+          {sentenceSnap.tokens.map((token, tokenIndex) => (
             <TokenColumn
               key={token.id}
               token={token}
               tokenIndex={tokenIndex}
-              getTabIndex={getTabIndex}
-              tokenFields={tokenFields}
-              orthographyFields={orthographyFields}
-              isSaving={saving}
-              isReadOnly={isReadOnly}
             />
           ))}
         </div>
@@ -385,18 +344,11 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
   };
   
   // SentenceGrid component for sentence-level annotations
-  const SentenceGrid = ({ sentence, sentenceIndex, sentenceFields }) => {
-    if (!sentence) {
-      return null;
-    }
+  const SentenceGrid = () => {
+    if (!sentenceSnap) return null;
 
-    const handleSpanUpdate = async (sentence, field, value) => {
-      const extantSpan = sentence.annotations[field.name];
-      if (!extantSpan) {
-        await client.spans.create(field.id, [sentence.id], value)
-      } else {
-        await client.spans.update(extantSpan.id, value)
-      }
+    const handleSpanUpdate = async (field, value) => {
+      await operations.updateSentenceSpan(sentenceSnap, field, value);
     };
     
     return (
@@ -409,12 +361,11 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
               </div>
               <div style={{ flex: 1 }}>
                 <EditableCell
-                  value={sentence.annotations[field.name]?.value || ''}
+                  value={sentenceSnap.annotations[field.name]?.value || ''}
                   placeholder=""
-                  isSaving={saving}
                   isSentenceLevel={true}
-                  onDocumentReload={onDocumentReload}
-                  onUpdate={(value) => handleSpanUpdate(sentence, field, value)}
+                  isReadOnly={isViewingHistorical}
+                  onUpdate={(value) => handleSpanUpdate(field, value)}
                 />
               </div>
             </Group>
@@ -428,25 +379,90 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
     );
   };
 
-  // Pagination component
-  const PaginationControls = () => {
-    if (sentences.length === 0) return null;
-
-    return (
-      <Group justify="space-between" align="center" p="sm" style={{ borderBottom: '1px solid #e0e0e0' }}>
-        <Text size="sm" c="dimmed">
-          Showing sentences {startIndex + 1}-{Math.min(endIndex, sentences.length)} of {sentences.length}
-        </Text>
-        <Pagination
-          value={currentPage}
-          onChange={setCurrentPage}
-          total={totalPages}
+  const sentenceNumber = (
+      <Text
           size="sm"
-          withEdges
-        />
-      </Group>
-    );
-  };
+          c="dimmed"
+          style={{
+            position: 'absolute',
+            left: '4px',
+            top: '12px',
+            fontWeight: 500,
+            minWidth: '24px',
+            textAlign: 'right',
+            zIndex: 10
+          }}
+      >
+        {sentenceIndex + 1}
+      </Text>
+  );
+
+  // Create preview content for lazy loading
+  const preview = (
+    <>
+      {sentenceNumber}
+      <div className="token-grid-container">
+        <div className="labels-column">
+          <div className="row-label"></div>
+          {orthographyFields.map(ortho => (
+              <div key={ortho.name} className="row-label">
+                {ortho.name}
+              </div>
+          ))}
+          {tokenFields.map(field => (
+              <div key={field.id} className="row-label">
+                {field.name}
+              </div>
+          ))}
+        </div>
+        <div className="tokens-container">
+            {sentenceSnap.tokens.map((token, tokenIndex) => (
+              <div className="token-column">
+                <div className="token-form">
+                  {token.content}
+                </div>
+              </div>
+            ))}
+        </div>
+        <Stack spacing="xs" style={{ marginTop: '8px' }}>
+          {sentenceFields.length > 0 ? (
+              sentenceFields.map(field => (
+                  <Group key={field.id} align="center">
+                    <div className="row-label" style={{ minWidth: '100px', height: 'auto', padding: '4px 8px' }}>
+                      {field.name}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      {sentenceSnap.annotations[field.name]?.value}
+                    </div>
+                  </Group>
+              ))
+          ) : null}
+        </Stack>
+      </div>
+      <div className="analyze-blur-overlay" />
+    </>
+  );
+
+  return (
+    <Lazy className="analyze-sentence-row" contentPreview={preview}>
+      {sentenceNumber}
+      <Box>
+        <TokenGrid />
+        <SentenceGrid />
+      </Box>
+    </Lazy>
+  );
+};
+
+export const DocumentAnalyze = ({ projectId, documentId, reload, client }) => {
+  const operations = useAnalyzeOperations(projectId, documentId, reload, client);
+  
+  // Get snapshots for reactive reading - only subscribe to what we need
+  const docProxy = documentsStore[projectId][documentId];
+  const docSnap = useSnapshot(docProxy);
+  const project = docSnap.project;
+  const vocabularies = docSnap.vocabularies || {};
+  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
   
   return (
     <div className="document-analyze-container">
@@ -460,7 +476,12 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
               </div>
               <Group>
                 <Tooltip label="Refresh data">
-                  <ActionIcon variant="light" onClick={() => onDocumentReload()} disabled={isViewingHistorical}>
+                  <ActionIcon 
+                    variant="light" 
+                    onClick={() => operations.refreshDocument()} 
+                    disabled={isViewingHistorical}
+                    loading={operations.isRefreshing}
+                  >
                     <IconRefresh size={16} />
                   </ActionIcon>
                 </Tooltip>
@@ -468,85 +489,29 @@ export const DocumentAnalyze = ({ document, parsedDocument, project, vocabularie
             </Group>
 
             <Divider />
-
-            {/* Top Pagination */}
-            <PaginationControls />
             
-            {sentences.length === 0 ? (
+            {!docProxy.sentences || docProxy.sentences.length === 0 ? (
               <Alert icon={<IconInfoCircle size={16} />} color="yellow">
                 No sentences found. Please tokenize the document first.
               </Alert>
             ) : (
-              <Stack spacing="lg">
-                {tokenFields.length === 0 && orthographyFields.length === 0 ? (
-                  <Alert icon={<IconInfoCircle size={16} />} color="yellow">
-                    No token-level annotation fields or orthographies configured for this project.
-                  </Alert>
-                ) : (
-                  <Stack spacing="2rem">
-                    {/* Render current page sentences */}
-                    {currentPageSentences.map((sentence, pageIndex) => {
-                      // Calculate the actual sentence index in the full document
-                      const actualSentenceIndex = startIndex + pageIndex;
-                      
-                      return (
-                        <Box
-                          key={sentence.id}
-                          style={{ 
-                            position: 'relative',
-                            backgroundColor: actualSentenceIndex % 2 === 0 ? '#ffffff' : '#f8faff',
-                            padding: '12px 16px 12px 50px',
-                            borderRadius: '4px'
-                          }}
-                        >
-                          {/* Sentence number */}
-                          <Text
-                            size="sm"
-                            c="dimmed"
-                            style={{
-                              position: 'absolute',
-                              left: '4px',
-                              top: '12px',
-                              fontWeight: 500,
-                              minWidth: '24px',
-                              textAlign: 'right'
-                            }}
-                          >
-                            {actualSentenceIndex + 1}
-                          </Text>
-                          
-                          {/* Sentence content */}
-                          <Box>
-                            {/* Token grid */}
-                            <TokenGrid 
-                              sentence={sentence} 
-                              sentenceIndex={actualSentenceIndex}
-                              tokenFields={tokenFields}
-                              orthographyFields={orthographyFields}
-                              ignoredTokensConfig={ignoredTokensConfig}
-                              sentencesPerPage={sentencesPerPage}
-                            />
-                            
-                            {/* Sentence-level annotations */}
-                            <SentenceGrid 
-                              sentence={sentence} 
-                              sentenceIndex={actualSentenceIndex}
-                              sentenceFields={sentenceFields}
-                            />
-                          </Box>
-                        </Box>
-                      );
-                    })}
-                  </Stack>
-                )}
+              <Stack spacing="2rem">
+                {docProxy.sentences.map((sentenceProxy, sentenceIndex) => (
+                  <SentenceRow
+                    key={docSnap.sentences[sentenceIndex].id}
+                    sentenceProxy={sentenceProxy}
+                    sentenceIndex={sentenceIndex}
+                    projectId={projectId}
+                    documentId={documentId}
+                    project={project}
+                    vocabularies={vocabularies}
+                    operations={operations}
+                    isViewingHistorical={isViewingHistorical}
+                  />
+                ))}
               </Stack>
             )}
           </Stack>
-
-          {/* Bottom Pagination */}
-          <Box style={{ borderTop: '1px solid #e0e0e0' }}>
-            <PaginationControls />
-          </Box>
         </Paper>
       </Stack>
     </div>

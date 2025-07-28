@@ -337,7 +337,12 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, cl
       ...sentence,
       annotations: sentenceAnnotations,
       tokens: tokensWithAnnotations,
-      pieces: sentencePieces
+      pieces: sentencePieces,
+      dragState: {
+        isDragging: false,
+        startToken: null,
+        selectedTokenIds: new Set()
+      }
     };
   });
   

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React from 'react';
+import { useSnapshot } from 'valtio';
 import { 
   Stack, 
   Title, 
@@ -18,105 +18,14 @@ import IconDeviceFloppy from '@tabler/icons-react/dist/esm/icons/IconDeviceFlopp
 import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
-import { useStrictClient, useIsViewingHistorical } from '../contexts/StrictModeContext.jsx';
-import { notifications } from '@mantine/notifications';
-import { useDisclosure } from '@mantine/hooks';
-import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
+import { useMetadataOperations } from './useMetadataOperations.js';
+import documentsStore from '../../../stores/documentsStore';
 
-export const DocumentMetadata = ({ document, parsedDocument, project, onDocumentUpdated, onDocumentReload }) => {
-  const client = useStrictClient();
-  const isViewingHistorical = useIsViewingHistorical();
-  const handleStrictModeError = useStrictModeErrorHandler(onDocumentReload);
-  const navigate = useNavigate();
-  const { projectId } = useParams();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedName, setEditedName] = useState(document?.name || '');
-  const [editedMetadata, setEditedMetadata] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
-
-  // Get metadata fields configuration from project
-  const metadataFields = project?.config?.plaid?.documentMetadata || [];
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      // Update document name if changed
-      if (editedName !== document?.name) {
-        await client.documents.update(document.id, editedName);
-      }
-      
-      // Prepare complete metadata object with all existing metadata plus edits
-      const completeMetadata = {
-        ...document?.metadata, // Keep existing metadata (including deactivated fields)
-        ...editedMetadata // Override with edited values
-      };
-      
-      // Update document metadata
-      await client.documents.setMetadata(document.id, completeMetadata);
-      
-      // Update parent component's document state
-      if (onDocumentUpdated) {
-        onDocumentUpdated(prevDocument => ({
-          ...prevDocument,
-          name: editedName,
-          metadata: completeMetadata
-        }));
-      }
-      
-      setIsEditing(false);
-    } catch (error) {
-      setIsEditing(false);
-      handleStrictModeError(error, 'save document metadata');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setEditedName(document?.name || '');
-    setEditedMetadata({});
-    setIsEditing(false);
-  };
-
-  const handleEdit = () => {
-    setEditedName(document?.name || '');
-    
-    // Initialize edited metadata with current values for configured fields
-    const initialMetadata = {};
-    metadataFields.forEach(field => {
-      initialMetadata[field.name] = document?.metadata?.[field.name] || '';
-    });
-    setEditedMetadata(initialMetadata);
-    
-    setIsEditing(true);
-  };
-
-  const handleDeleteClick = () => {
-    openDeleteModal();
-  };
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await client.documents.delete(document.id);
-      
-      notifications.show({
-        title: 'Document deleted',
-        message: `"${document.name}" has been successfully deleted.`,
-        color: 'green'
-      });
-      
-      // Navigate back to the project page
-      navigate(`/projects/${projectId}`);
-    } catch (error) {
-      handleStrictModeError(error, 'delete document');
-    } finally {
-      setDeleting(false);
-      closeDeleteModal();
-    }
-  };
+export function DocumentMetadata({ projectId, documentId, reload, client }) {
+  const storeSnap = useSnapshot(documentsStore);
+  const docSnap = storeSnap[projectId]?.[documentId];
+  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
+  const ops = useMetadataOperations(projectId, documentId, reload, client);
 
   return (
     <Stack spacing="lg" mt="md">
@@ -124,12 +33,12 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
         <Stack spacing="md">
           <Group justify="space-between" align="center">
             <Title order={3}>Document Information</Title>
-            {!isEditing && !isViewingHistorical && (
+            {!ops.isEditing && !isViewingHistorical && (
               <Button
                 leftSection={<IconEdit size={16} />}
                 variant="light"
                 size="sm"
-                onClick={handleEdit}
+                onClick={ops.handleEdit}
               >
                 Edit
               </Button>
@@ -138,25 +47,22 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
 
           <Divider />
 
-          {isEditing ? (
+          {ops.isEditing ? (
             <Stack spacing="md">
               <TextInput
                 label="Document Name"
-                value={editedName}
-                onChange={(e) => setEditedName(e.target.value)}
+                value={ops.editedName}
+                onChange={(e) => ops.updateEditedName(e.target.value)}
                 placeholder="Enter document name"
                 required
               />
 
-              {metadataFields.map((field) => (
+              {ops.metadataFields.map((field) => (
                 <TextInput
                   key={field.name}
                   label={field.name}
-                  value={editedMetadata[field.name] || ''}
-                  onChange={(e) => setEditedMetadata(prev => ({
-                    ...prev,
-                    [field.name]: e.target.value
-                  }))}
+                  value={ops.editedMetadata[field.name] || ''}
+                  onChange={(e) => ops.updateEditedMetadata(field.name, e.target.value)}
                   placeholder={`Enter ${field.name}`}
                 />
               ))}
@@ -166,8 +72,8 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
                   variant="outline"
                   color="gray"
                   leftSection={<IconTrash size={16} />}
-                  onClick={handleDeleteClick}
-                  disabled={saving || deleting}
+                  onClick={ops.handleDeleteClick}
+                  disabled={ops.saving || ops.deleting}
                   style={{ opacity: 0.7 }}
                 >
                   Delete
@@ -176,16 +82,16 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
                   <Button
                     variant="outline"
                     leftSection={<IconX size={16} />}
-                    onClick={handleCancel}
-                    disabled={saving || deleting}
+                    onClick={ops.handleCancel}
+                    disabled={ops.saving || ops.deleting}
                   >
                     Cancel
                   </Button>
                   <Button
                     leftSection={<IconDeviceFloppy size={16} />}
-                    onClick={handleSave}
-                    loading={saving}
-                    disabled={!editedName.trim() || deleting}
+                    onClick={ops.handleSave}
+                    loading={ops.saving}
+                    disabled={!ops.editedName.trim() || ops.deleting}
                   >
                     Save Changes
                   </Button>
@@ -196,17 +102,17 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
             <Stack spacing="md">
               <div>
                 <Text size="sm" fw={700} mb="xs">Name</Text>
-                <Text>{document?.name}</Text>
+                <Text>{ops.document.name}</Text>
               </div>
 
               <div>
                 <Text size="sm" fw={700} mb="xs">Document ID</Text>
-                <Text size="sm" ff="monospace">{document?.id}</Text>
+                <Text size="sm" ff="monospace">{ops.document.id}</Text>
               </div>
 
               {/* Show configured metadata fields */}
-              {metadataFields.map((field) => {
-                const value = document?.metadata?.[field.name]
+              {ops.metadataFields.map((field) => {
+                const value = ops.document.metadata[field.name]
                 return (
                     <div key={field.name}>
                       <Text size="sm" fw={700} mb="xs">{field.name}</Text>
@@ -215,7 +121,7 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
                 )
               })}
 
-              {metadataFields.length === 0 && (!document?.metadata || Object.keys(document.metadata).length === 0) && (
+              {ops.metadataFields.length === 0 && (!ops.document.metadata || Object.keys(ops.document.metadata).length === 0) && (
                 <Alert icon={<IconInfoCircle size={16} />} color="blue">
                   No metadata fields configured for this project. You can add metadata fields 
                   in the project settings.
@@ -227,8 +133,8 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
       </Paper>
 
       <Modal
-        opened={deleteModalOpened}
-        onClose={closeDeleteModal}
+        opened={ops.deleteModalOpen}
+        onClose={ops.handleCloseDeleteModal}
         title="Delete Document"
         size="md"
         centered
@@ -241,7 +147,7 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
             variant="light"
           >
             <Text size="sm">
-              You are about to permanently delete the document <strong>"{document?.name}"</strong> and 
+              You are about to permanently delete the document <strong>"{ops.document.name}"</strong> and 
               all of its associated data including annotations and text content.
             </Text>
             <Text size="sm" mt="xs">
@@ -252,18 +158,18 @@ export const DocumentMetadata = ({ document, parsedDocument, project, onDocument
           <Group justify="flex-end">
             <Button
               variant="default"
-              onClick={closeDeleteModal}
-              disabled={deleting}
+              onClick={ops.handleCloseDeleteModal}
+              disabled={ops.deleting}
             >
               Cancel
             </Button>
             <Button
               color="red"
-              onClick={handleDelete}
-              loading={deleting}
+              onClick={ops.handleDelete}
+              loading={ops.deleting}
               leftSection={<IconTrash size={16} />}
             >
-              {deleting ? 'Deleting...' : 'Delete Document'}
+              {ops.deleting ? 'Deleting...' : 'Delete Document'}
             </Button>
           </Group>
         </Stack>

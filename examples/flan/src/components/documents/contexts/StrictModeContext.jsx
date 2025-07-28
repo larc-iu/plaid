@@ -7,7 +7,6 @@ import '../../../services/plaidClient.js';
 const PlaidClient = window.PlaidClient;
 
 const StrictModeContext = createContext(null);
-const HistoricalModeContext = createContext(false);
 
 /**
  * Provider component that creates a new PlaidClient instance with strict mode enabled
@@ -42,38 +41,9 @@ export const StrictModeProvider = ({ children }) => {
 };
 
 /**
- * Provider component that wraps content when viewing historical state.
- * When active, causes useStrictClient to return null to prevent edits.
- */
-export const HistoricalModeProvider = ({ children, isViewingHistorical }) => {
-  return (
-    <HistoricalModeContext.Provider value={isViewingHistorical}>
-      {children}
-    </HistoricalModeContext.Provider>
-  );
-};
-
-/**
- * Hook to access the strict mode client. Falls back to the regular client
- * from AuthContext if not within a StrictModeProvider.
- * Returns null when viewing historical state to prevent all write operations.
+ * Hook to access the strict mode client.
  */
 export const useStrictClient = () => {
-  const { client: authClient } = useAuth();
   const strictClient = useContext(StrictModeContext);
-  const isViewingHistorical = useContext(HistoricalModeContext);
-  
-  // Return null if viewing historical state to prevent all writes
-  if (isViewingHistorical) return null;
-  
-  // Use strict client if available, otherwise fall back to auth client
-  return strictClient || authClient;
-};
-
-/**
- * Hook to check if the user is currently viewing historical state.
- * Returns true when viewing historical document state, false otherwise.
- */
-export const useIsViewingHistorical = () => {
-  return useContext(HistoricalModeContext);
+  return strictClient;
 };
