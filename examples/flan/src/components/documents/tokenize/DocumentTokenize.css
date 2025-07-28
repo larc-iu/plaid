@@ -1,0 +1,126 @@
+.blur-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(4px);
+}
+
+.untokenized {
+    cursor: text;
+    user-select: text;
+    border-bottom: 1px dotted rgb(170, 170, 170);
+    padding-bottom: 1px;
+}
+
+.token {
+    display: inline-block;
+    margin: 1px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.token-dragging {
+    cursor: grabbing !important;
+}
+
+.sentence-container {
+    flex: 1;
+    padding-left: 70px;
+    overflow-y: auto;
+    line-height: 1.6;
+    font-family: 'monospace';
+    font-size: 14px;
+}
+
+.sentence-content {
+    flex: 1;
+    padding-left: 70px;
+    white-space: pre-wrap;
+}
+
+.sentence-row {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    padding: 8px 12px;
+    margin-left: -70px;
+}
+.sentence-row:nth-child(even) {
+    background-color: #ffffff;
+}
+
+.sentence-row:nth-child(odd) {
+    background-color: #f8faff;
+}
+
+.sentence-number {
+    position: absolute;
+    left: 22px;
+    top: 10px;
+    font-family: monospace;
+    user-select: none;
+    width: 20px;
+    text-align: right;
+}
+.merge-button {
+    position: absolute;
+    left: 48px;
+    top: 9px;
+    z-index: 10;
+}
+.merge-icon {
+    background-color: transparent;
+    border: 1px solid #d0d7de;
+    opacity: 0.6;
+}
+
+/* splitting */
+.splitter-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    background-color: #f8f9fa;
+    border: 2px solid #1976d2;
+    border-radius: 4px;
+    margin: 1px
+}
+.splitter-char-container {
+    display: flex;
+    align-items: center
+}
+.splitter-char {
+    font-family: monospace;
+    background-color: #fff;
+    padding: 2px 4px;
+    border-radius: 2px;
+    min-width: 16px;
+    text-align: center;
+    font-size: 13px;
+    border: 1px solid #dee2e6
+}
+.splitter-split-point {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    opacity: 0.5;
+    background-color: #fff5f5;
+    color: #868e96;
+}
+.splitter-split-point:hover {
+    opacity: 1;
+    background-color: transparent;
+    transition: opacity 0.2s ease;
+    color: #e03131;
+}

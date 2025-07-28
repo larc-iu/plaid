@@ -17,7 +17,6 @@ import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
 import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs';
 import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 import { useStrictClient } from '../contexts/StrictModeContext.jsx';
-import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler';
 
 // Levenshtein distance function for string similarity
 const levenshteinDistance = (str1, str2) => {
@@ -47,12 +46,10 @@ const levenshteinDistance = (str1, str2) => {
 export const VocabLinkPopover = ({ 
   vocabularies, 
   token, 
-  onDocumentReload,
-  onVocabularyRefresh,
+  operations,
   children 
 }) => {
   const client = useStrictClient();
-  const handleStrictModeError = useStrictModeErrorHandler(onDocumentReload);
   const [selectedVocab, setSelectedVocab] = useState(null);
   const [localState, setLocalState] = useState({ type: 'none' });
   const [opened, setOpened] = useState(false);
@@ -119,15 +116,14 @@ export const VocabLinkPopover = ({
     setOpened(false);
 
     // Check if this is the currently selected item - if so, unlink it
-    const existingItem = displayVocabItem; // Use what the user actually sees
+    const existingItem = displayVocabItem;
     if (existingItem && existingItem.id === vocabItem.id) {
       // Unlink the selected item
       setLocalState({ type: 'unlinked' });
 
       try {
-        await client.vocabLinks.delete(existingItem.linkId);
+        await operations.handleVocabOperation(() => client.vocabLinks.delete(existingItem.linkId));
       } catch (error) {
-        handleStrictModeError(error, 'delete vocab link');
         setLocalState({ type: 'none' }); // Reset on error
       }
       return;
@@ -138,22 +134,26 @@ export const VocabLinkPopover = ({
     
     try {
       // Use batch operation to delete existing link and create new one
-      await client.beginBatch();
-      
-      // Delete existing vocab link if there is one
-      if (existingItem) {
-        await client.vocabLinks.delete(existingItem.linkId);
-      }
+      await operations.handleVocabOperation(async () => {
+        await client.beginBatch();
+        
+        // Delete existing vocab link if there is one
+        if (existingItem) {
+          await client.vocabLinks.delete(existingItem.linkId);
+        }
 
-      // Create new vocab link between token and vocab item
-      await client.vocabLinks.create(vocabItem.id, [token.id]);
-      
-      const result = await client.submitBatch();
-      
-      // Update local state with link ID from server response
-      setLocalState({ type: 'linked', item: { ...vocabItem, linkId: result[result.length - 1].body.id } });
+        // Create new vocab link between token and vocab item
+        await client.vocabLinks.create(vocabItem.id, [token.id]);
+        
+        const result = await client.submitBatch();
+        
+        // Update local state with link ID from server response
+        setLocalState({ 
+          type: 'linked', 
+          item: { ...vocabItem, linkId: result[result.length - 1].body.id } 
+        });
+      });
     } catch (error) {
-      handleStrictModeError(error, 'create vocab link');
       setLocalState({ type: 'none' }); // Reset on error
     }
   };
@@ -185,46 +185,45 @@ export const VocabLinkPopover = ({
     setNewItemFields({});
 
     try {
-      // Create the vocab item OUTSIDE of the batch
-      const metadata = Object.keys(newItemFields).length > 0 ? newItemFields : undefined;
-      const createResult = await client.vocabItems.create(selectedVocab, newItemForm.trim(), metadata);
-      
-      // Create the vocab item object for immediate display
-      const newVocabItem = {
-        id: createResult.id,
-        form: newItemForm.trim(),
-        metadata: metadata || {},
-        vocabId: selectedVocab,
-        vocabName: selectedVocabData.name
-      };
-      
-      // Set local state to immediately show the new vocab item
-      setLocalState({ type: 'linked', item: newVocabItem });
-      
-      // Use batch operation to delete existing link and create new one
-      await client.beginBatch();
-      
-      // Delete existing vocab link if there is one
-      const existingItem = token.vocabItem; // Always use server state
-      if (existingItem) {
-        await client.vocabLinks.delete(existingItem.linkId);
-      }
+      await operations.handleVocabOperation(async () => {
+        // Create the vocab item OUTSIDE of the batch
+        const metadata = Object.keys(newItemFields).length > 0 ? newItemFields : undefined;
+        const createResult = await client.vocabItems.create(selectedVocab, newItemForm.trim(), metadata);
+        
+        // Create the vocab item object for immediate display
+        const newVocabItem = {
+          id: createResult.id,
+          form: newItemForm.trim(),
+          metadata: metadata || {},
+          vocabId: selectedVocab,
+          vocabName: selectedVocabData.name
+        };
+        
+        // Set local state to immediately show the new vocab item
+        setLocalState({ type: 'linked', item: newVocabItem });
+        
+        // Use batch operation to delete existing link and create new one
+        await client.beginBatch();
+        
+        // Delete existing vocab link if there is one
+        const existingItem = token.vocabItem; // Always use server state
+        if (existingItem) {
+          await client.vocabLinks.delete(existingItem.linkId);
+        }
 
-      // Create vocab link between token and the new vocab item
-      await client.vocabLinks.create(newVocabItem.id, [token.id]);
-      
-      const batchResult = await client.submitBatch();
-      
-      // Update local state with link ID from server response
-      setLocalState({ type: 'linked', item: { ...newVocabItem, linkId: batchResult[batchResult.length - 1].body.id } });
-      
-      // Refresh document so new item appears everywhere with correct state
-      if (onDocumentReload) {
-        onDocumentReload();
-      }
+        // Create vocab link between token and the new vocab item
+        await client.vocabLinks.create(newVocabItem.id, [token.id]);
+        
+        const batchResult = await client.submitBatch();
+        
+        // Update local state with link ID from server response
+        setLocalState({ 
+          type: 'linked', 
+          item: { ...newVocabItem, linkId: batchResult[batchResult.length - 1].body.id } 
+        });
+      });
       
     } catch (error) {
-      handleStrictModeError(error, 'create new vocab item');
       setLocalState({ type: 'none' }); // Reset on error
     }
   };
@@ -478,7 +477,8 @@ const VocabItemsGrid = ({ vocab, onItemClick, existingVocabItem, tokenForm }) =>
   });
   
   // Sort items - existing vocab item first, then by edit distance to token form
-  const sortedItems = [...filteredItems];
+  // Create plain copies of items to avoid valtio snapshot immutability issues
+  const sortedItems = filteredItems.map(item => ({ ...item }));
   
   // Calculate edit distances and sort by similarity to token form
   if (tokenForm) {
