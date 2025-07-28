@@ -21,10 +21,9 @@ import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTrian
 import { useMetadataOperations } from './useMetadataOperations.js';
 import documentsStore from '../../../stores/documentsStore';
 
-export function DocumentMetadata({ projectId, documentId, reload, client }) {
+export function DocumentMetadata({ projectId, documentId, reload, client, readOnly = false }) {
   const storeSnap = useSnapshot(documentsStore);
   const docSnap = storeSnap[projectId]?.[documentId];
-  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
   const ops = useMetadataOperations(projectId, documentId, reload, client);
 
   return (
@@ -33,7 +32,7 @@ export function DocumentMetadata({ projectId, documentId, reload, client }) {
         <Stack spacing="md">
           <Group justify="space-between" align="center">
             <Title order={3}>Document Information</Title>
-            {!ops.isEditing && !isViewingHistorical && (
+            {!ops.isEditing && !readOnly && (
               <Button
                 leftSection={<IconEdit size={16} />}
                 variant="light"

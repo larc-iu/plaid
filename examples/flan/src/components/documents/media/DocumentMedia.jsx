@@ -17,10 +17,9 @@ import { MediaPlayer } from './MediaPlayer.jsx';
 import { Timeline } from './Timeline.jsx';
 import { MediaUpload } from './MediaUpload.jsx';
 
-export function DocumentMedia({ projectId, documentId, reload, client }) {
+export function DocumentMedia({ projectId, documentId, reload, client, readOnly = false }) {
   const storeSnap = useSnapshot(documentsStore);
   const docSnap = storeSnap[projectId]?.[documentId];
-  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
   
   // Use media operations hook
   const mediaOps = useMediaOperations(projectId, documentId, reload, client);
@@ -34,6 +33,7 @@ export function DocumentMedia({ projectId, documentId, reload, client }) {
           isUploading={mediaOps.isUploading}
           projectId={projectId}
           documentId={documentId}
+          readOnly={readOnly}
         />
       </Stack>
     );
@@ -42,7 +42,7 @@ export function DocumentMedia({ projectId, documentId, reload, client }) {
   return (
     <Stack spacing="lg" mb="400px">
       {/* Media Player */}
-      <MediaPlayer mediaOps={mediaOps} />
+      <MediaPlayer mediaOps={mediaOps} readOnly={readOnly} />
 
       {/* Timeline */}
       <Box style={{ position: 'relative' }}>
@@ -52,6 +52,7 @@ export function DocumentMedia({ projectId, documentId, reload, client }) {
           reload={reload}
           client={client}
           mediaOps={mediaOps}
+          readOnly={readOnly}
         />
       </Box>
 
@@ -66,14 +67,14 @@ export function DocumentMedia({ projectId, documentId, reload, client }) {
                 data={mediaOps.asrAlgorithmOptions}
                 style={{ width: 280 }}
                 onMouseEnter={mediaOps.handleAsrDropdownInteraction}
-                disabled={isViewingHistorical}
+                disabled={readOnly}
             />
 
             <Button
                 leftSection={<IconMicrophone size={16} />}
                 onClick={mediaOps.handleTranscribe}
                 loading={mediaOps.isProcessing}
-                disabled={!mediaOps.isUsingAsrService || mediaOps.isProcessing || mediaOps.isUploading || isViewingHistorical}
+                disabled={!mediaOps.isUsingAsrService || mediaOps.isProcessing || mediaOps.isUploading || readOnly}
             >
               Transcribe
             </Button>
@@ -82,7 +83,7 @@ export function DocumentMedia({ projectId, documentId, reload, client }) {
           <Button
               variant="default"
               onClick={mediaOps.handleClearAlignments}
-              disabled={mediaOps.isProcessing || mediaOps.isUploading || !mediaOps.alignmentTokens.length || isViewingHistorical}
+              disabled={mediaOps.isProcessing || mediaOps.isUploading || !mediaOps.alignmentTokens.length || readOnly}
           >
             Clear Alignments
           </Button>

@@ -31,7 +31,7 @@ import Lazy from '../../lazy';
 import './DocumentTokenize.css';
 
 
-export function DocumentTokenize({ projectId, documentId, reload, client }) {
+export function DocumentTokenize({ projectId, documentId, reload, client, readOnly = false }) {
   const ops = useTokenOperations(projectId, documentId, reload, client);
 
   // Get the proxy once to pass down for mutations
@@ -40,7 +40,6 @@ export function DocumentTokenize({ projectId, documentId, reload, client }) {
   // Use snapshot for reading
   const docSnap = useSnapshot(documentsStore[projectId][documentId]);
   const uiSnap = docSnap.ui.tokenize;
-  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
   const layers = docSnap.layers;
   const text = docSnap.document.text;
   const project = docSnap.project;
@@ -72,6 +71,19 @@ export function DocumentTokenize({ projectId, documentId, reload, client }) {
   // Handle global mouse events for drag operations
   useEffect(() => {
     const handleGlobalMouseUp = async () => {
+      // Don't process drag operations in read-only mode
+      if (readOnly) {
+        // Just reset drag states without performing operations
+        for (const sentProxy of docProxy.sentences) {
+          if (sentProxy.dragState.isDragging) {
+            sentProxy.dragState.isDragging = false;
+            sentProxy.dragState.startToken = null;
+            sentProxy.dragState.selectedTokenIds = new Set();
+          }
+        }
+        return;
+      }
+      
       // Check all sentences for active drag operations
       for (const sentProxy of docProxy.sentences) {
         if (sentProxy.dragState.isDragging) {
@@ -93,7 +105,7 @@ export function DocumentTokenize({ projectId, documentId, reload, client }) {
     return () => {
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [docProxy, ops]);
+  }, [docProxy, ops, readOnly]);
 
   return (
       <Stack spacing="lg" mt="md" style={{ height: 'calc(100vh - 200px)' }}>
@@ -148,6 +160,7 @@ export function DocumentTokenize({ projectId, documentId, reload, client }) {
                       ops={ops}
                       index={index}
                       docProxy={docProxy}
+                      readOnly={readOnly}
                   />
               )})}
           </Box>
@@ -164,14 +177,14 @@ export function DocumentTokenize({ projectId, documentId, reload, client }) {
                 data={uiSnap.algorithmOptions}
                 style={{ width: 280 }}
                 onMouseEnter={handleAlgorithmDropdownClick}
-                disabled={isViewingHistorical}
+                disabled={readOnly}
               />
 
               <Button
                 leftSection={<IconPlayerPlay size={16} />}
                 onClick={ops.handleTokenize}
                 loading={uiSnap.isTokenizing || ops.isProcessing}
-                disabled={!text?.body || !layers?.primaryTokenLayer || ops.isProcessing || isViewingHistorical}
+                disabled={!text?.body || !layers?.primaryTokenLayer || ops.isProcessing || readOnly}
               >
                 Tokenize
               </Button>
@@ -181,7 +194,7 @@ export function DocumentTokenize({ projectId, documentId, reload, client }) {
               <Button
                 variant="default"
                 onClick={ops.handleClearTokens}
-                disabled={uiSnap.isTokenizing || ops.isProcessing || !existingTokens.length || isViewingHistorical}
+                disabled={uiSnap.isTokenizing || ops.isProcessing || !existingTokens.length || readOnly}
               >
                 Clear Tokens
               </Button>
@@ -189,7 +202,7 @@ export function DocumentTokenize({ projectId, documentId, reload, client }) {
               <Button
                 variant="default"
                 onClick={ops.handleClearSentences}
-                disabled={uiSnap.isTokenizing || ops.isProcessing || !existingSentenceTokens.length || existingSentenceTokens.length === 1 || isViewingHistorical}
+                disabled={uiSnap.isTokenizing || ops.isProcessing || !existingSentenceTokens.length || existingSentenceTokens.length === 1 || readOnly}
               >
                 Clear Sentences
               </Button>
@@ -227,7 +240,7 @@ export function DocumentTokenize({ projectId, documentId, reload, client }) {
   )
 }
 
-function SentenceComponent({sentProxy, ops, index, docProxy}) {
+function SentenceComponent({sentProxy, ops, index, docProxy, readOnly = false}) {
   const sentSnap = useSnapshot(sentProxy);
   const dragStateSnap = sentSnap.dragState;
   
@@ -253,7 +266,7 @@ function SentenceComponent({sentProxy, ops, index, docProxy}) {
         </Text>
 
         {/* Delete button - subtle, always visible (not on first sentence) */}
-        {index > 0 && (
+        {index > 0 && !readOnly && (
             <Box className="merge-button">
               <Tooltip label="Merge with above">
                 <ActionIcon
@@ -282,15 +295,19 @@ function SentenceComponent({sentProxy, ops, index, docProxy}) {
                       ops={ops}
                       dragStateSnap={dragStateSnap}
                       docProxy={docProxy}
+                      readOnly={readOnly}
                   />
               ) : (
                   <span
                       key={`${piece.begin}-${piece.end}`}
                       className="untokenized"
-                      onMouseUp={(e) => {
+                      onMouseUp={readOnly ? undefined : (e) => {
                         ops.createTokenFromSelection(e, sentProxy, piece, pieceIndex);
                       }}
-                      title="Select text to create token"
+                      title={readOnly ? "Untokenized text" : "Select text to create token"}
+                      style={{
+                        cursor: readOnly ? 'default' : 'text'
+                      }}
                   >
                   {piece.content}
                 </span>
@@ -310,7 +327,8 @@ function TokenComponent({
   sentIndex,
   pieceIndex,
   dragStateSnap,
-  docProxy
+  docProxy,
+  readOnly = false
 }) {
   const [isSplitting, setIsSplitting] = useState(false);
   const piece = sentSnap.pieces[pieceIndex];
@@ -318,8 +336,8 @@ function TokenComponent({
   //console.log(`Rendering ${sentIndex}:${piece.begin}-end`)
 
   const handleClick = async (e) => {
-    // Don't trigger anything if we're dragging
-    if (dragStateSnap.isDragging) return;
+    // Don't trigger anything if read-only or dragging
+    if (readOnly || dragStateSnap.isDragging) return;
     
     // Handle Ctrl/Cmd+click for sentence splitting
     if (e.ctrlKey || e.metaKey) {
@@ -337,7 +355,7 @@ function TokenComponent({
   };
 
   const handleMouseDown = (e) => {
-    if (e.button !== 0) return; // Only handle left click
+    if (readOnly || e.button !== 0) return; // Don't handle if read-only or not left click
     e.preventDefault();
     
     // Start drag operation on this sentence
@@ -352,7 +370,7 @@ function TokenComponent({
   };
 
   const handleMouseEnter = () => {
-    if (!dragStateSnap.isDragging || !dragStateSnap.startToken) return;
+    if (readOnly || !dragStateSnap.isDragging || !dragStateSnap.startToken) return;
 
     // Find all tokens between start and current
     const startBegin = dragStateSnap.startToken.begin;
@@ -372,6 +390,7 @@ function TokenComponent({
 
   const handleRightClick = async (e) => {
     e.preventDefault();
+    if (readOnly) return;
     await ops.deleteToken(sentProxy, sentIndex, piece, pieceIndex);
   };
 
@@ -379,7 +398,7 @@ function TokenComponent({
     setIsSplitting(false);
   };
 
-  if (isSplitting) {
+  if (isSplitting && !readOnly) {
     return (
         <TokenSplitter
             sentProxy={sentProxy}
@@ -403,7 +422,7 @@ function TokenComponent({
             backgroundColor: isSelected ? "#1976d2" : "#e3f2fd",
             color: isSelected ? "white" : "inherit",
             border: `1px solid ${isSelected ? "#1565c0" : "#bbdefb"}`,
-            cursor: dragStateSnap.isDragging ? 'grabbing' : 'pointer'
+            cursor: readOnly ? 'default' : (dragStateSnap.isDragging ? 'grabbing' : 'pointer')
           }}
       >
         {piece.content}

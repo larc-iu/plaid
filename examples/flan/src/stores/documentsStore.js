@@ -115,6 +115,11 @@ export const loadDocument = async (projectId, documentId, client) => {
     parsed.project = projectData;
     parsed.vocabularies = projectVocabularies;
     Object.assign(documentsStore[projectId][documentId], parsed)
+    
+    // Clear media UI state when loading/refreshing document
+    docProxy.ui.media.selection = null;
+    docProxy.ui.media.popoverOpened = false;
+    docProxy.ui.media.playingSelection = null;
   } catch (error) {
     throw error;
   }
@@ -161,6 +166,11 @@ export const loadHistoricalDocument = async (projectId, documentId, timestamp, c
     parsed.vocabularies = projectVocabularies;
     Object.assign(documentsStore[projectId][documentId], parsed)
     docProxy.ui.history.viewingHistorical = true;
+    
+    // Clear media UI state when switching document versions
+    docProxy.ui.media.selection = null;
+    docProxy.ui.media.popoverOpened = false;
+    docProxy.ui.media.playingSelection = null;
   } catch (error) {
     throw error;
   }

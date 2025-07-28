@@ -186,7 +186,7 @@ const SentenceRow = ({
   project, 
   vocabularies,
   operations,
-  isViewingHistorical 
+  readOnly 
 }) => {
   const sentenceSnap = useSnapshot(sentenceProxy);
   const ignoredTokensConfig = getIgnoredTokensConfig(project);
@@ -252,6 +252,7 @@ const SentenceRow = ({
             vocabularies={vocabularies}
             token={token}
             operations={operations}
+            readOnly={readOnly}
           >
             {token.content}
           </VocabLinkPopover>
@@ -266,7 +267,7 @@ const SentenceRow = ({
               field={ortho.name}
               tabIndex={getTabIndex(tokenIndex, ortho.name)}
               placeholder=""
-              isReadOnly={isViewingHistorical}
+              isReadOnly={readOnly}
               onUpdate={(value) => handleOrthoUpdate(ortho, value)}
             />
           </div>
@@ -281,7 +282,7 @@ const SentenceRow = ({
               field={field.name}
               tabIndex={getTabIndex(tokenIndex, field.name)}
               placeholder=""
-              isReadOnly={isViewingHistorical}
+              isReadOnly={readOnly}
               onUpdate={(value) => handleSpanUpdate(field, value)}
             />
           </div>
@@ -364,7 +365,7 @@ const SentenceRow = ({
                   value={sentenceSnap.annotations[field.name]?.value || ''}
                   placeholder=""
                   isSentenceLevel={true}
-                  isReadOnly={isViewingHistorical}
+                  isReadOnly={readOnly}
                   onUpdate={(value) => handleSpanUpdate(field, value)}
                 />
               </div>
@@ -454,7 +455,7 @@ const SentenceRow = ({
   );
 };
 
-export const DocumentAnalyze = ({ projectId, documentId, reload, client }) => {
+export const DocumentAnalyze = ({ projectId, documentId, reload, client, readOnly = false }) => {
   const operations = useAnalyzeOperations(projectId, documentId, reload, client);
   
   // Get snapshots for reactive reading - only subscribe to what we need
@@ -462,7 +463,6 @@ export const DocumentAnalyze = ({ projectId, documentId, reload, client }) => {
   const docSnap = useSnapshot(docProxy);
   const project = docSnap.project;
   const vocabularies = docSnap.vocabularies || {};
-  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
   
   return (
     <div className="document-analyze-container">
@@ -479,7 +479,7 @@ export const DocumentAnalyze = ({ projectId, documentId, reload, client }) => {
                   <ActionIcon 
                     variant="light" 
                     onClick={() => operations.refreshDocument()} 
-                    disabled={isViewingHistorical}
+                    disabled={readOnly}
                     loading={operations.isRefreshing}
                   >
                     <IconRefresh size={16} />
@@ -506,7 +506,7 @@ export const DocumentAnalyze = ({ projectId, documentId, reload, client }) => {
                     project={project}
                     vocabularies={vocabularies}
                     operations={operations}
-                    isViewingHistorical={isViewingHistorical}
+                    readOnly={readOnly}
                   />
                 ))}
               </Stack>

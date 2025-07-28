@@ -11,10 +11,9 @@ import {
 import IconUpload from '@tabler/icons-react/dist/esm/icons/IconUpload.mjs';
 import documentsStore from '../../../stores/documentsStore';
 
-export const MediaUpload = ({ onUpload, isUploading, projectId, documentId }) => {
+export const MediaUpload = ({ onUpload, isUploading, projectId, documentId, readOnly = false }) => {
   const storeSnap = useSnapshot(documentsStore);
   const docSnap = storeSnap[projectId]?.[documentId];
-  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
   
   return (
     <Paper withBorder p="xl">
@@ -28,14 +27,14 @@ export const MediaUpload = ({ onUpload, isUploading, projectId, documentId }) =>
             </Text>
           </div>
           
-          <FileButton onChange={onUpload} accept="audio/*,video/*" disabled={isViewingHistorical}>
+          <FileButton onChange={onUpload} accept="audio/*,video/*" disabled={readOnly}>
             {(props) => (
               <Button 
                 {...props} 
                 leftSection={<IconUpload size={16} />}
                 loading={isUploading}
                 size="lg"
-                disabled={isViewingHistorical}
+                disabled={readOnly}
               >
                 Choose Media File
               </Button>
