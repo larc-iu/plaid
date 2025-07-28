@@ -29,7 +29,7 @@ const formatTime = (seconds) => {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
-export const MediaPlayer = ({ mediaOps }) => {
+export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
   // Destructure what we need from mediaOps
   const {
     authenticatedMediaUrl: mediaUrl,
@@ -52,7 +52,6 @@ export const MediaPlayer = ({ mediaOps }) => {
   
   const storeSnap = useSnapshot(documentsStore);
   const docSnap = storeSnap[projectId]?.[documentId];
-  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
   const mediaRef = useRef(null);
   const [mediaError, setMediaError] = useState(null);
   const [mediaType, setMediaType] = useState('video');
@@ -141,7 +140,7 @@ export const MediaPlayer = ({ mediaOps }) => {
                   color="gray"
                   size="md"
                   onClick={onDeleteMedia}
-                  disabled={isViewingHistorical}
+                  disabled={readOnly}
               >
                 <IconTrash size={16} />
               </ActionIcon>

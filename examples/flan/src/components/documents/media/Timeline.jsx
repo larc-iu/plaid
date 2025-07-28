@@ -26,7 +26,8 @@ export const Timeline = ({
   documentId,
   reload,
   client,
-  mediaOps
+  mediaOps,
+  readOnly = false
 }) => {
   // Destructure what we need from mediaOps
   const {
@@ -123,13 +124,13 @@ export const Timeline = ({
               height: `${TIMELINE_HEIGHT}px`,
               width: `${timelineWidth}px`,
               minWidth: '100%',
-              cursor: isDragging ? 'grabbing' : 'pointer',
+              cursor: readOnly ? 'default' : (isDragging ? 'grabbing' : 'pointer'),
               backgroundColor: '#f8f9fa',
               userSelect: 'none'
             }}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
+            onMouseDown={readOnly ? undefined : handleMouseDown}
+            onMouseMove={readOnly ? undefined : handleMouseMove}
+            onMouseUp={readOnly ? undefined : handleMouseUp}
             onMouseLeave={handleMouseUp} // End drag if mouse leaves timeline
           >
             {/* Waveform Background */}
@@ -177,6 +178,7 @@ export const Timeline = ({
                 documentId={documentId}
                 onAlignmentCreated={handleAlignmentCreated}
                 client={client}
+                readOnly={readOnly}
                 selectionBox={
                   <div
                     style={{
@@ -223,7 +225,12 @@ export const Timeline = ({
                 </Text>
                 
                 <Tooltip label="Play selected region">
-                  <ActionIcon onClick={onPlaySelection} size="sm" variant="filled" color="blue">
+                  <ActionIcon 
+                    onClick={onPlaySelection} 
+                    size="sm" 
+                    variant="filled" 
+                    color="blue"
+                  >
                     <IconPlayerPlay size={12} />
                   </ActionIcon>
                 </Tooltip>
@@ -314,20 +321,22 @@ export const Timeline = ({
                   title={`${parsedDocument.document.text.body.substring(token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
                 >
                   {/* Left resize handle */}
-                  <div
-                    onMouseDown={(e) => handleResizeStart(e, token, 'left')}
-                    style={{
-                      position: 'absolute',
-                      left: '-2px',
-                      top: 0,
-                      bottom: 0,
-                      width: '4px',
-                      backgroundColor: '#1976d2',
-                      cursor: 'ew-resize',
-                      zIndex: 5,
-                      opacity: tokenWidth > 20 ? 1 : 0 // Hide on very small tokens
-                    }}
-                  />
+                  {!readOnly && (
+                    <div
+                      onMouseDown={(e) => handleResizeStart(e, token, 'left')}
+                      style={{
+                        position: 'absolute',
+                        left: '-2px',
+                        top: 0,
+                        bottom: 0,
+                        width: '4px',
+                        backgroundColor: '#1976d2',
+                        cursor: 'ew-resize',
+                        zIndex: 5,
+                        opacity: tokenWidth > 20 ? 1 : 0 // Hide on very small tokens
+                      }}
+                    />
+                  )}
                   
                   {/* Token content */}
                   <div style={{ 
@@ -341,20 +350,22 @@ export const Timeline = ({
                   </div>
                   
                   {/* Right resize handle */}
-                  <div
-                    onMouseDown={(e) => handleResizeStart(e, token, 'right')}
-                    style={{
-                      position: 'absolute',
-                      right: '-2px',
-                      top: 0,
-                      bottom: 0,
-                      width: '4px',
-                      backgroundColor: '#1976d2',
-                      cursor: 'ew-resize',
-                      zIndex: 5,
-                      opacity: tokenWidth > 20 ? 1 : 0 // Hide on very small tokens
-                    }}
-                  />
+                  {!readOnly && (
+                    <div
+                      onMouseDown={(e) => handleResizeStart(e, token, 'right')}
+                      style={{
+                        position: 'absolute',
+                        right: '-2px',
+                        top: 0,
+                        bottom: 0,
+                        width: '4px',
+                        backgroundColor: '#1976d2',
+                        cursor: 'ew-resize',
+                        zIndex: 5,
+                        opacity: tokenWidth > 20 ? 1 : 0 // Hide on very small tokens
+                      }}
+                    />
+                  )}
                 </div>
               );
             })}

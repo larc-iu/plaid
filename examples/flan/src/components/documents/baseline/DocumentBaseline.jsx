@@ -18,10 +18,9 @@ import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
 import { useBaselineOperations } from './useBaselineOperations.js';
 import documentsStore from '../../../stores/documentsStore';
 
-export function DocumentBaseline({ projectId, documentId, reload, client }) {
+export function DocumentBaseline({ projectId, documentId, reload, client, readOnly = false }) {
   const storeSnap = useSnapshot(documentsStore);
   const docSnap = storeSnap[projectId]?.[documentId];
-  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
   const ops = useBaselineOperations(projectId, documentId, reload, client);
   
   // Local state for text input to prevent cursor jumping
@@ -56,7 +55,7 @@ export function DocumentBaseline({ projectId, documentId, reload, client }) {
                 Edit the primary text content for this document
               </Text>
             </div>
-            {!ops.isEditing && !isViewingHistorical && (
+            {!ops.isEditing && !readOnly && (
               <Button
                 leftSection={<IconEdit size={16} />}
                 variant="light"

@@ -47,7 +47,8 @@ export const VocabLinkPopover = ({
   vocabularies, 
   token, 
   operations,
-  children 
+  children,
+  readOnly = false 
 }) => {
   const client = useStrictClient();
   const [selectedVocab, setSelectedVocab] = useState(null);
@@ -106,6 +107,9 @@ export const VocabLinkPopover = ({
     localState.type === 'linked' ? localState.item : token.vocabItem;
 
   const handleClick = (event) => {
+    // Don't open popover in read-only mode
+    if (readOnly) return;
+    
     // Close all other vocab popovers
     window.dispatchEvent(new CustomEvent('closeVocabPopovers', { detail: popoverIdRef.current }));
     setOpened(true);
@@ -248,7 +252,7 @@ export const VocabLinkPopover = ({
       trapFocus={false}
     >
       <Popover.Target>
-        <div style={{ display: 'inline-block', cursor: 'pointer' }} onClick={handleClick}>
+        <div style={{ display: 'inline-block', cursor: readOnly ? 'default' : 'pointer' }} onClick={handleClick}>
           <div>
             {children}
           </div>

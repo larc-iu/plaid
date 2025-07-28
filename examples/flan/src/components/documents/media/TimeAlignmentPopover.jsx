@@ -23,7 +23,8 @@ export const TimeAlignmentPopover = ({
   documentId,
   onAlignmentCreated,
   selectionBox,
-  client
+  client,
+  readOnly = false
 }) => {
   const [mode, setMode] = useState('new'); // 'new', 'edit', or 'align'
   const [text, setText] = useState('');
@@ -88,8 +89,8 @@ export const TimeAlignmentPopover = ({
     }
   }, [opened, mode]);
 
-  // Setup keyboard shortcuts
-  useHotkeys([
+  // Setup keyboard shortcuts (disabled in read-only mode)
+  useHotkeys(readOnly ? [] : [
     ['Escape', () => {
       if (opened) {
         handleCancel();
@@ -209,18 +210,21 @@ export const TimeAlignmentPopover = ({
         <Stack spacing="md">
           <div>
             <Text size="sm" fw={500}>
-              {mode === 'edit' ? 'Edit Alignment' : 
-               mode === 'align' ? 'Align Baseline Text' : 
-               'Create Time Alignment'}
+              {readOnly ? 'View Time Alignment' : (
+                mode === 'edit' ? 'Edit Alignment' : 
+                mode === 'align' ? 'Align Baseline Text' : 
+                'Create Time Alignment'
+              )}
             </Text>
             <Text size="xs" c="dimmed">
               {formatTime(selection?.start || 0)} - {formatTime(selection?.end || 0)}
-              {mode === 'edit' && ' (editing existing)'}
-              {mode === 'align' && ' (aligning baseline text)'}
+              {readOnly && ' (read-only mode)'}
+              {!readOnly && mode === 'edit' && ' (editing existing)'}
+              {!readOnly && mode === 'align' && ' (aligning baseline text)'}
             </Text>
           </div>
 
-          {mode !== 'edit' && (
+          {!readOnly && mode !== 'edit' && (
             <SegmentedControl
               value={mode}
               onChange={handleModeChange}
@@ -232,7 +236,29 @@ export const TimeAlignmentPopover = ({
             />
           )}
 
-          {mode === 'align' && !canAlign() ? (
+          {readOnly ? (
+            // Read-only content display
+            <div>
+              <Text size="sm" fw={500} mb="xs">Content</Text>
+              <Text 
+                size="sm" 
+                style={{ 
+                  backgroundColor: '#f8f9fa',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  border: '1px solid #e9ecef',
+                  minHeight: '60px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                {existingAlignment ? 
+                  parsedDocument?.document?.text?.body?.substring(existingAlignment.begin, existingAlignment.end) || 'No content' :
+                  'No alignment data for this time range'
+                }
+              </Text>
+            </div>
+          ) : mode === 'align' && !canAlign() ? (
             <Alert color="yellow">
               <Text size="sm">
                 No unaligned baseline text is available in this time range. 
@@ -255,40 +281,59 @@ export const TimeAlignmentPopover = ({
             />
           )}
 
-          <Group justify="space-between">
-            <div>
-              {mode === 'edit' && (
-                <Button
-                  variant="light"
-                  color="red"
-                  onClick={handleDelete}
-                  disabled={saving || isProcessing}
-                >
-                  Delete
-                </Button>
-              )}
-            </div>
-            <Group>
+          {readOnly ? (
+            // Read-only mode: just a close button
+            <Group justify="flex-end">
               <Button
                 variant="subtle"
                 onClick={handleCancel}
-                disabled={saving || isProcessing}
               >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSave}
-                loading={saving || isProcessing}
-                disabled={!text.trim() || (mode === 'align' && !canAlign())}
-              >
-                Save
+                Close
               </Button>
             </Group>
-          </Group>
+          ) : (
+            // Edit mode: full set of action buttons
+            <Group justify="space-between">
+              <div>
+                {mode === 'edit' && (
+                  <Button
+                    variant="light"
+                    color="red"
+                    onClick={handleDelete}
+                    disabled={saving || isProcessing}
+                  >
+                    Delete
+                  </Button>
+                )}
+              </div>
+              <Group>
+                <Button
+                  variant="subtle"
+                  onClick={handleCancel}
+                  disabled={saving || isProcessing}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  loading={saving || isProcessing}
+                  disabled={!text.trim() || (mode === 'align' && !canAlign())}
+                >
+                  Save
+                </Button>
+              </Group>
+            </Group>
+          )}
 
           <Text size="xs" c="dimmed" style={{ fontStyle: 'italic' }}>
-            Tip: Press Ctrl+Enter to save, Escape to cancel{mode === 'edit' ? ', Delete to remove' : ''}
-            {mode === 'align' && '. Modify the text above to select which portion to align.'}
+            {readOnly ? (
+              'Read-only mode: Content cannot be modified in this view.'
+            ) : (
+              <>
+                Tip: Press Ctrl+Enter to save, Escape to cancel{mode === 'edit' ? ', Delete to remove' : ''}
+                {mode === 'align' && '. Modify the text above to select which portion to align.'}
+              </>
+            )}
           </Text>
         </Stack>
       </Popover.Dropdown>

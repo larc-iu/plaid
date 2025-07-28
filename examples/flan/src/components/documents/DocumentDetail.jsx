@@ -31,6 +31,7 @@ import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { DocumentMedia } from './media/DocumentMedia.jsx';
 import { DocumentAnalyze } from './analyze/DocumentAnalyze.jsx';
+import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
 
 export const DocumentDetail = () => {
   const { projectId, documentId } = useParams();
@@ -39,6 +40,7 @@ export const DocumentDetail = () => {
 
   const docProxy = documentsStore?.[projectId]?.[documentId];
   const storeSnap = useSnapshot(documentsStore);
+  const permissions = useDocumentPermissions(projectId);
 
   const refreshDocumentData = useCallback(async () => {
     try {
@@ -119,6 +121,10 @@ export const DocumentDetail = () => {
   }
 
   const docSnap = storeSnap[projectId][documentId];
+
+  // Calculate unified read-only state
+  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
+  const readOnly = permissions.isReadOnly || isViewingHistorical;
 
   const breadcrumbItems = [
     { title: 'Projects', href: '/projects' },
@@ -261,6 +267,7 @@ export const DocumentDetail = () => {
                             documentId={documentId}
                             reload={refreshDocumentData}
                             client={client}
+                            readOnly={readOnly}
                         />
                     )}
                   </Tabs.Panel>
@@ -276,6 +283,7 @@ export const DocumentDetail = () => {
                             documentId={documentId}
                             reload={refreshDocumentData}
                             client={client}
+                            readOnly={readOnly}
                         />
                     )}
                   </Tabs.Panel>
@@ -291,6 +299,7 @@ export const DocumentDetail = () => {
                             documentId={documentId}
                             reload={refreshDocumentData}
                             client={client}
+                            readOnly={readOnly}
                         />
                     )}
                   </Tabs.Panel>
@@ -306,6 +315,7 @@ export const DocumentDetail = () => {
                             projectId={projectId}
                             reload={refreshDocumentData}
                             client={client}
+                            readOnly={readOnly}
                         />
                     )}
                   </Tabs.Panel>
@@ -321,6 +331,7 @@ export const DocumentDetail = () => {
                             documentId={documentId}
                             reload={refreshDocumentData}
                             client={client}
+                            readOnly={readOnly}
                         />
                     )}
                   </Tabs.Panel>
