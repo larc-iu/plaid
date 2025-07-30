@@ -16,7 +16,7 @@ const ensureSentencePartitioning = async (client, document, project, textContent
   const sentenceTokenLayer = primaryTextLayer?.tokenLayers?.find(layer => layer.config?.plaid?.sentence);
   
   if (!sentenceTokenLayer) {
-    throw new Error('No sentence token layer found');
+    throw new Error('No sentence layer found');
   }
 
   // Get existing sentence tokens from the document data

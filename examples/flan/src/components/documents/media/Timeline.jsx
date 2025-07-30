@@ -67,12 +67,20 @@ export const Timeline = ({
     needleRef,
     timelineContainerRef,
     setTimelineScrollLeft,
+    autoScrollToTime,
     TIMELINE_HEIGHT
   } = timelineOps;
   
   const pixelsPerSecond = parsedDocument.ui.media.pixelsPerSecond;
   
   const onPixelsPerSecondChange = handlePixelsPerSecondChange;
+  
+  // Register autoScrollToTime with mediaOps
+  React.useEffect(() => {
+    if (mediaOps.setAutoScrollToTime) {
+      mediaOps.setAutoScrollToTime(autoScrollToTime);
+    }
+  }, [mediaOps, autoScrollToTime]);
   
   return (
     <Paper withBorder p="md">

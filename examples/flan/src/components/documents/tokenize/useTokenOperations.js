@@ -545,7 +545,7 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
 
     try {
       uiProxy.isTokenizing = true;
-      updateProgress(25, 'Resetting sentence tokens...');
+      updateProgress(25, 'Resetting sentences...');
 
       client.beginBatch();
 
@@ -555,7 +555,7 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
         client.tokens.delete(sentenceId);
       }
 
-      updateProgress(50, 'Creating single sentence token...');
+      updateProgress(50, 'Creating single sentence...');
 
       // Create a single sentence token covering the entire text
       await client.tokens.create(
@@ -571,7 +571,7 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
 
       notifications.show({
         title: 'Success',
-        message: `Reset to single sentence token`,
+        message: `Reset to single sentence`,
         color: 'green'
       });
 
@@ -580,7 +580,7 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
       }
 
     } catch (error) {
-      handleError(error, 'Clear sentence tokens');
+      handleError(error, 'Clear sentences');
     } finally {
       uiProxy.isTokenizing = false;
       uiProxy.tokenizationProgress = 0;

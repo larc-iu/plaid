@@ -22,6 +22,7 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
   // Refs for RAF and monitoring
   const selectionMonitorRef = useRef(null);
   const mediaElementRef = useRef(null);
+  const autoScrollToTimeRef = useRef(null);
   
   // ASR service hook
   const {
@@ -52,6 +53,10 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
     mediaElementRef.current = element;
   }, []);
 
+  const setAutoScrollToTime = useCallback((fn) => {
+    autoScrollToTimeRef.current = fn;
+  }, []);
+
   const handleTimeUpdate = useCallback((time) => {
     uiProxy.currentTime = time;
   }, [uiProxy]);
@@ -70,7 +75,10 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
 
   const handleSeek = useCallback((time) => {
     uiProxy.playingSelection = null; // Clear any playing selection
-    // Auto-scroll timeline will be handled by timeline operations
+    // Auto-scroll timeline to show the seek position
+    if (autoScrollToTimeRef.current) {
+      autoScrollToTimeRef.current(time);
+    }
   }, [uiProxy]);
 
   const handleSkipToBeginning = useCallback(() => {
@@ -79,6 +87,10 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
       mediaElementRef.current.currentTime = 0;
       uiProxy.currentTime = 0;
       uiProxy.playingSelection = null;
+      // Auto-scroll timeline to beginning
+      if (autoScrollToTimeRef.current) {
+        autoScrollToTimeRef.current(0);
+      }
     }
   }, [uiProxy]);
 
@@ -88,6 +100,10 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
       mediaElementRef.current.currentTime = uiSnap.duration;
       uiProxy.currentTime = uiSnap.duration;
       uiProxy.playingSelection = null;
+      // Auto-scroll timeline to end
+      if (autoScrollToTimeRef.current) {
+        autoScrollToTimeRef.current(uiSnap.duration);
+      }
     }
   }, [uiProxy, uiSnap.duration]);
 
@@ -424,6 +440,7 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
     
     // Media operations
     setMediaElement,
+    setAutoScrollToTime,
     handleTimeUpdate,
     handleDurationChange,
     handlePlayingChange,
