@@ -2,11 +2,11 @@ import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { useSnapshot } from 'valtio';
 import documentsStore from '../../../stores/documentsStore.js';
 
-export const useDocumentPermissions = (projectId) => {
+export const useDocumentPermissions = (projectId, documentId) => {
   const { user } = useAuth();
   const storeSnap = useSnapshot(documentsStore);
-  const projectData = storeSnap[projectId]?.project;
-  
+  const projectData = storeSnap?.[projectId]?.[documentId]?.project;
+
   if (!user || !projectData) {
     return {
       canRead: false,

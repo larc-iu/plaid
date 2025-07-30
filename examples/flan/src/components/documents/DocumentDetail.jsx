@@ -40,7 +40,7 @@ export const DocumentDetail = () => {
 
   const docProxy = documentsStore?.[projectId]?.[documentId];
   const storeSnap = useSnapshot(documentsStore);
-  const permissions = useDocumentPermissions(projectId);
+  const permissions = useDocumentPermissions(projectId, documentId);
 
   const refreshDocumentData = useCallback(async () => {
     try {
