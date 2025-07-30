@@ -6,12 +6,13 @@
 
 (defn get-project-id-from-audit-path
   "Extract project ID from audit path parameters"
-  [{:keys [params]}]
+  [{params :parameters}]
   (-> params :path :project-id))
 
 (defn get-project-id-from-document
   "Get project ID from document ID in path"
-  [{:keys [db params]}]
+  [{db :db params :parameters}]
+  (println params)
   (let [document-id (-> params :path :document-id)
         document (doc/get db document-id)]
     (:document/project document)))
