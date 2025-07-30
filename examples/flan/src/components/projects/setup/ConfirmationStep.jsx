@@ -110,7 +110,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       // Step 4: Create sentence token layer
       let sentenceTokenLayerId = null;
       if (textLayerId) {
-        updateProgress(35, 'Creating sentence token layer...');
+        updateProgress(35, 'Creating sentence layer...');
         const sentenceTokenLayer = await client.tokenLayers.create(textLayerId, 'Sentences');
         sentenceTokenLayerId = sentenceTokenLayer.id;
         resources.sentenceTokenLayer = sentenceTokenLayer;
