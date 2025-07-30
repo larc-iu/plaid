@@ -380,22 +380,23 @@ const SentenceRow = ({
     );
   };
 
+
   const sentenceNumber = (
-      <Text
-          size="sm"
-          c="dimmed"
-          style={{
-            position: 'absolute',
-            left: '4px',
-            top: '12px',
-            fontWeight: 500,
-            minWidth: '24px',
-            textAlign: 'right',
-            zIndex: 10
-          }}
-      >
-        {sentenceIndex + 1}
-      </Text>
+   <Text
+       size="sm"
+       c="dimmed"
+       style={{
+         position: 'absolute',
+         left: '4px',
+         top: '12px',
+         fontWeight: 500,
+         minWidth: '24px',
+         textAlign: 'right',
+         zIndex: 10
+       }}
+   >
+     {sentenceIndex + 1}
+   </Text>
   );
 
   // Create preview content for lazy loading
@@ -417,29 +418,30 @@ const SentenceRow = ({
           ))}
         </div>
         <div className="tokens-container">
-            {sentenceSnap.tokens.map((token, tokenIndex) => (
-              <div className="token-column">
-                <div className="token-form">
-                  {token.content}
-                </div>
-              </div>
-            ))}
+          <div className="token-column"><div className="token-form">Lorem</div></div>
+          <div className="token-column"><div className="token-form">ipsum</div></div>
+          <div className="token-column"><div className="token-form">dolor</div></div>
+          <div className="token-column"><div className="token-form">sit</div></div>
+          <div className="token-column"><div className="token-form">amet</div></div>
+          <div className="token-column"><div className="token-form">consectetu</div></div>
+          <div className="token-column"><div className="token-form">adiscing</div></div>
+          <div className="token-column"><div className="token-form">elit</div></div>
         </div>
-        <Stack spacing="xs" style={{ marginTop: '8px' }}>
-          {sentenceFields.length > 0 ? (
-              sentenceFields.map(field => (
-                  <Group key={field.id} align="center">
-                    <div className="row-label" style={{ minWidth: '100px', height: 'auto', padding: '4px 8px' }}>
-                      {field.name}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      {sentenceSnap.annotations[field.name]?.value}
-                    </div>
-                  </Group>
-              ))
-          ) : null}
-        </Stack>
       </div>
+      <Stack spacing="xs" style={{ marginTop: '8px' }}>
+        {sentenceFields.length > 0 ? (
+            sentenceFields.map(field => (
+                <Group key={field.id} align="center">
+                  <div className="row-label" style={{ minWidth: '100px', height: 'auto', padding: '4px 8px' }}>
+                    {field.name}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    {""}
+                  </div>
+                </Group>
+            ))
+        ) : null}
+      </Stack>
       <div className="analyze-blur-overlay" />
     </>
   );

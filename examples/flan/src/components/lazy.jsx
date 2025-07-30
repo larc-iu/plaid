@@ -29,12 +29,8 @@ export default function Lazy({ children, className, style, rootMargin, contentPr
     Object.assign(mergedStyle, style)
 
     return (
-        <div ref={ref} className={className || ""}>
-            {isVisible ? children : (
-                <div style={mergedStyle}>
-                    {contentPreview}
-                </div>
-            )}
+        <div ref={ref} className={className} style={mergedStyle}>
+            {isVisible ? children : contentPreview}
         </div>
     );
 }
