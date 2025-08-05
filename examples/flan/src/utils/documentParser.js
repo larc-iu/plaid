@@ -29,7 +29,8 @@ export function parseDocument(rawDocument, client, project) {
       layers.primaryTokenLayer,
       layers.spanLayers,
       documentData.text.body,
-      client
+      client,
+      layers.morphemeTokenLayer
     );
 
     // Process alignment tokens
@@ -101,19 +102,31 @@ function findPrimaryLayers(textLayers) {
   const primaryTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.primary);
   const sentenceTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.sentence);
   const alignmentTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.alignment);
+  const morphemeTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.morpheme);
 
   // Collect all span layers and categorize by scope
   const spanLayers = {
     token: [],
-    sentence: []
+    sentence: [],
+    morpheme: []
   };
   
   // Collect span layers from primary token layer
   if (primaryTokenLayer.spanLayers) {
     primaryTokenLayer.spanLayers.forEach(spanLayer => {
       const scope = spanLayer.config?.plaid?.scope;
-      if (scope === 'Token') {
+      if (scope === 'Token' || scope === 'Word') {
         spanLayers.token.push(spanLayer);
+      }
+    });
+  }
+  
+  // Collect span layers from morpheme token layer
+  if (morphemeTokenLayer?.spanLayers) {
+    morphemeTokenLayer.spanLayers.forEach(spanLayer => {
+      const scope = spanLayer.config?.plaid?.scope;
+      if (scope === 'Morpheme') {
+        spanLayers.morpheme.push(spanLayer);
       }
     });
   }
@@ -133,6 +146,7 @@ function findPrimaryLayers(textLayers) {
     primaryTokenLayer,
     sentenceTokenLayer,
     alignmentTokenLayer,
+    morphemeTokenLayer,
     spanLayers
   };
 }
@@ -202,6 +216,64 @@ function collectOrthographies(token, primaryTokenLayer) {
   });
   
   return orthographies;
+}
+
+/**
+ * Map morpheme tokens to their parent word tokens
+ * @param {Array} wordTokens - Array of word tokens
+ * @param {Object} morphemeTokenLayer - Morpheme token layer
+ * @param {Object} spanLayers - Categorized span layers
+ * @param {string} text - The full document text for computing token content
+ * @returns {Map} Map of word token IDs to their morphemes
+ */
+function mapMorphemesToWords(wordTokens, morphemeTokenLayer, spanLayers, text) {
+  const morphemesByWord = new Map();
+  
+  if (!morphemeTokenLayer || !morphemeTokenLayer.tokens) {
+    return morphemesByWord;
+  }
+  
+  // Create a map for quick word token lookup by position
+  const wordTokensByPosition = new Map();
+  wordTokens.forEach(wordToken => {
+    const key = `${wordToken.begin}-${wordToken.end}`;
+    wordTokensByPosition.set(key, wordToken);
+  });
+  
+  // Group morphemes by their parent word (same begin/end)
+  morphemeTokenLayer.tokens.forEach(morpheme => {
+    const key = `${morpheme.begin}-${morpheme.end}`;
+    const parentWord = wordTokensByPosition.get(key);
+    
+    if (parentWord) {
+      if (!morphemesByWord.has(parentWord.id)) {
+        morphemesByWord.set(parentWord.id, []);
+      }
+      
+      // Create morpheme object with annotations
+      const morphemeWithData = {
+        id: morpheme.id,
+        text: morpheme.text,
+        begin: morpheme.begin,
+        end: morpheme.end,
+        precedence: morpheme.precedence || 1,
+        content: text.slice(morpheme.begin, morpheme.end),
+        metadata: morpheme.metadata || {},
+        annotations: collectAnnotations(morpheme, spanLayers.morpheme, 'Morpheme')
+      };
+      
+      morphemesByWord.get(parentWord.id).push(morphemeWithData);
+    } else {
+      console.warn(`Morpheme token ${morpheme.id} at position ${morpheme.begin}-${morpheme.end} has no corresponding word token`);
+    }
+  });
+  
+  // Sort morphemes by precedence for each word
+  morphemesByWord.forEach((morphemes, wordId) => {
+    morphemes.sort((a, b) => a.precedence - b.precedence);
+  });
+  
+  return morphemesByWord;
 }
 
 /**
@@ -290,13 +362,19 @@ function processSingleTokenVocabLinks(vocabs, client) {
  * @param {Object} spanLayers - Categorized span layers
  * @param {string} text - The full document text for computing token content
  * @param {Object} client - Client object for API calls (optional, for cleanup)
+ * @param {Object} morphemeTokenLayer - Morpheme token layer
  * @returns {Array} Sentences with tokens and annotations
  */
-function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, client) {
+function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, client, morphemeTokenLayer) {
   const wordTokens = primaryTokenLayer.tokens || [];
   
   // Process vocabulary links from the primary token layer
   const singleTokenVocabLinks = processSingleTokenVocabLinks(primaryTokenLayer.vocabs || [], client);
+  
+  // Process vocabulary links from the morpheme token layer if it exists
+  const morphemeVocabLinks = morphemeTokenLayer 
+    ? processSingleTokenVocabLinks(morphemeTokenLayer.vocabs || [], client)
+    : {};
   
   // Sort word tokens by begin position
   const sortedTokens = wordTokens
@@ -309,9 +387,23 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, cl
       metadata: token.metadata || {}, // Include full metadata object
       annotations: {}, // Will be populated later
       orthographies: {}, // Will be populated later from metadata
-      vocabItem: singleTokenVocabLinks[token.id] || null // Add vocab item if linked
+      vocabItem: singleTokenVocabLinks[token.id] || null, // Add vocab item if linked
+      morphemes: [] // Will be populated if morpheme layer exists
     }))
     .sort((a, b) => a.begin - b.begin);
+  
+  // Map morphemes to words if morpheme layer exists
+  let morphemesByWord = new Map();
+  if (morphemeTokenLayer) {
+    morphemesByWord = mapMorphemesToWords(sortedTokens, morphemeTokenLayer, spanLayers, text);
+    
+    // Add morpheme vocab links to morphemes
+    morphemesByWord.forEach((morphemes, wordId) => {
+      morphemes.forEach(morpheme => {
+        morpheme.vocabItem = morphemeVocabLinks[morpheme.id] || null;
+      });
+    });
+  }
   
   // Map tokens to sentences
   const enrichedSentences = sentences.map(sentence => {
@@ -323,8 +415,9 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, cl
     // Collect token-level annotations and orthographies for each token
     const tokensWithAnnotations = tokensInSentence.map(token => ({
       ...token,
-      annotations: collectAnnotations(token, spanLayers.token, 'Token'),
-      orthographies: collectOrthographies(token, primaryTokenLayer)
+      annotations: collectAnnotations(token, spanLayers.token, 'Word'),
+      orthographies: collectOrthographies(token, primaryTokenLayer),
+      morphemes: morphemesByWord.get(token.id) || [] // Add morphemes to each word token
     }));
     
     // Collect sentence-level annotations for the sentence
@@ -353,7 +446,7 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, cl
  * Collect annotations for a given item (token or sentence)
  * @param {Object} item - Token or sentence object
  * @param {Array} spanLayers - Relevant span layers
- * @param {string} scope - 'Token' or 'Sentence'
+ * @param {string} scope - 'Word' or 'Morpheme' or 'Sentence'
  * @returns {Object} Annotations keyed by layer name, with null for missing annotations
  */
 function collectAnnotations(item, spanLayers, scope) {
@@ -368,8 +461,8 @@ function collectAnnotations(item, spanLayers, scope) {
   spanLayers.forEach(spanLayer => {
     // Find spans that match this item
     const matchingSpans = (spanLayer.spans || []).filter(span => {
-      if (scope === 'Token') {
-        // For tokens, find spans that contain this token
+      if (scope === 'Word' || scope === 'Morpheme') {
+        // For tokens/morphemes, find spans that contain this token
         return span.tokens && span.tokens.some(tokenId => tokenId === item.id);
       } else {
         // For sentences, find spans that match this sentence

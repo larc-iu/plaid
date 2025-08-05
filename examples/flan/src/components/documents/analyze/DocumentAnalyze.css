@@ -55,12 +55,14 @@
   height: 40px;
   display: flex;
   align-items: center;
-  padding: 8px;
+  padding: 4px;
   font-size: 14px;
   justify-content: center;
   text-align: center;
   white-space: nowrap;
   margin-top: 1rem;
+  border-radius: 2px;
+  background-color: #eee;
 }
 
 /* Annotation cells */
@@ -77,22 +79,22 @@
   display: inline-block;
   width: 100%;
   padding: 4px 8px;
-  border: 1px solid transparent;
+  border: none;
   border-radius: 4px;
   font-size: 12px;
   background-color: transparent;
   cursor: text;
   outline: none;
-  transition: border-color 0.2s, background-color 0.2s;
+  transition: outline 0.2s, background-color 0.2s;
   font-family: inherit;
   box-sizing: border-box;
   white-space: nowrap;
 }
 
 .editable-field:focus {
-  border-color: #3b82f6;
+  outline: 2px solid #3b82f6;
+  outline-offset: -1px;
   background-color: #fff;
-  box-shadow: 0 0 0 1px #3b82f6;
 }
 
 .editable-field--empty {
@@ -147,6 +149,92 @@
   backdrop-filter: blur(4px);
 }
 
+/* Morpheme Grid Styles */
+.morpheme-grid-container {
+  display: flex;
+  align-items: flex-start;
+  margin: 8px 0;
+  padding: 0;
+  gap: 4px;
+}
+
+.morpheme-column {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 60px;
+  width: min-content;
+}
+
+.morpheme-column--placeholder {
+  opacity: 0.7;
+}
+
+.morpheme-column--placeholder:hover {
+  opacity: 1;
+}
+
+/* Morpheme form (first row) */
+.morpheme-form {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  font-size: 12px;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+  border-radius: 2px;
+  background-color: #eee;
+}
+
+/* Morpheme annotation cells */
+.morpheme-annotation-cell {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+}
+
+/* Morpheme-specific editable field styles */
+.morpheme-form-field {
+  font-weight: 500;
+  font-size: 11px;
+  text-align: center;
+  min-width: 40px;
+  border-radius: 3px;
+  border: none;
+}
+
+.morpheme-form-field--placeholder {
+  font-style: italic;
+  color: #6c757d;
+}
+
+.morpheme-form-field--placeholder:focus {
+  font-style: normal;
+  color: #000;
+}
+
+.morpheme-annotation-field {
+  font-size: 10px;
+  text-align: center;
+  min-width: 40px;
+  border-radius: 3px;
+  border: none;
+}
+
+/* Morpheme form vocab display */
+.morpheme-form .vocab-form-display {
+  font-size: 0.75em;
+  color: #888888;
+  font-style: italic;
+  margin-top: 1px;
+  line-height: 1.0;
+  min-height: 0.75em;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .labels-column {
@@ -161,5 +249,25 @@
   .editable-field {
     font-size: 11px;
     padding: 3px 6px;
+  }
+
+  .morpheme-grid-container {
+    margin: 6px 0;
+    padding: 0;
+  }
+
+  .morpheme-form,
+  .morpheme-annotation-cell {
+    height: 28px;
+  }
+
+  .morpheme-form-field,
+  .morpheme-annotation-field {
+    font-size: 9px;
+    min-width: 35px;
+  }
+
+  .morpheme-column {
+    min-width: 45px;
   }
 }

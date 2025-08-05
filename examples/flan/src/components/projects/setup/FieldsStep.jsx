@@ -7,7 +7,7 @@ export const FieldsStep = ({ data, onDataChange, setupData, isNewProject, projec
   if (!data?.fields) {
     onDataChange({ 
       fields: [
-        { name: 'Gloss', scope: 'Token', isCustom: false },
+        { name: 'Gloss', scope: 'Word', isCustom: false },
         { name: 'Translation', scope: 'Sentence', isCustom: false }
       ],
       ignoredTokens: {
@@ -28,9 +28,10 @@ export const FieldsStep = ({ data, onDataChange, setupData, isNewProject, projec
       {/* Explanatory header */}
       <div>
         <Text>
-          Configure annotation fields for your project. <Badge color="blue" variant="light" size="sm">Token</Badge> scope 
-          fields apply to individual words or morphemes, while <Badge color="green" variant="light" size="sm">Sentence</Badge> scope 
-          fields apply to entire sentences or phrases.
+          Configure annotation fields for your project. 
+          <Badge color="blue" variant="light" size="sm">Word</Badge> scope fields apply to words,{' '}
+          <Badge color="violet" variant="light" size="sm">Morpheme</Badge> scope fields apply to morphemes, and{' '}
+          <Badge color="green" variant="light" size="sm">Sentence</Badge> scope fields apply to entire sentences.
         </Text>
       </div>
 

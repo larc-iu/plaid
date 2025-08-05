@@ -22,7 +22,7 @@ import { notifications } from '@mantine/notifications';
 const DEFAULT_FIELDS = [
   {
     name: 'Gloss',
-    scope: 'Token',
+    scope: 'Word',
     isCustom: false
   },
   {
@@ -49,9 +49,16 @@ export const FieldsManager = ({
   const [fields, setFields] = useState([]);
   const [ignoredTokens, setIgnoredTokens] = useState(DEFAULT_IGNORED_TOKENS);
   const [newFieldName, setNewFieldName] = useState('');
-  const [newFieldScope, setNewFieldScope] = useState('Token');
+  const [newFieldScope, setNewFieldScope] = useState('Word');
   const [hoveredField, setHoveredField] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  // Define scope options (morpheme layer is always present)
+  const scopeOptions = [
+    { value: 'Word', label: 'Word' },
+    { value: 'Morpheme', label: 'Morpheme' },
+    { value: 'Sentence', label: 'Sentence' }
+  ];
 
   // Initialize data on mount
   useEffect(() => {
@@ -260,15 +267,22 @@ export const FieldsManager = ({
               accessor: 'scope',
               title: 'Scope',
               width: '15%',
-              render: (record) => (
+              render: (record) => {
+                const scopeColors = {
+                  'Word': 'blue', 
+                  'Morpheme': 'violet',
+                  'Sentence': 'green'
+                };
+                return (
                   <Badge
-                      color={record.scope === 'Token' ? 'blue' : 'green'}
+                      color={scopeColors[record.scope] || 'gray'}
                       variant="light"
                       size="sm"
                   >
                     {record.scope}
                   </Badge>
-              )
+                );
+              }
             },
             {
               accessor: 'name',
@@ -355,10 +369,7 @@ export const FieldsManager = ({
             <Select
               value={newFieldScope}
               onChange={setNewFieldScope}
-              data={[
-                { value: 'Token', label: 'Token' },
-                { value: 'Sentence', label: 'Sentence' }
-              ]}
+              data={scopeOptions}
               w={120}
             />
             <Button
@@ -376,7 +387,7 @@ export const FieldsManager = ({
       <Paper p="md" withBorder>
         <Text size="md" fw={500} mb="md">Ignored Tokens</Text>
         <Text size="sm" c="dimmed" mb="lg" component="div">
-          Configure which tokens should be ignored when applying <Badge color="blue" variant="light" size="sm">Token</Badge> scope annotations.
+          Configure which tokens should be ignored when applying <Badge color="blue" variant="light" size="sm">Word</Badge> scope annotations.
         </Text>
 
         <Radio.Group
@@ -396,7 +407,7 @@ export const FieldsManager = ({
                   Punctuation Exceptions
                 </Text>
                 <Text size="xs" c="dimmed" mb="md">
-                  These punctuation marks will NOT be ignored and can receive <Badge color="blue" variant="light" size="sm">Token</Badge> scope annotations:
+                  These punctuation marks will NOT be ignored and can receive <Badge color="blue" variant="light" size="sm">Word</Badge> scope annotations:
                 </Text>
                 <TagsInput
                   placeholder={"Add punctuation to include (e.g. ', \", -)"}
@@ -419,7 +430,7 @@ export const FieldsManager = ({
                   Ignored Tokens
                 </Text>
                 <Text size="xs" c="dimmed" mb="md">
-                  These specific tokens will be ignored for <Badge color="blue" variant="light" size="sm">Token</Badge> scope annotations:
+                  These specific tokens will be ignored for <Badge color="blue" variant="light" size="sm">Word</Badge> scope annotations:
                 </Text>
                 <TagsInput
                   placeholder="Add tokens to ignore (e.g. . , ; !)"
