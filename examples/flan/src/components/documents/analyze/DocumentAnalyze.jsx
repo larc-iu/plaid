@@ -17,6 +17,7 @@ import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
 import { useAnalyzeOperations } from './useAnalyzeOperations.js';
 import { getIgnoredTokensConfig } from '../../../utils/tokenizationUtils.js';
 import { VocabLinkPopover } from './VocabLinkPopover.jsx';
+import { MorphemeGrid } from './MorphemeGrid.jsx';
 import documentsStore from '../../../stores/documentsStore.js';
 import Lazy from '../../lazy.jsx';
 import './DocumentAnalyze.css';
@@ -225,6 +226,25 @@ const SentenceRow = ({
     return parsedDocument?.layers?.primaryTokenLayer?.config?.plaid?.orthographies || [];
   }, [projectId, documentId]);
 
+  const morphemeFields = useMemo(() => {
+    if (!sentenceSnap.tokens?.length) return [];
+    
+    // Access the store directly without subscription to avoid re-renders
+    const parsedDocument = documentsStore[projectId][documentId];
+    const morphemeSpanLayers = parsedDocument?.layers?.spanLayers?.morpheme || [];
+
+    return morphemeSpanLayers.map(layer => ({
+      name: layer.name,
+      id: layer.id || layer.name
+    }));
+  }, [sentenceSnap.tokens, projectId, documentId]);
+  
+  const morphemeLayerId = useMemo(() => {
+    // Access the store directly without subscription to avoid re-renders
+    const parsedDocument = documentsStore[projectId][documentId];
+    return parsedDocument?.layers?.morphemeTokenLayer?.id;
+  }, [projectId, documentId]);
+
   // TokenColumn component for displaying individual token annotations
   const TokenColumn = ({ token, tokenIndex }) => {
     const tokenIsIgnored = isTokenIgnored(token, ignoredTokensConfig);
@@ -241,6 +261,17 @@ const SentenceRow = ({
       const allFields = [...orthographyFields.map(o => o.name), ...tokenFields.map(f => f.name)];
       const fieldIndex = allFields.indexOf(field);
       const baseIndex = sentenceIndex * 1000 + (fieldIndex * 100) + tokenIndex + 1;
+      return baseIndex;
+    };
+
+    const getMorphemeTabIndex = (morphemeIndex, field) => {
+      // Morpheme tab indices come after regular token fields
+      const regularFieldsCount = orthographyFields.length + tokenFields.length;
+      const morphemeFieldsCount = morphemeFields.length + 1; // +1 for form field
+      const morphemeFieldIndex = field === 'form' ? 0 : morphemeFields.findIndex(f => f.name === field) + 1;
+      // Give each word 1000 tab index space, each sentence 1,000,000 space
+      // Tab through rows first (all forms, then all field1s, etc.), not columns
+      const baseIndex = sentenceIndex * 1000000 + (tokenIndex * 1000) + (regularFieldsCount * 100) + (morphemeFieldIndex * 10) + morphemeIndex + 1;
       return baseIndex;
     };
     
@@ -294,6 +325,20 @@ const SentenceRow = ({
             {/* Empty cell */}
           </div>
         ))}
+        
+        {/* Morpheme Grid - render only if morpheme fields exist */}
+        {morphemeFields.length > 0 && (
+          <MorphemeGrid
+            token={token}
+            morphemeFields={morphemeFields}
+            morphemeLayerId={morphemeLayerId}
+            operations={operations}
+            vocabularies={vocabularies}
+            readOnly={readOnly}
+            getTabIndex={getMorphemeTabIndex}
+            sentenceIndex={sentenceIndex}
+          />
+        )}
       </div>
     );
   };
@@ -328,6 +373,22 @@ const SentenceRow = ({
               {field.name}
             </div>
           ))}
+          
+          {/* Morpheme field rows - only show if morpheme fields exist */}
+          {morphemeFields.length > 0 && (
+            <>
+              {/* Morpheme form label */}
+              <div className="row-label">
+                Morphemes
+              </div>
+              {/* Morpheme annotation field labels */}
+              {morphemeFields.map(field => (
+                <div key={`morpheme-${field.id}`} className="row-label">
+                  {field.name}
+                </div>
+              ))}
+            </>
+          )}
         </div>
         
         {/* Wrapping tokens container */}
@@ -416,6 +477,18 @@ const SentenceRow = ({
                 {field.name}
               </div>
           ))}
+          {morphemeFields.length > 0 && (
+            <>
+              <div className="row-label">
+                Morphemes
+              </div>
+              {morphemeFields.map(field => (
+                <div key={`morpheme-${field.id}`} className="row-label">
+                  {field.name}
+                </div>
+              ))}
+            </>
+          )}
         </div>
         <div className="tokens-container">
           <div className="token-column"><div className="token-form">Lorem</div></div>

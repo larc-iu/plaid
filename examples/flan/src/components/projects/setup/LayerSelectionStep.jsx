@@ -125,7 +125,10 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
   const handleTokenLayerSelectionChange = (value) => {
     onDataChange({
       ...data,
-      selectedTokenLayerId: value
+      selectedTokenLayerId: value,
+      morphemeLayerType: null,
+      selectedMorphemeLayerId: null,
+      newMorphemeLayerName: ''
     });
   };
 
@@ -133,6 +136,30 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
     onDataChange({
       ...data,
       newTokenLayerName: event.currentTarget.value
+    });
+  };
+
+  const handleMorphemeLayerTypeChange = (value) => {
+    const newData = {
+      ...data,
+      morphemeLayerType: value,
+      selectedMorphemeLayerId: null,
+      newMorphemeLayerName: ''
+    };
+    onDataChange(newData);
+  };
+
+  const handleMorphemeLayerSelectionChange = (value) => {
+    onDataChange({
+      ...data,
+      selectedMorphemeLayerId: value
+    });
+  };
+
+  const handleNewMorphemeLayerNameChange = (event) => {
+    onDataChange({
+      ...data,
+      newMorphemeLayerName: event.currentTarget.value
     });
   };
 
@@ -283,6 +310,60 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
           </Radio.Group>
         )}
       </Paper>
+
+      {/* Morpheme Layer Selection */}
+      <Paper p="md" withBorder>
+        <Text size="md" fw={500} mb="md">Morpheme Layer</Text>
+        
+        {!hasValidTextLayerSelection() || !data?.tokenLayerType ? (
+          <Text size="sm" c="dimmed">Please select a token layer first</Text>
+        ) : (
+          <Radio.Group
+            value={data?.morphemeLayerType || 'new'}
+            onChange={handleMorphemeLayerTypeChange}
+          >
+            <Stack spacing="md">
+              <Radio
+                value="existing"
+                label="Use existing token layer as morpheme layer"
+                disabled={availableTokenLayers.filter(layer => layer.id && layer.id !== data?.selectedTokenLayerId).length === 0}
+              />
+              {data?.morphemeLayerType === 'existing' && availableTokenLayers.filter(layer => layer.id && layer.id !== data?.selectedTokenLayerId).length > 0 && (
+                <Select
+                  placeholder="Select a token layer"
+                  data={availableTokenLayers
+                    .filter(layer => layer.id && layer.id !== data?.selectedTokenLayerId) // Exclude the selected token layer
+                    .map(layer => ({
+                      value: layer.id,
+                      label: layer.name || layer.id
+                    }))}
+                  value={data?.selectedMorphemeLayerId || null}
+                  onChange={handleMorphemeLayerSelectionChange}
+                  ml="xl"
+                />
+              )}
+              {data?.morphemeLayerType === 'existing' && availableTokenLayers.filter(layer => layer.id && layer.id !== data?.selectedTokenLayerId).length === 0 && (
+                <Text size="sm" c="dimmed" ml="xl">
+                  No other token layers available
+                </Text>
+              )}
+              
+              <Radio
+                value="new"
+                label="Create new morpheme layer"
+              />
+              {data?.morphemeLayerType === 'new' && (
+                <TextInput
+                  placeholder="Enter morpheme layer name"
+                  value={data?.newMorphemeLayerName || ''}
+                  onChange={handleNewMorphemeLayerNameChange}
+                  ml="xl"
+                />
+              )}
+            </Stack>
+          </Radio.Group>
+        )}
+      </Paper>
     </Stack>
   );
 };
@@ -299,5 +380,10 @@ LayerSelectionStep.isValid = (data) => {
     (data?.tokenLayerType === 'existing' && data?.selectedTokenLayerId) ||
     (data?.tokenLayerType === 'new' && data?.newTokenLayerName?.trim());
   
-  return hasValidTextLayer && hasValidTokenLayer;
+  // Morpheme layer is mandatory and must be valid
+  const hasValidMorphemeLayer = 
+    (data?.morphemeLayerType === 'existing' && data?.selectedMorphemeLayerId) ||
+    (data?.morphemeLayerType === 'new' && data?.newMorphemeLayerName?.trim());
+  
+  return hasValidTextLayer && hasValidTokenLayer && hasValidMorphemeLayer;
 };

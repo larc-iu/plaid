@@ -107,6 +107,34 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         await client.tokenLayers.setConfig(tokenLayerId, "plaid", "primary", true);
       }
 
+      // Step 3.5: Create/configure morpheme layer
+      let morphemeLayerId = null;
+      if (textLayerId) {
+        if (isNewProject) {
+          // For new projects, always create a default morpheme layer
+          updateProgress(33, 'Creating morpheme layer...');
+          const morphemeLayer = await client.tokenLayers.create(textLayerId, 'Main Morphemes');
+          morphemeLayerId = morphemeLayer.id;
+          resources.morphemeLayer = morphemeLayer;
+          // Mark as morpheme layer
+          await client.tokenLayers.setConfig(morphemeLayerId, "plaid", "morpheme", true);
+        } else if (setupData.layerSelection?.morphemeLayerType) {
+          if (setupData.layerSelection.morphemeLayerType === 'new' && setupData.layerSelection.newMorphemeLayerName) {
+            updateProgress(33, 'Creating morpheme layer...');
+            const morphemeLayer = await client.tokenLayers.create(textLayerId, setupData.layerSelection.newMorphemeLayerName);
+            morphemeLayerId = morphemeLayer.id;
+            resources.morphemeLayer = morphemeLayer;
+            // Mark as morpheme layer
+            await client.tokenLayers.setConfig(morphemeLayerId, "plaid", "morpheme", true);
+          } else if (setupData.layerSelection.morphemeLayerType === 'existing' && setupData.layerSelection.selectedMorphemeLayerId) {
+            morphemeLayerId = setupData.layerSelection.selectedMorphemeLayerId;
+            updateProgress(33, 'Using existing morpheme layer...');
+            // Mark as morpheme layer
+            await client.tokenLayers.setConfig(morphemeLayerId, "plaid", "morpheme", true);
+          }
+        }
+      }
+
       // Step 4: Create sentence token layer
       let sentenceTokenLayerId = null;
       if (textLayerId) {
@@ -152,8 +180,20 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
           for (const field of setupData.fields.fields) {
             try {
               // Choose parent layer based on field scope
-              const parentLayerId = field.scope === 'Sentence' ? sentenceTokenLayerId : tokenLayerId;
-              const parentType = field.scope === 'Sentence' ? 'sentence token layer' : 'primary token layer';
+              let parentLayerId;
+              let parentType;
+              
+              if (field.scope === 'Sentence') {
+                parentLayerId = sentenceTokenLayerId;
+                parentType = 'sentence token layer';
+              } else if (field.scope === 'Morpheme' && morphemeLayerId) {
+                parentLayerId = morphemeLayerId;
+                parentType = 'morpheme token layer';
+              } else {
+                // Default to token layer for 'Word' scope
+                parentLayerId = tokenLayerId;
+                parentType = 'primary token layer';
+              }
               
               updateProgress(50, `Creating span layer: ${field.name} (${field.scope})...`);
               const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
@@ -317,6 +357,20 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
               <Badge color="gray">Not configured</Badge>
             )}
           </Group>
+          {(layerData.morphemeLayerType || isNewProject) && (
+            <Group>
+              <Text size="sm" fw={500}>Morpheme Layer:</Text>
+              {isNewProject ? (
+                <Badge color="green">New: Main Morphemes</Badge>
+              ) : layerData.morphemeLayerType === 'existing' ? (
+                <Badge color="blue">Existing: {layerData.selectedMorphemeLayerId}</Badge>
+              ) : layerData.morphemeLayerType === 'new' ? (
+                <Badge color="green">New: {layerData.newMorphemeLayerName}</Badge>
+              ) : (
+                <Badge color="gray">Not configured</Badge>
+              )}
+            </Group>
+          )}
         </Stack>
       </Paper>
     );
@@ -371,7 +425,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         <List size="sm">
           {fieldsData.fields.map(field => (
             <List.Item key={field.name}>
-              {field.name} - <Badge size="xs" color={field.scope === 'Token' ? 'blue' : 'green'}>{field.scope}</Badge>
+              {field.name} - <Badge size="xs" color={field.scope === 'Word' ? 'blue' : field.scope === 'Morpheme' ? 'violet' : 'green'}>{field.scope}</Badge>
             </List.Item>
           ))}
         </List>
@@ -435,6 +489,9 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
             )}
             {createdResources.tokenLayer && (
               <Text size="sm">✓ Token layer: {createdResources.tokenLayer.name}</Text>
+            )}
+            {createdResources.morphemeLayer && (
+              <Text size="sm">✓ Morpheme layer: {createdResources.morphemeLayer.name}</Text>
             )}
             {createdResources.sentenceTokenLayer && (
               <Text size="sm">✓ Sentence token layer: {createdResources.sentenceTokenLayer.name}</Text>

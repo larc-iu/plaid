@@ -47,6 +47,7 @@ export const VocabLinkPopover = ({
   vocabularies, 
   token, 
   operations,
+  onVocabLinkUpdate,
   children,
   readOnly = false 
 }) => {
@@ -116,49 +117,89 @@ export const VocabLinkPopover = ({
   };
 
   const handleVocabItemClick = async (vocabItem) => {
+    console.log(`[VocabLinkPopover] handleVocabItemClick called with vocabItem:`, vocabItem);
+    
     // Close popover
     setOpened(false);
 
     // Check if this is the currently selected item - if so, unlink it
     const existingItem = displayVocabItem;
+    console.log(`[VocabLinkPopover] existingItem:`, existingItem);
+    
     if (existingItem && existingItem.id === vocabItem.id) {
+      console.log(`[VocabLinkPopover] Unlinking vocab item ${vocabItem.id}`);
       // Unlink the selected item
       setLocalState({ type: 'unlinked' });
+      
+      // OPTIMISTIC UPDATE: Update parent morpheme immediately
+      if (onVocabLinkUpdate) {
+        onVocabLinkUpdate(token, null); // null = unlinked
+      }
 
       try {
+        console.log(`[VocabLinkPopover] Calling client.vocabLinks.delete(${existingItem.linkId})`);
         await operations.handleVocabOperation(() => client.vocabLinks.delete(existingItem.linkId));
+        console.log(`[VocabLinkPopover] Successfully unlinked vocab item`);
       } catch (error) {
+        console.error(`[VocabLinkPopover] Failed to unlink vocab item:`, error);
         setLocalState({ type: 'none' }); // Reset on error
+        // Revert optimistic update on error
+        if (onVocabLinkUpdate) {
+          onVocabLinkUpdate(token, existingItem);
+        }
       }
       return;
     }
     
+    console.log(`[VocabLinkPopover] Linking vocab item ${vocabItem.id} to token ${token.id}`);
     // Set local state for immediate UI feedback
     setLocalState({ type: 'linked', item: vocabItem });
+    
+    // OPTIMISTIC UPDATE: Update parent morpheme immediately
+    if (onVocabLinkUpdate) {
+      onVocabLinkUpdate(token, vocabItem);
+    }
     
     try {
       // Use batch operation to delete existing link and create new one
       await operations.handleVocabOperation(async () => {
+        console.log(`[VocabLinkPopover] Starting batch operation`);
         await client.beginBatch();
         
         // Delete existing vocab link if there is one
         if (existingItem) {
+          console.log(`[VocabLinkPopover] Deleting existing link ${existingItem.linkId}`);
           await client.vocabLinks.delete(existingItem.linkId);
         }
 
         // Create new vocab link between token and vocab item
+        console.log(`[VocabLinkPopover] Creating new link: vocabItem ${vocabItem.id} -> token ${token.id}`);
         await client.vocabLinks.create(vocabItem.id, [token.id]);
         
+        console.log(`[VocabLinkPopover] Submitting batch`);
         const result = await client.submitBatch();
+        console.log(`[VocabLinkPopover] Batch result:`, result);
         
         // Update local state with link ID from server response
+        const updatedVocabItem = { ...vocabItem, linkId: result[result.length - 1].body.id };
         setLocalState({ 
           type: 'linked', 
-          item: { ...vocabItem, linkId: result[result.length - 1].body.id } 
+          item: updatedVocabItem
         });
+        console.log(`[VocabLinkPopover] Updated local state with linkId:`, result[result.length - 1].body.id);
+        
+        // Update parent morpheme with the linkId
+        if (onVocabLinkUpdate) {
+          onVocabLinkUpdate(token, updatedVocabItem);
+        }
       });
     } catch (error) {
+      console.error(`[VocabLinkPopover] Failed to link vocab item:`, error);
       setLocalState({ type: 'none' }); // Reset on error
+      // Revert optimistic update on error
+      if (onVocabLinkUpdate) {
+        onVocabLinkUpdate(token, existingItem || null);
+      }
     }
   };
 

@@ -30,6 +30,30 @@ function mergeGaps(sentProxy) {
   }
 }
 
+/**
+ * Find morpheme tokens that are coincident (have exact same begin/end) with given word tokens
+ * @param {Array} wordTokens - Array of word token objects with begin/end properties
+ * @param {Object} layers - Document layers object
+ * @returns {Array} Array of morpheme token IDs to delete
+ */
+function findCoincidentMorphemes(wordTokens, layers) {
+  if (!layers?.morphemeTokenLayer?.tokens || !wordTokens?.length) {
+    return [];
+  }
+
+  const morphemeIds = [];
+  const wordRanges = new Set(wordTokens.map(token => `${token.begin}-${token.end}`));
+
+  layers.morphemeTokenLayer.tokens.forEach(morpheme => {
+    const morphemeRange = `${morpheme.begin}-${morpheme.end}`;
+    if (wordRanges.has(morphemeRange)) {
+      morphemeIds.push(morpheme.id);
+    }
+  });
+
+  return morphemeIds;
+}
+
 export const useTokenOperations = (projectId, documentId, reload, client) => {
   const handleError = useStrictModeErrorHandler(reload);
   
@@ -131,6 +155,13 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
 
       // Submit to backend
       client.beginBatch();
+      
+      // Delete any coincident morpheme tokens before splitting the word token
+      const morphemeIds = findCoincidentMorphemes([token], layers);
+      if (morphemeIds.length > 0) {
+        client.tokens.bulkDelete(morphemeIds);
+      }
+      
       client.tokens.update(tokenId, token.begin, leftEnd);
       client.tokens.create(layers.primaryTokenLayer.id, text.id, rightStart, token.end);
       const result = await client.submitBatch();
@@ -144,7 +175,18 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
 
   const deleteToken = async (sentProxy, sentIndex, piece, pieceIndex) => {
     try {
-      const result = client.tokens.delete(piece.id);
+      // Start batch operation
+      client.beginBatch();
+      
+      // Delete any coincident morpheme tokens first
+      const morphemeIds = findCoincidentMorphemes([piece], layers);
+      if (morphemeIds.length > 0) {
+        client.tokens.bulkDelete(morphemeIds);
+      }
+      
+      // Delete the word token
+      client.tokens.delete(piece.id);
+      
       // Remove the token from the local store optimistically and replace with gap
       sentProxy.pieces.splice(pieceIndex, 1, {
         type: "gap",
@@ -156,7 +198,7 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
       mergeGaps(sentProxy);
 
       // Submit to backend
-      await result;
+      await client.submitBatch();
     } catch (error) {
       handleError(error, 'Delete token');
     }
@@ -273,10 +315,13 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
 
     try {
       let firstIndex = sentProxy.pieces.length, lastIndex = -1;
+      const tokensToMerge = [];
+      
       sentProxy.pieces.forEach((piece, index) => {
         if (piece.isToken && tokenIds.has(piece.id)) {
           firstIndex = index < firstIndex ? index : firstIndex;
           lastIndex = index > lastIndex ? index : lastIndex;
+          tokensToMerge.push(piece);
         }
       })
 
@@ -288,12 +333,26 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
 
       // Submit to backend
       client.beginBatch();
-      client.tokens.update(firstToken.id, firstToken.begin, lastToken.end);
+      
+      // Delete any coincident morpheme tokens from all tokens being merged
+      const morphemeIds = findCoincidentMorphemes(tokensToMerge, layers);
+      if (morphemeIds.length > 0) {
+        client.tokens.bulkDelete(morphemeIds);
+      }
+      
+      // Collect all non-first word tokens to delete
+      const wordTokensToDelete = [];
       for (const tokenId of tokenIds) {
         if (tokenId !== firstToken.id) {
-          client.tokens.delete(tokenId);
+          wordTokensToDelete.push(tokenId);
         }
       }
+      
+      client.tokens.update(firstToken.id, firstToken.begin, lastToken.end);
+      if (wordTokensToDelete.length > 0) {
+        client.tokens.bulkDelete(wordTokensToDelete);
+      }
+      
       await client.submitBatch();
     } catch (error) {
       handleError(error, 'Merge tokens');
@@ -512,16 +571,25 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
 
     try {
       uiProxy.isTokenizing = true;
-      updateProgress(25, 'Deleting tokens...');
+      updateProgress(25, 'Deleting tokens and morphemes...');
 
       const tokenIds = existingTokens.map(token => token.id);
-      await client.tokens.bulkDelete(tokenIds);
+      
+      // Also find and delete coincident morpheme tokens
+      const morphemeIds = findCoincidentMorphemes(existingTokens, layers);
+      const allTokensToDelete = [...tokenIds, ...morphemeIds];
+      
+      await client.tokens.bulkDelete(allTokensToDelete);
 
       updateProgress(100, 'Tokens cleared!');
 
+      const message = morphemeIds.length > 0 
+        ? `Deleted ${tokenIds.length} tokens and ${morphemeIds.length} morphemes`
+        : `Deleted ${tokenIds.length} tokens`;
+
       notifications.show({
         title: 'Success',
-        message: `Deleted ${tokenIds.length} tokens`,
+        message,
         color: 'green'
       });
 

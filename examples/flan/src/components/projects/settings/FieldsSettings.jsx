@@ -44,21 +44,25 @@ export const FieldsSettings = ({ projectId, client }) => {
         return null;
       }
       
-      // Get the primary token layer and sentence token layer
+      // Get the primary token layer, sentence token layer, and morpheme layer
       const primaryTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.primary);
       const sentenceTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.sentence);
+      const morphemeTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.morpheme);
       
       if (!primaryTokenLayer) {
         return null;
       }
       
+      // Morpheme layer is now mandatory, so we don't need to set state
+      
       // Extract ignored tokens configuration from primary token layer
       const ignoredTokensConfig = primaryTokenLayer.config?.plaid?.ignoredTokens;
       
-      // Extract fields configuration from span layers under both token layers
+      // Extract fields configuration from span layers under all token layers
       const primarySpanLayers = primaryTokenLayer.spanLayers || [];
       const sentenceSpanLayers = sentenceTokenLayer?.spanLayers || [];
-      const allSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers];
+      const morphemeSpanLayers = morphemeTokenLayer?.spanLayers || [];
+      const allSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers, ...morphemeSpanLayers];
       
       const fieldsWithScope = allSpanLayers
         .filter(spanLayer => spanLayer.config?.plaid?.scope) // Only span layers with plaid scope config
@@ -233,8 +237,8 @@ export const FieldsSettings = ({ projectId, client }) => {
     <Paper withBorder p="md">
       <Text size="lg" fw={500} mb="md">Annotation Fields</Text>
       <Text size="sm" mb="md" c="dimmed">
-        Configure annotation fields for your project. Token scope fields apply to individual words 
-        or morphemes, while Sentence scope fields apply to entire sentences or phrases.
+        Configure annotation fields for your project. Word scope fields apply to words, 
+        Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire sentences.
       </Text>
       
       <FieldsManager
