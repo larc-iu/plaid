@@ -451,12 +451,12 @@ function mapTokensToSentences(sentences, primaryTokenLayer, spanLayers, text, cl
  */
 function collectAnnotations(item, spanLayers, scope) {
   const annotations = {};
-  
+
   // Initialize all annotation layer keys with null values
   spanLayers.forEach(spanLayer => {
     annotations[spanLayer.name] = null;
   });
-  
+
   // Fill in actual annotation values where they exist
   spanLayers.forEach(spanLayer => {
     // Find spans that match this item
@@ -465,23 +465,41 @@ function collectAnnotations(item, spanLayers, scope) {
         // For tokens/morphemes, find spans that contain this token
         return span.tokens && span.tokens.some(tokenId => tokenId === item.id);
       } else {
-        // For sentences, find spans that match this sentence
-        // Look for spans that overlap with the sentence boundaries
-        return span.tokens && span.tokens.length > 0 && 
-               span.tokens.some(tokenId => {
-                 // This is a simplified approach - we'd need to check if the token is within the sentence
-                 // For now, assume sentence-level spans are properly constructed
-                 return true;
-               });
+        // For sentences, find spans that contain this sentence's token ID
+        const isMatch = span.tokens && span.tokens.includes(item.id);
+
+        // Debug sentence span matching
+        if (scope === 'Sentence') {
+          console.log(`[DEBUG] Sentence span matching:`, {
+            sentenceId: item.id,
+            spanId: span.id,
+            spanTokens: span.tokens,
+            isMatch: isMatch,
+            spanValue: span.value,
+            layerName: spanLayer.name
+          });
+        }
+
+        return isMatch;
       }
     });
-    
+
     // Store the entire span record if found
     if (matchingSpans.length > 0) {
       annotations[spanLayer.name] = matchingSpans[0];
+
+      // Debug sentence annotation assignment
+      if (scope === 'Sentence') {
+        console.log(`[DEBUG] Assigned sentence annotation:`, {
+          sentenceId: item.id,
+          layerName: spanLayer.name,
+          spanValue: matchingSpans[0].value,
+          spanId: matchingSpans[0].id
+        });
+      }
     }
   });
-  
+
   return annotations;
 }
 
