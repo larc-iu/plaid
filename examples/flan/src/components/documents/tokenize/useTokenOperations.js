@@ -89,6 +89,7 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
   // Discover services on component mount
   useEffect(() => {
     if (project?.id) {
+      console.log('[useTokenOperations] Component mounted, discovering services');
       discoverServices(project.id);
     }
   }, [project?.id, discoverServices]);

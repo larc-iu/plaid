@@ -17,18 +17,21 @@ export const useServiceRequest = () => {
   const discoverServices = useCallback(async (projectId) => {
     if (!projectId || isDiscovering) return;
 
+    console.log(`[ServiceDiscovery] Starting service discovery for project ${projectId}`);
     setIsDiscovering(true);
-    
+
     try {
       const services = await client.messages.discoverServices(projectId, 1000);
+      console.log(`[ServiceDiscovery] Found ${services.length} services:`, services);
       setAvailableServices(services);
       return services;
     } catch (error) {
-      console.error('Failed to discover services:', error);
+      console.error('[ServiceDiscovery] Failed to discover services:', error);
       setAvailableServices([]);
       return [];
     } finally {
       setIsDiscovering(false);
+      console.log(`[ServiceDiscovery] Discovery complete`);
     }
   }, [client]);
 

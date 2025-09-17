@@ -64,6 +64,7 @@ export function DocumentTokenize({ projectId, documentId, reload, client, readOn
 
   // Handle algorithm dropdown click to discover services
   const handleAlgorithmDropdownClick = async () => {
+    console.log('[DocumentTokenize] Algorithm dropdown hover triggered');
     if (!project?.id || ops.isDiscovering) return;
     await ops.discoverServices(project.id);
   };
@@ -167,7 +168,10 @@ export function DocumentTokenize({ projectId, documentId, reload, client, readOn
         </Paper>
 
         {/* NLP Controls Panel */}
-        <Paper withBorder p="md" style={{ flexShrink: 0 }} onMouseEnter={() => ops.discoverServices(project?.id)}>
+        <Paper withBorder p="md" style={{ flexShrink: 0 }} onMouseEnter={() => {
+          console.log('[DocumentTokenize] NLP controls panel hover triggered');
+          ops.discoverServices(project?.id);
+        }}>
           <Group justify="space-between" align="flex-end" mb="md">
             <Group align="flex-end" gap="sm">
               <Select
