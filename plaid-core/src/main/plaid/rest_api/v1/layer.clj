@@ -2,10 +2,11 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.xtdb.project :as prj]))
 
-(defn layer-config-routes [id-keyword]
+(defn layer-config-routes
+  "IMPORTANT: no middleware applied to this, make sure earlier middleware wraps these appropriately to restrict access"
+  [id-keyword]
   ["/config/:namespace/:config-key"
-   {:middleware [[pra/wrap-writer-required #(-> % :parameters :path id-keyword)]]
-    :put        {:summary    (str "Set a configuration value for a layer in a editor namespace. Intended for storing "
+   {:put        {:summary    (str "Set a configuration value for a layer in a editor namespace. Intended for storing "
                                   "metadata about how the layer is intended to be used, e.g. for morpheme tokenization "
                                   "or sentence boundary marking.")
                  :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]
