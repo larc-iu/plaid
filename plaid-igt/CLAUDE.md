@@ -44,8 +44,8 @@ All configurations use the "plaid" namespace to avoid conflicts with other appli
 * Rely on Mantine's built-in components and their hook library wherever applicable.
   As you consider how to implement something, don't be afraid to use your search tools if you suspect that Mantine might provide parts of it.
 * There's typically no need for you to try to test your changes. The user will test it himself in the browser.
-* See `@../examples/ud_editor/` for complete Plaid client usage examples
-* If it's not obvious to you what a certain client function does or returns, do not make assumptions. Instead, investigate whether existing code clarifies it (feel free to grep for `client.bundle.methodName`), or else ask the user. Also, see `@../../target/clients/client.d.ts` for helpful signatures.
+* See `@../ud-editor/` for complete Plaid client usage examples
+* If it's not obvious to you what a certain client function does or returns, do not make assumptions. Instead, investigate whether existing code clarifies it (feel free to grep for `client.bundle.methodName`), or else ask the user. Also, see `@../plaid-core/target/clients/client.d.ts` for helpful signatures.
 * Make sure that you always import icons from individual files: write `import IconLogout from '@tabler/icons-react/dist/esm/icons/IconLogout.mjs';`, not `import { IconLogout } from '@tabler/icons-react';`.
 
 
@@ -308,7 +308,7 @@ The system provides comprehensive operations for managing multi-level linguistic
 - **Precedence Management**: Automatic reordering when morphemes are added/removed
 
 ## Related Files
-- `@../ud_editor/` - Reference implementation with full feature set
-- `@../../CLAUDE.md` - Main Plaid platform documentation
-- `@../../target/clients/client.js` - API client
-- `@../../target/clients/client.d.ts` - TypeScript definitions for API client--useful for seeing function signatures at a glance
+- `@../ud-editor/` - Reference implementation with full feature set
+- `@../plaid-core/CLAUDE.md` - Main Plaid platform documentation
+- `@../plaid-core/target/clients/client.js` - API client
+- `@../plaid-core/target/clients/client.d.ts` - TypeScript definitions for API client--useful for seeing function signatures at a glance
