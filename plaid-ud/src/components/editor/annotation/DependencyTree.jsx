@@ -30,6 +30,19 @@ export const DependencyTree = ({
   const TOKEN_Y = TREE_HEIGHT - 30; // Tokens at bottom
   const ROOT_Y = 25; // ROOT bar at top
 
+  const getEffectiveSpanId = (position) => {
+    if (!position) return null;
+    return position.lemmaSpanId || position.token?.id || null;
+  };
+
+  const positionMatchesSpanId = (position, spanId) => {
+    if (!position || !spanId) return false;
+    if (position.lemmaSpanId && position.lemmaSpanId === spanId) {
+      return true;
+    }
+    return position.token?.id === spanId;
+  };
+
   // Use passed token positions for X coordinates, but keep original Y logic
   const adjustedTokenPositions = tokenPositions.length > 0 
     ? tokenPositions.map((pos, index) => ({
@@ -109,7 +122,7 @@ export const DependencyTree = ({
     
     setDragOrigin({ x: position.x, y: position.y });
     setDragCurrent({ x: position.x, y: position.y });
-    setDragSourceId(position.lemmaSpanId);
+    setDragSourceId(getEffectiveSpanId(position));
   };
 
   // Handle mouse move on SVG (update drag)
@@ -128,13 +141,16 @@ export const DependencyTree = ({
     e.stopPropagation();
     if (dragOrigin && dragSourceId) {
       const sourceId = dragSourceId;
-      const targetId = position.lemmaSpanId;
+      const targetId = getEffectiveSpanId(position);
+      const sourcePosition = adjustedTokenPositions.find(p => positionMatchesSpanId(p, sourceId));
+      const targetPosition = position;
       
       // Handle drag FROM ROOT to token
       if (sourceId === 'ROOT' && targetId) {
         // Look for existing ROOT relation (self-pointing relation)
         const existingRelation = relations.find(rel => 
-          rel.source === targetId && rel.target === targetId
+          positionMatchesSpanId(targetPosition, rel.source) &&
+          positionMatchesSpanId(targetPosition, rel.target)
         );
         
         if (existingRelation) {
@@ -144,9 +160,10 @@ export const DependencyTree = ({
         }
       }
       // Handle drag FROM token to token
-      else if (sourceId !== targetId && sourceId !== 'ROOT') {
+      else if (sourceId !== targetId && sourceId !== 'ROOT' && targetId) {
         const existingRelation = relations.find(rel => 
-          rel.source === sourceId && rel.target === targetId
+          positionMatchesSpanId(sourcePosition, rel.source) &&
+          positionMatchesSpanId(targetPosition, rel.target)
         );
         
         if (existingRelation) {
@@ -188,10 +205,12 @@ export const DependencyTree = ({
     e.stopPropagation();
     if (dragOrigin && dragSourceId && dragSourceId !== 'ROOT') {
       const sourceId = dragSourceId;
+      const sourcePosition = adjustedTokenPositions.find(p => positionMatchesSpanId(p, sourceId));
       
       // Look for existing ROOT relation (self-pointing relation)
       const existingRelation = relations.find(rel => 
-        rel.source === sourceId && rel.target === sourceId
+        positionMatchesSpanId(sourcePosition, rel.source) &&
+        positionMatchesSpanId(sourcePosition, rel.target)
       );
       
       if (existingRelation) {
@@ -222,16 +241,24 @@ export const DependencyTree = ({
       return;
     }
 
+    const spanId = getEffectiveSpanId(position);
+
     if (!selectedSource) {
-      setSelectedSource(position);
-    } else if (selectedSource.lemmaSpanId === position.lemmaSpanId) {
+      setSelectedSource({ ...position, spanId });
+    } else if (
+      selectedSource.spanId === spanId ||
+      selectedSource.token?.id === position.token?.id
+    ) {
       setSelectedSource(null);
     } else {
-      const sourceId = selectedSource.lemmaSpanId;
-      const targetId = position.lemmaSpanId;
+      const sourceId = selectedSource.spanId;
+      const targetId = spanId;
+      const sourcePosition = adjustedTokenPositions.find(p => positionMatchesSpanId(p, sourceId));
+      const targetPosition = adjustedTokenPositions.find(p => positionMatchesSpanId(p, targetId)) || position;
       
       const existingRelation = relations.find(rel => 
-        rel.source === sourceId && rel.target === targetId
+        positionMatchesSpanId(sourcePosition, rel.source) &&
+        positionMatchesSpanId(targetPosition, rel.target)
       );
       
       if (existingRelation) {
@@ -248,12 +275,14 @@ export const DependencyTree = ({
 
   // Handle ROOT click
   const handleRootClick = (x) => {
-    if (selectedSource && selectedSource.lemmaSpanId !== 'ROOT') {
-      const sourceId = selectedSource.lemmaSpanId;
+    if (selectedSource && selectedSource.spanId !== 'ROOT') {
+      const sourceId = selectedSource.spanId;
+      const sourcePosition = adjustedTokenPositions.find(p => positionMatchesSpanId(p, sourceId)) || selectedSource;
       
       // Look for existing ROOT relation (self-pointing relation)
       const existingRelation = relations.find(rel => 
-        rel.source === sourceId && rel.target === sourceId
+        positionMatchesSpanId(sourcePosition, rel.source) &&
+        positionMatchesSpanId(sourcePosition, rel.target)
       );
       
       if (existingRelation) {
@@ -271,14 +300,14 @@ export const DependencyTree = ({
     // Calculate label positions for both relations
     const getLabelX = (relation) => {
       const isSelfPointing = relation.source === relation.target;
-      const sourcePos = adjustedTokenPositions.find(p => p.lemmaSpanId === relation.source);
+      const sourcePos = adjustedTokenPositions.find(p => positionMatchesSpanId(p, relation.source));
       
       if (isSelfPointing) {
         // ROOT relation - label is centered above the source token
         return sourcePos?.x || 0;
       } else {
         // Regular relation - label is at midpoint between source and target
-        const targetPos = adjustedTokenPositions.find(p => p.lemmaSpanId === relation.target);
+        const targetPos = adjustedTokenPositions.find(p => positionMatchesSpanId(p, relation.target));
         return ((sourcePos?.x || 0) + (targetPos?.x || 0)) / 2;
       }
     };
@@ -364,10 +393,10 @@ export const DependencyTree = ({
     // Check if this is a self-pointing relation (ROOT relation)
     const isSelfPointing = relation.source === relation.target;
     
-    const sourcePos = adjustedTokenPositions.find(p => p.lemmaSpanId === relation.source);
+    const sourcePos = adjustedTokenPositions.find(p => positionMatchesSpanId(p, relation.source));
     const targetPos = isSelfPointing
       ? { x: sourcePos?.x || 0, y: ROOT_Y, index: -1 }
-      : adjustedTokenPositions.find(p => p.lemmaSpanId === relation.target);
+      : adjustedTokenPositions.find(p => positionMatchesSpanId(p, relation.target));
     
     if (!sourcePos || (!targetPos && !isSelfPointing)) {
       return null;
@@ -582,7 +611,7 @@ export const DependencyTree = ({
       originY = dragOrigin.y;
     } else {
       // Handle dragging FROM token
-      const sourcePos = adjustedTokenPositions.find(p => p.lemmaSpanId === dragSourceId);
+      const sourcePos = adjustedTokenPositions.find(p => positionMatchesSpanId(p, dragSourceId));
       if (!sourcePos) return null;
       originX = sourcePos.x;
       originY = TOKEN_Y - 10;
@@ -670,9 +699,12 @@ export const DependencyTree = ({
         
         {/* Invisible token click areas */}
         {adjustedTokenPositions.map((position) => {
-          const isSource = selectedSource?.lemmaSpanId === position.lemmaSpanId;
-          const isHovered = hoveredToken?.lemmaSpanId === position.lemmaSpanId;
-          const isDragSource = dragSourceId === position.lemmaSpanId;
+          const positionSpanId = getEffectiveSpanId(position);
+          const isSource = selectedSource?.spanId === positionSpanId;
+          const isHovered = hoveredToken?.lemmaSpanId
+            ? hoveredToken.lemmaSpanId === positionSpanId
+            : hoveredToken?.token?.id === position.token?.id;
+          const isDragSource = dragSourceId === positionSpanId;
           
           // Use token width if available, otherwise default to 60px
           const tokenWidth = position.width || 60;
