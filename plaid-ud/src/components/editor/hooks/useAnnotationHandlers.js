@@ -136,7 +136,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to update ${field}: ${error.message}`);
       await refreshData();
     }
-  }, [layerInfo]);
+  }, [layerInfo, document]);
 
   const handleFeatureDelete = useCallback(async (spanId) => {
     try {
@@ -178,10 +178,117 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
         setError('Relation layer not found. Please ensure the project is properly configured.');
         return;
       }
-      
+
+      if (!layerInfo.lemmaLayer) {
+        setError('Lemma layer not found. Cannot create dependency relation.');
+        return;
+      }
+
+      const ensureLemmaSpan = async (candidateId) => {
+        if (!candidateId || candidateId === 'ROOT') {
+          return null;
+        }
+
+        const lemmaLayer = layerInfo.lemmaLayer;
+        const lemmaSpans = lemmaLayer.spans || [];
+
+        // Direct match on span ID
+        const existingById = lemmaSpans.find(span => span.id === candidateId);
+        if (existingById) {
+          return existingById.id;
+        }
+
+        // Match by token membership
+        const tokenId = candidateId;
+        const existingByToken = lemmaSpans.find(span => {
+          const spanTokensRaw = span.tokens && span.tokens.length > 0 ? span.tokens : (span.begin ? [span.begin] : []);
+          const spanTokens = Array.isArray(spanTokensRaw) ? spanTokensRaw : [];
+          return spanTokens.some(tokenEntry => {
+            if (!tokenEntry) return false;
+            if (typeof tokenEntry === 'string') {
+              return tokenEntry === tokenId;
+            }
+            if (typeof tokenEntry === 'object') {
+              return tokenEntry.id === tokenId || tokenEntry.tokenId === tokenId || tokenEntry.token === tokenId;
+            }
+            return false;
+          });
+        });
+        if (existingByToken) {
+          return existingByToken.id;
+        }
+
+        if (!lemmaLayer.id) {
+          setError('Lemma layer is missing an identifier. Cannot create lemma span.');
+          return null;
+        }
+
+        const textLayer = document?.textLayers?.[0];
+        const rawText = textLayer?.text;
+        const textBody = typeof rawText === 'string' ? rawText : rawText?.body || '';
+        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const token = tokenLayer?.tokens?.find(t => t.id === tokenId);
+        const hasOffsets = token && typeof token.begin === 'number' && typeof token.end === 'number' && typeof textBody === 'string';
+        const lemmaValue = hasOffsets
+          ? textBody.substring(token.begin, token.end)
+          : token?.form || token?.text || '';
+
+        const apiResponse = await client.spans.create(lemmaLayer.id, [tokenId], lemmaValue);
+        const createdSpanId = apiResponse.id || apiResponse;
+        const createdSpan = {
+          id: createdSpanId,
+          tokens: [tokenId],
+          value: lemmaValue
+        };
+
+        // Update layerInfo cache immediately to avoid duplicate creations within this call
+        if (layerInfo.lemmaLayer) {
+          if (!layerInfo.lemmaLayer.spans) {
+            layerInfo.lemmaLayer.spans = [];
+          }
+          const alreadyCached = layerInfo.lemmaLayer.spans.some(span => span.id === createdSpanId);
+          if (!alreadyCached) {
+            layerInfo.lemmaLayer.spans.push({ ...createdSpan });
+          }
+        }
+
+        // Update local document state so derived hooks receive the new span
+        setDocument(prevDocument => {
+          const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
+          const updatedTextLayer = updatedDocument.textLayers?.[0];
+          const updatedTokenLayer = updatedTextLayer?.tokenLayers?.[0];
+          const lemmaLayerDoc = updatedTokenLayer?.spanLayers?.find(layer => layer.id === lemmaLayer.id);
+
+          if (lemmaLayerDoc) {
+            if (!lemmaLayerDoc.spans) {
+              lemmaLayerDoc.spans = [];
+            }
+            const existsIndex = lemmaLayerDoc.spans.findIndex(span => span.id === createdSpanId);
+            if (existsIndex === -1) {
+              lemmaLayerDoc.spans.push({ ...createdSpan });
+            }
+          }
+
+          return updatedDocument;
+        });
+
+        return createdSpanId;
+      };
+
+      const resolvedSourceId = await ensureLemmaSpan(sourceSpanId);
+      const resolvedTargetId = await ensureLemmaSpan(targetSpanId);
+
+      if (!resolvedSourceId || !resolvedTargetId) {
+        console.warn('Unable to create relation because lemma spans could not be resolved:', {
+          sourceSpanId,
+          targetSpanId
+        });
+        return;
+      }
+
       // First, find and delete any existing incoming relations to the target
       const existingRelations = layerInfo.relationLayer.relations || [];
-      const incomingRelations = existingRelations.filter(rel => rel.target === targetSpanId);
+      const incomingRelations = existingRelations.filter(rel => rel.target === resolvedTargetId);
       
       for (const existingRel of incomingRelations) {
         try {
@@ -194,36 +301,36 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       let relation = null;
       
       // For ROOT relations (self-pointing), we'll use a special handling
-      if (sourceSpanId === targetSpanId) {
+      if (resolvedSourceId === resolvedTargetId) {
         const apiResponse = await client.relations.create(
           layerInfo.relationLayer.id,
-          targetSpanId,
-          targetSpanId,
+          resolvedTargetId,
+          resolvedTargetId,
           deprel || 'root'
         );
         
         relation = {
           id: apiResponse.id || apiResponse,
-          source: targetSpanId,
-          target: targetSpanId,
+          source: resolvedTargetId,
+          target: resolvedTargetId,
           value: deprel || 'root'
         };
       } else {
         const apiResponse = await client.relations.create(
           layerInfo.relationLayer.id,
-          sourceSpanId,
-          targetSpanId,
+          resolvedSourceId,
+          resolvedTargetId,
           deprel || 'dep'
         );
         
         relation = {
           id: apiResponse.id || apiResponse,
-          source: sourceSpanId,
-          target: targetSpanId,
+          source: resolvedSourceId,
+          target: resolvedTargetId,
           value: deprel || 'dep'
         };
       }
-      
+
       // Update local state
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
@@ -248,7 +355,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
           
           // Remove any existing incoming relations in local state
           lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
-            rel => rel.target !== targetSpanId
+            rel => rel.target !== resolvedTargetId
           );
           
           // Add the new relation
