@@ -3,7 +3,7 @@ name: Build and Deploy Docs
 on:
   push:
     branches: [ master ]
-    paths: [ 'docs/**', 'target/clients/**' ]
+    paths: [ 'plaid-core/docs/**', 'plaid-core/target/clients/**' ]
   workflow_dispatch:
 
 permissions:
@@ -37,10 +37,10 @@ jobs:
     - name: Build HTML
       run: |
         mkdir -p _site
-        asciidoctor -o _site/index.html docs/index.adoc
-        asciidoctor -o _site/manual.html docs/manual.adoc
-        asciidoctor -o _site/dev.html docs/dev.adoc
-        node docs/extract-api-docs.js
+        asciidoctor -o _site/index.html plaid-core/docs/index.adoc
+        asciidoctor -o _site/manual.html plaid-core/docs/manual.adoc
+        asciidoctor -o _site/dev.html plaid-core/docs/dev.adoc
+        node plaid-core/docs/extract-api-docs.js
         
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
