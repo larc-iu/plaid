@@ -33,7 +33,7 @@ That's it!
 == Example App: UD Editor
 
 To get a feel for how to program an app with Plaid, it may be helpful to see https://drive.google.com/file/d/1Ld9tfHBqF4gwQTOn0mBtHVDllcHCUwdZ/view?usp=sharing[an example app for UD editing].
-(Cf. https://github.com/larc-iu/plaid/tree/master/examples/ud_editor[source code].)
+(Cf. https://github.com/larc-iu/plaid/tree/master/plaid-ud[source code].)
 
 == Learn More
 
