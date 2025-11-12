@@ -18,7 +18,7 @@ Rather, it provides an implementation of the "boring" parts of a linguistic anno
 Building an app with Plaid allows you to focus your attention on just the interesting parts of your app including the UI and logic which is specific to your annotation framework.
 
 The purpose of this document is to teach you how to think about and use Plaid.
-If you'd rather just dive into a real app programmed with Plaid, check out the https://github.com/larc-iu/plaid/tree/master/examples/ud_editor[UD editor] example app.
+If you'd rather just dive into a real app programmed with Plaid, check out the https://github.com/larc-iu/plaid/tree/master/plaid-ud[UD editor] example app.
 
 = Key Concepts
 
