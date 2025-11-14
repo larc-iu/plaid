@@ -26,10 +26,18 @@
 * See JSON at <http://localhost:8085/api/v1/openapi.json>
 
 == XTDB Inspector
-Make sure that `XTDB_INSPECTOR_URI_PREFIX` is set to `/_inspector` if you want to use the web UI to inspect the database.
+Make sure that the environment variable `XTDB_INSPECTOR_URI_PREFIX` is set to `/_inspector` if you want to use the web UI to inspect the database.
 
 [,bash]
 ----
 export XTDB_INSPECTOR_URI_PREFIX=/_inspector
 ----
-It will be visible at <http://localhost:8085/_inspector/attr>.
+
+On Windows, use the snippet below, then restart commandline/powershell! Value is only accessible in future cmd/pwsh instances.
+
+[,cmd]
+----
+setx XTDB_INSPECTOR_URI_PREFIX "/_inspector"
+----
+
+Inspector will be visible at <http://localhost:8085/_inspector/attr>.
