@@ -29,7 +29,8 @@
             [plaid.rest-api.v1.batch :refer [batch-routes]]
             [plaid.rest-api.v1.vocab-layer :refer [vocab-layer-routes]]
             [plaid.rest-api.v1.vocab-item :refer [vocab-item-routes]]
-            [plaid.rest-api.v1.vocab-link :refer [vocab-link-routes]]))
+            [plaid.rest-api.v1.vocab-link :refer [vocab-link-routes]]
+            [plaid.rest-api.v1.health :refer [health-routes]]))
 
 (def coercion
   (reitit.coercion.malli/create
@@ -58,6 +59,7 @@
   ["/api/v1"
    {:responses {200 {:description "Response"}}}
 
+   health-routes
    authentication-routes
 
    ;; Login required
