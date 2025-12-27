@@ -604,15 +604,22 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="sect2">
 <h3 id="_xtdb_inspector"><a class="anchor" href="#_xtdb_inspector"></a><a class="link" href="#_xtdb_inspector">1.2. XTDB Inspector</a></h3>
 <div class="paragraph">
-<p>Make sure that <code>XTDB_INSPECTOR_URI_PREFIX</code> is set to <code>/_inspector</code> if you want to use the web UI to inspect the database.</p>
+<p>Make sure that the environment variable <code>XTDB_INSPECTOR_URI_PREFIX</code> is set to <code>/_inspector</code> if you want to use the web UI to inspect the database.</p>
 </div>
 <div class="listingblock">
 <div class="content">
 <pre class="CodeRay highlight"><code data-lang="bash">export XTDB_INSPECTOR_URI_PREFIX=/_inspector</code></pre>
 </div>
+</div><div class="paragraph">
+<p>On Windows, use the snippet below, then restart commandline/powershell! Value is only accessible in future cmd/pwsh instances:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="cmd">setx XTDB_INSPECTOR_URI_PREFIX "/_inspector"</code></pre>
+</div>
 </div>
 <div class="paragraph">
-<p>It will be visible at <a href="http://localhost:8085/_inspector/attr" class="bare">localhost:8085/_inspector/attr</a>.</p>
+<p>Inspector will be visible at <a href="http://localhost:8085/_inspector/attr" class="bare">localhost:8085/_inspector/attr</a>.</p>
 </div>
 </div>
 </div>
