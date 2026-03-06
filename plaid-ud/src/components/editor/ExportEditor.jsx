@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDocumentData } from './hooks/useDocumentData.js';
+import { getUdLayerInfo, missingUdLayerLabels } from '../../utils/udLayerUtils.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
 
 export const ExportEditor = () => {
@@ -18,26 +19,33 @@ export const ExportEditor = () => {
   const conlluContent = useMemo(() => {
     if (!document) return '';
 
-    const textLayer = document.textLayers?.[0];
+    const layerInfo = getUdLayerInfo(document);
+
+    if (!layerInfo.isConfigured) {
+      const missing = missingUdLayerLabels(layerInfo.missingLayers);
+      const missingList = missing.length > 0 ? missing.join(', ') : 'required UD layers';
+      return `# Project configuration incomplete: ${missingList}`;
+    }
+
+    const {
+      textLayer,
+      tokenLayer,
+      lemmaLayer,
+      uposLayer,
+      xposLayer,
+      featuresLayer,
+      sentenceLayer,
+      mwtLayer,
+      relationLayer
+    } = layerInfo;
+
     const text = textLayer?.text;
-    const tokenLayer = textLayer?.tokenLayers?.[0];
     const tokens = tokenLayer?.tokens || [];
     
     if (!text?.body || tokens.length === 0) {
       return '# No tokenized content available';
     }
 
-    // Get all span layers
-    const spanLayers = tokenLayer?.spanLayers || [];
-    const lemmaLayer = spanLayers.find(layer => layer.name === 'Lemma');
-    const uposLayer = spanLayers.find(layer => layer.name === 'UPOS');
-    const xposLayer = spanLayers.find(layer => layer.name === 'XPOS');
-    const featuresLayer = spanLayers.find(layer => layer.name === 'Features');
-    const sentenceLayer = spanLayers.find(layer => layer.name === 'Sentence');
-    const mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
-    
-    // Get relation layer
-    const relationLayer = lemmaLayer?.relationLayers?.[0];
     const relations = relationLayer?.relations || [];
     
     // Sort tokens by position, then by precedence if available

@@ -1,6 +1,7 @@
 import sys
 import stanza
 import requests
+import traceback
 from client import PlaidClient
 
 
@@ -24,8 +25,28 @@ def get_client(api_url):
     return PlaidClient(api_url, token)
 
 
-def span_layer_by_name(layers, name):
-    return next((layer for layer in layers if layer["name"] == name))
+def span_layer_by_ud_config(layers, key, fallback_name=None):
+    for layer in layers:
+        if layer.get("config", {}).get("ud", {}).get(key) is True:
+            return layer
+    if fallback_name:
+        return next((layer for layer in layers if layer.get("name") == fallback_name), None)
+    return None
+
+
+def relation_layer_by_ud_config(span_layer, key, fallback_index=0):
+    if not span_layer:
+        return None
+    relation_layers = span_layer.get("relation_layers") or []
+    for relation_layer in relation_layers:
+        if relation_layer.get("config", {}).get("ud", {}).get(key) is True:
+            return relation_layer
+    if relation_layers:
+        try:
+            return relation_layers[fallback_index]
+        except IndexError:
+            return relation_layers[0]
+    return None
 
 
 def make_bulk_token(token_layer_id, text, begin, end):
@@ -72,12 +93,12 @@ def parse_document(pipeline, client, document_id, text_content):
 
         # Get span layers for annotations
         span_layers = token_layer["span_layers"]
-        lemma_layer = span_layer_by_name(span_layers, "Lemma")
-        upos_layer = span_layer_by_name(span_layers, "UPOS")
-        xpos_layer = span_layer_by_name(span_layers, "XPOS")
-        features_layer = span_layer_by_name(span_layers, "Features")
-        sentence_layer = span_layer_by_name(span_layers, "Sentence")
-        mwt_layer = span_layer_by_name(span_layers, "Multi-word Tokens")
+        lemma_layer = span_layer_by_ud_config(span_layers, "lemma", "Lemma")
+        upos_layer = span_layer_by_ud_config(span_layers, "upos", "UPOS")
+        xpos_layer = span_layer_by_ud_config(span_layers, "xpos", "XPOS")
+        features_layer = span_layer_by_ud_config(span_layers, "features", "Features")
+        sentence_layer = span_layer_by_ud_config(span_layers, "sentence", "Sentence")
+        mwt_layer = span_layer_by_ud_config(span_layers, "mwt", "Multi-word Tokens")
         
         # Create tokens
         token_operations = []
@@ -182,7 +203,7 @@ def parse_document(pipeline, client, document_id, text_content):
         
         # Create dependency relations
         if lemma_layer and lemma_span_ids:
-            relation_layer = lemma_layer.get('relation_layers', [{}])[0] if lemma_layer.get('relation_layers') else None
+            relation_layer = relation_layer_by_ud_config(lemma_layer, "dependency")
             
             if relation_layer:
                 relation_operations = []
@@ -231,6 +252,8 @@ def parse_document(pipeline, client, document_id, text_content):
         
     except Exception as e:
         print(f"Error parsing document {document_id}: {e}")
+        traceback.print_exc()
+
         raise e
 
 
@@ -277,6 +300,7 @@ def main():
         except Exception as e:
             print(f"Error during parse: {str(e)}")
             response_helper.error(f"Parsing error: {str(e)}")
+            traceback.print_exc()
 
     # Register as a structured service
     service_info = {

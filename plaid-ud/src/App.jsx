@@ -6,6 +6,7 @@ import { LoginForm } from './components/auth/LoginForm';
 import { UserProfile } from './components/auth/UserProfile';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectManagement } from './components/projects/ProjectManagement';
+import { ProjectConfiguration } from './components/projects/ProjectConfiguration.jsx';
 import { DocumentList } from './components/documents/DocumentList';
 import { TextEditor } from './components/editor/TextEditor.jsx';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
@@ -41,6 +42,9 @@ function App() {
             
             {/* Project management page */}
             <Route path="projects/:projectId/management" element={<ProjectManagement />} />
+
+            {/* Project configuration page */}
+            <Route path="projects/:projectId/configuration" element={<ProjectConfiguration />} />
             
             {/* Text editor route */}
             <Route path="projects/:projectId/documents/:documentId/edit" element={<TextEditor />} />

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseCoNLLU, reconstructText, calculateTokenPositions } from '../../utils/conlluParser';
+import { getUdLayerInfo, missingUdLayerLabels } from '../../utils/udLayerUtils.js';
 import { Modal, Button, FormField, ErrorMessage } from '../ui';
 
 export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
@@ -63,21 +64,27 @@ export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
 
       // Step 3: Get document with layers to find IDs
       const fullDocument = await client.documents.get(createdDocumentId, true);
-      const textLayer = fullDocument.textLayers?.[0];
-      const tokenLayer = textLayer?.tokenLayers?.[0];
-      
-      if (!textLayer || !tokenLayer) {
-        throw new Error('Failed to find text or token layers in created document');
+      const layerInfo = getUdLayerInfo(fullDocument);
+
+      if (!layerInfo.isConfigured) {
+        const missingLabels = missingUdLayerLabels(layerInfo.missingLayers).join(', ');
+        throw new Error(
+          missingLabels
+            ? `Project is missing required UD layer configuration: ${missingLabels}. Configure the project before importing.`
+            : 'Project is missing required UD layer configuration. Configure the project before importing.'
+        );
       }
 
-      // Get all span layers
-      const spanLayers = tokenLayer.spanLayers || [];
-      const lemmaLayer = spanLayers.find(layer => layer.name === 'Lemma');
-      const uposLayer = spanLayers.find(layer => layer.name === 'UPOS');
-      const xposLayer = spanLayers.find(layer => layer.name === 'XPOS');
-      const featuresLayer = spanLayers.find(layer => layer.name === 'Features');
-      const sentenceLayer = spanLayers.find(layer => layer.name === 'Sentence');
-      const mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
+      const {
+        textLayer,
+        tokenLayer,
+        lemmaLayer,
+        uposLayer,
+        xposLayer,
+        featuresLayer,
+        sentenceLayer,
+        mwtLayer
+      } = layerInfo;
 
       // Step 4: Reconstruct text and create it
       const reconstructedText = reconstructText(parsedData);
