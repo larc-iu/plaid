@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { useLayerInfo } from './hooks/useLayerInfo.js';
+import { getUdLayerInfo, missingUdLayerLabels, UD_SPAN_CONFIG_KEYS, UD_NAMESPACE } from '../../utils/udLayerUtils.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { DocumentTabs } from './DocumentTabs.jsx';
 
@@ -15,6 +17,7 @@ export const TextEditor = () => {
   const [error, setError] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
   const { getClient } = useAuth();
+  const layerInfo = useLayerInfo(document);
 
   // Fetch initial data (with loading screen)
   const fetchData = async () => {
@@ -35,14 +38,13 @@ export const TextEditor = () => {
       setProject(projectData);
       setDocument(documentData);
 
-      // Extract text content from the document structure
-      const textLayer = documentData.textLayers?.[0];
+      const info = getUdLayerInfo(documentData);
+      const textLayer = info.textLayer;
       const text = textLayer?.text;
       if (text?.body) {
         setTextContent(text.body);
-        
-        // If we have tokens and no original tokenized text stored, use current text
-        const tokenLayer = textLayer?.tokenLayers?.[0];
+
+        const tokenLayer = info.tokenLayer;
         const tokens = tokenLayer?.tokens || [];
         if (tokens.length > 0 && !originalTokenizedText) {
           setOriginalTokenizedText(text.body);
@@ -80,14 +82,13 @@ export const TextEditor = () => {
       setProject(projectData);
       setDocument(documentData);
 
-      // Extract text content from the document structure
-      const textLayer = documentData.textLayers?.[0];
+      const info = getUdLayerInfo(documentData);
+      const textLayer = info.textLayer;
       const text = textLayer?.text;
       if (text?.body) {
         setTextContent(text.body);
-        
-        // If we have tokens and no original tokenized text stored, use current text
-        const tokenLayer = textLayer?.tokenLayers?.[0];
+
+        const tokenLayer = info.tokenLayer;
         const tokens = tokenLayer?.tokens || [];
         if (tokens.length > 0 && !originalTokenizedText) {
           setOriginalTokenizedText(text.body);
@@ -109,35 +110,43 @@ export const TextEditor = () => {
     fetchData();
   }, [projectId, documentId]);
 
+  useEffect(() => {
+    if (document && !layerInfo.isConfigured) {
+      const missing = missingUdLayerLabels(layerInfo.missingLayers);
+      const missingList = missing.length > 0 ? missing.join(', ') : 'required UD layers';
+      setError(`Project configuration incomplete: ${missingList}`);
+    }
+  }, [document, layerInfo]);
+
   // Get helper data from document structure
   const getLayerData = () => {
-    if (!document) return {};
-    const textLayer = document.textLayers?.[0];
+    if (!document) {
+      return { layerInfo };
+    }
+
+    const {
+      textLayer,
+      tokenLayer,
+      sentenceLayer,
+      lemmaLayer,
+      relationLayer,
+      mwtLayer
+    } = layerInfo;
+
     const text = textLayer?.text;
-    const tokenLayer = textLayer?.tokenLayers?.[0];
     const tokens = tokenLayer?.tokens || [];
-    
-    // Find the span layers
-    const spanLayers = tokenLayer?.spanLayers || [];
-    const sentenceLayer = spanLayers.find(layer => layer.name === 'Sentence');
     const sentenceSpans = sentenceLayer?.spans || [];
-    
-    // Find the Lemma span layer and its relation layer
-    const lemmaLayer = spanLayers.find(layer => layer.name === 'Lemma');
     const lemmaSpans = lemmaLayer?.spans || [];
-    const relationLayer = lemmaLayer?.relationLayers?.[0];
     const relations = relationLayer?.relations || [];
-    
-    // Find the MWT span layer
-    const mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
     const mwtSpans = mwtLayer?.spans || [];
-    
-    return { 
-      textLayer, 
-      text, 
-      tokenLayer, 
-      tokens, 
-      sentenceLayer, 
+
+    return {
+      layerInfo,
+      textLayer,
+      text,
+      tokenLayer,
+      tokens,
+      sentenceLayer,
       sentenceSpans,
       lemmaLayer,
       lemmaSpans,
@@ -366,10 +375,7 @@ export const TextEditor = () => {
       
       // MWT maintenance: Delete any MWT spans that include this token
       // and would become invalid (single token) after this deletion
-      const textLayer = document.textLayers?.[0];
-      const tokenLayer = textLayer?.tokenLayers?.[0];
-      const spanLayers = tokenLayer?.spanLayers || [];
-      const mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
+      const mwtLayer = layerInfo.mwtLayer;
       
       if (mwtLayer?.spans) {
         const mwtsToDelete = [];
@@ -405,19 +411,16 @@ export const TextEditor = () => {
       // Success - update the client-side state
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument)); // Deep clone
-        
-        // Find and remove the token from the document structure
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayer = textLayer?.tokenLayers?.[0];
-        const tokens = tokenLayer?.tokens;
-        
+        const info = getUdLayerInfo(updatedDocument);
+        const tokens = info.tokenLayer?.tokens;
+
         if (tokens) {
           const tokenIndex = tokens.findIndex(token => token.id === tokenId);
           if (tokenIndex !== -1) {
             tokens.splice(tokenIndex, 1);
           }
         }
-        
+
         return updatedDocument;
       });
     } catch (error) {
@@ -608,11 +611,9 @@ export const TextEditor = () => {
         // Update client state
         setDocument(prevDocument => {
           const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-          const textLayer = updatedDocument.textLayers?.[0];
-          const tokenLayer = textLayer?.tokenLayers?.[0];
-          const spanLayers = tokenLayer?.spanLayers || [];
-          const sentenceLayerDoc = spanLayers.find(layer => layer.name === 'Sentence');
-          
+          const info = getUdLayerInfo(updatedDocument);
+          const sentenceLayerDoc = info.sentenceLayer;
+
           if (sentenceLayerDoc) {
             if (!sentenceLayerDoc.spans) {
               sentenceLayerDoc.spans = [];
@@ -627,7 +628,7 @@ export const TextEditor = () => {
           
           // Remove deleted relations from the client state
           if (deletedRelationIds.length > 0) {
-            const lemmaLayerDoc = spanLayers.find(layer => layer.name === 'Lemma');
+            const lemmaLayerDoc = info.lemmaLayer;
             const relationLayerDoc = lemmaLayerDoc?.relationLayers?.[0];
             if (relationLayerDoc && relationLayerDoc.relations) {
               relationLayerDoc.relations = relationLayerDoc.relations.filter(
@@ -651,10 +652,8 @@ export const TextEditor = () => {
         // Update client state
         setDocument(prevDocument => {
           const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-          const textLayer = updatedDocument.textLayers?.[0];
-          const tokenLayer = textLayer?.tokenLayers?.[0];
-          const spanLayers = tokenLayer?.spanLayers || [];
-          const sentenceLayerDoc = spanLayers.find(layer => layer.name === 'Sentence');
+          const info = getUdLayerInfo(updatedDocument);
+          const sentenceLayerDoc = info.sentenceLayer;
           
           if (sentenceLayerDoc && sentenceLayerDoc.spans) {
             const spanIndex = sentenceLayerDoc.spans.findIndex(span => span.id === existingSpan.id);
@@ -665,7 +664,7 @@ export const TextEditor = () => {
           
           // Remove deleted relations from the client state
           if (deletedRelationIds.length > 0) {
-            const lemmaLayerDoc = spanLayers.find(layer => layer.name === 'Lemma');
+            const lemmaLayerDoc = info.lemmaLayer;
             const relationLayerDoc = lemmaLayerDoc?.relationLayers?.[0];
             if (relationLayerDoc && relationLayerDoc.relations) {
               relationLayerDoc.relations = relationLayerDoc.relations.filter(
@@ -712,17 +711,20 @@ export const TextEditor = () => {
       }
 
       // Find or create the MWT span layer
-      const spanLayers = tokenLayer.spanLayers || [];
-      let mwtLayer = spanLayers.find(layer => layer.name === 'Multi-word Tokens');
-      
+      let mwtLayer = layerInfo.mwtLayer;
+
       if (!mwtLayer) {
-        // Create MWT layer if it doesn't exist
         console.log('Creating Multi-word Tokens span layer');
         mwtLayer = await client.spanLayers.create(
           tokenLayer.id,
           'Multi-word Tokens',
           { description: 'Multi-word token spans for CoNLL-U format' }
         );
+        try {
+          await client.spanLayers.setConfig(mwtLayer.id, UD_NAMESPACE, UD_SPAN_CONFIG_KEYS.mwt, true);
+        } catch (configError) {
+          console.warn('Failed to set UD config on new MWT layer:', configError);
+        }
       }
 
       console.log('Creating MWT span with tokens:', tokenIds, 'surface form:', surfaceForm);
@@ -737,31 +739,33 @@ export const TextEditor = () => {
       // Update client state
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayerDoc = textLayer?.tokenLayers?.[0];
-        const spanLayersDoc = tokenLayerDoc?.spanLayers || [];
-        
-        // Find or add the MWT layer
-        let mwtLayerDoc = spanLayersDoc.find(layer => layer.name === 'Multi-word Tokens');
-        if (!mwtLayerDoc) {
-          mwtLayerDoc = {
-            ...mwtLayer,
-            spans: []
-          };
-          spanLayersDoc.push(mwtLayerDoc);
-          tokenLayerDoc.spanLayers = spanLayersDoc;
+        const info = getUdLayerInfo(updatedDocument);
+        const tokenLayerDoc = info.tokenLayer;
+
+        if (tokenLayerDoc) {
+          if (!tokenLayerDoc.spanLayers) {
+            tokenLayerDoc.spanLayers = [];
+          }
+
+          let mwtLayerDoc = info.mwtLayer;
+          if (!mwtLayerDoc) {
+            mwtLayerDoc = {
+              ...mwtLayer,
+              spans: []
+            };
+            tokenLayerDoc.spanLayers.push(mwtLayerDoc);
+          }
+
+          if (!Array.isArray(mwtLayerDoc.spans)) {
+            mwtLayerDoc.spans = [];
+          }
+          mwtLayerDoc.spans.push({
+            ...newMwtSpan,
+            tokens: tokenIds,
+            value: surfaceForm
+          });
         }
-        
-        // Add the new MWT span
-        if (!mwtLayerDoc.spans) {
-          mwtLayerDoc.spans = [];
-        }
-        mwtLayerDoc.spans.push({
-          ...newMwtSpan,
-          tokens: tokenIds,
-          value: surfaceForm  // This will be null
-        });
-        
+
         return updatedDocument;
       });
       
@@ -783,16 +787,13 @@ export const TextEditor = () => {
       // Update client state
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayerDoc = textLayer?.tokenLayers?.[0];
-        const spanLayersDoc = tokenLayerDoc?.spanLayers || [];
-        const mwtLayerDoc = spanLayersDoc.find(layer => layer.name === 'Multi-word Tokens');
-        
-        if (mwtLayerDoc && mwtLayerDoc.spans) {
-          // Remove the deleted span
+        const info = getUdLayerInfo(updatedDocument);
+        const mwtLayerDoc = info.mwtLayer;
+
+        if (mwtLayerDoc && Array.isArray(mwtLayerDoc.spans)) {
           mwtLayerDoc.spans = mwtLayerDoc.spans.filter(span => span.id !== spanId);
         }
-        
+
         return updatedDocument;
       });
       

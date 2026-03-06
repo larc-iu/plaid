@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
+import { getUdLayerInfo } from '../../../utils/udLayerUtils.js';
 
 export const useAnnotationHandlers = (document, setDocument, setError, layerInfo, refreshData) => {
   const { getClient } = useAuth();
@@ -46,11 +47,10 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
         // Update local state
         setDocument(prevDocument => {
           const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-          const textLayer = updatedDocument.textLayers?.[0];
-          const tokenLayer = textLayer?.tokenLayers?.[0];
-          const spanLayers = tokenLayer?.spanLayers || [];
-          
-          const featuresLayerDoc = spanLayers.find(layer => layer.id === targetLayer.id);
+          const info = getUdLayerInfo(updatedDocument);
+          const featuresLayerDoc = info.featuresLayer && info.featuresLayer.id === targetLayer.id
+            ? info.featuresLayer
+            : info.tokenLayer?.spanLayers?.find(layer => layer.id === targetLayer.id);
           if (featuresLayerDoc) {
             if (!featuresLayerDoc.spans) {
               featuresLayerDoc.spans = [];
@@ -81,19 +81,18 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
           // Update local state
           setDocument(prevDocument => {
             const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-            const textLayer = updatedDocument.textLayers?.[0];
-            const tokenLayer = textLayer?.tokenLayers?.[0];
-            const spanLayers = tokenLayer?.spanLayers || [];
-            
-            spanLayers.forEach(layer => {
-              if (layer.spans) {
-                const spanIndex = layer.spans.findIndex(span => span.id === existingSpan.id);
-                if (spanIndex !== -1) {
-                  layer.spans[spanIndex].value = value;
-                }
+            const info = getUdLayerInfo(updatedDocument);
+            const targetLayerDoc = info.tokenLayer?.spanLayers?.find(layer =>
+              layer.spans?.some(span => span.id === existingSpan.id)
+            );
+
+            if (targetLayerDoc?.spans) {
+              const spanIndex = targetLayerDoc.spans.findIndex(span => span.id === existingSpan.id);
+              if (spanIndex !== -1) {
+                targetLayerDoc.spans[spanIndex].value = value;
               }
-            });
-            
+            }
+
             return updatedDocument;
           });
           
@@ -104,11 +103,8 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
           // Update local state
           setDocument(prevDocument => {
             const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-            const textLayer = updatedDocument.textLayers?.[0];
-            const tokenLayer = textLayer?.tokenLayers?.[0];
-            const spanLayers = tokenLayer?.spanLayers || [];
-            
-            const targetLayerDoc = spanLayers.find(layer => layer.id === targetLayer.id);
+            const info = getUdLayerInfo(updatedDocument);
+            const targetLayerDoc = info.tokenLayer?.spanLayers?.find(layer => layer.id === targetLayer.id);
             if (targetLayerDoc) {
               if (!targetLayerDoc.spans) {
                 targetLayerDoc.spans = [];
@@ -119,7 +115,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
                 value: value
               });
             }
-            
+
             return updatedDocument;
           });
           
@@ -147,16 +143,13 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayer = textLayer?.tokenLayers?.[0];
-        const spanLayers = tokenLayer?.spanLayers || [];
-        
-        spanLayers.forEach(layer => {
-          if (layer.name === 'Features' && layer.spans) {
-            layer.spans = layer.spans.filter(span => span.id !== spanId);
-          }
-        });
-        
+        const info = getUdLayerInfo(updatedDocument);
+        const featuresLayerDoc = info.featuresLayer;
+
+        if (featuresLayerDoc && Array.isArray(featuresLayerDoc.spans)) {
+          featuresLayerDoc.spans = featuresLayerDoc.spans.filter(span => span.id !== spanId);
+        }
+
         return updatedDocument;
       });
       
@@ -223,10 +216,10 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
           return null;
         }
 
-        const textLayer = document?.textLayers?.[0];
+        const textLayer = layerInfo.textLayer;
         const rawText = textLayer?.text;
         const textBody = typeof rawText === 'string' ? rawText : rawText?.body || '';
-        const tokenLayer = textLayer?.tokenLayers?.[0];
+        const tokenLayer = layerInfo.tokenLayer;
         const token = tokenLayer?.tokens?.find(t => t.id === tokenId);
         const hasOffsets = token && typeof token.begin === 'number' && typeof token.end === 'number' && typeof textBody === 'string';
         const lemmaValue = hasOffsets
@@ -255,12 +248,11 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
         // Update local document state so derived hooks receive the new span
         setDocument(prevDocument => {
           const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-          const updatedTextLayer = updatedDocument.textLayers?.[0];
-          const updatedTokenLayer = updatedTextLayer?.tokenLayers?.[0];
-          const lemmaLayerDoc = updatedTokenLayer?.spanLayers?.find(layer => layer.id === lemmaLayer.id);
+          const info = getUdLayerInfo(updatedDocument);
+          const lemmaLayerDoc = info.lemmaLayer;
 
           if (lemmaLayerDoc) {
-            if (!lemmaLayerDoc.spans) {
+            if (!Array.isArray(lemmaLayerDoc.spans)) {
               lemmaLayerDoc.spans = [];
             }
             const existsIndex = lemmaLayerDoc.spans.findIndex(span => span.id === createdSpanId);
@@ -334,34 +326,30 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       // Update local state
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayer = textLayer?.tokenLayers?.[0];
-        const lemmaLayer = tokenLayer?.spanLayers?.find(l => l.name === 'Lemma');
-        
-        if (lemmaLayer) {
-          if (!lemmaLayer.relationLayers) {
-            lemmaLayer.relationLayers = [];
+        const info = getUdLayerInfo(updatedDocument);
+        const lemmaLayerDoc = info.lemmaLayer;
+
+        if (lemmaLayerDoc) {
+          if (!Array.isArray(lemmaLayerDoc.relationLayers)) {
+            lemmaLayerDoc.relationLayers = [];
           }
-          if (!lemmaLayer.relationLayers[0]) {
-            lemmaLayer.relationLayers[0] = {
-              id: layerInfo.relationLayer.id,
-              name: 'Relation',
+          if (!lemmaLayerDoc.relationLayers[0]) {
+            lemmaLayerDoc.relationLayers[0] = {
+              id: layerInfo.relationLayer?.id,
+              name: layerInfo.relationLayer?.name || 'Relation',
               relations: []
             };
           }
-          if (!lemmaLayer.relationLayers[0].relations) {
-            lemmaLayer.relationLayers[0].relations = [];
+          if (!Array.isArray(lemmaLayerDoc.relationLayers[0].relations)) {
+            lemmaLayerDoc.relationLayers[0].relations = [];
           }
-          
-          // Remove any existing incoming relations in local state
-          lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
+
+          lemmaLayerDoc.relationLayers[0].relations = lemmaLayerDoc.relationLayers[0].relations.filter(
             rel => rel.target !== resolvedTargetId
           );
-          
-          // Add the new relation
-          lemmaLayer.relationLayers[0].relations.push(relation);
+          lemmaLayerDoc.relationLayers[0].relations.push(relation);
         }
-        
+
         return updatedDocument;
       });
       
@@ -382,17 +370,16 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayer = textLayer?.tokenLayers?.[0];
-        const lemmaLayer = tokenLayer?.spanLayers?.find(l => l.name === 'Lemma');
-        
-        if (lemmaLayer && lemmaLayer.relationLayers?.[0]?.relations) {
-          const relationIndex = lemmaLayer.relationLayers[0].relations.findIndex(r => r.id === relationId);
+        const info = getUdLayerInfo(updatedDocument);
+        const lemmaLayerDoc = info.lemmaLayer;
+
+        if (lemmaLayerDoc?.relationLayers?.[0]?.relations) {
+          const relationIndex = lemmaLayerDoc.relationLayers[0].relations.findIndex(r => r.id === relationId);
           if (relationIndex !== -1) {
-            lemmaLayer.relationLayers[0].relations[relationIndex].value = deprel;
+            lemmaLayerDoc.relationLayers[0].relations[relationIndex].value = deprel;
           }
         }
-        
+
         return updatedDocument;
       });
       
@@ -413,16 +400,15 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayer = textLayer?.tokenLayers?.[0];
-        const lemmaLayer = tokenLayer?.spanLayers?.find(l => l.name === 'Lemma');
-        
-        if (lemmaLayer && lemmaLayer.relationLayers?.[0]?.relations) {
-          lemmaLayer.relationLayers[0].relations = lemmaLayer.relationLayers[0].relations.filter(
+        const info = getUdLayerInfo(updatedDocument);
+        const lemmaLayerDoc = info.lemmaLayer;
+
+        if (lemmaLayerDoc?.relationLayers?.[0]?.relations) {
+          lemmaLayerDoc.relationLayers[0].relations = lemmaLayerDoc.relationLayers[0].relations.filter(
             r => r.id !== relationId
           );
         }
-        
+
         return updatedDocument;
       });
       
@@ -456,13 +442,11 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       // Update local state
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayer = textLayer?.tokenLayers?.[0];
-        const spanLayers = tokenLayer?.spanLayers || [];
-        
-        const mwtLayerDoc = spanLayers.find(layer => layer.id === layerInfo.mwtLayer.id);
+        const info = getUdLayerInfo(updatedDocument);
+        const mwtLayerDoc = info.mwtLayer;
+
         if (mwtLayerDoc) {
-          if (!mwtLayerDoc.spans) {
+          if (!Array.isArray(mwtLayerDoc.spans)) {
             mwtLayerDoc.spans = [];
           }
           mwtLayerDoc.spans.push({
@@ -471,7 +455,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
             value: form
           });
         }
-        
+
         return updatedDocument;
       });
       
@@ -494,19 +478,16 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       // Update local state
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayer = textLayer?.tokenLayers?.[0];
-        const spanLayers = tokenLayer?.spanLayers || [];
-        
-        spanLayers.forEach(layer => {
-          if (layer.name === 'Multi-word Tokens' && layer.spans) {
-            const spanIndex = layer.spans.findIndex(span => span.id === spanId);
-            if (spanIndex !== -1) {
-              layer.spans[spanIndex].value = form;
-            }
+        const info = getUdLayerInfo(updatedDocument);
+        const mwtLayerDoc = info.mwtLayer;
+
+        if (mwtLayerDoc?.spans) {
+          const spanIndex = mwtLayerDoc.spans.findIndex(span => span.id === spanId);
+          if (spanIndex !== -1) {
+            mwtLayerDoc.spans[spanIndex].value = form;
           }
-        });
-        
+        }
+
         return updatedDocument;
       });
       
@@ -529,16 +510,13 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       // Update local state
       setDocument(prevDocument => {
         const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayer = textLayer?.tokenLayers?.[0];
-        const spanLayers = tokenLayer?.spanLayers || [];
-        
-        spanLayers.forEach(layer => {
-          if (layer.name === 'Multi-word Tokens' && layer.spans) {
-            layer.spans = layer.spans.filter(span => span.id !== spanId);
-          }
-        });
-        
+        const info = getUdLayerInfo(updatedDocument);
+        const mwtLayerDoc = info.mwtLayer;
+
+        if (mwtLayerDoc?.spans) {
+          mwtLayerDoc.spans = mwtLayerDoc.spans.filter(span => span.id !== spanId);
+        }
+
         return updatedDocument;
       });
       

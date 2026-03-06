@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
 import { useDocumentData } from './hooks/useDocumentData.js';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
@@ -9,9 +9,11 @@ import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useNlpService } from './hooks/useNlpService.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
 import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 
 export const AnnotationEditor = () => {
   const { projectId, documentId } = useParams();
+  const navigate = useNavigate();
   const [sentences, setSentences] = useState([]);
   
   // History viewer state
@@ -19,7 +21,7 @@ export const AnnotationEditor = () => {
   const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
   const [viewingHistoricalState, setViewingHistoricalState] = useState(false);
   
-  const { 
+  const {
     document, 
     project, 
     loading, 
@@ -28,6 +30,7 @@ export const AnnotationEditor = () => {
     setError, 
     refreshData 
   } = useDocumentData(projectId, documentId);
+  const { user } = useAuth();
   
   // History functionality
   const {
@@ -47,6 +50,26 @@ export const AnnotationEditor = () => {
   
   const layerInfo = useLayerInfo(activeDocument);
   const processedSentences = useSentenceData(activeDocument);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!projectId || !project) return;
+    if (!user) return;
+    if (!activeDocument) return;
+    if (!layerInfo || layerInfo.isConfigured) return;
+
+    const missing = layerInfo.missingLayers || [];
+    if (missing.length === 0) return;
+
+    const isAdmin = user?.isAdmin || false;
+    const isMaintainer = project?.maintainers?.includes(user?.id) || false;
+
+    if (isAdmin || isMaintainer) {
+      navigate(`/projects/${projectId}/configuration`, { replace: true });
+    } else {
+      navigate('/projects', { replace: true });
+    }
+  }, [loading, layerInfo, project, projectId, user, navigate, activeDocument]);
   
   const {
     handleAnnotationUpdate,

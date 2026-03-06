@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Modal, Button, FormField, ErrorMessage } from '../ui';
+import {
+  UD_NAMESPACE,
+  UD_TEXT_CONFIG_KEY,
+  UD_TOKEN_CONFIG_KEY,
+  UD_SPAN_CONFIG_KEYS,
+  UD_RELATION_CONFIG_KEY
+} from '../../utils/udLayerUtils.js';
 
 export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
   const [projectName, setProjectName] = useState('');
@@ -16,9 +23,13 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
     
     // 2. Create text layer
     const textLayer = await client.textLayers.create(project.id, 'Text');
+    console.log(await client.textLayers.get(textLayer.id))
+    console.log(await client.projects.get(project.id))
+    await client.textLayers.setConfig(textLayer.id, UD_NAMESPACE, UD_TEXT_CONFIG_KEY, true);
     
     // 3. Create token layer
     const tokenLayer = await client.tokenLayers.create(textLayer.id, 'Token');
+    await client.tokenLayers.setConfig(tokenLayer.id, UD_NAMESPACE, UD_TOKEN_CONFIG_KEY, true);
     
     // 4. Create all span layers
     const spanLayerNames = [
@@ -35,12 +46,29 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
     const spanLayers = [];
     // We need to do this sequentially or else it'll fail due to current implementation limitations
     for (const name of spanLayerNames) {
-      spanLayers.push(await client.spanLayers.create(tokenLayer.id, name));
+      const spanLayer = await client.spanLayers.create(tokenLayer.id, name);
+      const configKey = {
+        'Lemma': UD_SPAN_CONFIG_KEYS.lemma,
+        'UPOS': UD_SPAN_CONFIG_KEYS.upos,
+        'XPOS': UD_SPAN_CONFIG_KEYS.xpos,
+        'Features': UD_SPAN_CONFIG_KEYS.features,
+        'Sentence': UD_SPAN_CONFIG_KEYS.sentence,
+        'Multi-word Tokens': UD_SPAN_CONFIG_KEYS.mwt
+      }[name];
+
+      if (configKey) {
+        await client.spanLayers.setConfig(spanLayer.id, UD_NAMESPACE, configKey, true);
+      }
+
+      spanLayers.push(spanLayer);
     }
 
     // 5. Create relation layer (attached to Lemma layer)
     const lemmaLayer = spanLayers[2];
-    await client.relationLayers.create(lemmaLayer.id, 'Relation');
+    const relationLayer = await client.relationLayers.create(lemmaLayer.id, 'Relation');
+    if (relationLayer?.id) {
+      await client.relationLayers.setConfig(relationLayer.id, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+    }
     
     return project;
   };
