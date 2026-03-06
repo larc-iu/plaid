@@ -1,1 +1,1 @@
-../../../../target/clients/client.py
+../../../plaid-core/target/clients/client.py
