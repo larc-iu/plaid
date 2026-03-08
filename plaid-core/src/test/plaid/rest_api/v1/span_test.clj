@@ -259,6 +259,27 @@
 
         (testing "Update with empty token list"
           (let [res (update-span-tokens admin-request span-id [])]
+            (assert-bad-request res)))
+
+        (testing "Update with tokens from different layer"
+          (let [other-tkl-res (create-token-layer admin-request tl "UpdateOtherTKL")
+                other-tkl (-> other-tkl-res :body :id)
+                _ (assert-created other-tkl-res)
+                other-token-res (create-token admin-request other-tkl text-id 12 16)
+                other-token-id (-> other-token-res :body :id)
+                _ (assert-created other-token-res)
+                res (update-span-tokens admin-request span-id [other-token-id])]
+            (assert-bad-request res)))
+
+        (testing "Update with tokens from different document"
+          (let [other-doc (create-test-document admin-request proj "UpdateOtherDoc")
+                other-text-res (create-text admin-request tl other-doc "other text")
+                other-text-id (-> other-text-res :body :id)
+                _ (assert-created other-text-res)
+                other-token-res (create-token admin-request tkl other-text-id 0 5)
+                other-token-id (-> other-token-res :body :id)
+                _ (assert-created other-token-res)
+                res (update-span-tokens admin-request span-id [other-token-id])]
             (assert-bad-request res)))))))
 
 (deftest bulk-span-operations

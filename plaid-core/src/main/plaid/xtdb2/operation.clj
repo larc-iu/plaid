@@ -20,7 +20,8 @@
 
 (defn store-operations
   "Build tx-ops to store operations and audit log entry.
-  In v2 we keep :op/tx-ops on stored op records (for potential future inspection)."
+  In v2 we keep :op/tx-ops on stored op records (for potential future inspection).
+  Returns {:tx-ops [...] :audit-id uuid :affected-documents #{...}}."
   [operations user-id]
   (let [audit-id (random-uuid)
         op-put-txs (mapv #(vector :put-docs :operations
@@ -44,20 +45,26 @@
                              :audit/documents affected-documents}
                       *user-agent* (assoc :audit/user-agent *user-agent*)
                       *current-batch-id* (assoc :audit/batch-id *current-batch-id*))]
-    (conj op-put-txs [:put-docs :audits audit-entry])))
+    {:tx-ops (conj op-put-txs [:put-docs :audits audit-entry])
+     :audit-id audit-id
+     :affected-documents affected-documents}))
 
 (defn submit-operations*
   "Core submit logic. Does not catch errors from operation building.
-  Returns {:success true} or {:success false :error msg :code code}."
+  Returns {:success true :document-versions {doc-id audit-id ...}} or {:success false :error msg :code code}."
   ([xt-map operations user-id]
    (submit-operations* xt-map operations user-id nil))
   ([xt-map operations user-id extras-fn]
    (let [node (pxc/->node xt-map)
          entity-ops (vec (mapcat :op/tx-ops operations))
-         store-ops (store-operations operations user-id)
-         all-tx (into entity-ops store-ops)]
-     (pxc/submit! node all-tx
-                  (when extras-fn (fn [_] (extras-fn entity-ops)))))))
+         {:keys [tx-ops audit-id affected-documents]} (store-operations operations user-id)
+         all-tx (into entity-ops tx-ops)
+         result (pxc/submit! node all-tx
+                             (when extras-fn (fn [_] (extras-fn entity-ops))))]
+     (if (:success result)
+       (assoc result :document-versions
+              (into {} (map (fn [doc-id] [doc-id audit-id])) affected-documents))
+       result))))
 
 (defmacro submit-operations!
   "Submit operations, catching errors from both operation building and the transaction.

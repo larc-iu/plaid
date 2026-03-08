@@ -1,5 +1,6 @@
 (ns plaid.xtdb2.token
   (:require [xtdb.api :as xt]
+            [clojure.string :as str]
             [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
             [plaid.xtdb2.span :as s]
@@ -202,20 +203,40 @@
     (when (nil? (:token/id t))
       (throw (ex-info (pxc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
     (let [span-ids (get-span-ids node eid)
+          span-map (pxc/entities-with-sys-from-by-id node :spans span-ids)
+          ;; Partition: spans with only this token → delete; others → update
+          {to-delete true to-update false}
+          (group-by (fn [[_ s]] (and (= 1 (count (:span/tokens s)))
+                                     (= eid (first (:span/tokens s)))))
+                    span-map)
+          ;; For spans to delete: batch-fetch their relations
+          delete-span-ids (mapv first to-delete)
+          rel-entities (if (empty? delete-span-ids) []
+                         (let [ph (str/join ", " (repeat (count delete-span-ids) "?"))]
+                           (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                  " WHERE relation$source IN (" ph ")"
+                                                  " OR relation$target IN (" ph ")")]
+                                            (concat delete-span-ids delete-span-ids)))))
+          ;; Vocab links
           vl-ids (->> (xt/q node (xt/template
                           (-> (from :vocab-links [{:xt/id vlid :vocab-link/tokens toks}])
                               (unnest {:t toks})
                               (where (= t ~eid))
                               (return vlid))))
                       (map :vlid))
-          vl-ops (vec (mapcat (fn [vlid]
-                                (let [vl (pxc/entity-with-sys-from node :vocab-links vlid)]
-                                  [(pxc/match* :vocab-links vl)
-                                   [:delete-docs :vocab-links vlid]]))
-                              vl-ids))]
+          vl-entities (pxc/entities-with-sys-from node :vocab-links vl-ids)]
       (reduce into
-              [vl-ops
-               (vec (mapcat #(s/remove-token* xt-map % eid) span-ids))
+              [;; Delete vocab-links
+               (pxc/batch-delete-ops :vocab-links vl-entities)
+               ;; Update spans that still have other tokens
+               (vec (mapcat (fn [[_sid s]]
+                              (pxc/remove-join-ops* :spans s :span/tokens eid))
+                            to-update))
+               ;; Delete relations of spans being deleted
+               (pxc/batch-delete-ops :relations rel-entities)
+               ;; Delete spans that only had this token
+               (pxc/batch-delete-ops :spans (mapv second to-delete))
+               ;; Delete the token itself
                [(pxc/match* :tokens t)
                 [:delete-docs :tokens eid]]]))))
 
@@ -236,78 +257,69 @@
 (defn multi-delete* [xt-map eids]
   (let [node (pxc/->node xt-map)
         eids-set (set eids)
-        ;; Find all spans containing any of these tokens via unnest
-        all-span-ids (->> eids
-                          (mapcat (fn [tid]
-                                    (->> (xt/q node (xt/template
-                                           (-> (from :spans [{:xt/id sid :span/tokens toks}])
-                                               (unnest {:t toks})
-                                               (where (= t ~tid))
-                                               (return sid))))
-                                         (map :sid))))
-                          distinct)
-        all-spans (mapv #(pxc/entity node :spans %) all-span-ids)
+        ;; Batch-fetch all tokens with sys-from (1 query)
+        token-map (pxc/entities-with-sys-from-by-id node :tokens eids)
+        ;; Find all spans containing any of these tokens (1 query using SQL IN)
+        placeholders (str/join ", " (repeat (count eids) "?"))
+        all-spans (when (seq eids)
+                    (xt/q node (into [(str "SELECT *, _system_from FROM spans s, UNNEST(s.span$tokens) AS t(tid)"
+                                           " WHERE t.tid IN (" placeholders ")")]
+                                     eids)))
+        ;; Deduplicate spans (a span may match multiple tokens)
+        span-by-id (into {} (map (juxt :xt/id identity) all-spans))
         span-updates (mapv (fn [span]
-                             (let [remaining (remove eids-set (:span/tokens span))]
+                             (let [remaining (vec (remove eids-set (:span/tokens span)))]
                                {:span span
                                 :remaining remaining
                                 :should-delete? (empty? remaining)}))
-                           all-spans)
+                           (vals span-by-id))
         spans-to-delete (filter :should-delete? span-updates)
         spans-to-update (remove :should-delete? span-updates)
         span-ids-to-delete (set (map #(-> % :span :xt/id) spans-to-delete))
-        ;; Find all relations that reference spans being deleted using scalar WHERE
-        rels-to-delete (->> span-ids-to-delete
-                            (mapcat (fn [sid]
-                                      (concat
-                                       (pxc/find-entities node :relations {:relation/source sid})
-                                       (pxc/find-entities node :relations {:relation/target sid}))))
-                            (map :xt/id)
-                            distinct
-                            (map #(pxc/entity-with-sys-from node :relations %)))
-        ;; Vocab-links for all tokens being deleted via unnest
-        vl-ids (distinct
-                (mapcat (fn [tid]
-                          (->> (xt/q node (xt/template
-                                 (-> (from :vocab-links [{:xt/id vlid :vocab-link/tokens toks}])
-                                     (unnest {:t toks})
-                                     (where (= t ~tid))
-                                     (return vlid))))
-                               (map :vlid)))
-                        eids))
-        vl-ops (vec (mapcat (fn [vlid]
-                              (let [vl (pxc/entity-with-sys-from node :vocab-links vlid)]
-                                [(pxc/match* :vocab-links vl)
-                                 [:delete-docs :vocab-links vlid]]))
-                            vl-ids))]
+        ;; Find all relations referencing deleted spans (1 query using SQL IN + OR)
+        rels-to-delete (if (empty? span-ids-to-delete)
+                         []
+                         (let [ph (str/join ", " (repeat (count span-ids-to-delete) "?"))
+                               sids (vec span-ids-to-delete)]
+                           (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                  " WHERE relation$source IN (" ph ")"
+                                                  " OR relation$target IN (" ph ")")]
+                                            (concat sids sids)))))
+        ;; Find all vocab-links for these tokens (1 query using SQL IN)
+        vl-entities (if (empty? eids)
+                      []
+                      (xt/q node (into [(str "SELECT *, _system_from FROM vocab_links vl, UNNEST(vl.vocab_link$tokens) AS t(tid)"
+                                             " WHERE t.tid IN (" placeholders ")")]
+                                       eids)))
+        vl-by-id (into {} (map (juxt :xt/id identity) vl-entities))]
     (vec
      (concat
-      vl-ops
+      ;; Delete vocab-links
+      (pxc/batch-delete-ops :vocab-links (vals vl-by-id))
       ;; Delete tokens
-      (for [eid eids
-            :let [te (pxc/entity-with-sys-from node :tokens eid)]
-            :when (:token/id te)
-            op [(pxc/match* :tokens te) [:delete-docs :tokens eid]]]
-        op)
+      (mapcat (fn [eid]
+                (when-let [te (clojure.core/get token-map eid)]
+                  (when (:token/id te)
+                    [(pxc/match* :tokens te) [:delete-docs :tokens eid]])))
+              eids)
       ;; Update spans with remaining tokens
-      (for [{:keys [span remaining]} spans-to-update
-            :let [se (pxc/entity-with-sys-from node :spans (:xt/id span))]
-            op [(pxc/match* :spans se)
-                [:put-docs :spans (-> se
-                                      (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
-                                      (assoc :span/tokens (vec remaining)))]]]
-        op)
+      (mapcat (fn [{:keys [span remaining]}]
+                (let [se (clojure.core/get span-by-id (:xt/id span))]
+                  [(pxc/match* :spans se)
+                   [:put-docs :spans (-> se
+                                         (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                         (assoc :span/tokens remaining))]]))
+              spans-to-update)
       ;; Delete spans with no remaining tokens
-      (for [{:keys [span]} spans-to-delete
-            :let [sid (:xt/id span)
-                  se (pxc/entity-with-sys-from node :spans sid)]
-            op [(pxc/match* :spans se) [:delete-docs :spans sid]]]
-        op)
+      (mapcat (fn [{:keys [span]}]
+                (let [se (clojure.core/get span-by-id (:xt/id span))]
+                  [(pxc/match* :spans se) [:delete-docs :spans (:xt/id span)]]))
+              spans-to-delete)
       ;; Delete relations referencing deleted spans
-      (for [re rels-to-delete
-            :when (:relation/id re)
-            op [(pxc/match* :relations re) [:delete-docs :relations (:xt/id re)]]]
-        op)))))
+      (mapcat (fn [re]
+                (when (:relation/id re)
+                  [(pxc/match* :relations re) [:delete-docs :relations (:xt/id re)]]))
+              rels-to-delete)))))
 
 (defn bulk-create* [xt-map tokens-attrs]
   (let [node (pxc/->node xt-map)

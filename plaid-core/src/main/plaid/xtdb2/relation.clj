@@ -64,11 +64,11 @@
         (clojure.core/merge (pxc/new-record "relation")
                             {:relation/document (get-doc-id-of-span node (:relation/source attrs))}
                             (into {} rel-attrs))
-        source-record (pxc/entity node :spans source)
-        target-record (pxc/entity node :spans target)
         layer-e (pxc/entity-with-sys-from node :relation-layers layer)
         source-e (pxc/entity-with-sys-from node :spans source)
-        target-e (pxc/entity-with-sys-from node :spans target)]
+        target-e (pxc/entity-with-sys-from node :spans target)
+        source-record source-e
+        target-record target-e]
     (when (pxc/entity node :relations id)
       (throw (ex-info (pxc/err-msg-already-exists "Relation" id) {:id id :code 409})))
     (when-not (:relation-layer/id (pxc/entity node :relation-layers layer))
@@ -204,9 +204,7 @@
                               relations-attrs)
         ;; Collect all referenced span IDs and fetch them once
         all-span-ids (->> relations-attrs (mapcat (fn [a] [(:relation/source a) (:relation/target a)])) distinct)
-        span-cache (into {} (map (fn [sid]
-                                   [sid (pxc/entity-with-sys-from node :spans sid)])
-                                 all-span-ids))
+        span-cache (pxc/entities-with-sys-from-by-id node :spans all-span-ids)
         ;; Derive doc-id and span-layer from first source
         first-source (clojure.core/get span-cache (-> relations-attrs first :relation/source))
         doc-id (:span/document first-source)
@@ -280,16 +278,12 @@
 
 (defn bulk-delete* [xt-map eids]
   (let [node (pxc/->node xt-map)
-        relations (mapv #(pxc/entity node :relations %) eids)]
-    (let [doc-ids (->> relations (map :relation/document) distinct)]
+        rel-map (pxc/entities-with-sys-from-by-id node :relations eids)
+        relations (mapv #(clojure.core/get rel-map %) eids)]
+    (let [doc-ids (->> relations (keep :relation/document) distinct)]
       (when-not (= 1 (count doc-ids))
         (throw (ex-info "Not all relations belong to the same document" {:document-ids doc-ids :code 400}))))
-    (vec
-     (for [eid eids
-           :let [r (pxc/entity-with-sys-from node :relations eid)]
-           :when (:relation/id r)
-           op [(pxc/match* :relations r) [:delete-docs :relations eid]]]
-       op))))
+    (pxc/batch-delete-ops :relations (filter :relation/id (vals rel-map)))))
 
 (defn bulk-delete-operation [xt-map eids]
   (let [node (pxc/->node xt-map)

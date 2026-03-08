@@ -222,6 +222,30 @@
         (testing "Update target to non-existent span"
           (let [fake-span (java.util.UUID/randomUUID)
                 res (update-relation-target admin-request relation-id fake-span)]
+            (assert-bad-request res)))
+
+        (testing "Update source to span in different layer"
+          (let [other-sl-res (create-span-layer admin-request tkl "UpdateOtherSL")
+                other-sl (-> other-sl-res :body :id)
+                _ (assert-created other-sl-res)
+                other-span-res (create-span admin-request other-sl [token1-id] "X")
+                other-span-id (-> other-span-res :body :id)
+                _ (assert-created other-span-res)
+                res (update-relation-source admin-request relation-id other-span-id)]
+            (assert-bad-request res)))
+
+        (testing "Update target to span in different document"
+          (let [other-doc (create-test-document admin-request proj "UpdateOtherDoc")
+                other-text-res (create-text admin-request tl other-doc "other text")
+                other-text-id (-> other-text-res :body :id)
+                _ (assert-created other-text-res)
+                other-token-res (create-token admin-request tkl other-text-id 0 5)
+                other-token-id (-> other-token-res :body :id)
+                _ (assert-created other-token-res)
+                other-span-res (create-span admin-request sl [other-token-id] "E")
+                other-span-id (-> other-span-res :body :id)
+                _ (assert-created other-span-res)
+                res (update-relation-target admin-request relation-id other-span-id)]
             (assert-bad-request res)))))))
 
 (deftest bulk-relation-operations
@@ -299,6 +323,32 @@
     (testing "Bulk create relations - non-existent target"
       (let [fake-span (java.util.UUID/randomUUID)
             relations [{:relation-layer-id rl :source span1-id :target fake-span :value "BAD"}]
+            res (bulk-create-relations admin-request relations)]
+        (assert-bad-request res)))
+
+    (testing "Bulk create relations - source and target in different span layers"
+      (let [other-sl-res (create-span-layer admin-request tkl "BulkOtherSL")
+            other-sl (-> other-sl-res :body :id)
+            _ (assert-created other-sl-res)
+            other-span-res (create-span admin-request other-sl [tok1-id] "X")
+            other-span-id (-> other-span-res :body :id)
+            _ (assert-created other-span-res)
+            relations [{:relation-layer-id rl :source span1-id :target other-span-id :value "BAD"}]
+            res (bulk-create-relations admin-request relations)]
+        (assert-bad-request res)))
+
+    (testing "Bulk create relations - source and target in different documents"
+      (let [doc2 (create-test-document admin-request proj "BulkDoc2")
+            text2-res (create-text admin-request tl doc2 "other doc text")
+            text2-id (-> text2-res :body :id)
+            _ (assert-created text2-res)
+            tok-other-res (create-token admin-request tkl text2-id 0 5)
+            tok-other-id (-> tok-other-res :body :id)
+            _ (assert-created tok-other-res)
+            span-other-res (create-span admin-request sl [tok-other-id] "Y")
+            span-other-id (-> span-other-res :body :id)
+            _ (assert-created span-other-res)
+            relations [{:relation-layer-id rl :source span1-id :target span-other-id :value "BAD"}]
             res (bulk-create-relations admin-request relations)]
         (assert-bad-request res)))
 

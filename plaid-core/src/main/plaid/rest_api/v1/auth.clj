@@ -82,7 +82,8 @@
                                   (if (and auth-header (.startsWith auth-header "Bearer ")) "header" "query") ")"))
                   (handler (assoc request
                                   :jwt-data token-data
-                                  :user/id (:user/id token-data))))))))))
+                                  :user/id (:user/id token-data)
+                                  :user/record (select-keys user [:user/id :user/username :user/is-admin]))))))))))
 
 (defn wrap-login-required [handler]
   (fn [request]
@@ -92,12 +93,11 @@
       (handler request))))
 
 (defn wrap-admin-required [handler]
-  (fn [{:keys [xtdb] :as request}]
-    (let [user (user/get xtdb (->user-id request))]
-      (if-not (user/admin? user)
-        {:status 403
-         :body {:error "Admin privileges required for this operation."}}
-        (handler request)))))
+  (fn [request]
+    (if-not (user/admin? (:user/record request))
+      {:status 403
+       :body {:error "Admin privileges required for this operation."}}
+      (handler request))))
 
 (def ^:private levels
   {:project/readers [:project/readers :project/writers :project/maintainers]
@@ -118,7 +118,7 @@
           xt-map (or (:xt-map request) {:node xtdb})
           id (get-project-id {:parameters (:parameters request)
                               :xt-map xt-map})
-          admin? (user/admin? (user/get xtdb user-id))
+          admin? (user/admin? (:user/record request))
           project (prj/get xt-map id)]
       (if-not (or admin? (some #(seq ((-> project % set) user-id)) (key levels)))
         {:status 403
@@ -140,7 +140,7 @@
           xt-map (or (:xt-map request) {:node xtdb})
           vocab-id (get-vocab-id {:parameters (:parameters request)
                                   :xt-map xt-map})
-          admin? (user/admin? (user/get xtdb user-id))
+          admin? (user/admin? (:user/record request))
           maintainer? (and vocab-id
                            (vocab/maintainer? xt-map vocab-id user-id))]
       (if-not (or admin? maintainer?)
@@ -156,7 +156,7 @@
           xt-map (or (:xt-map request) {:node xtdb})
           vocab-id (get-vocab-id {:parameters (:parameters request)
                                   :xt-map xt-map})
-          admin? (user/admin? (user/get xtdb user-id))
+          admin? (user/admin? (:user/record request))
           maintainer? (and vocab-id
                            (vocab/maintainer? xt-map vocab-id user-id))
           accessible? (and vocab-id
@@ -174,7 +174,7 @@
           xt-map (or (:xt-map request) {:node xtdb})
           vocab-id (get-vocab-id {:parameters (:parameters request)
                                   :xt-map xt-map})
-          admin? (user/admin? (user/get xtdb user-id))
+          admin? (user/admin? (:user/record request))
           maintainer? (and vocab-id
                            (vocab/maintainer? xt-map vocab-id user-id))
           write-accessible? (and vocab-id
