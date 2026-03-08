@@ -3,63 +3,57 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [xtdb.api :as xt]
-            [plaid.xtdb.relation :as r]
-            [plaid.xtdb.relation-layer :as rl]))
+            [plaid.xtdb2.relation :as r]
+            [plaid.xtdb2.relation-layer :as rl]))
 
 (defn get-project-id
   "Derive the project ID from a relation-layer or existing relation."
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (let [rl-id (-> params :body :layer-id)
         relation-id (-> params :path :relation-id)]
     (cond
-      rl-id (rl/project-id db rl-id)
-      relation-id (r/project-id db relation-id)
+      rl-id (rl/project-id xt-map rl-id)
+      relation-id (r/project-id xt-map relation-id)
       :else nil)))
 
-(defn bulk-get-project-id [{db :db params :parameters}]
+(defn bulk-get-project-id [{xt-map :xt-map params :parameters}]
   (let [rl-id (or (-> params :body first :relation-layer-id))
         relation-id (-> params :body first)]
     (cond
-      rl-id (rl/project-id db rl-id)
-      relation-id (r/project-id db relation-id)
+      rl-id (rl/project-id xt-map rl-id)
+      relation-id (r/project-id xt-map relation-id)
       :else nil)))
 
 (defn get-document-id
   "Get document ID from relation's source span."
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (let [source-id (-> params :body :source-id)
-        span-id (-> params :body :span-id) ; For source/target updates
+        span-id (-> params :body :span-id)
         relation-id (-> params :path :relation-id)]
     (cond
-      ;; For new relation creation, use source span
       source-id
-      (r/get-doc-id-of-span db source-id)
+      (r/get-doc-id-of-span xt-map source-id)
 
-      ;; For source/target updates
       span-id
-      (r/get-doc-id-of-span db span-id)
+      (r/get-doc-id-of-span xt-map span-id)
 
-      ;; For existing relation operations
       relation-id
-      (when-let [relation (r/get db relation-id)]
-        (r/get-doc-id-of-span db (:relation/source relation)))
+      (when-let [relation (r/get xt-map relation-id)]
+        (r/get-doc-id-of-span xt-map (:relation/source relation)))
 
       :else nil)))
 
 (defn bulk-get-document-id
   "Get document ID from first relation's source span."
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (when-let [first-relation (first (:body params))]
     (cond
-      ;; For bulk create
       (:source first-relation)
-      (r/get-doc-id-of-span db (:source first-relation))
+      (r/get-doc-id-of-span xt-map (:source first-relation))
 
-      ;; For bulk delete (array of IDs)
       (uuid? first-relation)
-      (when-let [relation (r/get db first-relation)]
-        (r/get-doc-id-of-span db (:relation/source relation)))
+      (when-let [relation (r/get xt-map first-relation)]
+        (r/get-doc-id-of-span xt-map (:relation/source relation)))
 
       :else nil)))
 
@@ -154,8 +148,8 @@
      :parameters {:path [:map [:relation-id :uuid]]}}
     ["" {:get {:summary "Get a relation by ID."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [relation-id]} :path} :parameters db :db}]
-                          (let [relation (r/get db relation-id)]
+               :handler (fn [{{{:keys [relation-id]} :path} :parameters xt-map :xt-map}]
+                          (let [relation (r/get xt-map relation-id)]
                             (if (some? relation)
                               {:status 200 :body relation}
                               {:status 404 :body {:error "Relation not found"}})))}

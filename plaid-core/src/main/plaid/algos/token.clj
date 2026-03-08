@@ -214,7 +214,7 @@
    - new-body: the new string value of the text's body
    - offsets: the offsets of new tokens that should be created
    - ops: the text edit operations (see plaid.algos.text) that describe how to handle separator sequences appropriately.
-          You should probably use these with txt/update-body**--see plaid.xtdb.token-layer/morpheme-tokenize
+          You should probably use these with txt/update-body**--see plaid.xtdb2.token-layer/morpheme-tokenize
 
   Example:
 

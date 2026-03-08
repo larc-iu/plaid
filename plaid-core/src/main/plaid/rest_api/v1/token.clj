@@ -3,45 +3,40 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [xtdb.api :as xt]
-            [plaid.xtdb.token :as tok]
-            [plaid.xtdb.token-layer :as tokl]))
+            [plaid.xtdb2.token :as tok]
+            [plaid.xtdb2.token-layer :as tokl]))
 
-(defn get-project-id [{db :db params :parameters}]
+(defn get-project-id [{xt-map :xt-map params :parameters}]
   (let [tokl-id (or (-> params :body :token-layer-id))
         token-id (-> params :path :token-id)]
     (cond
-      tokl-id (tokl/project-id db tokl-id)
-      token-id (tok/project-id db token-id)
+      tokl-id (tokl/project-id xt-map tokl-id)
+      token-id (tok/project-id xt-map token-id)
       :else nil)))
 
-(defn bulk-get-project-id [{db :db params :parameters}]
+(defn bulk-get-project-id [{xt-map :xt-map params :parameters}]
   (let [tokl-id (or (-> params :body first :token-layer-id))
         token-id (-> params :body first)]
     (cond
-      tokl-id (tokl/project-id db tokl-id)
-      token-id (tok/project-id db token-id)
+      tokl-id (tokl/project-id xt-map tokl-id)
+      token-id (tok/project-id xt-map token-id)
       :else nil)))
 
-(defn get-document-id [{db :db params :parameters}]
-  (let [text-id (-> params :body :text)
-        token-id (-> params :path :token-id)]
+(defn get-document-id [{xt-map :xt-map params :parameters}]
+  (let [token-id (-> params :path :token-id)
+        text-id (-> params :body :text)]
     (cond
-      text-id (:text/document (xt/entity db text-id))
-      token-id (let [token (tok/get db token-id)]
-                 (when token
-                   (:text/document (xt/entity db (:token/text token)))))
-      :else nil)))
+      token-id (when-let [token (tok/get xt-map token-id)]
+                 (tok/get-doc-id-of-text xt-map (:token/text token)))
+      text-id (tok/get-doc-id-of-text xt-map text-id))))
 
-(defn bulk-get-document-id [{db :db params :parameters}]
-  (let [text-id (or (-> params :body first :text))
-        token-id (-> params :body first)]
+(defn bulk-get-document-id [{xt-map :xt-map params :parameters}]
+  (let [token-id (-> params :body first)
+        text-id (when (map? token-id) (:text token-id))]
     (cond
-      text-id (:text/document (xt/entity db text-id))
-      token-id (let [token (tok/get db token-id)]
-                 (when token
-                   (:text/document (xt/entity db (:token/text token)))))
-      :else nil)))
+      text-id (tok/get-doc-id-of-text xt-map text-id)
+      (uuid? token-id) (when-let [token (tok/get xt-map token-id)]
+                          (tok/get-doc-id-of-text xt-map (:token/text token))))))
 
 (def token-routes
   ["/tokens"
@@ -139,8 +134,8 @@
 
     ["" {:get {:summary "Get a token."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [token-id]} :path} :parameters db :db}]
-                          (let [token (tok/get db token-id)]
+               :handler (fn [{{{:keys [token-id]} :path} :parameters xt-map :xt-map}]
+                          (let [token (tok/get xt-map token-id)]
                             (if (some? token)
                               {:status 200 :body token}
                               {:status 404 :body {:error "Token not found"}})))}

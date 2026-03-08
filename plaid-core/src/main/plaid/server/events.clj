@@ -206,7 +206,7 @@
 (defn publish-audit-event!
   "Publish an audit event to the event bus for distribution to subscribed clients.
    
-   This is called by the database layer (plaid.xtdb.operation) after successful
+   This is called by the database layer (plaid.xtdb2.operation) after successful
    write operations. The event contains:
    - audit/id: Unique identifier for this audit entry
    - audit/projects: Set of affected project IDs

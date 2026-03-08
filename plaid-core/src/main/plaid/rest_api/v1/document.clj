@@ -5,15 +5,15 @@
             [plaid.rest-api.v1.media :as media]
             [plaid.server.locks :as locks]
             [reitit.coercion.malli]
-            [plaid.xtdb.document :as doc]
+            [plaid.xtdb2.document :as doc]
             [clojure.data.json :as json]))
 
-(defn get-project-id [{db :db params :parameters}]
+(defn get-project-id [{xt-map :xt-map params :parameters}]
   (let [prj-id (-> params :body :project-id)
         doc-id (-> params :path :document-id)]
     (cond
       prj-id prj-id
-      doc-id (-> (doc/get db doc-id) :document/project)
+      doc-id (-> (doc/get xt-map doc-id) :document/project)
       :else nil)))
 
 (defn get-document-id [{params :parameters}]
@@ -48,10 +48,10 @@
                :parameters {:query [:map [:include-body {:optional true} boolean?]]}
                :handler (fn [{{{:keys [document-id]} :path
                                {:keys [include-body]} :query} :parameters
-                              db :db}]
+                              xt-map :xt-map}]
                           (let [document (if include-body
-                                           (doc/get-with-layer-data db document-id)
-                                           (doc/get db document-id))]
+                                           (doc/get-with-layer-data xt-map document-id)
+                                           (doc/get xt-map document-id))]
                             (if (some? document)
                               {:status 200
                                :body document

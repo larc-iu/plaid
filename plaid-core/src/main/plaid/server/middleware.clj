@@ -4,7 +4,6 @@
             [ring.middleware.cors :refer [wrap-cors]]
             [ring.util.response :as response]
             [ring.util.mime-type :as mime]
-            [xtdb-inspector.core :refer [inspector-handler]]
             [plaid.server.config :refer [config]]
             [plaid.server.xtdb :refer [xtdb-node]]
             [plaid.rest-api.v1.core :refer [rest-handler]]
@@ -40,16 +39,6 @@
       (if (str/starts-with? uri "/api/v1/")
         (rest-handler req)
         (handler req)))))
-
-(defn wrap-xtdb-inspector [ring-handler]
-  (let [inspector? (-> config :plaid.server.xtdb/config :use-inspector)
-        handler (inspector-handler xtdb-node)]
-    (fn [request]
-      (if (and inspector?
-               (map? request)
-               (-> request :uri (clojure.string/split #"/") (get 1) (get 0) (= \_)))
-        (handler request)
-        (ring-handler request)))))
 
 (defn wrap-static-resources
   "Serves static files from a filesystem directory"
@@ -90,7 +79,6 @@
     (-> (fn [_] {:status 404 :body "Not Found"})
         (wrap-rest-routes xtdb-node)
         wrap-static-resources
-        wrap-xtdb-inspector
         (wrap-defaults defaults-config)
         (wrap-cors :access-control-allow-origin (map re-pattern (:access-control-allow-origin cors-config))
                    :access-control-allow-methods (:access-control-allow-methods cors-config)

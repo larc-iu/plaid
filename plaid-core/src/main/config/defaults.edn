@@ -22,10 +22,11 @@
                                   :ns-whitelist []
                                   :ns-blacklist []}
 
- :plaid.server.xtdb/config {:main-db-dir "data"}
+ :plaid.server.xtdb/config {:main-db-dir "data"
+                            :pgwire-port 5433}
 
- :plaid.xtdb.common/config {:min-name-length 1
-                            :max-name-length 500}
+ :plaid.xtdb2.common/config {:min-name-length 1
+                             :max-name-length 500}
 
  :plaid.server.events/heartbeat {:interval-ms 30000
                                  :max-consecutive-misses 2}

@@ -11,19 +11,19 @@
                                     admin-request
                                     parse-response-body]]
             [clojure.core.async :as async]
-            [plaid.xtdb.operation :as op :refer [request-operation-start!
-                                                 signal-operation-complete!
-                                                 request-batch-start!
-                                                 signal-batch-complete!]])
+            [plaid.xtdb2.operation-coordinator :as op-coord :refer [request-operation-start!
+                                                                    signal-operation-complete!
+                                                                    request-batch-start!
+                                                                    signal-batch-complete!]])
   (:import [java.util.concurrent CountDownLatch CyclicBarrier TimeUnit]))
 
 (use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin)
 
 (defn make-batch-request [operations token]
   (let [req (cond-> (mock/request :post "/api/v1/batch")
-                    true (mock/header "accept" "application/edn")
-                    true (mock/json-body operations)
-                    token (mock/header "authorization" (str "Bearer " token)))]
+              true (mock/header "accept" "application/edn")
+              true (mock/json-body operations)
+              token (mock/header "authorization" (str "Bearer " token)))]
     (rest-handler req)))
 
 (deftest test-batch-operations
@@ -308,25 +308,27 @@
   (testing "Regular operations are blocked when batch is active"
     (let [batch-op (make-controlled-operation)
           batch-id (str "test-batch-" (random-uuid))
-          batch-with-future (start-batch-op-async batch-id batch-op)
-
-          regular-ops (repeatedly 2 make-controlled-operation)
-          regulars-with-futures (doall (map start-regular-op-async regular-ops))]
+          batch-with-future (start-batch-op-async batch-id batch-op)]
 
       (is (.await (:start-latch batch-op) 1000 TimeUnit/MILLISECONDS)
           "Batch should start immediately")
 
-      (Thread/sleep 200)
+      ;; Start regular ops only after batch has started, so they are guaranteed to be queued
+      (let [regular-ops (repeatedly 2 make-controlled-operation)
+            regulars-with-futures (doall (map start-regular-op-async regular-ops))]
 
-      (is (every? #(verify-operation-queued % 100) regulars-with-futures)
-          "Regular operations should be queued")
+        (Thread/sleep 200)
 
-      ((:complete-fn batch-op))
+        (is (every? #(verify-operation-queued % 100) regulars-with-futures)
+            "Regular operations should be queued")
 
-      (is (wait-for-operations-to-start regular-ops 1000)
-          "Regular operations should start after batch completes")
+        ((:complete-fn batch-op))
 
-      (release-operations regular-ops))))
+        (is (wait-for-operations-to-start regular-ops 1000)
+            "Regular operations should start after batch completes")
+
+        (release-operations regular-ops)
+        (wait-for-all-responses regulars-with-futures 5000)))))
 
 (deftest test-batch-blocked-by-regulars
   (testing "Batch operation waits for active regular operations to complete"
@@ -350,7 +352,8 @@
         (is (.await (:start-latch batch-op) 1000 TimeUnit/MILLISECONDS)
             "Batch should start after regulars complete")
 
-        ((:complete-fn batch-op))))))
+        ((:complete-fn batch-op))
+        (async/<!! (:response-future batch-with-future))))))
 
 (deftest test-multiple-batches-queued
   (testing "Multiple batches are queued in FIFO order"
@@ -366,28 +369,35 @@
         (is (.await (:start-latch batch1) 2000 TimeUnit/MILLISECONDS)
             "First batch should start immediately")
 
-        ;; Now start the second and third batches
-        (let [batch2-future (start-batch-op-async batch2-id batch2)
-              batch3-future (start-batch-op-async batch3-id batch3)]
+        ;; Start batch2 first and confirm it's queued before starting batch3.
+        ;; Both threads race to the coordinator channel; if batch3 arrives first,
+        ;; it gets dequeued before batch2 when batch1 completes, breaking FIFO.
+        (let [batch2-future (start-batch-op-async batch2-id batch2)]
+          (is (wait-for-operations-to-request [batch2-future] 2000)
+              "Second batch should make coordinator request")
+          ;; verify-operation-queued blocks 500ms — long enough for the coordinator
+          ;; to receive and queue batch2 — so after this, FIFO order is guaranteed.
+          (is (verify-operation-queued batch2-future 500)
+              "Second batch should be queued while batch1 is active")
 
-          ;; Give time for batches to be queued
-          (Thread/sleep 300)
+          (let [batch3-future (start-batch-op-async batch3-id batch3)]
+            (is (wait-for-operations-to-request [batch3-future] 2000)
+                "Third batch should make coordinator request")
+            (is (verify-operation-queued batch3-future 100)
+                "Third batch should be queued")
 
-          (is (and (verify-operation-queued batch2-future 100)
-                   (verify-operation-queued batch3-future 100))
-              "Second and third batches should be queued")
+            ((:complete-fn batch1))
 
-          ((:complete-fn batch1))
+            (is (.await (:start-latch batch2) 2000 TimeUnit/MILLISECONDS)
+                "Second batch should start after first completes")
 
-          (is (.await (:start-latch batch2) 2000 TimeUnit/MILLISECONDS)
-              "Second batch should start after first completes")
+            ((:complete-fn batch2))
 
-          ((:complete-fn batch2))
+            (is (.await (:start-latch batch3) 2000 TimeUnit/MILLISECONDS)
+                "Third batch should start after second completes")
 
-          (is (.await (:start-latch batch3) 2000 TimeUnit/MILLISECONDS)
-              "Third batch should start after second completes")
-
-          ((:complete-fn batch3)))))))
+            ((:complete-fn batch3))
+            (async/<!! (:response-future batch3-future))))))))
 
 (deftest test-mixed-operation-queueing
   (testing "Mixed regular and batch operations queue properly"
@@ -432,7 +442,8 @@
         (is (.await (:start-latch batch2) 3000 TimeUnit/MILLISECONDS)
             "Second batch should start after regulars complete")
 
-        ((:complete-fn batch2))))))
+        ((:complete-fn batch2))
+        (async/<!! (:response-future batch2-future))))))
 
 ;; State Transition Tests ===============================================================
 
@@ -466,7 +477,8 @@
         (is (.await (:start-latch batch-op) 1000 TimeUnit/MILLISECONDS)
             "Batch should start after last regular completes")
 
-        ((:complete-fn batch-op))))))
+        ((:complete-fn batch-op))
+        (async/<!! (:response-future batch-future))))))
 
 (deftest test-batch-complete-releases-regulars
   (testing "Batch completion releases all queued regular operations"
@@ -490,7 +502,8 @@
         (is (wait-for-operations-to-start regular-ops 1000)
             "All regulars should start after batch completes")
 
-        (release-operations regular-ops)))))
+        (release-operations regular-ops)
+        (wait-for-all-responses regulars-futures 5000)))))
 
 (deftest test-complex-state-transitions
   (testing "Complex sequence of state transitions"
@@ -501,31 +514,37 @@
       (is (.await (:start-latch regular1) 2000 TimeUnit/MILLISECONDS)
           "First regular should start")
 
-      ;; Now create the queued operations
+      ;; Start batch1 first and confirm it's queued before starting regular2/batch2.
+      ;; All three share the same coordinator channel, so if regular2 races ahead of
+      ;; batch1 it gets :proceed immediately (regular1 active, no batches queued yet),
+      ;; breaking the intended ordering.
       (let [batch1 (make-controlled-operation)
             batch1-id (str "test-batch-1-" (random-uuid))
-            batch1-future (start-batch-op-async batch1-id batch1)
+            batch1-future (start-batch-op-async batch1-id batch1)]
 
-            regular2 (make-controlled-operation)
-            regular2-future (start-regular-op-async regular2)
-
-            batch2 (make-controlled-operation)
-            batch2-id (str "test-batch-2-" (random-uuid))
-            batch2-future (start-batch-op-async batch2-id batch2)]
-
-        ;; Wait for all operations to make their coordinator requests
         (is (wait-for-operations-to-request [batch1-future] 2000)
             "First batch should make coordinator request")
-        (is (wait-for-operations-to-request [regular2-future] 2000)
-            "Second regular should make coordinator request")
-        (is (wait-for-operations-to-request [batch2-future] 2000)
-            "Second batch should make coordinator request")
+        ;; verify-operation-queued blocks 500ms, during which the coordinator must
+        ;; receive and queue batch1 — so after this, batch1 is definitely queued.
+        (is (verify-operation-queued batch1-future 500)
+            "First batch should be queued while regular1 is active")
 
-        ;; Verify they are all queued
-        (is (and (verify-operation-queued batch1-future 100)
-                 (verify-operation-queued regular2-future 100)
-                 (verify-operation-queued batch2-future 100))
-            "All subsequent ops should be queued")
+        (let [regular2 (make-controlled-operation)
+              regular2-future (start-regular-op-async regular2)
+
+              batch2 (make-controlled-operation)
+              batch2-id (str "test-batch-2-" (random-uuid))
+              batch2-future (start-batch-op-async batch2-id batch2)]
+
+          (is (wait-for-operations-to-request [regular2-future] 2000)
+              "Second regular should make coordinator request")
+          (is (wait-for-operations-to-request [batch2-future] 2000)
+              "Second batch should make coordinator request")
+
+          ;; Verify they are all queued
+          (is (and (verify-operation-queued regular2-future 100)
+                   (verify-operation-queued batch2-future 100))
+              "regular2 and batch2 should be queued")
 
         ;; Complete first regular - should trigger first batch
         ((:complete-fn regular1))
@@ -552,7 +571,8 @@
         (is (wait-for-operations-to-start-polling [batch2] 5000)
             "Second batch should start after second regular completes")
 
-        ((:complete-fn batch2))))))
+        ((:complete-fn batch2))
+        (async/<!! (:response-future batch2-future)))))))
 
 ;; Race Condition Tests =================================================================
 
@@ -582,7 +602,8 @@
           (is (.await (:start-latch batch-op) 2000 TimeUnit/MILLISECONDS)
               "Batch should start after all regulars complete simultaneously")
 
-          ((:complete-fn batch-op)))))))
+          ((:complete-fn batch-op))
+          (async/<!! (:response-future batch-future)))))))
 
 (deftest test-batch-request-during-transition
   (testing "Batch request arriving just as regular operations complete"
@@ -608,7 +629,8 @@
         (is (.await (:start-latch batch-op) 2000 TimeUnit/MILLISECONDS)
             "Batch should start even with timing race")
 
-        ((:complete-fn batch-op))))))
+        ((:complete-fn batch-op))
+        (Thread/sleep 200)))))
 
 ;; Edge Case Tests ======================================================================
 
@@ -642,11 +664,12 @@
             "Regular operations should start after batch completes")
 
         ;; Clean up
-        (release-operations regular-ops)))))
+        (release-operations regular-ops)
+        (wait-for-all-responses regulars-futures 5000)))))
 
 (deftest test-unknown-request-type
   (testing "Unknown request type handling"
-    (let [coordinator plaid.xtdb.operation/operation-coordinator
+    (let [coordinator plaid.xtdb2.operation-coordinator/operation-coordinator
           request-chan (:request-chan coordinator)
           response-chan (async/chan)]
 
