@@ -1,5 +1,6 @@
 (ns plaid.xtdb2.project
   (:require [xtdb.api :as xt]
+            [clojure.string :as str]
             [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
             [plaid.xtdb2.user :as user]
@@ -64,11 +65,14 @@
          distinct)))
 
 (defn get-accessible [node-or-map user-id]
-  (if (user/admin? (user/get node-or-map user-id))
-    (->> (get-all-ids node-or-map)
-         (mapv #(get node-or-map %)))
-    (->> (get-accessible-ids node-or-map user-id)
-         (mapv #(get node-or-map %)))))
+  (let [admin? (user/admin? (user/get node-or-map user-id))
+        entities (if admin?
+                   (pxc/find-entities node-or-map :projects {})
+                   (pxc/entities-with-sys-from node-or-map :projects
+                                               (vec (get-accessible-ids node-or-map user-id))))]
+    (->> entities
+         (mapv #(-> (dissoc % :xt/id :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                    pxc/deserialize-config)))))
 
 (defn get-by-name [node-or-map name]
   (pxc/find-entity node-or-map :projects {:project/name name}))
@@ -130,14 +134,10 @@
     (let [text-layers (:project/text-layers prj-e)
           txtl-txs (reduce into [] (mapv #(txtl/delete* xt-map %) text-layers))
           document-ids (get-document-ids xt-map eid)
-          doc-txs (mapcat (fn [did]
-                            (let [doc-e (pxc/entity-with-sys-from node :documents did)]
-                              [(pxc/match* :documents doc-e)
-                               [:delete-docs :documents did]]))
-                          document-ids)
+          docs (pxc/entities-with-sys-from node :documents document-ids)
           project-txs [(pxc/match* :projects prj-e)
                        [:delete-docs :projects eid]]]
-      (vec (concat txtl-txs doc-txs project-txs)))))
+      (vec (concat txtl-txs (pxc/batch-delete-ops :documents docs) project-txs)))))
 
 (defn delete-operation [xt-map eid]
   (let [node (pxc/->node xt-map)
@@ -349,18 +349,25 @@
       :else
       ;; Find vocab-links for this vocab's items that belong to tokens in this project's documents
       (let [project-doc-ids (set (get-document-ids xt-map project-id))
-            vocab-items (pxc/find-entities node :vocab-items {:vocab-item/layer vocab-id})
-            vocab-link-ops (mapcat (fn [vi]
-                                     (mapcat (fn [vl]
-                                               (let [vl-e (pxc/entity-with-sys-from node :vocab-links (:xt/id vl))
-                                                     first-token-id (first (:vocab-link/tokens vl-e))
-                                                     doc-id (when first-token-id
-                                                              (:token/document (pxc/entity node :tokens first-token-id)))]
-                                                 (when (project-doc-ids doc-id)
-                                                   [(pxc/match* :vocab-links vl-e)
-                                                    [:delete-docs :vocab-links (:xt/id vl)]])))
-                                             (pxc/find-entities node :vocab-links {:vocab-link/vocab-item (:vocab-item/id vi)})))
-                                   vocab-items)
+            vocab-item-ids (mapv :xt/id (pxc/find-entities node :vocab-items {:vocab-item/layer vocab-id}))
+            ;; Batch-fetch all vocab-links for these items (single SQL query)
+            all-vl-entities (if (empty? vocab-item-ids)
+                              []
+                              (let [ph (str/join ", " (repeat (count vocab-item-ids) "?"))]
+                                (xt/q node (into [(str "SELECT *, _system_from FROM vocab_links"
+                                                       " WHERE vocab_link$vocab_item IN (" ph ")")]
+                                                 vocab-item-ids))))
+            ;; Collect first token ID from each vocab-link to batch-fetch tokens
+            first-token-ids (->> all-vl-entities (keep #(first (:vocab-link/tokens %))) distinct vec)
+            token-cache (pxc/entities-with-sys-from-by-id node :tokens first-token-ids)
+            ;; Filter vocab-links to those belonging to this project's documents
+            project-vl-entities (filter (fn [vl-e]
+                                          (let [first-tid (first (:vocab-link/tokens vl-e))
+                                                doc-id (when first-tid
+                                                         (:token/document (clojure.core/get token-cache first-tid)))]
+                                            (project-doc-ids doc-id)))
+                                        all-vl-entities)
+            vocab-link-ops (pxc/batch-delete-ops :vocab-links project-vl-entities)
             prj (dissoc prj-e :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
             project-ops [(pxc/match* :projects prj-e)
                          [:put-docs :projects (pxc/remove-id prj :project/vocabs vocab-id)]]]

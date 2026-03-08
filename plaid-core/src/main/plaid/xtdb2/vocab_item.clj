@@ -83,13 +83,9 @@
         record (pxc/entity-with-sys-from node :vocab-items eid)]
     (when-not (:vocab-item/id record)
       (throw (ex-info (pxc/err-msg-not-found "Vocab item" eid) {:code 404 :id eid})))
-    (let [vocab-links (pxc/find-entities node :vocab-links {:vocab-link/vocab-item eid})
-          link-ops (mapcat (fn [vl]
-                             (let [vl-e (pxc/entity-with-sys-from node :vocab-links (:xt/id vl))]
-                               [(pxc/match* :vocab-links vl-e)
-                                [:delete-docs :vocab-links (:xt/id vl)]]))
-                           vocab-links)]
-      (into (vec link-ops)
+    (let [vl-ids (mapv :xt/id (pxc/find-entities node :vocab-links {:vocab-link/vocab-item eid}))
+          vl-entities (pxc/entities-with-sys-from node :vocab-links vl-ids)]
+      (into (pxc/batch-delete-ops :vocab-links vl-entities)
             [(pxc/match* :vocab-items record)
              [:delete-docs :vocab-items eid]]))))
 

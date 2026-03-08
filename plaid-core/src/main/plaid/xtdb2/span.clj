@@ -1,5 +1,6 @@
 (ns plaid.xtdb2.span
   (:require [xtdb.api :as xt]
+            [clojure.string :as str]
             [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
             [plaid.xtdb2.relation :as r]
@@ -32,10 +33,8 @@
 
 (defn get-relation-ids [node-or-map eid]
   (let [node (pxc/->node node-or-map)]
-    (->> (concat (pxc/find-entities node :relations {:relation/source eid})
-                 (pxc/find-entities node :relations {:relation/target eid}))
-         (map :xt/id)
-         distinct)))
+    (->> (xt/q node ["SELECT _id FROM relations WHERE relation$source = ? OR relation$target = ?" eid eid])
+         (map :xt/id))))
 
 (defn get-doc-id-of-token [node-or-map token-id]
   (:token/document (pxc/entity node-or-map :tokens token-id)))
@@ -53,7 +52,7 @@
     (throw (ex-info "Span value must be atomic (string, number, boolean, or null)"
                     {:value value :code 400}))))
 
-(defn- check-tokens! [node {:span/keys [tokens layer]} token-records]
+(defn- check-tokens! [node {:span/keys [tokens layer document]} token-records]
   (let [{token-layer-id :token/layer} (first token-records)
         sl (pxc/entity node :span-layers layer)]
     (cond
@@ -76,7 +75,12 @@
                       {:token-layer-id token-layer-id :span-layer-id layer :code 400}))
 
       (not (= 1 (count (distinct (map :token/document token-records)))))
-      (throw (ex-info "Not all token IDs belong to the same document." {:code 400})))))
+      (throw (ex-info "Not all token IDs belong to the same document." {:code 400}))
+
+      (and (some? document)
+           (not (every? #(= document (:token/document %)) token-records)))
+      (throw (ex-info "Not all token IDs belong to the same document."
+                      {:code 400})))))
 
 (defn- span-attr? [k]
   (= "span" (namespace k)))
@@ -88,14 +92,15 @@
         (clojure.core/merge (pxc/new-record "span")
                             {:span/document (get-doc-id-of-token node (-> attrs :span/tokens first))}
                             (into {} span-attrs))
-        token-records (mapv #(pxc/entity node :tokens %) tokens)]
+        token-map (pxc/entities-with-sys-from-by-id node :tokens tokens)
+        token-records (mapv #(clojure.core/get token-map %) tokens)]
     (validate-atomic-value! value)
     (check-tokens! node span token-records)
     (when (pxc/entity node :spans id)
       (throw (ex-info (pxc/err-msg-already-exists "Span" id) {:id id :code 409})))
     (let [layer-e (pxc/entity-with-sys-from node :span-layers layer)
           token-matches (mapv (fn [tok-id]
-                                (pxc/match* :tokens (pxc/entity-with-sys-from node :tokens tok-id)))
+                                (pxc/match* :tokens (clojure.core/get token-map tok-id)))
                               tokens)]
       (into [(pxc/match* :span-layers layer-e)]
             (conj token-matches [:put-docs :spans span])))))
@@ -142,8 +147,8 @@
     (when (nil? (:span/id s))
       (throw (ex-info (pxc/err-msg-not-found "Span" eid) {:code 404 :id eid})))
     (let [rel-ids (get-relation-ids node eid)
-          rel-ops (vec (mapcat #(r/delete* xt-map %) rel-ids))]
-      (into rel-ops
+          rel-entities (pxc/entities-with-sys-from node :relations rel-ids)]
+      (into (pxc/batch-delete-ops :relations rel-entities)
             [(pxc/match* :spans s)
              [:delete-docs :spans eid]]))))
 
@@ -163,13 +168,14 @@
 
 (defn set-tokens* [xt-map eid token-ids]
   (let [node (pxc/->node xt-map)
-        token-records (mapv #(pxc/entity node :tokens %) token-ids)
+        token-map (pxc/entities-with-sys-from-by-id node :tokens token-ids)
+        token-records (mapv #(clojure.core/get token-map %) token-ids)
         {:span/keys [layer] :as s} (pxc/entity node :spans eid)]
     (check-tokens! node s token-records)
     (let [s-e (pxc/entity-with-sys-from node :spans eid)
           layer-e (pxc/entity-with-sys-from node :span-layers layer)
           token-matches (mapv (fn [tid]
-                                (pxc/match* :tokens (pxc/entity-with-sys-from node :tokens tid)))
+                                (pxc/match* :tokens (clojure.core/get token-map tid)))
                               token-ids)]
       (into token-matches
             [(pxc/match* :span-layers layer-e)
@@ -232,9 +238,7 @@
         sl (pxc/entity node :span-layers layer)
         ;; Collect all referenced token IDs and fetch them in bulk
         all-token-ids (->> spans-attrs (mapcat :span/tokens) distinct)
-        token-cache (into {} (map (fn [tid]
-                                    [tid (pxc/entity-with-sys-from node :tokens tid)])
-                                  all-token-ids))
+        token-cache (pxc/entities-with-sys-from-by-id node :tokens all-token-ids)
         ;; Derive doc-id and validate consistency from cached tokens
         first-token (clojure.core/get token-cache (-> spans-attrs first :span/tokens first))
         doc-id (:token/document first-token)
@@ -315,28 +319,21 @@
 
 (defn bulk-delete* [xt-map eids]
   (let [node (pxc/->node xt-map)
-        spans (mapv #(pxc/entity node :spans %) eids)]
-    (let [doc-ids (->> spans (map :span/document) distinct)]
+        span-map (pxc/entities-with-sys-from-by-id node :spans eids)
+        spans (mapv #(clojure.core/get span-map %) eids)]
+    (let [doc-ids (->> spans (keep :span/document) distinct)]
       (when-not (= 1 (count doc-ids))
         (throw (ex-info "Not all spans belong to the same document" {:document-ids doc-ids :code 400}))))
-    (let [eids-set (set eids)
-          rel-ids-to-del (->> eids-set
-                              (mapcat (fn [sid]
-                                        (concat
-                                         (pxc/find-entities node :relations {:relation/source sid})
-                                         (pxc/find-entities node :relations {:relation/target sid}))))
-                              (map :xt/id)
-                              distinct)
-          rel-ops (vec (for [rid rel-ids-to-del
-                             :let [re (pxc/entity-with-sys-from node :relations rid)]
-                             :when (:relation/id re)
-                             op [(pxc/match* :relations re) [:delete-docs :relations rid]]]
-                         op))
-          span-ops (vec (for [eid eids
-                              :let [se (pxc/entity-with-sys-from node :spans eid)]
-                              :when (:span/id se)
-                              op [(pxc/match* :spans se) [:delete-docs :spans eid]]]
-                          op))]
+    (let [;; Single SQL query for all relations referencing any of these spans
+          placeholders (str/join ", " (repeat (count eids) "?"))
+          rel-entities (when (seq eids)
+                         (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                " WHERE relation$source IN (" placeholders ")"
+                                                " OR relation$target IN (" placeholders ")")]
+                                          (concat eids eids))))
+          rel-ops (pxc/batch-delete-ops :relations rel-entities)
+          span-entities (filter :span/id (vals span-map))
+          span-ops (pxc/batch-delete-ops :spans span-entities)]
       (into rel-ops span-ops))))
 
 (defn bulk-delete-operation [xt-map eids]

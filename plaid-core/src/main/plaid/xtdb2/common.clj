@@ -83,6 +83,27 @@
   [node table id]
   (first (xt/q node [(str "SELECT *, _system_from FROM " (kw->sql-table table) " WHERE _id = ?") id])))
 
+(defn entities-with-sys-from
+  "Batch-fetch multiple entities by ID from a table, including :xt/system-from.
+  Returns a vector of entity maps (nils excluded). For match* workflows.
+  First arg may be a raw node or {:node node :snapshot-time t} map."
+  [node-or-map table ids]
+  (if (empty? ids)
+    []
+    (let [node (->node node-or-map)
+          opts (snapshot-opts node-or-map)
+          table-name (kw->sql-table table)
+          placeholders (str/join ", " (repeat (count ids) "?"))
+          query (into [(str "SELECT *, _system_from FROM " table-name
+                            " WHERE _id IN (" placeholders ")")] ids)]
+      (vec (xt/q node query (or opts {}))))))
+
+(defn entities-with-sys-from-by-id
+  "Like entities-with-sys-from but returns a map of id -> entity for easy lookup.
+  First arg may be a raw node or {:node node :snapshot-time t} map."
+  [node-or-map table ids]
+  (into {} (map (juxt :xt/id identity) (entities-with-sys-from node-or-map table ids))))
+
 (defn find-entity
   "Find a single entity in table whose attributes match the given map.
   Values of :_ are treated as wildcards (only the key is required to be present).
@@ -117,6 +138,23 @@
                     (str " WHERE " (str/join " AND " where-parts)))
         params (mapv second non-wild)
         query (into [(str "SELECT * FROM " table-name (or where-str ""))] params)]
+    (xt/q node query (or opts {}))))
+
+(defn find-entities-with-sys-from
+  "Like find-entities but also returns :xt/system-from for match* workflows.
+  Eliminates the need to find-entities then re-fetch with entities-with-sys-from."
+  [node-or-map table attrs]
+  (let [node (->node node-or-map)
+        opts (snapshot-opts node-or-map)
+        table-name (kw->sql-table table)
+        wild (filter (fn [[_ v]] (= v '_)) attrs)
+        non-wild (filter (fn [[_ v]] (not= v '_)) attrs)
+        where-parts (concat (map (fn [[k _]] (str (kw->sql-col k) " IS NOT NULL")) wild)
+                            (map (fn [[k _]] (str (kw->sql-col k) " = ?")) non-wild))
+        where-str (when (seq where-parts)
+                    (str " WHERE " (str/join " AND " where-parts)))
+        params (mapv second non-wild)
+        query (into [(str "SELECT *, _system_from FROM " table-name (or where-str ""))] params)]
     (xt/q node query (or opts {}))))
 
 ;; config helpers -------------------------------------------------------------------
@@ -173,6 +211,14 @@
   [table entity]
   [:sql (str "ASSERT (SELECT _system_from FROM " (kw->sql-table table) " WHERE _id = ?) = ?")
    [(:xt/id entity) (:xt/system-from entity)]])
+
+(defn batch-delete-ops
+  "Build match* + delete-docs ops for a batch of entities already fetched with sys-from."
+  [table entities]
+  (vec (mapcat (fn [e]
+                 [(match* table e)
+                  [:delete-docs table (:xt/id e)]])
+               entities)))
 
 (defn merge*
   "Read-modify-write: reads entity, validates it exists, returns [match-op put-op].
@@ -307,6 +353,16 @@
   "See add-to-multi-joins*."
   [xt-map e1-table e1-id-key e1-id join-key e2-table e2-id-key e2-id]
   (add-to-multi-joins* xt-map e1-table e1-id-key e1-id [join-key] e2-table e2-id-key e2-id))
+
+(defn remove-join-ops*
+  "Produce tx-ops to remove e2-id from join-key on a pre-fetched entity.
+   Unlike remove-join*, does NOT re-query the database.
+   Returns [match-op put-op]."
+  [table e1-with-sys join-key e2-id]
+  [(match* table e1-with-sys)
+   [:put-docs table (-> e1-with-sys
+                        (remove-id join-key e2-id)
+                        (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to))]])
 
 (defn remove-from-multi-joins*
   "Removes joins from e1 to e2 at all keys in join-keys. Idempotent."

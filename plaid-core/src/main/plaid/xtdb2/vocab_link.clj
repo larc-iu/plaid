@@ -55,11 +55,13 @@
     (when-not item-e
       (throw (ex-info (pxc/err-msg-not-found "Vocab item" vocab-item) {:code 400 :id vocab-item})))
 
-    (when (or (empty? tokens)
-              (not (every? #(:token/id (pxc/entity node :tokens %)) tokens)))
-      (throw (ex-info "Vocab link must reference at least one token" {:code 400})))
+    ;; Batch-fetch all tokens once (with sys-from for match ops)
+    (let [token-map (pxc/entities-with-sys-from-by-id node :tokens tokens)
+          token-records (mapv #(clojure.core/get token-map %) tokens)]
+      (when (or (empty? tokens)
+                (not (every? :token/id token-records)))
+        (throw (ex-info "Vocab link must reference at least one token" {:code 400})))
 
-    (let [token-records (mapv #(pxc/entity node :tokens %) tokens)]
       (when (> (->> token-records (map :token/layer) set count) 1)
         (throw (ex-info "Tokens inside vocab link must all belong to the same layer" {:code 400})))
       (when (> (->> token-records (map :token/text) set count) 1)
@@ -72,9 +74,7 @@
           (throw (ex-info "Cannot create vocab link: project is not linked to the vocab layer"
                           {:code 400 :project-id project-id :vocab-layer-id vocab-layer-id}))))
 
-      (let [token-matches (mapv (fn [t]
-                                  (pxc/match* :tokens (pxc/entity-with-sys-from node :tokens (:token/id t))))
-                                token-records)
+      (let [token-matches (mapv (fn [t] (pxc/match* :tokens t)) token-records)
             item-e-with-sys (pxc/entity-with-sys-from node :vocab-items vocab-item)
             other-ops [(pxc/match* :vocab-items item-e-with-sys)
                        [:put-docs :vocab-links record]]]

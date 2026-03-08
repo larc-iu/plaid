@@ -119,7 +119,7 @@
                 (ta/diff (:text/body text) new-body-or-ops)
                 new-body-or-ops)
           token-ids (get-token-ids node eid)
-          tokens-e (mapv #(pxc/entity-with-sys-from node :tokens %) token-ids)
+          tokens-e (pxc/entities-with-sys-from node :tokens token-ids)
           tokens (mapv #(dissoc % :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to) tokens-e)
           indexed-tokens-e (reduce #(assoc %1 (:token/id %2) %2) {} tokens-e)
           indexed-tokens (reduce #(assoc %1 (:token/id %2) %2) {} tokens)
@@ -178,15 +178,12 @@
         project-id (project-id xt-map eid)
         doc-id (:text/document text)
         token-ids (get-token-ids node eid)
-        span-ids (mapcat #(tok/get-span-ids node %) token-ids)
-        relation-ids (mapcat #(map :xt/id (pxc/find-entities node :relations {:relation/source %}))
-                             span-ids)
         tx-ops (delete* xt-map eid)]
     (op/make-operation
      {:type        :text/delete
       :project     project-id
       :document    doc-id
-      :description (str "Delete text " eid " with " (count token-ids) " tokens, " (count span-ids) " spans, " (count relation-ids) " relations")
+      :description (str "Delete text " eid " with " (count token-ids) " tokens")
       :tx-ops      tx-ops})))
 
 (defn delete [xt-map eid user-id]

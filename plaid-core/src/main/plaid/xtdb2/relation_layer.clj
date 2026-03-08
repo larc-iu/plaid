@@ -105,14 +105,8 @@
         rl (pxc/entity-with-sys-from node :relation-layers eid)]
     (when (nil? (:relation-layer/id rl))
       (throw (ex-info (pxc/err-msg-not-found "Relation layer" eid) {:code 404})))
-    (let [relation-ids (->> (pxc/find-entities node :relations {:relation/layer eid})
-                            (map :xt/id))
-          relation-ops (vec (mapcat (fn [rid]
-                                      (let [r (pxc/entity-with-sys-from node :relations rid)]
-                                        [(pxc/match* :relations r)
-                                         [:delete-docs :relations rid]]))
-                                    relation-ids))]
-      (into relation-ops
+    (let [relations (pxc/find-entities-with-sys-from node :relations {:relation/layer eid})]
+      (into (pxc/batch-delete-ops :relations relations)
             [(pxc/match* :relation-layers rl)
              [:delete-docs :relation-layers eid]]))))
 

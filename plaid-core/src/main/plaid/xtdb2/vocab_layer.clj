@@ -35,25 +35,46 @@
         user-rec (user/get node-or-map user-id)]
     (if (user/admin? user-rec)
       (get-all-ids node-or-map)
-      (let [all-vocabs (pxc/find-entities node :vocab-layers {})
-            maintainer-ids (->> all-vocabs
-                                (filter #(some #{user-id} (:vocab/maintainers %)))
-                                (map :xt/id))
-            all-projects (pxc/find-entities node :projects {})
-            user-projects (->> all-projects
-                               (filter (fn [p]
-                                         (or (some #{user-id} (:project/readers p))
-                                             (some #{user-id} (:project/writers p))
-                                             (some #{user-id} (:project/maintainers p)))))
-                               (mapcat :project/vocabs))
-            project-granted-ids (distinct user-projects)]
-        (distinct (concat maintainer-ids project-granted-ids))))))
+      (let [;; Vocabs where user is a maintainer (single query)
+            maintainer-ids (->> (xt/q node (xt/template
+                                             (-> (from :vocab-layers [{:xt/id vid :vocab/maintainers ms}])
+                                                 (unnest {:m ms})
+                                                 (where (= m ~user-id))
+                                                 (return vid))))
+                                (map :vid))
+            ;; Vocabs granted through project access (query per role)
+            project-vocab-ids
+            (concat
+             (->> (xt/q node (xt/template
+                               (-> (from :projects [{:xt/id _pid :project/vocabs vs :project/readers rs}])
+                                   (unnest {:r rs}) (where (= r ~user-id))
+                                   (unnest {:v vs}) (return v))))
+                  (map :v))
+             (->> (xt/q node (xt/template
+                               (-> (from :projects [{:xt/id _pid :project/vocabs vs :project/writers ws}])
+                                   (unnest {:w ws}) (where (= w ~user-id))
+                                   (unnest {:v vs}) (return v))))
+                  (map :v))
+             (->> (xt/q node (xt/template
+                               (-> (from :projects [{:xt/id _pid :project/vocabs vs :project/maintainers ms}])
+                                   (unnest {:m ms}) (where (= m ~user-id))
+                                   (unnest {:v vs}) (return v))))
+                  (map :v)))]
+        (distinct (concat maintainer-ids project-vocab-ids))))))
 
 (defn get-accessible
   "Get all vocab records accessible to a user."
   [node-or-map user-id]
-  (let [ids (get-accessible-ids node-or-map user-id)]
-    (keep #(get node-or-map %) ids)))
+  (let [admin? (user/admin? (user/get node-or-map user-id))
+        entities (if admin?
+                   (pxc/find-entities node-or-map :vocab-layers {})
+                   (pxc/entities-with-sys-from node-or-map :vocab-layers
+                                               (vec (get-accessible-ids node-or-map user-id))))]
+    (->> entities
+         (keep (fn [e]
+                 (when (:vocab/id e)
+                   (-> (dissoc e :xt/id :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                       pxc/deserialize-config)))))))
 
 (defn maintainer-ids [node-or-map id]
   (:vocab/maintainers (pxc/entity node-or-map :vocab-layers id)))
@@ -64,25 +85,52 @@
 (defn accessible-through-project?
   "Check if a user has access to a vocab through a project."
   [node-or-map vocab-id user-id]
-  (let [node (pxc/->node node-or-map)
-        all-projects (pxc/find-entities node :projects {})]
-    (some (fn [p]
-            (and (some #{vocab-id} (:project/vocabs p))
-                 (or (some #{user-id} (:project/readers p))
-                     (some #{user-id} (:project/writers p))
-                     (some #{user-id} (:project/maintainers p)))))
-          all-projects)))
+  (let [node (pxc/->node node-or-map)]
+    (or (seq (xt/q node (xt/template
+                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/readers rs}])
+                              (unnest {:v vs})
+                              (where (= v ~vocab-id))
+                              (unnest {:r rs})
+                              (where (= r ~user-id))
+                              (limit 1)
+                              (return pid)))))
+        (seq (xt/q node (xt/template
+                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/writers ws}])
+                              (unnest {:v vs})
+                              (where (= v ~vocab-id))
+                              (unnest {:w ws})
+                              (where (= w ~user-id))
+                              (limit 1)
+                              (return pid)))))
+        (seq (xt/q node (xt/template
+                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/maintainers ms}])
+                              (unnest {:v vs})
+                              (where (= v ~vocab-id))
+                              (unnest {:m ms})
+                              (where (= m ~user-id))
+                              (limit 1)
+                              (return pid))))))))
 
 (defn write-accessible-through-project?
   "Check if a user has write access to vocab items through a project."
   [node-or-map vocab-id user-id]
-  (let [node (pxc/->node node-or-map)
-        all-projects (pxc/find-entities node :projects {})]
-    (some (fn [p]
-            (and (some #{vocab-id} (:project/vocabs p))
-                 (or (some #{user-id} (:project/writers p))
-                     (some #{user-id} (:project/maintainers p)))))
-          all-projects)))
+  (let [node (pxc/->node node-or-map)]
+    (or (seq (xt/q node (xt/template
+                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/writers ws}])
+                              (unnest {:v vs})
+                              (where (= v ~vocab-id))
+                              (unnest {:w ws})
+                              (where (= w ~user-id))
+                              (limit 1)
+                              (return pid)))))
+        (seq (xt/q node (xt/template
+                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/maintainers ms}])
+                              (unnest {:v vs})
+                              (where (= v ~vocab-id))
+                              (unnest {:m ms})
+                              (where (= m ~user-id))
+                              (limit 1)
+                              (return pid))))))))
 
 ;; Mutations ---------------------------------------------------------------------
 
@@ -129,23 +177,16 @@
         record (pxc/entity-with-sys-from node :vocab-layers eid)]
     (when-not (:vocab/id record)
       (throw (ex-info (pxc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
-    (let [vocab-items (pxc/find-entities node :vocab-items {:vocab-item/layer eid})
-          vocab-item-ids (map :xt/id vocab-items)
-          ;; Get all vocab-links for these items
-          vocab-link-ops (mapcat (fn [vi-id]
-                                   (mapcat (fn [vl]
-                                             (let [vl-e (pxc/entity-with-sys-from node :vocab-links (:xt/id vl))]
-                                               [(pxc/match* :vocab-links vl-e)
-                                                [:delete-docs :vocab-links (:xt/id vl)]]))
-                                           (pxc/find-entities node :vocab-links {:vocab-link/vocab-item vi-id})))
-                                 vocab-item-ids)
-          item-ops (mapcat (fn [vi-id]
-                             (let [vi-e (pxc/entity-with-sys-from node :vocab-items vi-id)]
-                               [(pxc/match* :vocab-items vi-e)
-                                [:delete-docs :vocab-items vi-id]]))
-                           vocab-item-ids)]
-      (vec (concat vocab-link-ops
-                   item-ops
+    (let [vi-entities (pxc/find-entities-with-sys-from node :vocab-items {:vocab-item/layer eid})
+          vocab-item-ids (mapv :xt/id vi-entities)
+          ;; Batch-fetch all vocab-links for all items in one query (no double-fetch)
+          vl-entities (if (empty? vocab-item-ids)
+                        []
+                        (let [ph (clojure.string/join ", " (repeat (count vocab-item-ids) "?"))]
+                          (xt/q node (into [(str "SELECT *, _system_from FROM vocab_links WHERE vocab_link$vocab_item IN (" ph ")")]
+                                          vocab-item-ids))))]
+      (vec (concat (pxc/batch-delete-ops :vocab-links vl-entities)
+                   (pxc/batch-delete-ops :vocab-items vi-entities)
                    [(pxc/match* :vocab-layers record)
                     [:delete-docs :vocab-layers eid]])))))
 

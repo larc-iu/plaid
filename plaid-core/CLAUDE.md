@@ -215,5 +215,34 @@ jq -r '.paths | to_entries[] | select(.value | to_entries[] | .value.security) |
 * **HTTP API** (`curl`): Use when testing the REST API itself — verifying request/response formats, coercion, auth, middleware behavior, error handling. Also useful for end-to-end validation of a feature. Requires a JWT token from the login endpoint.
 * **pgwire** (`psql`): Use for quick ad-hoc SQL exploration of the database — checking what tables exist, viewing raw column names (note: nested keys use `$` separator, e.g. `project$name`), and querying history with `FOR ALL SYSTEM_TIME`. Handy for inspecting data without needing to write Clojure, but read-only and no access to application logic.
 
+## Avoiding N+1 Queries
+When you have a collection of IDs and need data for each one, **never** map a single-entity fetch over the list. Use batch operations instead:
+
+```clojure
+;; BAD — N+1: one query per ID
+(mapv #(get node %) ids)
+(keep #(vocab-item/get node %) ids)
+(mapv #(pxc/entity node :tokens %) tokens)
+
+;; GOOD — single query for all IDs
+(pxc/entities-with-sys-from node :projects (vec ids))
+(pxc/entities-with-sys-from-by-id node :tokens token-ids)  ; returns {id -> entity} map
+```
+
+Common anti-patterns to watch for:
+- **`(mapv #(ns/get node %) ids)`**: Replace with batch fetch + in-memory formatting
+- **Fetching same entities multiple times** (validation, then records, then sys-from for match): Fetch once with `entities-with-sys-from-by-id` and reuse
+- **Unbounded table scans filtered in Clojure**: Push filters into SQL with `IN` clauses or XTQL `where`
+- **Sequential parent traversals in loops**: If you need a parent field (e.g. project-id) for N entities, batch-fetch the entities and extract the field in-memory
+
+For SQL `IN` queries with dynamic ID lists:
+```clojure
+(let [ph (str/join ", " (repeat (count ids) "?"))]
+  (xt/q node (into [(str "SELECT * FROM table WHERE _id IN (" ph ")")] ids)))
+```
+
+## Namespace Shadowing in `plaid.xtdb2.*`
+Most namespaces in `src/main/plaid/xtdb2/` use `(:refer-clojure :exclude [get merge])` (some also exclude `format`) and define their own `get`, `merge`, etc. for entity operations. When writing code **inside** these namespaces, use `clojure.core/get`, `clojure.core/merge`, etc. whenever you need the standard library versions, or you will get errors or silently call the wrong function.
+
 ## XTDB Reference
-See 
+See

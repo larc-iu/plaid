@@ -1,5 +1,6 @@
 (ns plaid.xtdb2.document
   (:require [xtdb.api :as xt]
+            [clojure.string :as str]
             [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
             [plaid.xtdb2.text :as text]
@@ -86,22 +87,28 @@
                         (map #(dissoc % :token/layer))
                         (vec)
                         (tokl/sort-token-records))
-        ;; Get vocab-links for tokens in this layer and document (single query)
+        ;; Get vocab-links for tokens in this layer and document (SQL IN query)
         token-ids (set (map :token/id all-tokens))
-        vocab-link-ids (->> (xt/q node '(-> (from :vocab-links [{:xt/id vlid :vocab-link/tokens toks}])
-                                            (unnest {:t toks})
-                                            (return vlid t)))
-                            (filter #(contains? token-ids (:t %)))
-                            (map :vlid)
-                            distinct)
-        vocab-links (->> vocab-link-ids
-                         (map #(pxc/entity node :vocab-links %))
+        vocab-link-ids (if (empty? token-ids)
+                         []
+                         (let [tids (vec token-ids)
+                               ph (str/join ", " (repeat (count tids) "?"))
+                               xt-node (pxc/->node node)
+                               opts (pxc/snapshot-opts node)]
+                           (->> (xt/q xt-node (into [(str "SELECT DISTINCT vl._id FROM vocab_links vl,"
+                                                          " UNNEST(vl.vocab_link$tokens) AS t(tid)"
+                                                          " WHERE t.tid IN (" ph ")")] tids) (or opts {}))
+                                (map :xt/id))))
+        vocab-links (->> (pxc/entities-with-sys-from node :vocab-links (vec vocab-link-ids))
                          (map vocab-link/format))
-        ;; Cache vocab-item lookups to avoid fetching each one twice
-        vi-cache (into {} (map (fn [link]
-                                 [(:vocab-link/vocab-item link)
-                                  (vocab-item/get node (:vocab-link/vocab-item link))])
-                               vocab-links))
+        ;; Batch-fetch all referenced vocab-items
+        all-vi-ids (->> vocab-links (map :vocab-link/vocab-item) distinct vec)
+        vi-entities (pxc/entities-with-sys-from-by-id node :vocab-items all-vi-ids)
+        vi-cache (into {} (keep (fn [[id e]]
+                                  (when (:vocab-item/id e)
+                                    [id (metadata/add-metadata-to-response
+                                          (select-keys e vocab-item/attr-keys) e "vocab-item")]))
+                                vi-entities))
         ;; Group vocab-links by vocab-layer
         vocabs (->> vocab-links
                     (group-by #(:vocab-item/layer (vi-cache (:vocab-link/vocab-item %))))
@@ -143,10 +150,9 @@
         (assoc :relation-layer/relations all-relations))))
 
 (defn get-with-layer-data [node-or-map id]
-  (let [node (pxc/->node node-or-map)
-        doc (get node-or-map id)]
+  (let [doc (get node-or-map id)]
     (when doc
-      (clojure.core/merge doc (get-doc-info node id nil [:document/id id])))))
+      (clojure.core/merge doc (get-doc-info node-or-map id nil [:document/id id])))))
 
 (defn get-text-layers [node-or-map id]
   (let [node (pxc/->node node-or-map)

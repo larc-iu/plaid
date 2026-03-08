@@ -1,5 +1,6 @@
 (ns plaid.xtdb2.text-layer
   (:require [xtdb.api :as xt]
+            [clojure.string :as str]
             [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
             [plaid.xtdb2.token-layer :as tokl])
@@ -95,17 +96,52 @@
     (when (nil? (:text-layer/id txtl))
       (throw (ex-info (pxc/err-msg-not-found "Text layer" eid) {:code 404})))
     (let [token-layer-ids (:text-layer/token-layers txtl)
-          tokl-ops (vec (mapcat #(tokl/delete* xt-map %) token-layer-ids))
-          text-ids (->> (pxc/find-entities node :texts {:text/layer eid})
-                        (map :xt/id))
-          text-ops (vec (mapcat (fn [tid]
-                                  (let [t (pxc/entity-with-sys-from node :texts tid)]
-                                    [(pxc/match* :texts t)
-                                     [:delete-docs :texts tid]]))
-                                text-ids))]
+          ;; Batch-fetch all token-layers (1 query)
+          tokl-entities (pxc/entities-with-sys-from node :token-layers token-layer-ids)
+          ;; Collect all span-layer IDs across all token-layers
+          all-sl-ids (vec (mapcat :token-layer/span-layers tokl-entities))
+          sl-entities (pxc/entities-with-sys-from node :span-layers all-sl-ids)
+          ;; Collect all relation-layer IDs across all span-layers
+          all-rl-ids (vec (mapcat :span-layer/relation-layers sl-entities))
+          rl-entities (pxc/entities-with-sys-from node :relation-layers all-rl-ids)
+          ;; All relations across all relation-layers (1 query)
+          all-relations (if (empty? all-rl-ids) []
+                          (let [ph (str/join ", " (repeat (count all-rl-ids) "?"))]
+                            (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                   " WHERE relation$layer IN (" ph ")")]
+                                             all-rl-ids))))
+          ;; All spans across all span-layers (1 query)
+          all-spans (if (empty? all-sl-ids) []
+                      (let [ph (str/join ", " (repeat (count all-sl-ids) "?"))]
+                        (xt/q node (into [(str "SELECT *, _system_from FROM spans"
+                                                " WHERE span$layer IN (" ph ")")]
+                                          all-sl-ids))))
+          ;; All tokens across all token-layers (1 query)
+          all-tokens (if (empty? token-layer-ids) []
+                       (let [ph (str/join ", " (repeat (count token-layer-ids) "?"))]
+                         (xt/q node (into [(str "SELECT *, _system_from FROM tokens"
+                                                 " WHERE token$layer IN (" ph ")")]
+                                           token-layer-ids))))
+          token-ids (mapv :xt/id all-tokens)
+          ;; All vocab-links for all tokens (1 query)
+          vl-entities (if (empty? token-ids)
+                        []
+                        (let [ph (str/join ", " (repeat (count token-ids) "?"))]
+                          (xt/q node (into [(str "SELECT *, _system_from FROM vocab_links vl, UNNEST(vl.vocab_link$tokens) AS t(tid)"
+                                                 " WHERE t.tid IN (" ph ")")]
+                                           token-ids))))
+          vl-by-id (into {} (map (juxt :xt/id identity) vl-entities))
+          ;; Texts for this text-layer (1 query, no double-fetch)
+          texts (pxc/find-entities-with-sys-from node :texts {:text/layer eid})]
       (reduce into
-              [tokl-ops
-               text-ops
+              [(pxc/batch-delete-ops :vocab-links (vals vl-by-id))
+               (pxc/batch-delete-ops :relations all-relations)
+               (pxc/batch-delete-ops :relation-layers rl-entities)
+               (pxc/batch-delete-ops :spans all-spans)
+               (pxc/batch-delete-ops :span-layers sl-entities)
+               (pxc/batch-delete-ops :tokens all-tokens)
+               (pxc/batch-delete-ops :token-layers tokl-entities)
+               (pxc/batch-delete-ops :texts texts)
                [(pxc/match* :text-layers txtl)
                 [:delete-docs :text-layers eid]]]))))
 
