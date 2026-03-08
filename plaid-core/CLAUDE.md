@@ -1,12 +1,12 @@
 # Plaid Technical Overview
 Plaid is a Clojure-based platform for building linguistic annotation applications.
-It provides a REST API for managing hierarchical linguistic data structures. 
+It provides a REST API for managing hierarchical linguistic data structures.
 It features a data model that is configurable on a per-project basis using "layers", which are composable.
-Thanks to its immutable database, XTDB (v1), it is also able to offer a full history of all data and audit logging.
+Thanks to its immutable database, XTDB (v2), it is also able to offer a full history of all data and audit logging.
 
 ## Core Technologies
 * **Language**: Clojure
-* **Database**: XTDB
+* **Database**: XTDB v2 (currently in-memory; disk persistence not yet configured)
 * **Web Server**: HTTP-kit with Ring middleware
 * **Routing**: Reitit
 * **Authentication**: JWT tokens
@@ -18,7 +18,7 @@ src/
 ├── main/plaid/
 │   ├── server/          # HTTP server setup, middleware, XTDB configuration
 │   ├── rest_api/v1/     # REST API endpoint handlers
-│   ├── xtdb/            # Database layer (entity-specific namespaces)
+│   ├── xtdb2/           # Database layer (entity-specific namespaces)
 │   ├── algos/           # Text processing algorithms
 │   └── config/          # Environment-specific configuration
 ├── gen/plaid/           # Client code generation utilities
@@ -70,44 +70,59 @@ Three permission levels per project:
 - **Maintainer**: Full control including user management
 
 ## Database Patterns
-XTDB (https://v1-docs.xtdb.com/main/) is an immutable database similar to Datomic.
-XTDB is schemaless and graph-based: it contains _documents_, which are Clojure maps with an `:xt/id` uniquely identifying it within the database.
-Because it is immutable, past states of the entire database can easily be viewed using `(xt/db node iso-8601-string)`.
-Writes are submitted to XTDB as _transactions_.
-A transaction is a vector of _operations_, which are in turn vectors headed by an operation type:
+XTDB v2 is an immutable, bitemporal database. See `docs/xtdb2_reference.md` for detailed API reference.
 
-* `[:xtdb.api/put doc]`: write an entire document, replacing the previous record if it exists
-* `[:xtdb.api/delete doc-id]`: delete a document (though it will be retained in history)
-* `[:xtdb.api/match doc-id doc]`: cause the transaction to fail if the current state of `doc-id` does not match `doc` (useful when using optimistic concurrency to maintain data model integrity)
+Entities are stored in **tables** (e.g. `:projects`, `:tokens`, `:span-layers`). Each entity has an `:xt/id` uniquely identifying it within its table. The mapping from entity type to table name is defined in `plaid.xtdb2.common/entity-table`.
 
-### Maintaining Integrity with Matches
-Because XTDB is schemaless, database writes (in `plaid.xtdb`) must be carefully prepared with all the `::xt/match` statements necessary so that the write will commit if and only if no invariants will be violated by the resulting state.
-One important invariant, for example, is that a token's `:token/end` attribute, which holds a substring index, must never be greater than the length of the `:text/body` attribute (a string) within the text object which is referred to by the `:token/text` attribute.
-During a write to `:token/end`, therefore, we must first ensure that the new value is valid for the current state of the text (cf. `plaid.xtdb.token/set-extent`), and then prepare the transaction.
-But since another write may have occurred in the meantime, we must also include an `::xt/match` op in order to ensure that there have been no changes to the text in between the time we read it and the exact time at which our write will be committed.
+Queries use **XTQL** (Clojure-native) or **SQL**:
+```clojure
+;; XTQL
+(xt/q node '(from :projects [{:xt/id id} :project/name]))
+;; SQL
+(xt/q node "SELECT _id, project$name FROM projects")
+```
+
+Past states can be viewed using `:snapshot-time` in query opts.
+
+### Transaction Operations
+Writes are submitted via `xt/execute-tx`:
+
+* `[:put-docs :table doc]` — upsert a document into a table
+* `[:delete-docs :table id]` — delete a document (retained in history)
+* `[:sql "ASSERT ..." [params]]` — assertion that aborts the tx on failure (used for optimistic concurrency)
+* Custom `match*` in `plaid.xtdb2.common` — compares `:xt/system-from` to detect concurrent modifications
+
+### Maintaining Integrity
+Database writes (in `plaid.xtdb2`) are prepared with `match*` assertions to ensure invariants hold. For example, when updating a token's extent, we verify the text hasn't changed concurrently by matching on `:xt/system-from`.
 
 ### Read vs Write Functions
 
-**Read functions** accept flexible `db-like` parameter:
+**Read functions** accept a node or xt-map:
 ```clojure
-(defn get [db-like id] ...)  ; Can be node, db, or xt-map
+(defn get [node-or-map id] ...)  ; Can be node or {:node node}
 ```
 
 **Write functions** require `xt-map` parameter:
 ```clojure
-(defn create [xt-map ...] ...)  ; Must be {:node node :db db}
+(defn create [xt-map ...] ...)  ; Must be {:node node} (may also contain :snapshot-time)
 ```
 
 ### Transaction Patterns
 Functions ending with `*` prepare transactions without submitting:
 ```clojure
-(defn create* [...] ...)   ; Returns transaction vector
-(defn create [...] ...)    ; Calls create* and submits
+(defn create* [...] ...)   ; Returns transaction ops vector
+(defn create [...] ...)    ; Calls create* and submits via operation coordinator
 ```
+
+### Operation Coordinator
+Write operations go through `plaid.xtdb2.operation-coordinator`, which serializes writes and handles the `submit → await → verify` cycle. The `submit-operations!` macro in `plaid.xtdb2.operation` is the standard entry point for all writes.
+
+### Batch Operations
+Batch requests bind `op/*current-batch-id*` to group multiple operations atomically. When set, individual operations skip the coordinator and are submitted together. Failed batches can be rolled back using stored `:op/tx-ops`.
 
 ### Audit Log
 We maintain an audit log which records each op, which we use to refer to a conceptually atomic operation from the perspective of our data model, e.g. "change a text record's `:text/body`" or "delete a token".
-For each op, we record (cf. `plaid.xtdb.audit`):
+For each op, we record (cf. `plaid.xtdb2.audit`):
 
 * `:op/type`: the kind of write
 * `:op/project`: the affected project (`nil` if not applicable)
@@ -158,7 +173,7 @@ Plaid includes client generators that create fully-typed API clients from the Op
 # JavaScript client
 clojure -M:gen target/openapi.json target/clients/client.js js
 
-# Python client  
+# Python client
 clojure -M:gen target/openapi.json target/clients/client.py py
 ```
 
@@ -183,5 +198,9 @@ jq -r '.paths | to_entries[] | select(.value | to_entries[] | .value.security) |
 ```
 
 ## clojure-mcp
-When `clojure-mcp` is active, note that you can `user/start` and `user/stop` the web server. See @src/dev/user.clj.
-If `clojure-mcp` is active, you should **prefer to use its tools** to edit Clojure files, as this will help you keep parentheses balanced more easily.
+* When `clojure-mcp` is active, note that you can `user/start` and `user/stop` the web server. See @src/dev/user.clj.
+* If `clojure-mcp` is active, you should **prefer to use its tools** to edit Clojure files, as this will help you keep parentheses balanced more easily.
+  * Use `mcp__clojure-mcp__clojure_edit` for editing top-level Clojure forms (`defn`, `def`, `ns`, `defmethod`, etc.). Always try the regular `Edit` tool first; fall back to `clojure_edit` if it returns "String to replace not found".
+  * Use `mcp__clojure-mcp__clojure_eval` to evaluate expressions in the running REPL (nREPL on port 7888 when server is running). Useful for verifying DB queries, checking entity state, etc. before writing code.
+* Try not to run all the tests at once. Prefer testing individual namespaces like `clojure -M:test --namespace plaid.rest-api.v1.project-test`. Pipe the output to a /tmp file so you can easily inspect it later.
+* When running tests, use `tee` to capture output: `clojure -M:test 2>&1 | tee /tmp/test-run.txt | tail -10` then grep the file for failures.

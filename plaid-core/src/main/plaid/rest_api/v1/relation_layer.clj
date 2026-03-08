@@ -1,18 +1,17 @@
 (ns plaid.rest-api.v1.relation-layer
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
-            [plaid.xtdb.span-layer :as sl]
-            [plaid.xtdb.relation-layer :as rl]
-            [plaid.xtdb.common :as pxc]))
+            [plaid.xtdb2.span-layer :as sl]
+            [plaid.xtdb2.relation-layer :as rl]))
 
-(defn get-project-id [{db :db params :parameters}]
+(defn get-project-id [{xt-map :xt-map params :parameters}]
   (let [sl-id (-> params :body :span-layer-id)
         rl-id (-> params :path :relation-layer-id)]
     (cond sl-id
-          (sl/project-id db sl-id)
+          (sl/project-id xt-map sl-id)
 
           rl-id
-          (rl/project-id db rl-id)
+          (rl/project-id xt-map rl-id)
 
           :else
           nil)))
@@ -42,8 +41,8 @@
     [""
      {:get    {:summary "Get a relation layer by ID."
                :x-client-method "get"
-               :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters db :db}]
-                          (let [relation-layer (rl/get db relation-layer-id)]
+               :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters xt-map :xt-map}]
+                          (let [relation-layer (rl/get xt-map relation-layer-id)]
                             (if (some? relation-layer)
                               {:status 200
                                :body   relation-layer}

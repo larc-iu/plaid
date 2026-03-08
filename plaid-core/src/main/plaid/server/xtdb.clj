@@ -1,24 +1,24 @@
 (ns plaid.server.xtdb
   (:require [taoensso.timbre :as log]
             [xtdb.api :as xt]
+            [xtdb.node :as xtdb]
             [mount.core :refer [defstate]]
-            [plaid.xtdb.common :as pxc]
             [plaid.server.config :refer [config]]
-            [plaid.xtdb.user :as pxu]
-            [plaid.xtdb.operation :as pxo])
-  (:import [xtdb.api IXtdb]))
+            [plaid.xtdb2.operation-coordinator :as op-coord]
+            [plaid.xtdb2.user :as pxu]))
 
-(defn ^IXtdb start-lmdb-node [{:keys [db-dir use-inspector]}]
-  (let [dirf #(str db-dir "/" %)]
-    (xt/start-node
-     (-> {:xtdb/tx-log {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "tx-log")}}
-          :xtdb/document-store {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "docs")}}
-          :xtdb/index-store {:kv-store {:xtdb/module `xtdb.lmdb/->kv-store, :db-dir (dirf "indexes")}}}
-         (cond-> use-inspector (assoc :xtdb-inspector.metrics/reporter {}))))))
-
-(defn start-main-lmdb-node []
-  (start-lmdb-node {:db-dir (-> config ::config :main-db-dir)
-                    :http-server-port (-> config ::config :http-server-port)}))
+(defn start-node [cfg]
+  (let [db-dir (get-in cfg [::config :main-db-dir])
+        pgwire-port (get-in cfg [::config :pgwire-port])
+        base-opts (cond-> {}
+                    pgwire-port (assoc :server {:port pgwire-port}))]
+    (if db-dir
+      (do (log/info "Starting XTDB node with local storage at" db-dir)
+          (xtdb/start-node (merge base-opts
+                                  {:log     [:in-memory {}]
+                                   :storage [:local {:path (str db-dir "/storage")}]})))
+      (do (log/info "Starting XTDB node in-memory (no :main-db-dir configured)")
+          (xtdb/start-node base-opts)))))
 
 (defn make-admin-user [node]
   (log/warn "No users detected! Prompting you for credentials...")
@@ -32,7 +32,7 @@
         (log/info (str "Admin user created with email " email ". To reset the server "
                        "AND LOSE ALL DATA, you can remove all files at `"
                        (-> config ::config :main-db-dir) "`."))
-        (do (log/error (str "Error creating first user!"))
+        (do (log/error "Error creating first user!")
             (System/exit 1))))
     (let [_ (do (print "Enter email: ") (flush))
           email (read-line)
@@ -43,26 +43,23 @@
         (log/info (str "Admin user created with email " email ". To reset the server "
                        "AND LOSE ALL DATA, you can remove all files at `"
                        (-> config ::config :main-db-dir) "`."))
-        (do (log/error (str "Error creating first user!"))
+        (do (log/error "Error creating first user!")
             (System/exit 1))))))
 
-(defn check-orphaned-batches
-  "Roll back any unfinished batch operations left over from unexpected shutdowns"
+(defn- await-ready
+  "Block until the node has finished replaying its transaction log.
+   A simple query with no snapshot-time waits for all committed txs to be indexed."
   [node]
-  (log/debug "Checking for orphaned batch operations...")
-  (try
-    (pxo/recover-orphaned-batches! node)
-    (log/debug "Batch recovery check completed")
-    (catch Exception e
-      (log/error e "Error during batch recovery check"))))
+  (log/info "Waiting for XTDB to finish indexing...")
+  (xt/q node "SELECT 1")
+  (log/info "XTDB ready."))
 
 (defstate xtdb-node
-  :start (let [node (start-main-lmdb-node)]
-           (when (and (empty? (pxc/find-entities (xt/db node) [[:user/id '_]]))
+  :start (let [node (start-node config)]
+           (await-ready node)
+           (op-coord/recover-crashed-batches! node)
+           (when (and (empty? (pxu/get-all node))
                       (not (System/getenv "SKIP_ACCOUNT_CREATION_PROMPT")))
              (make-admin-user node))
-
-           (check-orphaned-batches node)
-
            node)
   :stop (.close xtdb-node))

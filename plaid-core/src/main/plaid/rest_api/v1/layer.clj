@@ -1,6 +1,6 @@
 (ns plaid.rest-api.v1.layer
   (:require [plaid.rest-api.v1.auth :as pra]
-            [plaid.xtdb.project :as prj]))
+            [plaid.xtdb2.project :as prj]))
 
 (defn layer-config-routes
   "IMPORTANT: no middleware applied to this, make sure earlier middleware wraps these appropriately to restrict access"

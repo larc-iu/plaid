@@ -3,23 +3,23 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.xtdb.text-layer :as txtl]
-            [plaid.xtdb.text :as txt]))
+            [plaid.xtdb2.text-layer :as txtl]
+            [plaid.xtdb2.text :as txt]))
 
-(defn get-project-id [{db :db params :parameters}]
+(defn get-project-id [{xt-map :xt-map params :parameters}]
   (let [txtl-id (-> params :body :text-layer-id)
         text-id (-> params :path :text-id)]
     (cond
-      txtl-id (txtl/project-id db txtl-id)
-      text-id (txt/project-id db text-id)
+      txtl-id (txtl/project-id xt-map txtl-id)
+      text-id (txt/project-id xt-map text-id)
       :else nil)))
 
-(defn get-document-id [{db :db params :parameters}]
+(defn get-document-id [{xt-map :xt-map params :parameters}]
   (let [document-id (-> params :body :document-id)
         text-id (-> params :path :text-id)]
     (cond
       document-id document-id
-      text-id (:text/document (txt/get db text-id))
+      text-id (:text/document (txt/get xt-map text-id))
       :else nil)))
 
 (def text-routes
@@ -57,8 +57,8 @@
 
     ["" {:get {:summary "Get a text."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [text-id]} :path} :parameters db :db}]
-                          (let [text (txt/get db text-id)]
+               :handler (fn [{{{:keys [text-id]} :path} :parameters xt-map :xt-map}]
+                          (let [text (txt/get xt-map text-id)]
                             (if (some? text)
                               {:status 200
                                :body text}

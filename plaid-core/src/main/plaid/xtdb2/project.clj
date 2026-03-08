@@ -1,0 +1,383 @@
+(ns plaid.xtdb2.project
+  (:require [xtdb.api :as xt]
+            [plaid.xtdb2.common :as pxc]
+            [plaid.xtdb2.operation :as op :refer [submit-operations!]]
+            [plaid.xtdb2.user :as user]
+            [plaid.xtdb2.text-layer :as txtl])
+  (:refer-clojure :exclude [get merge]))
+
+(def attr-keys [:project/id
+                :project/name
+                :project/readers
+                :project/writers
+                :project/maintainers
+                :project/text-layers
+                :project/vocabs
+                :config])
+
+;; Reads -------------------------------------------------------------------------
+
+(defn get-document-ids [node-or-map id]
+  (->> (pxc/find-entities node-or-map :documents {:document/project id})
+       (map :xt/id)))
+
+(defn get-documents [node-or-map id]
+  (->> (pxc/find-entities node-or-map :documents {:document/project id})
+       (map #(select-keys % [:document/id :document/name]))))
+
+(defn get
+  ([node-or-map id]
+   (get node-or-map id false))
+  ([node-or-map id include-documents?]
+   (when-let [record (pxc/entity node-or-map :projects id)]
+     (when (:project/id record)
+       (-> (dissoc record :xt/id)
+           (pxc/deserialize-config)
+           (cond-> include-documents?
+             (assoc :project/documents (get-documents node-or-map id))))))))
+
+(defn reader-ids [node-or-map id]
+  (:project/readers (pxc/entity node-or-map :projects id)))
+
+(defn writer-ids [node-or-map id]
+  (:project/writers (pxc/entity node-or-map :projects id)))
+
+(defn maintainer-ids [node-or-map id]
+  (:project/maintainers (pxc/entity node-or-map :projects id)))
+
+(defn get-all-ids [node-or-map]
+  (->> (pxc/find-entities node-or-map :projects {})
+       (map :xt/id)))
+
+(defn get-accessible-ids [node-or-map user-id]
+  (let [node (pxc/->node node-or-map)
+        opts (pxc/snapshot-opts node-or-map)
+        q #(xt/q node % (or opts {}))]
+    (->> (concat
+          (q (xt/template (-> (from :projects [{:xt/id pid :project/readers rs}])
+                              (unnest {:r rs}) (where (= r ~user-id)) (return pid))))
+          (q (xt/template (-> (from :projects [{:xt/id pid :project/writers ws}])
+                              (unnest {:w ws}) (where (= w ~user-id)) (return pid))))
+          (q (xt/template (-> (from :projects [{:xt/id pid :project/maintainers ms}])
+                              (unnest {:m ms}) (where (= m ~user-id)) (return pid)))))
+         (map :pid)
+         distinct)))
+
+(defn get-accessible [node-or-map user-id]
+  (if (user/admin? (user/get node-or-map user-id))
+    (->> (get-all-ids node-or-map)
+         (mapv #(get node-or-map %)))
+    (->> (get-accessible-ids node-or-map user-id)
+         (mapv #(get node-or-map %)))))
+
+(defn get-by-name [node-or-map name]
+  (pxc/find-entity node-or-map :projects {:project/name name}))
+
+(defn project-id
+  "For projects, the project-id is the entity's own ID."
+  [_node-or-map id]
+  id)
+
+;; Mutations ---------------------------------------------------------------------
+
+(defn create* [xt-map attrs]
+  (let [node (pxc/->node xt-map)
+        {:project/keys [id name] :as record} (clojure.core/merge
+                                              (pxc/new-record "project")
+                                              {:project/readers []
+                                               :project/writers []
+                                               :project/maintainers []
+                                               :project/text-layers []
+                                               :project/vocabs []
+                                               :config {}}
+                                              (select-keys attrs attr-keys))]
+    (pxc/valid-name? name)
+    [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM projects WHERE _id = ?)" [id]]
+     [:put-docs :projects record]]))
+
+(defn create-operation [xt-map attrs]
+  (let [{:project/keys [name]} attrs
+        tx-ops (create* xt-map attrs)]
+    (op/make-operation
+     {:type :project/create
+      :project (-> tx-ops last last :xt/id)
+      :document nil
+      :description (str "Create project \"" name "\"")
+      :tx-ops tx-ops})))
+
+(defn create [xt-map attrs user-id]
+  (submit-operations! xt-map [(create-operation xt-map attrs)] user-id
+                      #(-> % last last :xt/id)))
+
+(defn merge-operation [xt-map eid m]
+  (let [tx-ops (do (when-let [name (:project/name m)]
+                     (pxc/valid-name? name))
+                   (pxc/merge* xt-map :projects :project/id eid (select-keys m [:project/name])))]
+    (op/make-operation
+     {:type :project/update
+      :project eid
+      :document nil
+      :description (str "Update project " eid (when (:project/name m) (str " to name \"" (:project/name m) "\"")))
+      :tx-ops tx-ops})))
+
+(defn merge [xt-map eid m user-id]
+  (submit-operations! xt-map [(merge-operation xt-map eid m)] user-id))
+
+(defn delete* [xt-map eid]
+  (let [node (pxc/->node xt-map)
+        prj-e (pxc/entity-with-sys-from node :projects eid)]
+    (when-not (:project/id prj-e)
+      (throw (ex-info (pxc/err-msg-not-found "Project" eid) {:code 404})))
+    (let [text-layers (:project/text-layers prj-e)
+          txtl-txs (reduce into [] (mapv #(txtl/delete* xt-map %) text-layers))
+          document-ids (get-document-ids xt-map eid)
+          doc-txs (mapcat (fn [did]
+                            (let [doc-e (pxc/entity-with-sys-from node :documents did)]
+                              [(pxc/match* :documents doc-e)
+                               [:delete-docs :documents did]]))
+                          document-ids)
+          project-txs [(pxc/match* :projects prj-e)
+                       [:delete-docs :projects eid]]]
+      (vec (concat txtl-txs doc-txs project-txs)))))
+
+(defn delete-operation [xt-map eid]
+  (let [node (pxc/->node xt-map)
+        prj (pxc/entity node :projects eid)
+        text-layers (:project/text-layers prj)
+        documents (get-document-ids xt-map eid)
+        tx-ops (delete* xt-map eid)]
+    (op/make-operation
+     {:type :project/delete
+      :project eid
+      :document nil
+      :description (str "Delete project " eid " with " (count text-layers) " text layers and " (count documents) " documents")
+      :tx-ops tx-ops})))
+
+(defn delete [xt-map eid user-id]
+  (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
+
+;; Access privileges ------------------------------------------------------------
+
+(defn- modify-privileges* [xt-map project-id user-id [add? key]]
+  (let [node (pxc/->node xt-map)
+        user-e (pxc/entity-with-sys-from node :users user-id)
+        prj-e (pxc/entity-with-sys-from node :projects project-id)
+        prj (dissoc prj-e :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+        new-project (-> prj
+                        (pxc/remove-id :project/readers user-id)
+                        (pxc/remove-id :project/writers user-id)
+                        (pxc/remove-id :project/maintainers user-id)
+                        (cond-> (and add? (= key :project/readers))
+                          (pxc/add-id :project/readers user-id)
+                          (and add? (= key :project/writers))
+                          (pxc/add-id :project/writers user-id)
+                          (and add? (= key :project/maintainers))
+                          (pxc/add-id :project/maintainers user-id)))]
+    (cond
+      (nil? (:user/id user-e))
+      (throw (ex-info (str "Not a valid user ID: " user-id) {:id user-id :code 400}))
+
+      (nil? (:project/id prj-e))
+      (throw (ex-info (str "Not a valid project ID: " project-id) {:id project-id :code 400}))
+
+      :else
+      [(pxc/match* :users user-e)
+       (pxc/match* :projects prj-e)
+       [:put-docs :projects new-project]])))
+
+(defn add-reader* [xt-map project-id user-id]
+  (modify-privileges* xt-map project-id user-id [true :project/readers]))
+(defn add-reader-operation [xt-map project-id user-id]
+  (op/make-operation
+   {:type :project/add-reader
+    :project project-id
+    :document nil
+    :description (str "Add reader " user-id " to project " project-id)
+    :tx-ops (add-reader* xt-map project-id user-id)}))
+(defn add-reader [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(add-reader-operation xt-map project-id user-id)] actor-user-id))
+
+(defn remove-reader* [xt-map project-id user-id]
+  (modify-privileges* xt-map project-id user-id [false :project/readers]))
+(defn remove-reader-operation [xt-map project-id user-id]
+  (op/make-operation
+   {:type :project/remove-reader
+    :project project-id
+    :document nil
+    :description (str "Remove reader " user-id " from project " project-id)
+    :tx-ops (remove-reader* xt-map project-id user-id)}))
+(defn remove-reader [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(remove-reader-operation xt-map project-id user-id)] actor-user-id))
+
+(defn add-writer* [xt-map project-id user-id]
+  (modify-privileges* xt-map project-id user-id [true :project/writers]))
+(defn add-writer-operation [xt-map project-id user-id]
+  (op/make-operation
+   {:type :project/add-writer
+    :project project-id
+    :document nil
+    :description (str "Add writer " user-id " to project " project-id)
+    :tx-ops (add-writer* xt-map project-id user-id)}))
+(defn add-writer [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(add-writer-operation xt-map project-id user-id)] actor-user-id))
+
+(defn remove-writer* [xt-map project-id user-id]
+  (modify-privileges* xt-map project-id user-id [false :project/writers]))
+(defn remove-writer-operation [xt-map project-id user-id]
+  (op/make-operation
+   {:type :project/remove-writer
+    :project project-id
+    :document nil
+    :description (str "Remove writer " user-id " from project " project-id)
+    :tx-ops (remove-writer* xt-map project-id user-id)}))
+(defn remove-writer [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(remove-writer-operation xt-map project-id user-id)] actor-user-id))
+
+(defn add-maintainer* [xt-map project-id user-id]
+  (modify-privileges* xt-map project-id user-id [true :project/maintainers]))
+(defn add-maintainer-operation [xt-map project-id user-id]
+  (op/make-operation
+   {:type :project/add-maintainer
+    :project project-id
+    :document nil
+    :description (str "Add maintainer " user-id " to project " project-id)
+    :tx-ops (add-maintainer* xt-map project-id user-id)}))
+(defn add-maintainer [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(add-maintainer-operation xt-map project-id user-id)] actor-user-id))
+
+(defn remove-maintainer* [xt-map project-id user-id]
+  (modify-privileges* xt-map project-id user-id [false :project/maintainers]))
+(defn remove-maintainer-operation [xt-map project-id user-id]
+  (op/make-operation
+   {:type :project/remove-maintainer
+    :project project-id
+    :document nil
+    :description (str "Remove maintainer " user-id " from project " project-id)
+    :tx-ops (remove-maintainer* xt-map project-id user-id)}))
+(defn remove-maintainer [xt-map project-id user-id actor-user-id]
+  (submit-operations! xt-map [(remove-maintainer-operation xt-map project-id user-id)] actor-user-id))
+
+;; Editor config (not a project operation per se, but housed here) ---------------
+
+(def ^:private layer-tables
+  "Layer id-key → table pairs for editor config lookups."
+  [[:project/id :projects]
+   [:text-layer/id :text-layers]
+   [:token-layer/id :token-layers]
+   [:span-layer/id :span-layers]
+   [:relation-layer/id :relation-layers]
+   [:vocab/id :vocab-layers]])
+
+(defn- find-layer-table
+  "Find the table for a layer entity by checking known layer tables."
+  [node layer-id]
+  (some (fn [[id-key table]]
+          (when-let [e (pxc/entity node table layer-id)]
+            (when (id-key e) table)))
+        layer-tables))
+
+(defn assoc-editor-config-pair [xt-map layer-id editor-name config-key config-value]
+  (let [node (pxc/->node xt-map)
+        table (find-layer-table node layer-id)]
+    (when-not table
+      (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400})))
+    (let [layer-e (pxc/entity-with-sys-from node table layer-id)
+          layer (dissoc layer-e :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+          current-config (pxc/parse-config (:config layer))
+          new-config (assoc-in current-config [editor-name config-key] config-value)
+          new-layer (assoc layer :config (pxc/serialize-config new-config))]
+      (pxc/submit! node
+                   [(pxc/match* table layer-e)
+                    [:put-docs table new-layer]]))))
+
+(defn dissoc-editor-config-pair [xt-map layer-id editor-name config-key]
+  (let [node (pxc/->node xt-map)
+        table (find-layer-table node layer-id)]
+    (when-not table
+      (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400})))
+    (let [layer-e (pxc/entity-with-sys-from node table layer-id)
+          layer (dissoc layer-e :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+          current-config (pxc/parse-config (:config layer))
+          new-config (update current-config editor-name dissoc config-key)
+          new-layer (assoc layer :config (pxc/serialize-config new-config))]
+      (pxc/submit! node
+                   [(pxc/match* table layer-e)
+                    [:put-docs table new-layer]]))))
+
+;; Vocab management -------------------------------------------------------------
+
+(defn add-vocab* [xt-map project-id vocab-id]
+  (let [node (pxc/->node xt-map)
+        prj-e (pxc/entity-with-sys-from node :projects project-id)
+        vocab-e (pxc/entity node :vocab-layers vocab-id)]
+    (cond
+      (nil? (:project/id prj-e))
+      (throw (ex-info (pxc/err-msg-not-found "Project" project-id) {:code 404 :id project-id}))
+
+      (nil? (:vocab/id vocab-e))
+      (throw (ex-info (pxc/err-msg-not-found "Vocab" vocab-id) {:code 400 :id vocab-id}))
+
+      :else
+      (let [prj (dissoc prj-e :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)]
+        [(pxc/match* :projects prj-e)
+         [:put-docs :projects (pxc/add-id prj :project/vocabs vocab-id)]]))))
+
+(defn add-vocab-operation [xt-map project-id vocab-id]
+  (let [node (pxc/->node xt-map)
+        prj (pxc/entity node :projects project-id)
+        vocab (pxc/entity node :vocab-layers vocab-id)]
+    (op/make-operation
+     {:type :project/add-vocab
+      :project project-id
+      :document nil
+      :description (clojure.core/format "Add vocab '%s' to project '%s'"
+                                        (:vocab/name vocab) (:project/name prj))
+      :tx-ops (add-vocab* xt-map project-id vocab-id)})))
+
+(defn add-vocab [xt-map project-id vocab-id actor-user-id]
+  (submit-operations! xt-map [(add-vocab-operation xt-map project-id vocab-id)] actor-user-id))
+
+(defn remove-vocab* [xt-map project-id vocab-id]
+  (let [node (pxc/->node xt-map)
+        prj-e (pxc/entity-with-sys-from node :projects project-id)]
+    (cond
+      (nil? (:project/id prj-e))
+      (throw (ex-info (pxc/err-msg-not-found "Project" project-id) {:code 404 :id project-id}))
+
+      (nil? (:vocab/id (pxc/entity node :vocab-layers vocab-id)))
+      (throw (ex-info (pxc/err-msg-not-found "Vocab" vocab-id) {:code 400 :id vocab-id}))
+
+      :else
+      ;; Find vocab-links for this vocab's items that belong to tokens in this project's documents
+      (let [project-doc-ids (set (get-document-ids xt-map project-id))
+            vocab-items (pxc/find-entities node :vocab-items {:vocab-item/layer vocab-id})
+            vocab-link-ops (mapcat (fn [vi]
+                                     (mapcat (fn [vl]
+                                               (let [vl-e (pxc/entity-with-sys-from node :vocab-links (:xt/id vl))
+                                                     first-token-id (first (:vocab-link/tokens vl-e))
+                                                     doc-id (when first-token-id
+                                                              (:token/document (pxc/entity node :tokens first-token-id)))]
+                                                 (when (project-doc-ids doc-id)
+                                                   [(pxc/match* :vocab-links vl-e)
+                                                    [:delete-docs :vocab-links (:xt/id vl)]])))
+                                             (pxc/find-entities node :vocab-links {:vocab-link/vocab-item (:vocab-item/id vi)})))
+                                   vocab-items)
+            prj (dissoc prj-e :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+            project-ops [(pxc/match* :projects prj-e)
+                         [:put-docs :projects (pxc/remove-id prj :project/vocabs vocab-id)]]]
+        (into (vec vocab-link-ops) project-ops)))))
+
+(defn remove-vocab-operation [xt-map project-id vocab-id]
+  (let [node (pxc/->node xt-map)
+        prj (pxc/entity node :projects project-id)
+        vocab (pxc/entity node :vocab-layers vocab-id)]
+    (op/make-operation
+     {:type :project/remove-vocab
+      :project project-id
+      :document nil
+      :description (clojure.core/format "Remove vocab '%s' from project '%s'"
+                                        (:vocab/name vocab) (:project/name prj))
+      :tx-ops (remove-vocab* xt-map project-id vocab-id)})))
+
+(defn remove-vocab [xt-map project-id vocab-id actor-user-id]
+  (submit-operations! xt-map [(remove-vocab-operation xt-map project-id vocab-id)] actor-user-id))

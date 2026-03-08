@@ -16,7 +16,8 @@
         ;; fulcro and fulcro-related deps
         com.fulcrologic/fulcro {:mvn/version "3.8.6"
                                 :exclusions [com.cognitect/transit-cljs
-                                             com.cognitect/transit-js]}
+                                             com.cognitect/transit-js
+                                             org.clojure/clojurescript]}
 
         ;; routing
         metosin/reitit {:mvn/version "0.8.0"}
@@ -32,10 +33,8 @@
         metosin/ring-http-response {:mvn/version "0.9.5"}
 
         ;; xtdb
-        com.xtdb/xtdb-core {:mvn/version "1.24.5"}
-        com.xtdb/xtdb-lmdb {:mvn/version "1.24.5"}
-        com.github.tatut/xtdb-inspector {:git/url "https://github.com/lgessler/xtdb-inspector.git"
-                                         :sha "682ab4a6e8e3d70b1fb963740895ed85607f2451"}
+        com.xtdb/xtdb-core {:mvn/version "2.0.0"}
+        com.xtdb/xtdb-api {:mvn/version "2.0.0"}
 
         ;; security
         buddy/buddy-core {:mvn/version "1.12.0-430"}
@@ -51,9 +50,7 @@
         ;; file type detection
         org.apache.tika/tika-core {:mvn/version "2.9.2"}
 
-        ;; these are missing from xtdb-lmdb. Keep in lock step with xtdb-lmdb version
-        org.lwjgl/lwjgl$natives-windows {:mvn/version "3.3.1" :native-prefix ""}
-        org.lwjgl/lwjgl-lmdb$natives-windows {:mvn/version "3.3.1" :native-prefix ""}}
+}
 
  :aliases {:outdated {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
                       :main-opts ["-m" "antq.core"]}
@@ -62,9 +59,10 @@
                                  :main-class "plaid.server.main"
                                  :jar "target/plaid.jar"
                                  :verbose true}
+                     :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"]
                      :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}}
            :test {:extra-paths ["src/test"]
-                  :jvm-opts []
+                  :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"]
                   :main-opts ["-m" "cognitect.test-runner" "-d" "src/test"]
                   :exec-fn cognitect.test-runner.api/test
                   :extra-deps {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
@@ -72,7 +70,8 @@
                                ring/ring-mock {:mvn/version "0.6.1"}}}
            :dev {:extra-paths ["src/dev" "src/test"]
                  :jvm-opts ["-XX:-OmitStackTraceInFastThrow"
-                            "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
+                            "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"
+                            "--add-opens" "java.base/java.nio=ALL-UNNAMED"]
                  :exec-fn user/start
                  :exec-args {}
 
@@ -82,8 +81,7 @@
                               expound/expound {:mvn/version "0.9.0"}
                               fulcrologic/fulcro-spec {:mvn/version "3.1.12"}
                               binaryage/devtools {:mvn/version "1.0.7"}
-                              com.github.awkay/workspaces {:mvn/version "1.0.3"}
-                              com.xtdb/xtdb-http-server {:mvn/version "1.24.5"}}}
+                              com.github.awkay/workspaces {:mvn/version "1.0.3"}}}
            :gen {:extra-paths ["src/gen"]
                  :main-opts ["-m" "plaid.client-gen"]
                  :exec-fn plaid.client-gen/-main
@@ -95,8 +93,7 @@
                    :extra-deps {nrepl/nrepl {:mvn/version "1.3.1"}
                                 org.clojure/test.check {:mvn/version "1.1.1"}
                                 ring/ring-mock {:mvn/version "0.6.1"}
-                                org.clojure/tools.namespace {:mvn/version "1.5.0"}
-                                binaryage/devtools {:mvn/version "1.0.7"}
-                                com.xtdb/xtdb-http-server {:mvn/version "1.24.5"}}
-                   :jvm-opts ["-Djdk.attach.allowAttachSelf"]
+                                org.clojure/tools.namespace {:mvn/version "1.5.0"}}
+                   :jvm-opts ["-Djdk.attach.allowAttachSelf"
+                              "--add-opens" "java.base/java.nio=ALL-UNNAMED"]
                    :main-opts ["-m" "nrepl.cmdline" "--port" "7888"]}}}
