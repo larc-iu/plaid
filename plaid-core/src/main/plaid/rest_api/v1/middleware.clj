@@ -38,7 +38,7 @@
     (let [as-of  (get-in request [:parameters :query :as-of])
           xtdb   (:xtdb request)
           xt-map (cond-> {:node xtdb}
-                   as-of (assoc :snapshot-time (java.time.Instant/parse as-of)))]
+                   as-of (assoc :snapshot-time (.toInstant as-of)))]
       (cond
         ;; Forbid as-of on non-GET requests to prevent permission circumvention
         (and as-of (not= (:request-method request) :get))

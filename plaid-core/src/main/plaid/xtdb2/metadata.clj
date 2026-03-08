@@ -1,55 +1,46 @@
 (ns plaid.xtdb2.metadata
   "Shared utilities for handling metadata across different entity types.
 
-   Metadata is stored as entity attributes with a special naming convention:
+   Metadata is stored as a single JSON string in :entity-type/metadata.
    - External: {'confidence' 0.95, 'source' 'model'}
-   - Internal: {:span/_confidence 0.95, :span/_source 'model'}
+   - Internal: {:span/metadata \"{\\\"confidence\\\":0.95,\\\"source\\\":\\\"model\\\"}\"
    - Response: {:metadata {'confidence' 0.95, 'source' 'model'}}"
   (:require [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
-            [clojure.string :as str])
+            [clojure.data.json :as json])
   (:refer-clojure :exclude [get]))
 
 ;; Metadata extraction and transformation ------------------------------------------
 
-(defn extract-metadata-from-entity
-  "Extract metadata attributes from an entity, returning them as a plain map."
-  [entity entity-type]
-  (->> entity
-       (filter (fn [[k v]]
-                 (and (= entity-type (namespace k))
-                      (str/starts-with? (name k) "_")
-                      (not (nil? v)))))
-       (reduce (fn [m [k v]]
-                 (assoc m (subs (name k) 1) v))
-               {})))
+(defn- parse-metadata
+  "Parse a metadata value from storage. Handles JSON strings and maps (legacy)."
+  [v]
+  (cond
+    (string? v) (json/read-str v)
+    (map? v)    v
+    :else       nil))
+
+(defn- serialize-metadata
+  "Serialize a metadata map to a JSON string for storage."
+  [m]
+  (json/write-str (or m {})))
 
 (defn add-metadata-to-response
   "Add metadata to an entity response map if metadata exists."
   [core-attrs entity entity-type]
-  (let [metadata-attrs (extract-metadata-from-entity entity entity-type)]
-    (if (empty? metadata-attrs)
-      core-attrs
-      (assoc core-attrs :metadata metadata-attrs))))
+  (let [meta-key (keyword entity-type "metadata")
+        raw-val  (clojure.core/get entity meta-key)]
+    (if-let [parsed (when raw-val (parse-metadata raw-val))]
+      (if (empty? parsed)
+        core-attrs
+        (assoc core-attrs :metadata parsed))
+      core-attrs)))
 
 (defn transform-metadata-for-storage
-  "Transform external metadata map to internal entity attributes."
+  "Transform external metadata map to internal entity attribute."
   [metadata entity-type]
   (when metadata
-    (reduce-kv (fn [m k v]
-                 (assoc m (keyword entity-type (str "_" k)) v))
-               {}
-               metadata)))
-
-(defn find-existing-metadata-keys
-  "Find all existing metadata attribute keywords for an entity."
-  [entity entity-type]
-  (->> entity
-       (filter (fn [[k _v]]
-                 (and (= entity-type (namespace k))
-                      (str/starts-with? (name k) "_"))))
-       (map first)
-       vec))
+    {(keyword entity-type "metadata") (serialize-metadata metadata)}))
 
 ;; Transaction operation builders -----------------------------------------------
 
@@ -60,10 +51,7 @@
         table    (pxc/entity-table (keyword entity-type "id"))
         id-key   (keyword entity-type "id")
         existing (pxc/entity-with-sys-from node table eid)
-        old-keys (find-existing-metadata-keys existing entity-type)
-        new-meta (transform-metadata-for-storage metadata entity-type)
-        clear    (reduce #(assoc %1 %2 nil) {} old-keys)
-        updates  (clojure.core/merge clear new-meta)]
+        updates  (transform-metadata-for-storage metadata entity-type)]
     (pxc/merge* xt-map table id-key eid updates existing)))
 
 (defn delete-metadata-tx-ops*
@@ -73,9 +61,8 @@
         table    (pxc/entity-table (keyword entity-type "id"))
         id-key   (keyword entity-type "id")
         existing (pxc/entity-with-sys-from node table eid)
-        old-keys (find-existing-metadata-keys existing entity-type)
-        clear    (reduce #(assoc %1 %2 nil) {} old-keys)]
-    (pxc/merge* xt-map table id-key eid clear existing)))
+        meta-key (keyword entity-type "metadata")]
+    (pxc/merge* xt-map table id-key eid {meta-key nil} existing)))
 
 ;; Generic operation builders ---------------------------------------------------
 
