@@ -40,8 +40,7 @@
       (throw (ex-info (pxc/err-msg-not-found "Vocab layer" layer) {:code 404 :id layer}))
 
       :else
-      [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM vocab_items WHERE _id = ?)" [id]]
-       (pxc/match* :vocab-layers layer-e)
+      [(pxc/match* :vocab-layers layer-e)
        [:put-docs :vocab-items record]])))
 
 (defn create-operation

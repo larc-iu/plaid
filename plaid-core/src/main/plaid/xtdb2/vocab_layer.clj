@@ -92,8 +92,7 @@
                                              (pxc/new-record "vocab")
                                              (select-keys attrs attr-keys))]
     (pxc/valid-name? name)
-    [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM vocab_layers WHERE _id = ?)" [id]]
-     [:put-docs :vocab-layers record]]))
+    [[:put-docs :vocab-layers record]]))
 
 (defn create-operation [xt-map attrs]
   (op/make-operation

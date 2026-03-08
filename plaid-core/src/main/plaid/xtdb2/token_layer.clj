@@ -49,7 +49,6 @@
      [:put-docs :text-layers (-> txtl
                                  (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
                                  (update :text-layer/token-layers conj id))]
-     [:sql "ASSERT NOT EXISTS (SELECT 1 FROM token_layers WHERE _id = ?)" [id]]
      [:put-docs :token-layers record]]))
 
 (defn create-operation [xt-map attrs text-layer-id]

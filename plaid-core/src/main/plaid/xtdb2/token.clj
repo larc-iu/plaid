@@ -113,8 +113,7 @@
         text-e (pxc/entity-with-sys-from node :texts text)
         layer-e (pxc/entity-with-sys-from node :token-layers layer)]
     (schema-check! node token)
-    [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM tokens WHERE _id = ?)" [(:xt/id token)]]
-     (pxc/match* :token-layers layer-e)
+    [(pxc/match* :token-layers layer-e)
      (pxc/match* :texts text-e)
      [:put-docs :tokens token]]))
 
@@ -350,8 +349,7 @@
                                     (into {} token-attrs))]
             (check-token-bounds! begin end text-body)
             (check-token-precedence! precedence)
-            (into tx-ops [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM tokens WHERE _id = ?)" [id]]
-                          [:put-docs :tokens token]])))
+            (into tx-ops [[:put-docs :tokens token]])))
         []
         tokens-attrs)))
      :doc-id doc-id
