@@ -92,8 +92,7 @@
                                                :config {}}
                                               (select-keys attrs attr-keys))]
     (pxc/valid-name? name)
-    [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM projects WHERE _id = ?)" [id]]
-     [:put-docs :projects record]]))
+    [[:put-docs :projects record]]))
 
 (defn create-operation [xt-map attrs]
   (let [{:project/keys [name]} attrs

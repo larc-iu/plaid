@@ -42,7 +42,6 @@
      [:put-docs :projects (-> prj
                               (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
                               (update :project/text-layers conj id))]
-     [:sql "ASSERT NOT EXISTS (SELECT 1 FROM text_layers WHERE _id = ?)" [id]]
      [:put-docs :text-layers record]]))
 
 (defn create-operation [xt-map attrs project-id]

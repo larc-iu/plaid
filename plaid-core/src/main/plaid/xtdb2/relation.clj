@@ -74,8 +74,7 @@
     (when-not (:relation-layer/id (pxc/entity node :relation-layers layer))
       (throw (ex-info (pxc/err-msg-not-found "Relation layer" layer) {:id layer :code 400})))
     (check-relation-invariants! node r source-record target-record)
-    [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM relations WHERE _id = ?)" [id]]
-     (pxc/match* :spans source-e)
+    [(pxc/match* :spans source-e)
      (pxc/match* :spans target-e)
      (pxc/match* :relation-layers layer-e)
      [:put-docs :relations r]]))
@@ -251,8 +250,7 @@
             (when-not (= (:span/document source-record) (:span/document target-record))
               (throw (ex-info "Source and target relations must be in a single document."
                               {:code 400})))
-            (into tx-ops [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM relations WHERE _id = ?)" [id]]
-                          (pxc/match* :spans source-e)
+            (into tx-ops [(pxc/match* :spans source-e)
                           (pxc/match* :spans target-e)
                           [:put-docs :relations r]])))
         []

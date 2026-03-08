@@ -50,8 +50,7 @@
         existing      (pxc/entity node :users id)]
     (when (some? existing)
       (throw (ex-info (pxc/err-msg-already-exists "User" id) {:id id :code 409})))
-    [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM users WHERE _id = ?)" [id]]
-     [:put-docs :users {:xt/id                 id
+    [[:put-docs :users {:xt/id                 id
                         :user/id               id
                         :user/username         id
                         :user/password-hash    password-hash

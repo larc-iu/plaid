@@ -77,7 +77,6 @@
                                 token-records)
             item-e-with-sys (pxc/entity-with-sys-from node :vocab-items vocab-item)
             other-ops [(pxc/match* :vocab-items item-e-with-sys)
-                       [:sql "ASSERT NOT EXISTS (SELECT 1 FROM vocab_links WHERE _id = ?)" [id]]
                        [:put-docs :vocab-links record]]]
         (into token-matches other-ops)))))
 
