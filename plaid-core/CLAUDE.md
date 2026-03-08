@@ -198,9 +198,22 @@ jq -r '.paths | to_entries[] | select(.value | to_entries[] | .value.security) |
 ```
 
 ## clojure-mcp
-* When `clojure-mcp` is active, note that you can `user/start` and `user/stop` the web server. See @src/dev/user.clj.
+* When `clojure-mcp` is active, you can use it to start an nREPL server and launch the web server if necessary. Use `user/start` and `user/stop` to control the web server. See @src/dev/user.clj.
 * If `clojure-mcp` is active, you should **prefer to use its tools** to edit Clojure files, as this will help you keep parentheses balanced more easily.
   * Use `mcp__clojure-mcp__clojure_edit` for editing top-level Clojure forms (`defn`, `def`, `ns`, `defmethod`, etc.). Always try the regular `Edit` tool first; fall back to `clojure_edit` if it returns "String to replace not found".
   * Use `mcp__clojure-mcp__clojure_eval` to evaluate expressions in the running REPL (nREPL on port 7888 when server is running). Useful for verifying DB queries, checking entity state, etc. before writing code.
 * Try not to run all the tests at once. Prefer testing individual namespaces like `clojure -M:test --namespace plaid.rest-api.v1.project-test`. Pipe the output to a /tmp file so you can easily inspect it later.
 * When running tests, use `tee` to capture output: `clojure -M:test 2>&1 | tee /tmp/test-run.txt | tail -10` then grep the file for failures.
+
+## Development Access
+* **HTTP API**: Available at `http://localhost:8085/api/v1/` when the server is running. OpenAPI spec at `http://localhost:8085/api/v1/openapi.json`.
+* **Default credentials**: During development, use `a@b.com` / `password` as valid admin credentials. Login field is `user-id` (not `email`): `curl -X POST .../login -d '{"user-id":"a@b.com","password":"password"}'`.
+* **XTDB pgwire**: Connect via `psql -h localhost -p 5433 -d xtdb` (must specify `-h localhost` for TCP and `-d xtdb` for the database name).
+
+### When to use each interface
+* **REPL** (`clojure_eval`): Best for most development tasks. Call application-level functions directly (e.g. `plaid.xtdb2.project/get`), run XTQL or SQL queries against the node, test code changes interactively. This is the most powerful option — you have full access to application internals and can require/call any namespace.
+* **HTTP API** (`curl`): Use when testing the REST API itself — verifying request/response formats, coercion, auth, middleware behavior, error handling. Also useful for end-to-end validation of a feature. Requires a JWT token from the login endpoint.
+* **pgwire** (`psql`): Use for quick ad-hoc SQL exploration of the database — checking what tables exist, viewing raw column names (note: nested keys use `$` separator, e.g. `project$name`), and querying history with `FOR ALL SYSTEM_TIME`. Handy for inspecting data without needing to write Clojure, but read-only and no access to application logic.
+
+## XTDB Reference
+See 
