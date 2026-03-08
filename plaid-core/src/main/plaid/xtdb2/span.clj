@@ -226,59 +226,81 @@
   (metadata/delete-metadata xt-map eid user-id "span" project-id :span/document))
 
 ;; Bulk operations
-(defn- check-spans-consistency! [node spans-attrs]
-  (when-not (= 1 (->> spans-attrs (map :span/layer) distinct count))
-    (throw (ex-info "Spans must all belong to the same layer" {:code 400})))
-  (let [doc-ids (->> spans-attrs
-                     (map :span/tokens)
-                     (map first)
-                     (map #(get-doc-id-of-token node %))
-                     distinct)]
-    (when-not (= 1 (count doc-ids))
-      (throw (ex-info "Not all spans belong to the same document" {:document-ids doc-ids :code 400})))))
-
 (defn bulk-create* [xt-map spans-attrs]
   (let [node (pxc/->node xt-map)
         layer (-> spans-attrs first :span/layer)
         layer-e (pxc/entity-with-sys-from node :span-layers layer)
+        sl (pxc/entity node :span-layers layer)
+        ;; Collect all referenced token IDs and fetch them in bulk
+        all-token-ids (->> spans-attrs (mapcat :span/tokens) distinct)
+        token-cache (into {} (map (fn [tid]
+                                    [tid (pxc/entity-with-sys-from node :tokens tid)])
+                                  all-token-ids))
+        ;; Derive doc-id and validate consistency from cached tokens
+        first-token (clojure.core/get token-cache (-> spans-attrs first :span/tokens first))
+        doc-id (:token/document first-token)
+        token-layer-id (:token/layer first-token)
+        token-layer-e (when token-layer-id (pxc/entity node :token-layers token-layer-id))
         spans-attrs (mapv (fn [attrs]
                             (if (:metadata attrs)
                               (clojure.core/merge (dissoc attrs :metadata)
                                                   (metadata/transform-metadata-for-storage (:metadata attrs) "span"))
                               (dissoc attrs :metadata)))
                           spans-attrs)]
-    (check-spans-consistency! node spans-attrs)
-    (vec
-     (concat
-      [(pxc/match* :span-layers layer-e)]
-      (reduce
-       (fn [tx-ops attrs]
-         (let [span-attrs (filter (fn [[k _]] (span-attr? k)) attrs)
-               {:span/keys [id tokens value] :as span}
-               (clojure.core/merge (pxc/new-record "span")
-                                   {:span/document (get-doc-id-of-token node (-> attrs :span/tokens first))}
-                                   (into {} span-attrs))
-               token-records (mapv #(pxc/entity node :tokens %) tokens)]
-           (validate-atomic-value! value)
-           (check-tokens! node span token-records)
-           (let [token-matches (mapv (fn [tid]
-                                       (pxc/match* :tokens (pxc/entity-with-sys-from node :tokens tid)))
-                                     tokens)]
-             (into tx-ops (concat
-                           [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM spans WHERE _id = ?)" [id]]]
-                           token-matches
-                           [[:put-docs :spans span]])))))
-       []
-       spans-attrs)))))
+    ;; Consistency checks
+    (when-not (= 1 (->> spans-attrs (map :span/layer) distinct count))
+      (throw (ex-info "Spans must all belong to the same layer" {:code 400})))
+    (let [doc-ids (->> all-token-ids (map #(:token/document (clojure.core/get token-cache %))) distinct)]
+      (when-not (= 1 (count doc-ids))
+        (throw (ex-info "Not all spans belong to the same document" {:document-ids doc-ids :code 400}))))
+    ;; Layer existence
+    (when (nil? (:span-layer/id sl))
+      (throw (ex-info (pxc/err-msg-not-found "Span layer" layer) {:id layer :code 400})))
+    ;; Token-layer linkage (checked once)
+    (when-not (some #{layer} (:token-layer/span-layers token-layer-e))
+      (throw (ex-info (str "Token layer " token-layer-id " is not linked to span layer " layer)
+                      {:token-layer-id token-layer-id :span-layer-id layer :code 400})))
+    {:tx-ops
+     (vec
+      (concat
+       [(pxc/match* :span-layers layer-e)]
+       (reduce
+        (fn [tx-ops attrs]
+          (let [span-attrs (filter (fn [[k _]] (span-attr? k)) attrs)
+                {:span/keys [id tokens value] :as span}
+                (clojure.core/merge (pxc/new-record "span")
+                                    {:span/document doc-id}
+                                    (into {} span-attrs))
+                token-records (mapv #(clojure.core/get token-cache %) tokens)]
+            (validate-atomic-value! value)
+            ;; Validate tokens exist and belong to same layer
+            (when (or (not (seq token-records)) (empty? token-records))
+              (throw (ex-info "Token list is empty or malformed" {:code 400})))
+            (when-not (every? :token/id token-records)
+              (throw (ex-info "Not all token IDs are valid." {:ids tokens :code 400})))
+            (when-not (every? #(= token-layer-id (:token/layer %)) token-records)
+              (throw (ex-info "Not all token IDs belong to the same layer."
+                              {:layer-ids (map :token/layer token-records) :code 400})))
+            (let [token-matches (mapv (fn [tid]
+                                        (pxc/match* :tokens (clojure.core/get token-cache tid)))
+                                      tokens)]
+              (into tx-ops (concat
+                            [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM spans WHERE _id = ?)" [id]]]
+                            token-matches
+                            [[:put-docs :spans span]])))))
+        []
+        spans-attrs)))
+     :doc-id doc-id
+     :project-id (:text-layer/project
+                   (when-let [txtl-id (:token-layer/text-layer token-layer-e)]
+                     (pxc/entity node :text-layers txtl-id)))}))
 
 (defn bulk-create-operation [xt-map spans-attrs]
-  (let [node (pxc/->node xt-map)
-        {:span/keys [layer tokens]} (first spans-attrs)
-        doc-id (get-doc-id-of-token node (first tokens))
-        tx-ops (bulk-create* xt-map spans-attrs)]
+  (let [{:keys [tx-ops doc-id project-id]} (bulk-create* xt-map spans-attrs)
+        layer (-> spans-attrs first :span/layer)]
     (op/make-operation
      {:type :span/bulk-create
-      :project (project-id-from-layer node layer)
+      :project project-id
       :document doc-id
       :description (str "Bulk create " (count spans-attrs) " spans in layer " layer)
       :tx-ops tx-ops})))

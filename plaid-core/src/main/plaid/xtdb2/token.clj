@@ -316,37 +316,53 @@
         layer-e (pxc/entity-with-sys-from node :token-layers layer)
         text (-> tokens-attrs first :token/text)
         text-e (pxc/entity-with-sys-from node :texts text)
+        text-body (:text/body text-e)
+        text-layer-id (:text/layer text-e)
+        {token-layers :text-layer/token-layers :as text-layer-e}
+        (pxc/entity node :text-layers text-layer-id)
+        doc-id (:text/document text-e)
+        project-id (:text-layer/project text-layer-e)
         tokens-attrs (for [attrs tokens-attrs]
                        (if-let [metadata (:metadata attrs)]
                          (clojure.core/merge (dissoc attrs :metadata)
                                              (metadata/transform-metadata-for-storage metadata "token"))
                          (dissoc attrs :metadata)))]
     (check-tokens-consistency! tokens-attrs)
-    (vec
-     (concat
-      [(pxc/match* :token-layers layer-e)
-       (pxc/match* :texts text-e)]
-      (reduce
-       (fn [tx-ops attrs]
-         (let [token-attrs (filter (fn [[k _]] (token-attr? k)) attrs)
-               {:token/keys [id] :as token}
-               (clojure.core/merge (pxc/new-record "token")
-                                   {:token/document (get-doc-id-of-text node (:token/text attrs))}
-                                   (into {} token-attrs))]
-           (schema-check! node token (not (empty? tx-ops)))
-           (into tx-ops [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM tokens WHERE _id = ?)" [id]]
-                         [:put-docs :tokens token]])))
-       []
-       tokens-attrs)))))
+    ;; Validate layer/text existence and linkage once
+    (when (nil? layer-e)
+      (throw (ex-info (pxc/err-msg-not-found "Token layer" layer) {:id layer :code 400})))
+    (when (nil? (:text/id text-e))
+      (throw (ex-info (pxc/err-msg-not-found "Text" text) {:id text :code 400})))
+    (when-not (some #{layer} token-layers)
+      (throw (ex-info (str "Text layer " text-layer-id " is not linked to token layer " layer ".")
+                      {:text-layer-id text-layer-id :token-layer-id layer})))
+    {:tx-ops
+     (vec
+      (concat
+       [(pxc/match* :token-layers layer-e)
+        (pxc/match* :texts text-e)]
+       (reduce
+        (fn [tx-ops attrs]
+          (let [token-attrs (filter (fn [[k _]] (token-attr? k)) attrs)
+                {:token/keys [id begin end precedence] :as token}
+                (clojure.core/merge (pxc/new-record "token")
+                                    {:token/document doc-id}
+                                    (into {} token-attrs))]
+            (check-token-bounds! begin end text-body)
+            (check-token-precedence! precedence)
+            (into tx-ops [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM tokens WHERE _id = ?)" [id]]
+                          [:put-docs :tokens token]])))
+        []
+        tokens-attrs)))
+     :doc-id doc-id
+     :project-id project-id}))
 
 (defn bulk-create-operation [xt-map tokens-attrs]
-  (let [node (pxc/->node xt-map)
-        {:token/keys [layer text]} (first tokens-attrs)
-        doc-id (get-doc-id-of-text node text)
-        tx-ops (bulk-create* xt-map tokens-attrs)]
+  (let [{:keys [tx-ops doc-id project-id]} (bulk-create* xt-map tokens-attrs)
+        layer (-> tokens-attrs first :token/layer)]
     (op/make-operation
      {:type :token/bulk-create
-      :project (project-id-from-layer node layer)
+      :project project-id
       :document doc-id
       :description (str "Bulk create " (count tokens-attrs) " tokens in layer " layer)
       :tx-ops tx-ops})))

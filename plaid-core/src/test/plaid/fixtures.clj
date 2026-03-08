@@ -13,18 +13,19 @@
 (log/set-min-level! :info)
 
 ;; Single shared XTDB node for all test namespaces — started once per JVM session
-(defonce ^:private shared-node (xtdb-node-api/start-node {}))
+(defonce ^:private shared-node (xtdb-node-api/start-node {:log [:in-memory {}]
+                                                          :storage [:in-memory {}]}))
 (defonce ^:private coordinator-started? (atom false))
 
-(def xtdb-node nil)
-(def config nil)
-(def rest-handler nil)
-(def admin-token nil)
-(def user1-token nil)
-(def user2-token nil)
+(def ^:dynamic xtdb-node nil)
+(def ^:dynamic config nil)
+(def ^:dynamic rest-handler nil)
+(def ^:dynamic admin-token nil)
+(def ^:dynamic user1-token nil)
+(def ^:dynamic user2-token nil)
 
 (defn with-rest-handler [f]
-  (with-redefs [rest-handler
+  (binding [rest-handler
                 (-> (rest/rest-handler xtdb-node "fake-secret")
                     (wrap-defaults
                      {:params {:keywordize true
@@ -47,7 +48,7 @@
     (f)))
 
 (defn with-xtdb [f]
-  (with-redefs [xtdb-node shared-node]
+  (binding [xtdb-node shared-node]
     (f)))
 
 (defn with-mount-states [f]
@@ -57,23 +58,26 @@
     (Thread/sleep 100))
   (f))
 
+(defn- ensure-user! [xt-map email admin? password]
+  (try
+    (when-not (pxu/get-internal xt-map email)
+      (pxu/create xt-map email admin? password))
+    (catch clojure.lang.ExceptionInfo _)))
+
 (defn with-admin [f]
   (let [xt-map {:node xtdb-node}
-        _ (when-not (pxu/get-internal xt-map "admin@example.com")
-            (pxu/create xt-map "admin@example.com" true "password"))
+        _ (ensure-user! xt-map "admin@example.com" true "password")
         req (rest-handler (-> (mock/request :post "/api/v1/login")
                               (mock/header "accept" "application/edn")
                               (mock/json-body {:user-id "admin@example.com"
                                                :password "password"})))]
-    (with-redefs [admin-token (-> req :body slurp read-string :token)]
+    (binding [admin-token (-> req :body slurp read-string :token)]
       (f))))
 
 (defn with-test-users [f]
   (let [xt-map {:node xtdb-node}
-        _ (when-not (pxu/get-internal xt-map "user1@example.com")
-            (pxu/create xt-map "user1@example.com" false "password1"))
-        _ (when-not (pxu/get-internal xt-map "user2@example.com")
-            (pxu/create xt-map "user2@example.com" false "password2"))
+        _ (ensure-user! xt-map "user1@example.com" false "password1")
+        _ (ensure-user! xt-map "user2@example.com" false "password2")
         user1-req (rest-handler (-> (mock/request :post "/api/v1/login")
                                     (mock/header "accept" "application/edn")
                                     (mock/json-body {:user-id "user1@example.com"
@@ -82,7 +86,7 @@
                                     (mock/header "accept" "application/edn")
                                     (mock/json-body {:user-id "user2@example.com"
                                                      :password "password2"})))]
-    (with-redefs [user1-token (-> user1-req :body slurp read-string :token)
+    (binding [user1-token (-> user1-req :body slurp read-string :token)
                   user2-token (-> user2-req :body slurp read-string :token)]
       (f))))
 
@@ -115,6 +119,7 @@
               body (mock/json-body body))
         resp (rest-handler req)]
     {:status (:status resp)
+     :headers (:headers resp)
      :body (when-let [response-body (:body resp)]
              (when-not (= response-body "")
                (parse-response-body resp)))}))

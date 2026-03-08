@@ -33,8 +33,8 @@
         metosin/ring-http-response {:mvn/version "0.9.5"}
 
         ;; xtdb
-        com.xtdb/xtdb-core {:mvn/version "2.0.0"}
-        com.xtdb/xtdb-api {:mvn/version "2.0.0"}
+        com.xtdb/xtdb-core {:mvn/version "2.1.0"}
+        com.xtdb/xtdb-api {:mvn/version "2.1.0"}
 
         ;; security
         buddy/buddy-core {:mvn/version "1.12.0-430"}
@@ -61,12 +61,10 @@
                                  :verbose true}
                      :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"]
                      :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}}
-           :test {:extra-paths ["src/test"]
+           :test {:extra-paths ["src/test" "src/test-runner"]
                   :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"]
-                  :main-opts ["-m" "cognitect.test-runner" "-d" "src/test"]
-                  :exec-fn cognitect.test-runner.api/test
-                  :extra-deps {com.cognitect/test-runner {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                                                          :sha "3f288f1f16d167723ad87cc35b1dfee3c1681e10"}
+                  :main-opts ["-m" "plaid.test-runner"]
+                  :extra-deps {eftest/eftest {:mvn/version "0.6.0"}
                                ring/ring-mock {:mvn/version "0.6.1"}}}
            :dev {:extra-paths ["src/dev" "src/test"]
                  :jvm-opts ["-XX:-OmitStackTraceInFastThrow"
