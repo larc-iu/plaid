@@ -46,7 +46,6 @@
      [:put-docs :token-layers (-> tokl
                                   (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
                                   (update :token-layer/span-layers conj id))]
-     [:sql "ASSERT NOT EXISTS (SELECT 1 FROM span_layers WHERE _id = ?)" [id]]
      [:put-docs :span-layers record]]))
 
 (defn create-operation [xt-map attrs token-layer-id]

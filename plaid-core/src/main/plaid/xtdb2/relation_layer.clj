@@ -49,7 +49,6 @@
      [:put-docs :span-layers (-> sl
                                  (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
                                  (update :span-layer/relation-layers conj id))]
-     [:sql "ASSERT NOT EXISTS (SELECT 1 FROM relation_layers WHERE _id = ?)" [id]]
      [:put-docs :relation-layers record]]))
 
 (defn create-operation [xt-map attrs span-layer-id]

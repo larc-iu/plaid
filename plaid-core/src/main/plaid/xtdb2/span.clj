@@ -97,8 +97,7 @@
           token-matches (mapv (fn [tok-id]
                                 (pxc/match* :tokens (pxc/entity-with-sys-from node :tokens tok-id)))
                               tokens)]
-      (into [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM spans WHERE _id = ?)" [id]]
-             (pxc/match* :span-layers layer-e)]
+      (into [(pxc/match* :span-layers layer-e)]
             (conj token-matches [:put-docs :spans span])))))
 
 (defn create-operation [xt-map attrs metadata]
@@ -285,7 +284,6 @@
                                         (pxc/match* :tokens (clojure.core/get token-cache tid)))
                                       tokens)]
               (into tx-ops (concat
-                            [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM spans WHERE _id = ?)" [id]]]
                             token-matches
                             [[:put-docs :spans span]])))))
         []

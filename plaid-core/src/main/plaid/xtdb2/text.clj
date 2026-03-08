@@ -73,8 +73,7 @@
                       {:document document :code 409}))
 
       :else
-      [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM texts WHERE _id = ?)" [id]]
-       ;; Transactional uniqueness: prevents two concurrent requests from both passing
+      [;; Transactional uniqueness: prevents two concurrent requests from both passing
        ;; the pre-flight (get-text-for-doc) check and creating duplicate texts for the same pair.
        [:sql "ASSERT NOT EXISTS (SELECT 1 FROM texts WHERE text$layer = ? AND text$document = ?)"
         [layer document]]

@@ -174,8 +174,7 @@
       (throw (ex-info (pxc/err-msg-not-found "Project" project) {:id project :code 400}))
 
       :else
-      [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM documents WHERE _id = ?)" [id]]
-       (pxc/match* :projects prj-e)
+      [(pxc/match* :projects prj-e)
        [:put-docs :documents record]])))
 
 (defn create-operation
