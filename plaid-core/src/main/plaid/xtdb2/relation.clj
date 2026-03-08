@@ -202,43 +202,70 @@
                                   (let [meta-attrs (metadata/transform-metadata-for-storage (:metadata attrs) "relation")]
                                     (clojure.core/merge (dissoc attrs :metadata) meta-attrs))
                                   (dissoc attrs :metadata)))
-                              relations-attrs)]
+                              relations-attrs)
+        ;; Collect all referenced span IDs and fetch them once
+        all-span-ids (->> relations-attrs (mapcat (fn [a] [(:relation/source a) (:relation/target a)])) distinct)
+        span-cache (into {} (map (fn [sid]
+                                   [sid (pxc/entity-with-sys-from node :spans sid)])
+                                 all-span-ids))
+        ;; Derive doc-id and span-layer from first source
+        first-source (clojure.core/get span-cache (-> relations-attrs first :relation/source))
+        doc-id (:span/document first-source)
+        span-layer-id (:span/layer first-source)
+        sl (pxc/entity node :span-layers span-layer-id)
+        project-id (rl/project-id node layer)]
     (check-relations-consistency! relations-attrs)
-    (let [doc-ids (->> relations-attrs (map :relation/source) (map #(get-doc-id-of-span node %)) distinct)]
+    ;; Document consistency check using cache
+    (let [doc-ids (->> relations-attrs (map :relation/source) (map #(:span/document (clojure.core/get span-cache %))) distinct)]
       (when-not (= 1 (count doc-ids))
         (throw (ex-info "Not all relations belong to the same document" {:document-ids doc-ids :code 400}))))
-    (vec
-     (concat
-      [(pxc/match* :relation-layers layer-e)]
-      (reduce
-       (fn [tx-ops attrs]
-         (let [rel-attrs (filter (fn [[k _]] (relation-attr? k)) attrs)
-               {:relation/keys [id layer source target] :as r}
-               (clojure.core/merge (pxc/new-record "relation")
-                                   {:relation/document (get-doc-id-of-span node (:relation/source attrs))}
-                                   (into {} rel-attrs))
-               source-record (pxc/entity node :spans source)
-               target-record (pxc/entity node :spans target)
-               source-e (pxc/entity-with-sys-from node :spans source)
-               target-e (pxc/entity-with-sys-from node :spans target)]
-           (when (pxc/entity node :relations id)
-             (throw (ex-info (pxc/err-msg-already-exists "Relation" id) {:id id :code 409})))
-           (check-relation-invariants! node r source-record target-record)
-           (into tx-ops [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM relations WHERE _id = ?)" [id]]
-                         (pxc/match* :spans source-e)
-                         (pxc/match* :spans target-e)
-                         [:put-docs :relations r]])))
-       []
-       relations-attrs)))))
+    ;; Layer linkage check (once)
+    (when-not (some #{layer} (:span-layer/relation-layers sl))
+      (throw (ex-info (str "Relation layer " layer " is not connected to span layer " span-layer-id)
+                      {:relation-layer layer :span-layer span-layer-id :code 400})))
+    {:tx-ops
+     (vec
+      (concat
+       [(pxc/match* :relation-layers layer-e)]
+       (reduce
+        (fn [tx-ops attrs]
+          (let [rel-attrs (filter (fn [[k _]] (relation-attr? k)) attrs)
+                {:relation/keys [id layer source target] :as r}
+                (clojure.core/merge (pxc/new-record "relation")
+                                    {:relation/document doc-id}
+                                    (into {} rel-attrs))
+                source-record (clojure.core/get span-cache source)
+                target-record (clojure.core/get span-cache target)
+                source-e (clojure.core/get span-cache source)
+                target-e (clojure.core/get span-cache target)]
+            ;; Validate source/target exist
+            (when-not (:span/id source-record)
+              (throw (ex-info (str "Source span " source " does not exist") {:id source :code 400})))
+            (when-not (:span/id target-record)
+              (throw (ex-info (str "Target span " target " does not exist") {:id target :code 400})))
+            (when-not (= (:span/layer source-record) (:span/layer target-record))
+              (throw (ex-info "Source and target relations must be contained in a single span layer."
+                              {:source-layer (:span/layer source-record)
+                               :target-layer (:span/layer target-record)
+                               :code 400})))
+            (when-not (= (:span/document source-record) (:span/document target-record))
+              (throw (ex-info "Source and target relations must be in a single document."
+                              {:code 400})))
+            (into tx-ops [[:sql "ASSERT NOT EXISTS (SELECT 1 FROM relations WHERE _id = ?)" [id]]
+                          (pxc/match* :spans source-e)
+                          (pxc/match* :spans target-e)
+                          [:put-docs :relations r]])))
+        []
+        relations-attrs)))
+     :doc-id doc-id
+     :project-id project-id}))
 
 (defn bulk-create-operation [xt-map relations-attrs]
-  (let [node (pxc/->node xt-map)
-        {:relation/keys [layer source]} (first relations-attrs)
-        doc-id (get-doc-id-of-span node source)
-        tx-ops (bulk-create* xt-map relations-attrs)]
+  (let [{:keys [tx-ops doc-id project-id]} (bulk-create* xt-map relations-attrs)
+        layer (-> relations-attrs first :relation/layer)]
     (op/make-operation
      {:type :relation/bulk-create
-      :project (rl/project-id xt-map layer)
+      :project project-id
       :document doc-id
       :description (str "Bulk create " (count relations-attrs) " relations in layer " layer)
       :tx-ops tx-ops})))

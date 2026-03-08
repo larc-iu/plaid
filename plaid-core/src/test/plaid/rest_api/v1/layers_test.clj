@@ -4,27 +4,12 @@
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request
                                     with-admin with-test-users]]
-            [ring.mock.request :as mock]))
+            [plaid.test-helpers :refer [create-test-project delete-test-project
+                                        create-text-layer create-token-layer create-span-layer create-relation-layer]]))
 
 (use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
 
-;; Helper to create a project for tests
-(defn- create-test-project [user-request-fn project-name]
-  (let [response (api-call user-request-fn {:method :post
-                                            :path   "/api/v1/projects"
-                                            :body   {:name project-name}})]
-    (assert-created response)
-    (-> response :body :id)))
-
-(defn- delete-test-project [user-request-fn project-id]
-  (api-call user-request-fn {:method :delete :path (str "/api/v1/projects/" project-id)}))
-
-;; Text Layer API Helper Functions
-(defn- create-text-layer [user-request-fn project-id name]
-  (api-call user-request-fn {:method :post
-                             :path   "/api/v1/text-layers"
-                             :body   {:project-id project-id :name name}}))
-
+;; Layer-specific helpers (get, update, delete, shift) not shared with other test files
 (defn- get-text-layer [user-request-fn text-layer-id]
   (api-call user-request-fn {:method :get
                              :path   (str "/api/v1/text-layers/" text-layer-id)}))
@@ -42,12 +27,6 @@
   (api-call user-request-fn {:method :post
                              :path   (str "/api/v1/text-layers/" text-layer-id "/shift")
                              :body   {:direction direction}}))
-
-;; Token Layer API Helper Functions
-(defn- create-token-layer [user-request-fn text-layer-id name]
-  (api-call user-request-fn {:method :post
-                             :path   "/api/v1/token-layers"
-                             :body   {:text-layer-id text-layer-id :name name}}))
 
 (defn- get-token-layer [user-request-fn token-layer-id]
   (api-call user-request-fn {:method :get
@@ -67,12 +46,6 @@
                              :path   (str "/api/v1/token-layers/" token-layer-id "/shift")
                              :body   {:direction direction}}))
 
-;; Span Layer API Helper Functions
-(defn- create-span-layer [user-request-fn token-layer-id name]
-  (api-call user-request-fn {:method :post
-                             :path   "/api/v1/span-layers"
-                             :body   {:token-layer-id token-layer-id :name name}}))
-
 (defn- get-span-layer [user-request-fn span-layer-id]
   (api-call user-request-fn {:method :get
                              :path   (str "/api/v1/span-layers/" span-layer-id)}))
@@ -90,12 +63,6 @@
   (api-call user-request-fn {:method :post
                              :path   (str "/api/v1/span-layers/" span-layer-id "/shift")
                              :body   {:direction direction}}))
-
-;; Relation Layer API Helper Functions
-(defn- create-relation-layer [user-request-fn span-layer-id name]
-  (api-call user-request-fn {:method :post
-                             :path   "/api/v1/relation-layers"
-                             :body   {:span-layer-id span-layer-id :name name}}))
 
 (defn- get-relation-layer [user-request-fn relation-layer-id]
   (api-call user-request-fn {:method :get

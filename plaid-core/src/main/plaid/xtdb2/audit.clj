@@ -34,10 +34,11 @@
                               (dissoc :op/tx-ops))))
                       op-ids)))))
 
-(defn- filter-by-time [entries start-time end-time]
+(defn- filter-by-time [start-time end-time entries]
   (filter (fn [{ts :audit/time}]
-            (and (or (nil? start-time) (nil? ts) (not (.isBefore ts (.toInstant start-time))))
-                 (or (nil? end-time) (nil? ts) (not (.isAfter ts (.toInstant end-time))))))
+            (let [ts-inst (when ts (.toInstant ts))]
+              (and (or (nil? start-time) (nil? ts-inst) (not (.isBefore ts-inst (.toInstant start-time))))
+                   (or (nil? end-time) (nil? ts-inst) (not (.isAfter ts-inst (.toInstant end-time)))))))
           entries))
 
 (defn get-project-audit-log
