@@ -15,7 +15,7 @@
     (if db-dir
       (do (log/info "Starting XTDB node with local storage at" db-dir)
           (xtdb/start-node (merge base-opts
-                                  {:log     [:in-memory {}]
+                                  {:log     [:local {:path (str db-dir "/log")}]
                                    :storage [:local {:path (str db-dir "/storage")}]})))
       (do (log/info "Starting XTDB node in-memory (no :main-db-dir configured)")
           (xtdb/start-node base-opts)))))
