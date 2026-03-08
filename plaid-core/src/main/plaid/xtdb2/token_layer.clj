@@ -1,5 +1,6 @@
 (ns plaid.xtdb2.token-layer
   (:require [xtdb.api :as xt]
+            [clojure.string :as str]
             [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
             [plaid.xtdb2.span-layer :as sl])
@@ -94,6 +95,47 @@
 (defn shift-token-layer [xt-map tokl-id up? user-id]
   (submit-operations! xt-map [(shift-token-layer-operation xt-map tokl-id up?)] user-id))
 
+(defn- delete*-impl
+  "Delete a token-layer given a pre-fetched entity (with sys-from). Does NOT remove ref from parent."
+  [node tokl]
+  (let [eid (:xt/id tokl)
+        span-layer-ids (:token-layer/span-layers tokl)
+        ;; Flatten span-layer cascade: batch across all span-layers
+        sl-entities (pxc/entities-with-sys-from node :span-layers span-layer-ids)
+        all-rl-ids (vec (mapcat :span-layer/relation-layers sl-entities))
+        rl-entities (pxc/entities-with-sys-from node :relation-layers all-rl-ids)
+        ;; All relations across all relation-layers (1 query)
+        all-relations (if (empty? all-rl-ids) []
+                        (let [ph (str/join ", " (repeat (count all-rl-ids) "?"))]
+                          (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                 " WHERE relation$layer IN (" ph ")")]
+                                           all-rl-ids))))
+        ;; All spans across all span-layers (1 query)
+        all-spans (if (empty? span-layer-ids) []
+                    (let [ph (str/join ", " (repeat (count span-layer-ids) "?"))]
+                      (xt/q node (into [(str "SELECT *, _system_from FROM spans"
+                                              " WHERE span$layer IN (" ph ")")]
+                                        span-layer-ids))))
+        ;; Tokens + vocab-links
+        tokens (pxc/find-entities-with-sys-from node :tokens {:token/layer eid})
+        token-ids (mapv :xt/id tokens)
+        vl-entities (if (empty? token-ids)
+                      []
+                      (let [ph (str/join ", " (repeat (count token-ids) "?"))]
+                        (xt/q node (into [(str "SELECT *, _system_from FROM vocab_links vl, UNNEST(vl.vocab_link$tokens) AS t(tid)"
+                                               " WHERE t.tid IN (" ph ")")]
+                                         token-ids))))
+        vl-by-id (into {} (map (juxt :xt/id identity) vl-entities))]
+    (reduce into
+            [(pxc/batch-delete-ops :vocab-links (vals vl-by-id))
+             (pxc/batch-delete-ops :relations all-relations)
+             (pxc/batch-delete-ops :relation-layers rl-entities)
+             (pxc/batch-delete-ops :spans all-spans)
+             (pxc/batch-delete-ops :span-layers sl-entities)
+             (pxc/batch-delete-ops :tokens tokens)
+             [(pxc/match* :token-layers tokl)
+              [:delete-docs :token-layers eid]]])))
+
 (defn delete*
   "Delete a token-layer and all its span-layers, tokens, and vocab-links. Does NOT remove ref from parent."
   [xt-map eid]
@@ -101,36 +143,7 @@
         tokl (pxc/entity-with-sys-from node :token-layers eid)]
     (when (nil? (:token-layer/id tokl))
       (throw (ex-info (pxc/err-msg-not-found "Token layer" eid) {:code 404})))
-    (let [span-layer-ids (:token-layer/span-layers tokl)
-          sl-ops (vec (mapcat #(sl/delete* xt-map %) span-layer-ids))
-          token-ids (->> (pxc/find-entities node :tokens {:token/layer eid})
-                         (map :xt/id))
-          ;; Find all vocab-links for these tokens via unnest
-          vocab-link-ids (distinct
-                          (mapcat (fn [tid]
-                                    (->> (xt/q node (xt/template
-                                           (-> (from :vocab-links [{:xt/id vlid :vocab-link/tokens toks}])
-                                               (unnest {:t toks})
-                                               (where (= t ~tid))
-                                               (return vlid))))
-                                         (map :vlid)))
-                                  token-ids))
-          vl-ops (vec (mapcat (fn [vlid]
-                                (let [vl (pxc/entity-with-sys-from node :vocab-links vlid)]
-                                  [(pxc/match* :vocab-links vl)
-                                   [:delete-docs :vocab-links vlid]]))
-                              vocab-link-ids))
-          tok-ops (vec (mapcat (fn [tid]
-                                 (let [t (pxc/entity-with-sys-from node :tokens tid)]
-                                   [(pxc/match* :tokens t)
-                                    [:delete-docs :tokens tid]]))
-                               token-ids))]
-      (reduce into
-              [vl-ops
-               sl-ops
-               tok-ops
-               [(pxc/match* :token-layers tokl)
-                [:delete-docs :token-layers eid]]]))))
+    (delete*-impl node tokl)))
 
 (defn delete-operation [xt-map eid]
   (let [node (pxc/->node xt-map)

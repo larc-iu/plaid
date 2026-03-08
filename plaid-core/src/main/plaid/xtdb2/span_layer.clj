@@ -1,5 +1,6 @@
 (ns plaid.xtdb2.span-layer
   (:require [xtdb.api :as xt]
+            [clojure.string :as str]
             [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
             [plaid.xtdb2.relation-layer :as rl])
@@ -102,18 +103,19 @@
     (when (nil? (:span-layer/id sl))
       (throw (ex-info (pxc/err-msg-not-found "Span layer" eid) {:code 404})))
     (let [relation-layer-ids (:span-layer/relation-layers sl)
-          ;; delete* for each relation-layer (without unlinking from parent)
-          rl-ops (vec (mapcat #(rl/delete* xt-map %) relation-layer-ids))
-          span-ids (->> (pxc/find-entities node :spans {:span/layer eid})
-                        (map :xt/id))
-          span-ops (vec (mapcat (fn [sid]
-                                  (let [s (pxc/entity-with-sys-from node :spans sid)]
-                                    [(pxc/match* :spans s)
-                                     [:delete-docs :spans sid]]))
-                                span-ids))]
+          ;; Batch-fetch all relation-layers (1 query instead of N)
+          rl-entities (pxc/entities-with-sys-from node :relation-layers relation-layer-ids)
+          ;; Find ALL relations across ALL relation-layers in one query
+          all-relations (if (empty? relation-layer-ids) []
+                          (let [ph (str/join ", " (repeat (count relation-layer-ids) "?"))]
+                            (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                   " WHERE relation$layer IN (" ph ")")]
+                                             relation-layer-ids))))
+          spans (pxc/find-entities-with-sys-from node :spans {:span/layer eid})]
       (reduce into
-              [rl-ops
-               span-ops
+              [(pxc/batch-delete-ops :relations all-relations)
+               (pxc/batch-delete-ops :relation-layers rl-entities)
+               (pxc/batch-delete-ops :spans spans)
                [(pxc/match* :span-layers sl)
                 [:delete-docs :span-layers eid]]]))))
 
