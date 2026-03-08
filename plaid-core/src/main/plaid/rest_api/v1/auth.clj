@@ -2,11 +2,10 @@
   "Implements JWT-based authentication and provides authorization middleware."
   (:require [buddy.hashers :as hashers]
             [buddy.sign.jwt :as jwt]
-            [plaid.xtdb.project :as prj]
-            [plaid.xtdb.user :as user]
-            [plaid.xtdb.vocab-layer :as vocab]
-            [taoensso.timbre :as log]
-            [xtdb.api :as xt]))
+            [plaid.xtdb2.project :as prj]
+            [plaid.xtdb2.user :as user]
+            [plaid.xtdb2.vocab-layer :as vocab]
+            [taoensso.timbre :as log]))
 
 (def authentication-routes
   ["/login"
@@ -116,10 +115,11 @@
     (throw (ex-info "Bad key" {:key key})))
   (fn [{xtdb :xtdb :as request}]
     (let [user-id (->user-id request)
+          xt-map (or (:xt-map request) {:node xtdb})
           id (get-project-id {:parameters (:parameters request)
-                              :db (or (:db request) (xt/db xtdb))})
+                              :xt-map xt-map})
           admin? (user/admin? (user/get xtdb user-id))
-          project (prj/get xtdb id)]
+          project (prj/get xt-map id)]
       (if-not (or admin? (some #(seq ((-> project % set) user-id)) (key levels)))
         {:status 403
          :body {:error (str "User " user-id " lacks sufficient privileges to " (key verb) " project " id)}}
@@ -137,11 +137,12 @@
   [handler get-vocab-id]
   (fn [{xtdb :xtdb :as request}]
     (let [user-id (->user-id request)
+          xt-map (or (:xt-map request) {:node xtdb})
           vocab-id (get-vocab-id {:parameters (:parameters request)
-                                  :db (or (:db request) (xt/db xtdb))})
+                                  :xt-map xt-map})
           admin? (user/admin? (user/get xtdb user-id))
           maintainer? (and vocab-id
-                           (vocab/maintainer? xtdb vocab-id user-id))]
+                           (vocab/maintainer? xt-map vocab-id user-id))]
       (if-not (or admin? maintainer?)
         {:status 403
          :body {:error (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id)}}
@@ -152,13 +153,14 @@
   [handler get-vocab-id]
   (fn [{xtdb :xtdb :as request}]
     (let [user-id (->user-id request)
+          xt-map (or (:xt-map request) {:node xtdb})
           vocab-id (get-vocab-id {:parameters (:parameters request)
-                                  :db (or (:db request) (xt/db xtdb))})
+                                  :xt-map xt-map})
           admin? (user/admin? (user/get xtdb user-id))
           maintainer? (and vocab-id
-                           (vocab/maintainer? xtdb vocab-id user-id))
+                           (vocab/maintainer? xt-map vocab-id user-id))
           accessible? (and vocab-id
-                           (vocab/accessible-through-project? xtdb vocab-id user-id))]
+                           (vocab/accessible-through-project? xt-map vocab-id user-id))]
       (if-not (or admin? maintainer? accessible?)
         {:status 403
          :body {:error (str "User " user-id " lacks read access to vocab layer " vocab-id)}}
@@ -169,13 +171,14 @@
   [handler get-vocab-id]
   (fn [{xtdb :xtdb :as request}]
     (let [user-id (->user-id request)
+          xt-map (or (:xt-map request) {:node xtdb})
           vocab-id (get-vocab-id {:parameters (:parameters request)
-                                  :db (or (:db request) (xt/db xtdb))})
+                                  :xt-map xt-map})
           admin? (user/admin? (user/get xtdb user-id))
           maintainer? (and vocab-id
-                           (vocab/maintainer? xtdb vocab-id user-id))
+                           (vocab/maintainer? xt-map vocab-id user-id))
           write-accessible? (and vocab-id
-                                 (vocab/write-accessible-through-project? xtdb vocab-id user-id))]
+                                 (vocab/write-accessible-through-project? xt-map vocab-id user-id))]
       (if-not (or admin? maintainer? write-accessible?)
         {:status 403
          :body {:error (str "User " user-id " lacks write access to vocab layer " vocab-id)}}

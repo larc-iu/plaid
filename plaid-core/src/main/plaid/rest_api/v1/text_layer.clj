@@ -2,16 +2,16 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
-            [plaid.xtdb.text-layer :as txtl]))
+            [plaid.xtdb2.text-layer :as txtl]))
 
-(defn get-project-id [{db :db params :parameters}]
+(defn get-project-id [{xt-map :xt-map params :parameters}]
   (let [prj-id (-> params :body :project-id)
         txtl-id (-> params :path :text-layer-id)]
     (cond prj-id
           prj-id
 
           txtl-id
-          (txtl/project-id db txtl-id)
+          (txtl/project-id xt-map txtl-id)
 
           :else
           nil)))
@@ -39,8 +39,8 @@
 
     [""
      {:get    {:summary "Get a text layer by ID."
-               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters db :db :as r}]
-                          (let [text-layer (txtl/get db text-layer-id)]
+               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xt-map :xt-map :as r}]
+                          (let [text-layer (txtl/get xt-map text-layer-id)]
                             (if (some? text-layer)
                               {:status 200
                                :body   text-layer}

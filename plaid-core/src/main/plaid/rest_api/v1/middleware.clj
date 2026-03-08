@@ -1,9 +1,8 @@
 (ns plaid.rest-api.v1.middleware
   (:require [clojure.instant :as instant]
-            [plaid.xtdb.document :as doc]
-            [plaid.xtdb.operation :as op]
+            [plaid.xtdb2.document :as doc]
+            [plaid.xtdb2.operation :as op]
             [taoensso.timbre :as log]
-            [xtdb.api :as xt]
             [clojure.string :as str]
             [clojure.data.json :as json]))
 
@@ -33,24 +32,20 @@
         response))))
 
 (defn wrap-as-of-db
-  "Enriches the request object with :db, which will hold either the current or an historical state of the database."
+  "Enriches the request with :xt-map containing the node and optional :snapshot-time for as-of reads."
   [handler]
   (fn [request]
-    (let [as-of (get-in request [:parameters :query :as-of])
-          db (if as-of
-               (xt/db (:xtdb request) as-of)
-               (xt/db (:xtdb request)))]
-
+    (let [as-of  (get-in request [:parameters :query :as-of])
+          xtdb   (:xtdb request)
+          xt-map (cond-> {:node xtdb}
+                   as-of (assoc :snapshot-time (java.time.Instant/parse as-of)))]
       (cond
-        ;; Need to forbid as-of with requests which are not GETs because of how they could be used to circumvent
-        ;; the current state of a user's permissions: if currently lacks privileges they had in the past, they could
-        ;; use an as-of to make the permissions check happen in the past. It's a little annoying to deal with this
-        ;; later on in the implementation of permissions checking, so we will just reject any write with an as-of.
+        ;; Forbid as-of on non-GET requests to prevent permission circumvention
         (and as-of (not= (:request-method request) :get))
         {:status 400 :body {:error "as-of query parameter is only allowed with GETs"}}
 
         :else
-        (handler (assoc request :db db))))))
+        (handler (assoc request :xt-map xt-map))))))
 
 (defn wrap-document-version
   "Middleware that validates document version to prevent concurrent modifications.
@@ -60,13 +55,13 @@
   [handler ->document-id]
   (fn [request]
     (let [method (:request-method request)
-          document-version (get-in request [:parameters :query :document-version])
-          db (:db request)]
+          document-version (get-in request [:parameters :query :document-version])]
 
       (if (and document-version
                (not= method :get))
         (if-let [doc-id (->document-id request)]
-          (let [latest-version (:document/version (doc/get db doc-id))]
+          (let [xt-map (or (:xt-map request) {:node (:xtdb request)})
+                latest-version (:document/version (doc/get xt-map doc-id))]
             (if (not= latest-version document-version)
               {:status 409
                :body {:error "Document version mismatch. The document has been modified since you last fetched it."}}

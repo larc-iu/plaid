@@ -1,20 +1,20 @@
 (ns plaid.rest-api.v1.user
   (:require [plaid.rest-api.v1.auth :as pra]
             [reitit.coercion.malli]
-            [plaid.xtdb.user :as user]))
+            [plaid.xtdb2.user :as user]))
 
 (def user-routes
   ["/users"
    {:openapi {:security [{:auth []}]}
-    :middleware [pra/wrap-login-required]} ; Changed from wrap-admin-required
+    :middleware [pra/wrap-login-required]}
 
    [""
     {:get {:summary "List all users"
-           :handler (fn [{db :db}]
+           :handler (fn [{xt-map :xt-map}]
                       {:status 200
-                       :body (user/get-all db)})}
+                       :body (user/get-all xt-map)})}
      :post {:summary "Create a new user"
-            :middleware [pra/wrap-admin-required] ; Admin-only for creating users
+            :middleware [pra/wrap-admin-required]
             :parameters {:body {:username string? :password string? :is-admin boolean?}}
             :handler (fn [{{{:keys [username password is-admin]} :body} :parameters xtdb :xtdb}]
                        (let [result (user/create {:node xtdb} username is-admin password)]
@@ -28,8 +28,8 @@
     {:parameters {:path [:map [:id string?]]}}
     [""
      {:get {:summary "Get a user by ID"
-            :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
-                       (let [user (user/get db id)]
+            :handler (fn [{{{:keys [id]} :path} :parameters xt-map :xt-map}]
+                       (let [user (user/get xt-map id)]
                          (if (some? user)
                            {:status 200
                             :body user}
@@ -49,7 +49,6 @@
                                is-self? (= id current-user-id)
                                is-admin? (user/admin? current-user)]
                            (cond
-                                 ;; Admin can modify anyone
                              is-admin?
                              (let [{:keys [success code error]} (user/merge {:node xtdb}
                                                                             id
@@ -62,7 +61,6 @@
                                  {:status (or code 500)
                                   :body {:error error}}))
 
-                             ;; Non-admin can only modify self (username and/or password)
                              (and is-self? (not is-admin))
                              (let [{:keys [success code error]} (user/merge {:node xtdb}
                                                                             id
@@ -74,13 +72,12 @@
                                  {:status (or code 500)
                                   :body {:error error}}))
 
-                                 ;; Non-admin trying to modify someone else or change non-password fields
                              :else
                              {:status 403
                               :body {:error "You can only modify your own username and password"}})))}
 
       :delete {:summary "Delete a user"
-               :middleware [pra/wrap-admin-required] ; Admin-only for deleting users
+               :middleware [pra/wrap-admin-required]
                :handler (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
                           (let [{:keys [success code error]} (user/delete {:node xtdb} id)]
                             (if success

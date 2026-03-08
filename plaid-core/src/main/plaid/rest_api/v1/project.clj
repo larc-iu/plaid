@@ -2,8 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
-            [plaid.xtdb.project :as prj]
-            ))
+            [plaid.xtdb2.project :as prj]))
 
 (defn get-project-id [{params :parameters}]
   (-> params :path :id))
@@ -13,9 +12,9 @@
 
    [""
     {:get {:summary "List all projects accessible to user"
-           :handler (fn [{db :db user-id :user/id :as req}]
+           :handler (fn [{xt-map :xt-map user-id :user/id :as req}]
                       {:status 200
-                       :body (prj/get-accessible db user-id)})}
+                       :body (prj/get-accessible xt-map user-id)})}
      :post {:summary "Create a new project. Note: this also registers the user as a maintainer."
             :parameters {:body {:name string?}}
             :handler (fn [{{{:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id :as req}]
@@ -34,8 +33,8 @@
            :parameters {:query [:map [:include-documents {:optional true} boolean?]]}
            :handler (fn [{{{:keys [id]} :path
                            {:keys [include-documents]} :query} :parameters
-                          db :db}]
-                      (let [project (prj/get db id include-documents)]
+                          xt-map :xt-map}]
+                      (let [project (prj/get xt-map id include-documents)]
                         (if (some? project)
                           {:status 200
                            :body project}

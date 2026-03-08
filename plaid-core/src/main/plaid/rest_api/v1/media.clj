@@ -1,19 +1,19 @@
 (ns plaid.rest-api.v1.media
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.media.storage :as media]
-            [plaid.xtdb.document :as doc]
+            [plaid.xtdb2.document :as doc]
             [ring.util.response :as response]
             [taoensso.timbre :as log])
   (:import [java.io FileInputStream]))
 
 (defn get-project-id-from-document
   "Get project ID from document ID for auth middleware"
-  [{db :db params :parameters :as request}]
+  [{xt-map :xt-map params :parameters :as request}]
   (let [doc-id (or (-> params :path :document-id)
                    (-> request :path-params (get "document-id")))]
     (when doc-id
       (let [doc-uuid (if (uuid? doc-id) doc-id (java.util.UUID/fromString doc-id))]
-        (-> (doc/get db doc-uuid) :document/project)))))
+        (-> (doc/get xt-map doc-uuid) :document/project)))))
 
 (defn get-document-id
   "Extract document ID from request parameters"
@@ -56,7 +56,7 @@
     {:get {:summary "Get media file for a document"
            :openapi {:x-client-method "get-media"}
            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
-           :handler (fn [{{{:keys [document-id]} :path} :parameters db :db headers :headers}]
+           :handler (fn [{{{:keys [document-id]} :path} :parameters headers :headers}]
                       (let [result (media/get-media-file document-id)
                             range-header (get headers "range")]
                         (if (:success result)

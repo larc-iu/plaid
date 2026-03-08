@@ -2,9 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
-            [plaid.xtdb.vocab-layer :as vocab]
-            [plaid.xtdb.user :as user]
-            [taoensso.timbre :as log]))
+            [plaid.xtdb2.vocab-layer :as vocab]))
 
 (defn get-vocab-id
   "Extract vocab ID from request parameters"
@@ -16,9 +14,9 @@
 
    [""
     {:get {:summary "List all vocab layers accessible to user"
-           :handler (fn [{db :db user-id :user/id :as req}]
+           :handler (fn [{xt-map :xt-map user-id :user/id :as req}]
                       {:status 200
-                       :body (vocab/get-accessible db user-id)})}
+                       :body (vocab/get-accessible xt-map user-id)})}
      :post {:summary "Create a new vocab layer. Note: this also registers the user as a maintainer."
             :parameters {:body {:name string?}}
             :handler (fn [{{{:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id :as req}]
@@ -38,9 +36,9 @@
            :handler (fn [{{{:keys [id]} :path
                            {:keys [include-items]} :query}
                           :parameters
-                          db :db
+                          xt-map :xt-map
                           :as req}]
-                      (let [vocab-layer (vocab/get db id include-items)]
+                      (let [vocab-layer (vocab/get xt-map id include-items)]
                         (if vocab-layer
                           {:status 200
                            :body vocab-layer}

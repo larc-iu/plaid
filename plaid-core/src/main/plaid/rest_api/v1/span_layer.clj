@@ -2,17 +2,17 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
-            [plaid.xtdb.token-layer :as tokl]
-            [plaid.xtdb.span-layer :as sl]))
+            [plaid.xtdb2.token-layer :as tokl]
+            [plaid.xtdb2.span-layer :as sl]))
 
-(defn get-project-id [{db :db params :parameters}]
+(defn get-project-id [{xt-map :xt-map params :parameters}]
   (let [tokl-id (-> params :body :token-layer-id)
         sl-id (-> params :path :span-layer-id)]
     (cond tokl-id
-          (tokl/project-id db tokl-id)
+          (tokl/project-id xt-map tokl-id)
 
           sl-id
-          (sl/project-id db sl-id)
+          (sl/project-id xt-map sl-id)
 
           :else
           nil)))
@@ -40,8 +40,8 @@
 
     [""
      {:get    {:summary "Get a span layer by ID."
-               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters db :db}]
-                          (let [span-layer (sl/get db span-layer-id)]
+               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters xt-map :xt-map}]
+                          (let [span-layer (sl/get xt-map span-layer-id)]
                             (if (some? span-layer)
                               {:status 200
                                :body   span-layer}

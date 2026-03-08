@@ -3,57 +3,57 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.xtdb.vocab-link :as vocab-link]
-            [plaid.xtdb.vocab-item :as vocab-item]
-            [plaid.xtdb.vocab-layer :as vocab-layer]
-            [plaid.xtdb.user :as user]))
+            [plaid.xtdb2.vocab-link :as vocab-link]
+            [plaid.xtdb2.vocab-item :as vocab-item]
+            [plaid.xtdb2.vocab-layer :as vocab-layer]
+            [plaid.xtdb2.user :as user]))
 
 (defn get-project-id-from-tokens
   "Get project ID from tokens (for create operations)"
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (when-let [tokens (-> params :body :tokens)]
     (when (seq tokens)
-      (vocab-link/project-id-from-token db (first tokens)))))
+      (vocab-link/project-id-from-token xt-map (first tokens)))))
 
 (defn get-project-id-from-vocab-link
   "Get project ID from existing vocab-link (for operations on existing vocab-links)"
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (when-let [vocab-link-id (-> params :path :id)]
-    (when-let [vocab-link-record (vocab-link/get db vocab-link-id)]
+    (when-let [vocab-link-record (vocab-link/get xt-map vocab-link-id)]
       (when-let [first-token-id (first (:vocab-link/tokens vocab-link-record))]
-        (vocab-link/project-id-from-token db first-token-id)))))
+        (vocab-link/project-id-from-token xt-map first-token-id)))))
 
 (defn get-document-id-from-tokens
   "Get document ID from tokens (for create operations)"
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (when-let [tokens (-> params :body :tokens)]
     (when (seq tokens)
-      (vocab-link/document-id-from-token db (first tokens)))))
+      (vocab-link/document-id-from-token xt-map (first tokens)))))
 
 (defn get-document-id-from-vocab-link
   "Get document ID from existing vocab-link (for operations on existing vocab-links)"
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (when-let [vocab-link-id (-> params :path :id)]
-    (when-let [vocab-link-record (vocab-link/get db vocab-link-id)]
+    (when-let [vocab-link-record (vocab-link/get xt-map vocab-link-id)]
       (when-let [first-token-id (first (:vocab-link/tokens vocab-link-record))]
-        (vocab-link/document-id-from-token db first-token-id)))))
+        (vocab-link/document-id-from-token xt-map first-token-id)))))
 
 (defn- user-can-access-vocab-item?
   "Check if user can access a vocab item (read access to its vocab layer)"
-  [xtdb vocab-item user-id]
-  (let [vocab-item (vocab-item/get xtdb vocab-item)]
-    (when vocab-item
-      (let [vocab-layer-id (:vocab-item/layer vocab-item)
-            admin? (user/admin? (user/get xtdb user-id))
-            maintainer? (vocab-layer/maintainer? xtdb vocab-layer-id user-id)
-            accessible? (vocab-layer/accessible-through-project? xtdb vocab-layer-id user-id)]
+  [node-or-map vocab-item-id user-id]
+  (let [item (vocab-item/get node-or-map vocab-item-id)]
+    (when item
+      (let [vocab-layer-id (:vocab-item/layer item)
+            admin? (user/admin? (user/get node-or-map user-id))
+            maintainer? (vocab-layer/maintainer? node-or-map vocab-layer-id user-id)
+            accessible? (vocab-layer/accessible-through-project? node-or-map vocab-layer-id user-id)]
         (or admin? maintainer? accessible?)))))
 
-(defn get-vocab-id-from-vocab-item-body [{:keys [db parameters]}]
-  (->> parameters :body :vocab-item (vocab-item/get db) :vocab-item/layer))
+(defn get-vocab-id-from-vocab-item-body [{:keys [xt-map parameters]}]
+  (->> parameters :body :vocab-item (vocab-item/get xt-map) :vocab-item/layer))
 
-(defn get-vocab-id-from-vocab-link-path [{:keys [db parameters]}]
-  (->> parameters :path :id (vocab-link/get-vocab-layer db)))
+(defn get-vocab-id-from-vocab-link-path [{:keys [xt-map parameters]}]
+  (->> parameters :path :id (vocab-link/get-vocab-layer xt-map)))
 
 (def vocab-link-routes
   ["/vocab-links"
@@ -87,8 +87,8 @@
                :middleware [[pra/wrap-vocab-reader-required get-vocab-id-from-vocab-link-path]
                             [pra/wrap-reader-required get-project-id-from-vocab-link]]
                :handler (fn [{{{:keys [id]} :path} :parameters
-                              db :db :as req}]
-                          (let [vocab-link-record (vocab-link/get db id)]
+                              xt-map :xt-map :as req}]
+                          (let [vocab-link-record (vocab-link/get xt-map id)]
                             (if vocab-link-record
                               {:status 200
                                :body vocab-link-record}

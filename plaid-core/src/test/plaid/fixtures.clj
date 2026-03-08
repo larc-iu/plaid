@@ -1,16 +1,20 @@
 (ns plaid.fixtures
   (:require [buddy.hashers :as hashers]
             [clojure.test :refer :all]
-            [plaid.xtdb.user :as pxu]
-            [plaid.xtdb.operation] ; Load for defstate
+            [plaid.xtdb2.user :as pxu]
+            [plaid.xtdb2.operation-coordinator]
             [ring.middleware.defaults :refer [wrap-defaults]]
             [ring.mock.request :as mock]
-            [xtdb.api :as xt]
+            [xtdb.node :as xtdb-node-api]
             [taoensso.timbre :as log]
             [mount.core :as mount]
             [plaid.rest-api.v1.core :as rest]))
 
 (log/set-min-level! :info)
+
+;; Single shared XTDB node for all test namespaces — started once per JVM session
+(defonce ^:private shared-node (xtdb-node-api/start-node {}))
+(defonce ^:private coordinator-started? (atom false))
 
 (def xtdb-node nil)
 (def config nil)
@@ -43,21 +47,20 @@
     (f)))
 
 (defn with-xtdb [f]
-  (with-redefs [xtdb-node (xt/start-node {})]
+  (with-redefs [xtdb-node shared-node]
     (f)))
 
 (defn with-mount-states [f]
-  "Start mount states needed for testing"
-  (try
-    (mount/start #'plaid.xtdb.operation/operation-coordinator)
-    ;; Small delay to ensure coordinator async thread is fully started
-    (Thread/sleep 100)
-    (f)
-    (finally
-      (mount/stop #'plaid.xtdb.operation/operation-coordinator))))
+  (mount/start #'plaid.xtdb2.operation-coordinator/operation-coordinator)
+  (when (compare-and-set! coordinator-started? false true)
+    ;; Only sleep on first start to allow the coordinator's async thread to initialize
+    (Thread/sleep 100))
+  (f))
 
 (defn with-admin [f]
-  (let [_ (pxu/create {:node xtdb-node} "admin@example.com" true "password")
+  (let [xt-map {:node xtdb-node}
+        _ (when-not (pxu/get-internal xt-map "admin@example.com")
+            (pxu/create xt-map "admin@example.com" true "password"))
         req (rest-handler (-> (mock/request :post "/api/v1/login")
                               (mock/header "accept" "application/edn")
                               (mock/json-body {:user-id "admin@example.com"
@@ -66,10 +69,11 @@
       (f))))
 
 (defn with-test-users [f]
-  ;; Create test users
-  (let [_ (pxu/create {:node xtdb-node} "user1@example.com" false "password1")
-        _ (pxu/create {:node xtdb-node} "user2@example.com" false "password2")
-        ;; Get tokens for test users
+  (let [xt-map {:node xtdb-node}
+        _ (when-not (pxu/get-internal xt-map "user1@example.com")
+            (pxu/create xt-map "user1@example.com" false "password1"))
+        _ (when-not (pxu/get-internal xt-map "user2@example.com")
+            (pxu/create xt-map "user2@example.com" false "password2"))
         user1-req (rest-handler (-> (mock/request :post "/api/v1/login")
                                     (mock/header "accept" "application/edn")
                                     (mock/json-body {:user-id "user1@example.com"

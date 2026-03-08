@@ -2,9 +2,8 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.metadata :as metadata]
             [reitit.coercion.malli]
-            [plaid.xtdb.vocab-item :as vocab-item]
-            [plaid.xtdb.vocab-layer :as vocab-layer]
-            [plaid.xtdb.metadata :as xtdb-metadata]))
+            [plaid.xtdb2.vocab-item :as vocab-item]
+            [plaid.xtdb2.metadata :as xtdb-metadata]))
 
 (defn get-vocab-id-from-layer
   "Get vocab layer ID from request parameters (for create operations)"
@@ -13,19 +12,19 @@
 
 (defn get-vocab-id-from-item
   "Get vocab layer ID from existing vocab item (for operations on existing items)"
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (when-let [item-id (-> params :path :id)]
-    (when-let [item (vocab-item/get db item-id)]
+    (when-let [item (vocab-item/get xt-map item-id)]
       (:vocab-item/layer item))))
 
 (defn- dummy-project-id-fn
   "Dummy function for project ID - vocab items are independent of projects"
-  [_db _eid]
+  [_node _eid]
   nil)
 
 (defn- dummy-document-id-fn
   "Dummy function for document ID - vocab items are independent of documents"
-  [_db _entity]
+  [_entity]
   nil)
 
 (def vocab-item-routes
@@ -55,8 +54,8 @@
      :get {:summary "Get a vocab item by ID"
            :middleware [[pra/wrap-vocab-reader-required get-vocab-id-from-item]]
            :handler (fn [{{{:keys [id]} :path} :parameters
-                          db :db :as req}]
-                      (let [vocab-item (vocab-item/get db id)]
+                          xt-map :xt-map :as req}]
+                      (let [vocab-item (vocab-item/get xt-map id)]
                         (if vocab-item
                           {:status 200
                            :body vocab-item}

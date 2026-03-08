@@ -3,54 +3,53 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [xtdb.api :as xt]
-            [plaid.xtdb.span :as s]
-            [plaid.xtdb.span-layer :as sl]))
+            [plaid.xtdb2.span :as s]
+            [plaid.xtdb2.span-layer :as sl]))
 
 (defn get-project-id
   "Get the project ID from span-layer or existing span."
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (let [sl-id (-> params :body :span-layer-id)
         span-id (-> params :path :span-id)]
     (cond
-      sl-id (sl/project-id db sl-id)
-      span-id (s/project-id db span-id)
+      sl-id (sl/project-id xt-map sl-id)
+      span-id (s/project-id xt-map span-id)
       :else nil)))
 
-(defn bulk-get-project-id [{db :db params :parameters}]
+(defn bulk-get-project-id [{xt-map :xt-map params :parameters}]
   (let [sl-id (or (-> params :body first :span-layer-id))
         span-id (-> params :body first)]
     (cond
-      sl-id (sl/project-id db sl-id)
-      span-id (s/project-id db span-id)
+      sl-id (sl/project-id xt-map sl-id)
+      span-id (s/project-id xt-map span-id)
       :else nil)))
 
 (defn get-document-id
   "Get document ID from span tokens."
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (let [tokens (-> params :body :tokens)
         span-id (-> params :path :span-id)]
     (cond
       (and tokens (seq tokens))
-      (s/get-doc-id-of-token db (first tokens))
+      (s/get-doc-id-of-token xt-map (first tokens))
 
       span-id
-      (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-id))))
+      (s/get-doc-id-of-token xt-map (first (:span/tokens (s/get xt-map span-id))))
 
       :else nil)))
 
 (defn bulk-get-document-id
   "Get document ID from first span's first token."
-  [{db :db params :parameters}]
+  [{xt-map :xt-map params :parameters}]
   (when-let [span-or-id (first (:body params))]
     (cond
       ;; For bulk create
       (:tokens span-or-id)
-      (s/get-doc-id-of-token db (first (:span/tokens span-or-id)))
+      (s/get-doc-id-of-token xt-map (first (:span/tokens span-or-id)))
 
       ;; For bulk delete (array of IDs)
       (uuid? span-or-id)
-      (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-or-id))))
+      (s/get-doc-id-of-token xt-map (first (:span/tokens (s/get xt-map span-or-id))))
 
       :else nil)))
 
@@ -140,8 +139,8 @@
 
     ["" {:get {:summary "Get a span by ID."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [span-id]} :path} :parameters db :db}]
-                          (if-let [s (s/get db span-id)]
+               :handler (fn [{{{:keys [span-id]} :path} :parameters xt-map :xt-map}]
+                          (if-let [s (s/get xt-map span-id)]
                             {:status 200 :body s}
                             {:status 404 :body {:error "Span not found"}}))}
          :patch {:summary "Update a span's <body>value</body>."

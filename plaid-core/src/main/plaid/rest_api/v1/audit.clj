@@ -1,8 +1,7 @@
 (ns plaid.rest-api.v1.audit
   (:require [plaid.rest-api.v1.auth :as pra]
-            [plaid.xtdb.audit :as audit]
-            [plaid.xtdb.project :as prj]
-            [plaid.xtdb.document :as doc]))
+            [plaid.xtdb2.audit :as audit]
+            [plaid.xtdb2.document :as doc]))
 
 (defn get-project-id-from-audit-path
   "Extract project ID from audit path parameters"
@@ -11,10 +10,9 @@
 
 (defn get-project-id-from-document
   "Get project ID from document ID in path"
-  [{db :db params :parameters}]
-  (println params)
+  [{xt-map :xt-map params :parameters}]
   (let [document-id (-> params :path :document-id)
-        document (doc/get db document-id)]
+        document (doc/get xt-map document-id)]
     (:document/project document)))
 
 (def audit-routes
@@ -25,8 +23,8 @@
            :parameters {:query [:map
                                [:start-time {:optional true} inst?]
                                [:end-time {:optional true} inst?]]}
-           :handler    (fn [{{{:keys [project-id]} :path {:keys [start-time end-time]} :query} :parameters db :db}]
-                        (let [entries (audit/get-project-audit-log db project-id start-time end-time)]
+           :handler    (fn [{{{:keys [project-id]} :path {:keys [start-time end-time]} :query} :parameters xt-map :xt-map}]
+                        (let [entries (audit/get-project-audit-log xt-map project-id start-time end-time)]
                           {:status 200 :body entries}))}}]
 
    ["/documents/:document-id/audit"
@@ -36,8 +34,8 @@
            :parameters {:query [:map
                                [:start-time {:optional true} inst?]
                                [:end-time {:optional true} inst?]]}
-           :handler    (fn [{{{:keys [document-id]} :path {:keys [start-time end-time]} :query} :parameters db :db}]
-                        (let [entries (audit/get-document-audit-log db document-id start-time end-time)]
+           :handler    (fn [{{{:keys [document-id]} :path {:keys [start-time end-time]} :query} :parameters xt-map :xt-map}]
+                        (let [entries (audit/get-document-audit-log xt-map document-id start-time end-time)]
                           {:status 200 :body entries}))}}]
 
    ["/users/:user-id/audit"
@@ -47,6 +45,6 @@
                   :parameters {:query [:map
                                        [:start-time {:optional true} inst?]
                                        [:end-time {:optional true} inst?]]}
-                  :handler    (fn [{{{:keys [user-id]} :path {:keys [start-time end-time]} :query} :parameters db :db}]
-                                (let [entries (audit/get-user-audit-log db user-id start-time end-time)]
+                  :handler    (fn [{{{:keys [user-id]} :path {:keys [start-time end-time]} :query} :parameters xt-map :xt-map}]
+                                (let [entries (audit/get-user-audit-log xt-map user-id start-time end-time)]
                                   {:status 200 :body entries}))}}]])

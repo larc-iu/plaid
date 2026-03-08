@@ -3,7 +3,10 @@
             [clojure.edn :as edn]
             [ring.util.io :as ring-io]
             [muuntaja.core :as m]
-            [plaid.xtdb.operation :as op]
+            [xtdb.api :as xt]
+            [plaid.xtdb2.common :as pxc]
+            [plaid.xtdb2.operation :as op]
+            [plaid.xtdb2.operation-coordinator :as op-coord]
             [taoensso.timbre :as log]))
 
 (defn parse-path-and-query
@@ -71,7 +74,7 @@
     (cond
       (or (nil? body-str) (empty? body-str)) nil
       (str/includes? content-type "application/json") (m/decode "application/json" body-str)
-      (str/includes? content-type "application/edn") (edn/read-string body-str)
+      (str/includes? content-type "application/edn") (edn/read-string {:readers *data-readers*} body-str)
       :else body-str)))
 
 (defn construct-request
@@ -93,7 +96,6 @@
        ;; Preserve important context from original request
       :rest-handler (:rest-handler original-request)
       :xtdb (:xtdb original-request)
-      :db (:db original-request)
       :jwt-data (:jwt-data original-request)
       :secret-key (:secret-key original-request)}
      (when query-string
@@ -105,12 +107,10 @@
   "Process a single batch operation through the rest handler"
   [rest-handler original-request operation]
   (try
-    ;; Set dynamic binding to indicate we're in batch context
-    (binding [op/*in-batch-context* true]
-      (let [request (construct-request original-request operation)
-            response (rest-handler request)
-            content-type (get-in response [:headers "Content-Type"] "")]
-        (update response :body #(decode-response-body % content-type))))
+    (let [request (construct-request original-request operation)
+          response (rest-handler request)
+          content-type (get-in response [:headers "Content-Type"] "")]
+      (update response :body #(decode-response-body % content-type)))
     (catch Exception e
       {:status 500
        :headers {}
@@ -122,79 +122,62 @@
   [{:keys [rest-handler parameters xtdb] :as request}]
   (let [batch-id (random-uuid)
         operations (preprocess-batch-operations (:body parameters))
-        start-tx-id (atom nil)]
+        start-instant (java.time.Instant/now)
+        node (pxc/->node xtdb)]
     (try
       ;; 1. Request permission to start batch using async coordination
       (log/debug "Requesting batch start for batch" batch-id)
-      (let [response (op/request-batch-start! batch-id)]
+      (let [response (op-coord/request-batch-start! batch-id)]
         (case (:status response)
           :proceed (log/debug "Batch" batch-id "permission granted")
           :error (throw (ex-info (:message response) {:code 423 :batch-id batch-id}))
           :timeout (throw (ex-info "Timeout waiting for operations to complete"
                                    {:code 408 :batch-id batch-id}))))
 
-      ;; 2. Capture starting transaction ID and write batch marker
-      (let [current-tx (op/current-tx-id xtdb)]
-        (reset! start-tx-id current-tx)
-        (op/write-batch-marker! xtdb batch-id current-tx)
-        (log/debug "Starting batch" batch-id "from transaction ID" current-tx))
+      ;; 2. Write crash-recovery marker
+      (xt/execute-tx node [[:put-docs :batch-markers
+                            {:xt/id batch-id
+                             :batch/id batch-id
+                             :batch/start-instant start-instant}]])
 
-      ;; 3. Process operations sequentially until failure
-      (loop [remaining-ops operations
-             responses []]
-        (if (empty? remaining-ops)
-          ;; Success - all operations completed without error
-          (do
-            (log/info "Batch" batch-id "completed successfully with" (count responses) "operations")
-            {:status 200 :body responses})
-
-          ;; Process next operation
-          (let [operation (first remaining-ops)
-                response (process-batch-operation rest-handler request operation)
-                status (:status response)]
-
-            (log/debug "Batch" batch-id "operation" (:method operation) (:path operation)
-                       "returned status" status)
-
-            (if (>= status 300)
-              ;; Failure - rollback all changes made during this batch
-              (do
-                (log/warn "Batch" batch-id "failed on operation" (:method operation) (:path operation)
-                          "with status" status ". Rolling back...")
-
-                ;; Rollback all transactions committed since batch started
-                (op/rollback-batch! xtdb @start-tx-id)
-
-                (log/info "Batch" batch-id "rollback completed")
-
-                ;; Return the error response from the failed operation
-                {:status status
-                 :body (:body response)})
-
-              ;; Success - continue processing
-              (recur (rest remaining-ops)
-                     (conj responses response))))))
+      ;; 3. Process operations with batch-id bound
+      (binding [op/*current-batch-id* batch-id]
+        (loop [remaining-ops operations
+               responses []]
+          (if (empty? remaining-ops)
+            (do
+              (log/info "Batch" batch-id "completed successfully with" (count responses) "operations")
+              {:status 200 :body responses})
+            (let [operation (first remaining-ops)
+                  response (process-batch-operation rest-handler request operation)
+                  status (:status response)]
+              (log/debug "Batch" batch-id "operation" (:method operation) (:path operation)
+                         "returned status" status)
+              (if (>= status 300)
+                (do
+                  (log/warn "Batch" batch-id "failed on operation" (:method operation) (:path operation)
+                            "with status" status ". Rolling back...")
+                  (op-coord/rollback-batch! xtdb batch-id start-instant)
+                  (log/info "Batch" batch-id "rollback completed")
+                  {:status status :body (:body response)})
+                (recur (rest remaining-ops)
+                       (conj responses response)))))))
 
       (catch Exception e
-        ;; Unexpected error during batch processing
         (log/error e "Unexpected error in batch" batch-id)
-        (when @start-tx-id
-          (log/info "Rolling back batch" batch-id "due to unexpected error")
-          (op/rollback-batch! xtdb @start-tx-id))
+        (op-coord/rollback-batch! xtdb batch-id start-instant)
         {:status 500
          :body {:error (.getMessage e)}})
 
       (finally
-        ;; Always signal batch completion and clean up progress marker
-        (log/debug "Signaling batch completion for batch" batch-id)
-        (op/signal-batch-complete!)
-        ;; Clean up batch progress marker 
-        (when @start-tx-id
-          (try
-            (op/delete-batch-marker! xtdb batch-id)
-            (log/debug "Deleted batch progress marker for batch" batch-id)
-            (catch Exception e
-              (log/warn e "Failed to delete batch progress marker for batch" batch-id))))))))
+        ;; Signal coordinator first so other ops aren't blocked while we do XTDB I/O
+        (op-coord/signal-batch-complete!)
+        (log/debug "Deleting batch marker for batch" batch-id)
+        (try
+          (xt/execute-tx node [[:delete-docs :batch-markers batch-id]])
+          (catch Exception e
+            (log/error e "Failed to delete batch marker for batch" batch-id
+                       "- will be cleaned up on next startup")))))))
 
 (defn batch-handler
   "Legacy non-atomic batch handler - processes operations sequentially but without rollback"

@@ -2,17 +2,17 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
-            [plaid.xtdb.text-layer :as txtl]
-            [plaid.xtdb.token-layer :as tokl]))
+            [plaid.xtdb2.text-layer :as txtl]
+            [plaid.xtdb2.token-layer :as tokl]))
 
-(defn get-project-id [{db :db params :parameters}]
+(defn get-project-id [{xt-map :xt-map params :parameters}]
   (let [txtl-id (-> params :body :text-layer-id)
         tokl-id (-> params :path :token-layer-id)]
     (cond txtl-id
-          (txtl/project-id db txtl-id)
+          (txtl/project-id xt-map txtl-id)
 
           tokl-id
-          (tokl/project-id db tokl-id)
+          (tokl/project-id xt-map tokl-id)
 
           :else
           nil)))
@@ -40,8 +40,8 @@
 
     [""
      {:get    {:summary "Get a token layer by ID."
-               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters db :db}]
-                          (let [token-layer (tokl/get db token-layer-id)]
+               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters xt-map :xt-map}]
+                          (let [token-layer (tokl/get xt-map token-layer-id)]
                             (if (some? token-layer)
                               {:status 200
                                :body   token-layer}
