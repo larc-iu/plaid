@@ -288,7 +288,7 @@
 (defn bulk-delete-operation [xt-map eids]
   (let [node (pxc/->node xt-map)
         first-r (pxc/entity node :relations (first eids))
-        doc-id (when first-r (get-doc-id-of-span node (:relation/source first-r)))]
+        doc-id (when first-r (:relation/document first-r))]
     (op/make-operation
      {:type :relation/bulk-delete
       :project (when first-r (project-id xt-map (first eids)))

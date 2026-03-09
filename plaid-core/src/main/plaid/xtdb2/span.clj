@@ -40,10 +40,7 @@
   (:token/document (pxc/entity node-or-map :tokens token-id)))
 
 (defn- project-id-from-layer [node layer-id]
-  (let [tokl-id (:span-layer/token-layer (pxc/entity node :span-layers layer-id))
-        txtl-id (when tokl-id (:token-layer/text-layer (pxc/entity node :token-layers tokl-id)))]
-    (when txtl-id
-      (:text-layer/project (pxc/entity node :text-layers txtl-id)))))
+  (:span-layer/project (pxc/entity node :span-layers layer-id)))
 
 ;; Mutations ----------------------------------------------------------------------
 

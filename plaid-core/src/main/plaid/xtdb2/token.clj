@@ -27,16 +27,11 @@
       (format e))))
 
 (defn project-id [node-or-map id]
-  (let [t (pxc/entity node-or-map :tokens id)
-        txtl-id (when-let [tokl-id (:token/layer t)]
-                  (:token-layer/text-layer (pxc/entity node-or-map :token-layers tokl-id)))]
-    (when txtl-id
-      (:text-layer/project (pxc/entity node-or-map :text-layers txtl-id)))))
+  (when-let [tokl-id (:token/layer (pxc/entity node-or-map :tokens id))]
+    (:token-layer/project (pxc/entity node-or-map :token-layers tokl-id))))
 
 (defn- project-id-from-layer [node layer-id]
-  (let [txtl-id (:token-layer/text-layer (pxc/entity node :token-layers layer-id))]
-    (when txtl-id
-      (:text-layer/project (pxc/entity node :text-layers txtl-id)))))
+  (:token-layer/project (pxc/entity node :token-layers layer-id)))
 
 (defn get-tokens [node-or-map layer-id doc-id]
   (let [tokens (pxc/find-entities node-or-map :tokens {:token/layer layer-id :token/document doc-id})]
@@ -213,10 +208,12 @@
           delete-span-ids (mapv first to-delete)
           rel-entities (if (empty? delete-span-ids) []
                          (let [ph (str/join ", " (repeat (count delete-span-ids) "?"))]
-                           (xt/q node (into [(str "SELECT *, _system_from FROM relations"
-                                                  " WHERE relation$source IN (" ph ")"
-                                                  " OR relation$target IN (" ph ")")]
-                                            (concat delete-span-ids delete-span-ids)))))
+                           (->> (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                       " WHERE relation$source IN (" ph ")"
+                                                       " OR relation$target IN (" ph ")")]
+                                                 (concat delete-span-ids delete-span-ids)))
+                                (into {} (map (juxt :xt/id identity)))
+                                vals)))
           ;; Vocab links
           vl-ids (->> (xt/q node (xt/template
                           (-> (from :vocab-links [{:xt/id vlid :vocab-link/tokens toks}])
@@ -281,10 +278,12 @@
                          []
                          (let [ph (str/join ", " (repeat (count span-ids-to-delete) "?"))
                                sids (vec span-ids-to-delete)]
-                           (xt/q node (into [(str "SELECT *, _system_from FROM relations"
-                                                  " WHERE relation$source IN (" ph ")"
-                                                  " OR relation$target IN (" ph ")")]
-                                            (concat sids sids)))))
+                           (->> (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                       " WHERE relation$source IN (" ph ")"
+                                                       " OR relation$target IN (" ph ")")]
+                                                 (concat sids sids)))
+                                (into {} (map (juxt :xt/id identity)))
+                                vals)))
         ;; Find all vocab-links for these tokens (1 query using SQL IN)
         vl-entities (if (empty? eids)
                       []

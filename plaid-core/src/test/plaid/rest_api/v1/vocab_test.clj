@@ -1189,12 +1189,12 @@
       ;; Verify project B now lists the vocab
       (let [proj-b-res (get-test-project admin-request proj-b)]
         (assert-ok proj-b-res)
-        (is (some #{vocab-id} (-> proj-b-res :body :project/vocabs))))
+        (is (some #(= vocab-id (:vocab/id %)) (-> proj-b-res :body :project/vocabs))))
 
       ;; Project A should NOT have the vocab
       (let [proj-a-res (get-test-project admin-request proj-a)]
         (assert-ok proj-a-res)
-        (is (not (some #{vocab-id} (-> proj-a-res :body :project/vocabs)))))
+        (is (not (some #(= vocab-id (:vocab/id %)) (-> proj-a-res :body :project/vocabs)))))
 
       ;; Unlink vocab from project B
       (assert-no-content (unlink-vocab-from-project admin-request proj-b vocab-id))
@@ -1202,7 +1202,7 @@
       ;; Verify project B no longer lists the vocab
       (let [proj-b-res (get-test-project admin-request proj-b)]
         (assert-ok proj-b-res)
-        (is (not (some #{vocab-id} (-> proj-b-res :body :project/vocabs)))))
+        (is (not (some #(= vocab-id (:vocab/id %)) (-> proj-b-res :body :project/vocabs)))))
 
       ;; Clean up
       (assert-no-content (delete-vocab-layer admin-request vocab-id))

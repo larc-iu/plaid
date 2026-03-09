@@ -17,7 +17,7 @@
                                     ;; API helpers
                                     parse-response-body
                                     api-call
-                                    ;; Assertion helpers  
+                                    ;; Assertion helpers
                                     assert-status
                                     assert-success
                                     assert-created
@@ -25,7 +25,10 @@
                                     assert-no-content
                                     assert-not-found
                                     assert-forbidden
-                                    assert-bad-request]]))
+                                    assert-bad-request]]
+            [plaid.test-helpers :refer [create-test-project delete-test-project
+                                        create-text-layer create-token-layer
+                                        create-span-layer create-relation-layer]]))
 
 (use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
 
@@ -255,6 +258,106 @@
       (testing "Remove layer config fails with invalid layer ID"
         (let [response (remove-layer-config admin-request fake-layer-id "test-editor" "test-key")]
           (assert-not-found response))))))
+
+(defn- get-text-layer [user-request-fn text-layer-id]
+  (api-call user-request-fn {:method :get
+                             :path (str "/api/v1/text-layers/" text-layer-id)}))
+
+(defn- get-token-layer [user-request-fn token-layer-id]
+  (api-call user-request-fn {:method :get
+                             :path (str "/api/v1/token-layers/" token-layer-id)}))
+
+(defn- get-span-layer [user-request-fn span-layer-id]
+  (api-call user-request-fn {:method :get
+                             :path (str "/api/v1/span-layers/" span-layer-id)}))
+
+(defn- get-relation-layer [user-request-fn relation-layer-id]
+  (api-call user-request-fn {:method :get
+                             :path (str "/api/v1/relation-layers/" relation-layer-id)}))
+
+(defn- set-typed-layer-config
+  "Set config on a specific layer type. Config endpoints are nested under each layer type's path."
+  [user-request-fn layer-type layer-id editor key value]
+  (let [base-path (case layer-type
+                    :text-layer (str "/api/v1/text-layers/" layer-id)
+                    :token-layer (str "/api/v1/token-layers/" layer-id)
+                    :span-layer (str "/api/v1/span-layers/" layer-id)
+                    :relation-layer (str "/api/v1/relation-layers/" layer-id)
+                    :vocab-layer (str "/api/v1/vocab-layers/" layer-id)
+                    :project (str "/api/v1/projects/" layer-id))]
+    (api-call user-request-fn {:method :put
+                               :path (str base-path "/config/" editor "/" key)
+                               :body value})))
+
+(defn- remove-typed-layer-config
+  "Remove config from a specific layer type."
+  [user-request-fn layer-type layer-id editor key]
+  (let [base-path (case layer-type
+                    :text-layer (str "/api/v1/text-layers/" layer-id)
+                    :token-layer (str "/api/v1/token-layers/" layer-id)
+                    :span-layer (str "/api/v1/span-layers/" layer-id)
+                    :relation-layer (str "/api/v1/relation-layers/" layer-id)
+                    :vocab-layer (str "/api/v1/vocab-layers/" layer-id)
+                    :project (str "/api/v1/projects/" layer-id))]
+    (api-call user-request-fn {:method :delete
+                               :path (str base-path "/config/" editor "/" key)})))
+
+(deftest layer-config-round-trip
+  (testing "Config with mixed-case keys round-trips correctly through all layer types"
+    (let [project-id (create-test-project admin-request "Config Round Trip Project")
+          txtl-id (-> (create-text-layer admin-request project-id "CfgTxtL") :body :id)
+          tokl-id (-> (create-token-layer admin-request txtl-id "CfgTokL") :body :id)
+          sl-id (-> (create-span-layer admin-request tokl-id "CfgSL") :body :id)
+          rl-id (-> (create-relation-layer admin-request sl-id "CfgRL") :body :id)]
+
+      (testing "Set config with mixed-case keys on each layer type"
+        ;; Use camelCase and PascalCase keys — these would be lowercased
+        ;; by XTDB v2 if not serialized as JSON strings
+        (assert-no-content (set-typed-layer-config admin-request :text-layer txtl-id "MyEditor" "tokenMode" "word"))
+        (assert-no-content (set-typed-layer-config admin-request :token-layer tokl-id "AnnotationTool" "displayName" "Morpheme"))
+        (assert-no-content (set-typed-layer-config admin-request :span-layer sl-id "SpanViewer" "colorScheme" "dark"))
+        (assert-no-content (set-typed-layer-config admin-request :relation-layer rl-id "RelGraph" "layoutMode" "hierarchical")))
+
+      (testing "Config preserved when reading individual layers"
+        (let [txtl-body (-> (get-text-layer admin-request txtl-id) :body)
+              tokl-body (-> (get-token-layer admin-request tokl-id) :body)
+              sl-body (-> (get-span-layer admin-request sl-id) :body)
+              rl-body (-> (get-relation-layer admin-request rl-id) :body)]
+          (is (= "word" (get-in txtl-body [:config "MyEditor" "tokenMode"]))
+              "TextLayer config should preserve camelCase keys")
+          (is (= "Morpheme" (get-in tokl-body [:config "AnnotationTool" "displayName"]))
+              "TokenLayer config should preserve PascalCase editor name and camelCase key")
+          (is (= "dark" (get-in sl-body [:config "SpanViewer" "colorScheme"]))
+              "SpanLayer config should preserve mixed-case keys")
+          (is (= "hierarchical" (get-in rl-body [:config "RelGraph" "layoutMode"]))
+              "RelationLayer config should preserve mixed-case keys")))
+
+      (testing "Config preserved in nested project GET response"
+        (let [project-body (-> (get-project admin-request project-id) :body)
+              nested-txtl (first (:project/text-layers project-body))
+              nested-tokl (first (:text-layer/token-layers nested-txtl))
+              nested-sl (first (:token-layer/span-layers nested-tokl))
+              nested-rl (first (:span-layer/relation-layers nested-sl))]
+          (is (= "word" (get-in nested-txtl [:config "MyEditor" "tokenMode"]))
+              "Nested text layer config should preserve key casing")
+          (is (= "Morpheme" (get-in nested-tokl [:config "AnnotationTool" "displayName"]))
+              "Nested token layer config should preserve key casing")
+          (is (= "dark" (get-in nested-sl [:config "SpanViewer" "colorScheme"]))
+              "Nested span layer config should preserve key casing")
+          (is (= "hierarchical" (get-in nested-rl [:config "RelGraph" "layoutMode"]))
+              "Nested relation layer config should preserve key casing")))
+
+      (testing "Config survives set, remove, set cycle on project"
+        (assert-no-content (set-typed-layer-config admin-request :project project-id "TestEditor" "camelKey" "value1"))
+        (assert-no-content (set-typed-layer-config admin-request :project project-id "TestEditor" "secondKey" "value2"))
+        (assert-no-content (remove-typed-layer-config admin-request :project project-id "TestEditor" "camelKey"))
+        (let [project-body (-> (get-project admin-request project-id) :body)]
+          (is (nil? (get-in project-body [:config "TestEditor" "camelKey"]))
+              "Removed key should be gone")
+          (is (= "value2" (get-in project-body [:config "TestEditor" "secondKey"]))
+              "Other key should still be present")))
+
+      (delete-test-project admin-request project-id))))
 
 (deftest access-management-edge-cases
   (let [create-response (create-project admin-request {:name "Edge Case Project"})

@@ -1,6 +1,8 @@
 (ns plaid.xtdb2.operation
   (:require [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation-coordinator :as op-coord]
+            [plaid.server.locks :as locks]
+            [plaid.server.events :as events]
             [taoensso.timbre :as log]))
 
 (def ^:dynamic *user-agent* nil)
@@ -51,20 +53,51 @@
 
 (defn submit-operations*
   "Core submit logic. Does not catch errors from operation building.
-  Returns {:success true :document-versions {doc-id audit-id ...}} or {:success false :error msg :code code}."
+  Returns {:success true :document-versions {doc-id audit-id ...} :operations [...] :audit-entry {...}}
+  or {:success false :error msg :code code}."
   ([xt-map operations user-id]
    (submit-operations* xt-map operations user-id nil))
   ([xt-map operations user-id extras-fn]
    (let [node (pxc/->node xt-map)
          entity-ops (vec (mapcat :op/tx-ops operations))
-         {:keys [tx-ops audit-id affected-documents]} (store-operations operations user-id)
+         {:keys [tx-ops audit-id affected-documents] :as store-result} (store-operations operations user-id)
+         audit-entry (-> tx-ops last last) ;; audit entry is the last put-docs value
          all-tx (into entity-ops tx-ops)
          result (pxc/submit! node all-tx
                              (when extras-fn (fn [_] (extras-fn entity-ops))))]
      (if (:success result)
-       (assoc result :document-versions
-              (into {} (map (fn [doc-id] [doc-id audit-id])) affected-documents))
+       (assoc result
+              :document-versions (into {} (map (fn [doc-id] [doc-id audit-id])) affected-documents)
+              :operations operations
+              :audit-entry audit-entry)
        result))))
+
+(defn check-locks! [operations user-id]
+  (let [doc-ids (->> operations
+                     (keep :op/document)
+                     distinct)]
+    (when (seq doc-ids)
+      (let [result (locks/check-document-locks doc-ids user-id)]
+        (when (not= :ok result)
+          (let [lock-holder (:user-id result)]
+            (throw (ex-info (str "Document " (:document-id result) " is locked by " lock-holder)
+                            {:code 423
+                             :document-id (:document-id result)
+                             :locked-by lock-holder}))))))))
+
+(defn post-submit! [result user-id]
+  (when (:success result)
+    (let [{:keys [operations audit-entry]} result
+          doc-ids (->> operations (keep :op/document) distinct)]
+      (try
+        (events/publish-audit-event! audit-entry operations user-id)
+        (catch Exception e
+          (log/warn "Failed to publish audit event:" (ex-message e))))
+      (try
+        (when (seq doc-ids)
+          (locks/refresh-locks! doc-ids user-id))
+        (catch Exception e
+          (log/warn "Failed to refresh locks:" (ex-message e)))))))
 
 (defmacro submit-operations!
   "Submit operations, catching errors from both operation building and the transaction.
@@ -74,21 +107,24 @@
    `(submit-operations! ~xt-map ~operations-expr ~user-id nil))
   ([xt-map operations-expr user-id extras-fn]
    `(try
-      ;; Intentional fail-open: if the coordinator is unavailable or returns
-      ;; a non-proceed status, we still attempt the operation rather than
-      ;; blocking writes. The coordinator is advisory for serialization.
-      (when-not *current-batch-id*
-        (op-coord/request-operation-start!))
-      (try
-        (submit-operations* ~xt-map ~operations-expr ~user-id ~extras-fn)
-        (finally
-          (when-not *current-batch-id*
-            (op-coord/signal-operation-complete!))))
+      (let [ops# ~operations-expr]
+        (check-locks! ops# ~user-id)
+        (when-not *current-batch-id*
+          (when-not (op-coord/request-operation-start!)
+            (throw (ex-info "Timeout waiting for batch operation to complete"
+                            {:code 408}))))
+        (try
+          (let [result# (submit-operations* ~xt-map ops# ~user-id ~extras-fn)]
+            (post-submit! result# ~user-id)
+            (dissoc result# :operations :audit-entry))
+          (finally
+            (when-not *current-batch-id*
+              (op-coord/signal-operation-complete!)))))
       (catch clojure.lang.ExceptionInfo e#
-        (log/warn "Operation failed: " (ex-message e#))
+        (log/warn e# "Operation failed")
         {:success false
          :error (ex-message e#)
          :code (:code (ex-data e#))})
       (catch Exception e#
-        (log/warn "Operation failed: " (ex-message e#))
+        (log/error e# "Operation failed")
         {:success false :error (ex-message e#)}))))

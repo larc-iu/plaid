@@ -18,11 +18,11 @@
 
 (def relation-layer-routes
   ["/relation-layers"
-   {:middleware [[pra/wrap-maintainer-required get-project-id]]}
 
    [""
     {:post {:summary    "Create a new relation layer."
             :x-client-method "create"
+            :middleware [[pra/wrap-maintainer-required get-project-id]]
             :parameters {:body [:map
                                 [:span-layer-id :uuid]
                                 [:name :string]]}
@@ -41,6 +41,7 @@
     [""
      {:get    {:summary "Get a relation layer by ID."
                :x-client-method "get"
+               :middleware [[pra/wrap-reader-required get-project-id]]
                :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters xt-map :xt-map}]
                           (let [relation-layer (rl/get xt-map relation-layer-id)]
                             (if (some? relation-layer)
@@ -50,6 +51,7 @@
                                :body   {:error "Relation layer not found"}})))}
       :patch  {:summary    "Update a relation layer's name."
                :x-client-method "update"
+               :middleware [[pra/wrap-maintainer-required get-project-id]]
                :parameters {:body [:map [:name :string]]}
                :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [{:keys [success code error]} (rl/merge {:node xtdb} relation-layer-id {:relation-layer/name name} user-id)]
@@ -60,6 +62,7 @@
                                   :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a relation layer."
                :x-client-method "delete"
+               :middleware [[pra/wrap-maintainer-required get-project-id]]
                :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                           (let [{:keys [success code error]} (rl/delete {:node xtdb} relation-layer-id user-id)]
                             (if success
@@ -70,6 +73,7 @@
     ["/shift"
      {:post {:summary    "Shift a relation layer's order."
              :x-client-method "shift"
+             :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
              :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
                            (let [up? (= direction "up")
@@ -79,4 +83,4 @@
                                {:status (or code 400)
                                 :body   {:error (or error "Failed to shift relation layer")}})))}}]
 
-    (layer-config-routes :relation-layer-id)]])
+    (layer-config-routes :relation-layer-id get-project-id)]])

@@ -9,6 +9,7 @@
 (def attr-keys [:token-layer/id
                 :token-layer/name
                 :token-layer/span-layers
+                :token-layer/project
                 :config])
 
 ;; Queries ------------------------------------------------------------------------
@@ -22,9 +23,7 @@
   (:token-layer/text-layer (pxc/entity node :token-layers tokl-id)))
 
 (defn project-id [node-or-map id]
-  (let [txtl-id (:token-layer/text-layer (pxc/entity node-or-map :token-layers id))]
-    (when txtl-id
-      (:text-layer/project (pxc/entity node-or-map :text-layers txtl-id)))))
+  (:token-layer/project (pxc/entity node-or-map :token-layers id)))
 
 (defn sort-token-records [tokens]
   (->> tokens
@@ -35,12 +34,15 @@
 
 (defn create* [xt-map {:token-layer/keys [id] :as attrs} text-layer-id]
   (let [node (pxc/->node xt-map)
+        txtl (pxc/entity-with-sys-from node :text-layers text-layer-id)
+        prj-id (:text-layer/project txtl)
         {:token-layer/keys [name id] :as record}
-        (clojure.core/merge (pxc/new-record "token-layer" id)
-                            {:token-layer/span-layers []
-                             :token-layer/text-layer text-layer-id}
-                            (select-keys attrs attr-keys))
-        txtl (pxc/entity-with-sys-from node :text-layers text-layer-id)]
+        (-> (clojure.core/merge (pxc/new-record "token-layer" id)
+                               {:token-layer/span-layers []
+                                :token-layer/text-layer text-layer-id
+                                :token-layer/project prj-id}
+                               (select-keys attrs attr-keys))
+            (update :config pxc/serialize-config))]
     (pxc/valid-name? name)
     (when (pxc/entity node :token-layers id)
       (throw (ex-info (pxc/err-msg-already-exists "Token layer" id) {:id id :code 409})))
@@ -54,10 +56,12 @@
 
 (defn create-operation [xt-map attrs text-layer-id]
   (let [{:token-layer/keys [name]} attrs
-        tx-ops (create* xt-map attrs text-layer-id)]
+        tx-ops (create* xt-map attrs text-layer-id)
+        ;; project-id is now stored in the record we just built
+        prj-id (:token-layer/project (nth (last tx-ops) 2))]
     (op/make-operation
      {:type :token-layer/create
-      :project (:text-layer/project (pxc/entity xt-map :text-layers text-layer-id))
+      :project prj-id
       :document nil
       :description (str "Create token layer \"" name "\" in text layer " text-layer-id)
       :tx-ops tx-ops})))
@@ -70,7 +74,7 @@
   (when-let [name (:token-layer/name m)]
     (pxc/valid-name? name))
   (let [tx-ops (pxc/merge* xt-map :token-layers :token-layer/id eid
-                           (select-keys m [:token-layer/name :config]))]
+                           (select-keys m [:token-layer/name]))]
     (op/make-operation
      {:type :token-layer/update
       :project (project-id xt-map eid)
@@ -148,7 +152,7 @@
 (defn delete-operation [xt-map eid]
   (let [node (pxc/->node xt-map)
         tokl (pxc/entity node :token-layers eid)
-        prj-id (project-id xt-map eid)
+        prj-id (:token-layer/project tokl)
         txtl-id (parent-id node eid)
         txtl (pxc/entity-with-sys-from node :text-layers txtl-id)
         base-tx (delete* xt-map eid)

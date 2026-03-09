@@ -25,34 +25,47 @@
           op-proj-ids (->> (vals ops-cache) (keep :op/project))
           op-doc-ids (->> (vals ops-cache) (keep :op/document))
           projects-cache (batch-fetch-by-ids node :projects (concat all-proj-ids op-proj-ids))
-          docs-cache (batch-fetch-by-ids node :documents (concat all-doc-ids op-doc-ids))]
+          docs-cache (batch-fetch-by-ids node :documents (concat all-doc-ids op-doc-ids))
+          select-user #(select-keys % [:user/id :user/username])
+          select-proj #(select-keys % [:project/id :project/name])
+          select-doc #(select-keys % [:document/id :document/name])]
       (mapv (fn [audit]
               (-> audit
                   (update :audit/user
-                          (fn [uid] (when uid (get users-cache uid))))
+                          (fn [uid] (when-let [u (get users-cache uid)] (select-user u))))
                   (update :audit/projects
-                          (fn [pids] (->> pids (keep #(get projects-cache %)) set)))
+                          (fn [pids] (->> pids (keep #(when-let [p (get projects-cache %)] (select-proj p))) vec)))
                   (update :audit/documents
-                          (fn [dids] (->> dids (keep #(get docs-cache %)) set)))
+                          (fn [dids] (->> dids (keep #(when-let [d (get docs-cache %)] (select-doc d))) vec)))
                   (update :audit/ops
                           (fn [op-ids]
-                            (mapv (fn [op-id]
-                                    (when-let [op (get ops-cache op-id)]
-                                      (-> op
-                                          (update :op/project
-                                                  (fn [pid] (when pid (get projects-cache pid))))
-                                          (update :op/document
-                                                  (fn [did] (when did (get docs-cache did))))
-                                          (dissoc :op/tx-ops))))
-                                  op-ids)))))
+                            (vec (keep (fn [op-id]
+                                         (when-let [op (get ops-cache op-id)]
+                                           (-> (select-keys op [:op/id :op/type :op/project :op/document :op/description])
+                                               (update :op/project
+                                                       (fn [pid] (when-let [p (get projects-cache pid)] (select-proj p))))
+                                               (update :op/document
+                                                       (fn [did] (when-let [d (get docs-cache did)] (select-doc d)))))))
+                                       op-ids))))))
             audits))))
 
+(defn- ->instant
+  "Coerce to java.time.Instant if possible. Returns nil for unsupported types."
+  [x]
+  (cond
+    (instance? java.time.Instant x) x
+    (instance? java.util.Date x) (.toInstant x)
+    (instance? java.time.ZonedDateTime x) (.toInstant x)
+    :else nil))
+
 (defn- filter-by-time [start-time end-time entries]
-  (filter (fn [{ts :audit/time}]
-            (let [ts-inst (when ts (.toInstant ts))]
-              (and (or (nil? start-time) (nil? ts-inst) (not (.isBefore ts-inst (.toInstant start-time))))
-                   (or (nil? end-time) (nil? ts-inst) (not (.isAfter ts-inst (.toInstant end-time)))))))
-          entries))
+  (let [start-inst (->instant start-time)
+        end-inst (->instant end-time)]
+    (filter (fn [{ts :audit/time}]
+              (let [ts-inst (->instant ts)]
+                (and (or (nil? start-inst) (nil? ts-inst) (not (.isBefore ts-inst start-inst)))
+                     (or (nil? end-inst) (nil? ts-inst) (not (.isAfter ts-inst end-inst))))))
+            entries)))
 
 (defn- fetch-audits-by-ids
   "Batch-fetch audit records by ID using a single SQL IN query."

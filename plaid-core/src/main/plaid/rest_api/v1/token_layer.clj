@@ -19,10 +19,10 @@
 
 (def token-layer-routes
   ["/token-layers"
-   {:middleware [[pra/wrap-maintainer-required get-project-id]]}
 
    [""
     {:post {:summary    "Create a new token layer."
+            :middleware [[pra/wrap-maintainer-required get-project-id]]
             :parameters {:body [:map
                                 [:text-layer-id :uuid]
                                 [:name :string]]}
@@ -40,6 +40,7 @@
 
     [""
      {:get    {:summary "Get a token layer by ID."
+               :middleware [[pra/wrap-reader-required get-project-id]]
                :handler (fn [{{{:keys [token-layer-id]} :path} :parameters xt-map :xt-map}]
                           (let [token-layer (tokl/get xt-map token-layer-id)]
                             (if (some? token-layer)
@@ -49,6 +50,7 @@
                                :body   {:error "Token layer not found"}})))}
 
       :patch  {:summary    "Update a token layer's name."
+               :middleware [[pra/wrap-maintainer-required get-project-id]]
                :parameters {:body [:map [:name :string]]}
                :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [{:keys [success code error]} (tokl/merge {:node xtdb} token-layer-id {:token-layer/name name} user-id)]
@@ -58,6 +60,7 @@
                                  {:status (or code 500)
                                   :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a token layer."
+               :middleware [[pra/wrap-maintainer-required get-project-id]]
                :handler (fn [{{{:keys [token-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                           (let [{:keys [success code error]} (tokl/delete {:node xtdb} token-layer-id user-id)]
                             (if success
@@ -67,6 +70,7 @@
 
     ["/shift"
      {:post {:summary    "Shift a token layer's order."
+             :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
              :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
                            (let [up? (= direction "up")
@@ -76,4 +80,4 @@
                                {:status (or code 400)
                                 :body   {:error (or error "Failed to shift token layer")}})))}}]
 
-    (layer-config-routes :token-layer-id)]])
+    (layer-config-routes :token-layer-id get-project-id)]])
