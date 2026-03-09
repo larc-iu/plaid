@@ -1,9 +1,9 @@
 (ns plaid.xtdb2.user
   (:require [buddy.hashers :as hashers]
-            [xtdb.api :as xt]
             [taoensso.timbre :as log]
             [plaid.xtdb2.common :as pxc])
-  (:refer-clojure :exclude [get merge]))
+  (:refer-clojure :exclude [get merge])
+  (:import [clojure.lang ExceptionInfo]))
 
 (def attr-keys
   [:user/id
@@ -60,26 +60,36 @@
 
 (defn create
   [{:keys [node] :as xt-map} id is-admin password]
-  (pxc/submit! node (create* xt-map id is-admin password)
-               #(-> % last last :user/id)))
+  (try
+    (pxc/submit! node (create* xt-map id is-admin password)
+                 #(-> % last last :user/id))
+    (catch ExceptionInfo e
+      (log/warn e "User create failed")
+      {:success false :error (ex-message e) :code (:code (ex-data e))})))
 
 (defn merge
   [xt-map eid m]
-  (when-let [name (:user/username m)]
-    (pxc/valid-name? name))
-  (let [node   (pxc/->node xt-map)
-        intern (get-internal node eid)
-        attrs  (select-keys intern [:user/password-hash :user/password-changes
-                                    :user/username :user/is-admin])
-        attrs  (if-let [new-password (:password m)]
-                 (-> attrs
-                     (assoc :user/password-hash (hashers/derive new-password))
-                     (update :user/password-changes inc))
-                 attrs)
-        attrs  (-> attrs
-                   (cond-> (some? (:user/username m))  (assoc :user/username (:user/username m)))
-                   (cond-> (some? (:user/is-admin m))  (assoc :user/is-admin (:user/is-admin m))))]
-    (pxc/submit! node (pxc/merge* xt-map :users :user/id eid attrs))))
+  (try
+    (when-let [name (:user/username m)]
+      (pxc/valid-name? name))
+    (let [node   (pxc/->node xt-map)
+          intern (get-internal node eid)]
+      (when (nil? intern)
+        (throw (ex-info (str "User not found with ID " eid) {:code 404})))
+      (let [attrs  (select-keys intern [:user/password-hash :user/password-changes
+                                        :user/username :user/is-admin])
+            attrs  (if-let [new-password (:password m)]
+                     (-> attrs
+                         (assoc :user/password-hash (hashers/derive new-password))
+                         (update :user/password-changes inc))
+                     attrs)
+            attrs  (-> attrs
+                       (cond-> (some? (:user/username m))  (assoc :user/username (:user/username m)))
+                       (cond-> (some? (:user/is-admin m))  (assoc :user/is-admin (:user/is-admin m))))]
+        (pxc/submit! node (pxc/merge* xt-map :users :user/id eid attrs))))
+    (catch ExceptionInfo e
+      (log/warn e "User merge failed")
+      {:success false :error (ex-message e) :code (:code (ex-data e))})))
 
 (defn delete*
   "Returns transaction ops to delete a user. Throws if user not found."
@@ -93,4 +103,8 @@
 
 (defn delete
   [{:keys [node] :as xt-map} eid]
-  (pxc/submit! node (delete* xt-map eid)))
+  (try
+    (pxc/submit! node (delete* xt-map eid))
+    (catch ExceptionInfo e
+      (log/warn e "User delete failed")
+      {:success false :error (ex-message e) :code (:code (ex-data e))})))

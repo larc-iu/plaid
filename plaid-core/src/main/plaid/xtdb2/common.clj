@@ -51,6 +51,15 @@
   (when-let [t (and (map? xt-map) (:snapshot-time xt-map))]
     {:snapshot-time t}))
 
+;; temporal helpers -----------------------------------------------------------------
+
+(def temporal-keys [:xt/system-from :xt/system-to :xt/valid-from :xt/valid-to])
+
+(defn strip-temporal
+  "Remove XTDB temporal columns from an entity map."
+  [entity]
+  (apply dissoc entity temporal-keys))
+
 ;; reads ---------------------------------------------------------------------------
 
 (defn- kw->sql-table
@@ -104,57 +113,44 @@
   [node-or-map table ids]
   (into {} (map (juxt :xt/id identity) (entities-with-sys-from node-or-map table ids))))
 
+(defn- build-find-query
+  "Shared query builder for find-entity, find-entities, find-entities-with-sys-from.
+  Returns [node opts query] where query is a parameterized SQL vector."
+  [node-or-map table attrs select-clause]
+  (let [node (->node node-or-map)
+        opts (snapshot-opts node-or-map)
+        table-name (kw->sql-table table)
+        wild (filter (fn [[_ v]] (= v '_)) attrs)
+        non-wild (filter (fn [[_ v]] (not= v '_)) attrs)
+        where-parts (concat (map (fn [[k _]] (str (kw->sql-col k) " IS NOT NULL")) wild)
+                            (map (fn [[k _]] (str (kw->sql-col k) " = ?")) non-wild))
+        where-str (when (seq where-parts)
+                    (str " WHERE " (str/join " AND " where-parts)))
+        params (mapv second non-wild)
+        query (into [(str select-clause " FROM " table-name (or where-str ""))] params)]
+    [node opts query]))
+
 (defn find-entity
   "Find a single entity in table whose attributes match the given map.
   Values of :_ are treated as wildcards (only the key is required to be present).
   First arg may be a raw node or {:node node :snapshot-time t} map.
   Returns the first matching entity or nil."
   [node-or-map table attrs]
-  (let [node (->node node-or-map)
-        opts (snapshot-opts node-or-map)
-        table-name (kw->sql-table table)
-        wild (filter (fn [[_ v]] (= v '_)) attrs)
-        non-wild (filter (fn [[_ v]] (not= v '_)) attrs)
-        where-parts (concat (map (fn [[k _]] (str (kw->sql-col k) " IS NOT NULL")) wild)
-                            (map (fn [[k _]] (str (kw->sql-col k) " = ?")) non-wild))
-        where-str (when (seq where-parts)
-                    (str " WHERE " (str/join " AND " where-parts)))
-        params (mapv second non-wild)
-        query (into [(str "SELECT * FROM " table-name (or where-str ""))] params)]
+  (let [[node opts query] (build-find-query node-or-map table attrs "SELECT *")]
     (first (xt/q node query (or opts {})))))
 
 (defn find-entities
   "Like find-entity but returns all matches.
   First arg may be a raw node or {:node node :snapshot-time t} map."
   [node-or-map table attrs]
-  (let [node (->node node-or-map)
-        opts (snapshot-opts node-or-map)
-        table-name (kw->sql-table table)
-        wild (filter (fn [[_ v]] (= v '_)) attrs)
-        non-wild (filter (fn [[_ v]] (not= v '_)) attrs)
-        where-parts (concat (map (fn [[k _]] (str (kw->sql-col k) " IS NOT NULL")) wild)
-                            (map (fn [[k _]] (str (kw->sql-col k) " = ?")) non-wild))
-        where-str (when (seq where-parts)
-                    (str " WHERE " (str/join " AND " where-parts)))
-        params (mapv second non-wild)
-        query (into [(str "SELECT * FROM " table-name (or where-str ""))] params)]
+  (let [[node opts query] (build-find-query node-or-map table attrs "SELECT *")]
     (xt/q node query (or opts {}))))
 
 (defn find-entities-with-sys-from
   "Like find-entities but also returns :xt/system-from for match* workflows.
   Eliminates the need to find-entities then re-fetch with entities-with-sys-from."
   [node-or-map table attrs]
-  (let [node (->node node-or-map)
-        opts (snapshot-opts node-or-map)
-        table-name (kw->sql-table table)
-        wild (filter (fn [[_ v]] (= v '_)) attrs)
-        non-wild (filter (fn [[_ v]] (not= v '_)) attrs)
-        where-parts (concat (map (fn [[k _]] (str (kw->sql-col k) " IS NOT NULL")) wild)
-                            (map (fn [[k _]] (str (kw->sql-col k) " = ?")) non-wild))
-        where-str (when (seq where-parts)
-                    (str " WHERE " (str/join " AND " where-parts)))
-        params (mapv second non-wild)
-        query (into [(str "SELECT *, _system_from FROM " table-name (or where-str ""))] params)]
+  (let [[node opts query] (build-find-query node-or-map table attrs "SELECT *, _system_from")]
     (xt/q node query (or opts {}))))
 
 ;; config helpers -------------------------------------------------------------------
@@ -242,7 +238,7 @@
        :else
        [(match* table e)
         [:put-docs table (-> e
-                             (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                             (strip-temporal)
                              (clojure.core/merge attrs))]]))))
 
 ;; creation helpers ----------------------------------------------------------------
@@ -347,7 +343,7 @@
                           (update join-key vec)))
                     e1
                     join-keys)
-            (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to))]])))
+            (strip-temporal))]])))
 
 (defn add-join*
   "See add-to-multi-joins*."
@@ -362,7 +358,7 @@
   [(match* table e1-with-sys)
    [:put-docs table (-> e1-with-sys
                         (remove-id join-key e2-id)
-                        (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to))]])
+                        (strip-temporal))]])
 
 (defn remove-from-multi-joins*
   "Removes joins from e1 to e2 at all keys in join-keys. Idempotent."
@@ -393,7 +389,7 @@
                       (remove-id entity join-key e2-id))
                     e1
                     join-keys)
-            (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to))]])))
+            (strip-temporal))]])))
 
 (defn remove-join*
   "See remove-from-multi-joins*."

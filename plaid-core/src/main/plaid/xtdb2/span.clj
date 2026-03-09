@@ -53,7 +53,7 @@
   (let [{token-layer-id :token/layer} (first token-records)
         sl (pxc/entity node :span-layers layer)]
     (cond
-      (or (not (seq token-records)) (empty? token-records))
+      (empty? token-records)
       (throw (ex-info "Token list is empty or malformed" {:code 400}))
 
       (nil? (:span-layer/id sl))
@@ -178,7 +178,7 @@
             [(pxc/match* :span-layers layer-e)
              (pxc/match* :spans s-e)
              [:put-docs :spans (-> s-e
-                                   (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                   (pxc/strip-temporal)
                                    (assoc :span/tokens (vec token-ids)))]]))))
 
 (defn set-tokens-operation [xt-map eid token-ids]
