@@ -9,7 +9,6 @@
 (def attr-keys [:span-layer/id
                 :span-layer/name
                 :span-layer/relation-layers
-                :span-layer/project
                 :config])
 
 ;; Queries ------------------------------------------------------------------------
@@ -46,14 +45,14 @@
       (throw (ex-info (pxc/err-msg-not-found "Token layer" token-layer-id) {:id token-layer-id :code 400})))
     [(pxc/match* :token-layers tokl)
      [:put-docs :token-layers (-> tokl
-                                  (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                  (pxc/strip-temporal)
                                   (update :token-layer/span-layers conj id))]
      [:put-docs :span-layers record]]))
 
 (defn create-operation [xt-map attrs token-layer-id]
   (let [{:span-layer/keys [name]} attrs
         tx-ops (create* xt-map attrs token-layer-id)
-        prj-id (:span-layer/project (nth (last tx-ops) 2))]
+        prj-id (:token-layer/project (pxc/entity xt-map :token-layers token-layer-id))]
     (op/make-operation
      {:type :span-layer/create
       :project prj-id
@@ -127,7 +126,7 @@
         base-tx (delete* xt-map eid)
         unlink-tx [(pxc/match* :token-layers tokl)
                    [:put-docs :token-layers (-> tokl
-                                                (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                                (pxc/strip-temporal)
                                                 (pxc/remove-id :token-layer/span-layers eid))]]
         all-tx (into base-tx unlink-tx)]
     (op/make-operation

@@ -42,7 +42,7 @@
       (throw (ex-info (pxc/err-msg-not-found "Project" project-id) {:id project-id :code 400})))
     [(pxc/match* :projects prj)
      [:put-docs :projects (-> prj
-                              (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                              (pxc/strip-temporal)
                               (update :project/text-layers conj id))]
      [:put-docs :text-layers record]]))
 
@@ -154,7 +154,7 @@
         base-tx (delete* xt-map eid)
         unlink-tx [(pxc/match* :projects prj)
                    [:put-docs :projects (-> prj
-                                            (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                            (pxc/strip-temporal)
                                             (pxc/remove-id :project/text-layers eid))]]
         all-tx (into base-tx unlink-tx)]
     (op/make-operation
