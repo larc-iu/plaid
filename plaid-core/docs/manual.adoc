@@ -86,7 +86,7 @@ console.log("First document:", firstDocument)
 ----
 
 == Time-traveling Database
-Plaid uses the database http://v1-docs.xtdb.com/[XTDB] to store data.
+Plaid uses the database https://docs.xtdb.com/[XTDB] to store data.
 An unusual feature of this database is that it is **immutable**.
 This means that whenever a value inside the database changes, the old value is not lost: rather, the old state of the database is still accessible for reading, even after a new version has been created.
 This allows Plaid to provide **time travel**, allowing you to access all historical states of your documents and projects.

@@ -25,19 +25,15 @@
 * See playground at <http://localhost:8085/api/v1/docs/index.html#/>
 * See JSON at <http://localhost:8085/api/v1/openapi.json>
 
-== XTDB Inspector
-Make sure that the environment variable `XTDB_INSPECTOR_URI_PREFIX` is set to `/_inspector` if you want to use the web UI to inspect the database.
+== Database Access (pgwire)
+XTDB v2 exposes a PostgreSQL wire-compatible interface on port 5433.
+You can connect with `psql` or any PostgreSQL-compatible client such as DataGrip:
 
 [,bash]
 ----
-export XTDB_INSPECTOR_URI_PREFIX=/_inspector
+psql -h localhost -p 5433 -d xtdb
 ----
 
-On Windows, use the snippet below, then restart commandline/powershell! Value is only accessible in future cmd/pwsh instances.
+In DataGrip, create a new PostgreSQL data source with host `localhost`, port `5433`, and database `xtdb` (no username/password required).
 
-[,cmd]
-----
-setx XTDB_INSPECTOR_URI_PREFIX "/_inspector"
-----
-
-Inspector will be visible at <http://localhost:8085/_inspector/attr>.
+NOTE: Column names for nested keys use the `$` separator (e.g. `project$name`). This interface is read-only from the application's perspective.
