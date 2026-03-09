@@ -16,6 +16,73 @@
                 :project/vocabs
                 :config])
 
+;; Layer enrichment --------------------------------------------------------------
+
+(def ^:private table-sql-names
+  {:text-layers "text_layers"
+   :token-layers "token_layers"
+   :span-layers "span_layers"
+   :relation-layers "relation_layers"
+   :vocab-layers "vocab_layers"})
+
+(defn- sql-in-query
+  "Build and execute a SQL IN query for a table with given IDs."
+  [node table ids]
+  (if (empty? ids)
+    []
+    (let [ph (str/join ", " (repeat (count ids) "?"))
+          table-name (clojure.core/get table-sql-names table (name table))]
+      (xt/q node (into [(str "SELECT * FROM " table-name " WHERE _id IN (" ph ")")] ids)))))
+
+(defn- format-layer
+  "Select relevant keys from a layer entity and deserialize config."
+  [entity keys-to-keep]
+  (-> (select-keys entity keys-to-keep)
+      pxc/deserialize-config))
+
+(defn- enrich-layers
+  "Build nested layer hierarchy for a project. Uses 4 queries (one per layer level)
+  plus 1 for vocab-layers."
+  [node project]
+  (let [text-layer-ids (:project/text-layers project)
+        vocab-ids (:project/vocabs project)
+        ;; 1. Fetch all text-layers
+        text-layers (sql-in-query node :text-layers (vec text-layer-ids))
+        ;; 2. Collect and fetch all token-layers
+        all-tokl-ids (vec (mapcat :text-layer/token-layers text-layers))
+        token-layers (sql-in-query node :token-layers all-tokl-ids)
+        tokl-by-id (into {} (map (juxt :xt/id identity) token-layers))
+        ;; 3. Collect and fetch all span-layers
+        all-sl-ids (vec (mapcat :token-layer/span-layers token-layers))
+        span-layers (sql-in-query node :span-layers all-sl-ids)
+        sl-by-id (into {} (map (juxt :xt/id identity) span-layers))
+        ;; 4. Collect and fetch all relation-layers
+        all-rl-ids (vec (mapcat :span-layer/relation-layers span-layers))
+        relation-layers (sql-in-query node :relation-layers all-rl-ids)
+        rl-by-id (into {} (map (juxt :xt/id identity) relation-layers))
+        ;; 5. Fetch vocab-layers
+        vocabs (sql-in-query node :vocab-layers (vec vocab-ids))
+        ;; Assemble bottom-up
+        format-rl (fn [rl] (format-layer rl [:relation-layer/id :relation-layer/name :config]))
+        format-sl (fn [sl]
+                    (-> (format-layer sl [:span-layer/id :span-layer/name :config :span-layer/relation-layers])
+                        (update :span-layer/relation-layers
+                                (fn [rl-ids] (mapv #(format-rl (clojure.core/get rl-by-id %)) rl-ids)))))
+        format-tokl (fn [tokl]
+                      (-> (format-layer tokl [:token-layer/id :token-layer/name :config :token-layer/span-layers])
+                          (update :token-layer/span-layers
+                                  (fn [sl-ids] (mapv #(format-sl (clojure.core/get sl-by-id %)) sl-ids)))))
+        format-txtl (fn [txtl]
+                      (-> (format-layer txtl [:text-layer/id :text-layer/name :config :text-layer/token-layers])
+                          (update :text-layer/token-layers
+                                  (fn [tokl-ids] (mapv #(format-tokl (clojure.core/get tokl-by-id %)) tokl-ids)))))
+        txtl-by-id (into {} (map (juxt :xt/id identity) text-layers))
+        enriched-text-layers (mapv #(format-txtl (clojure.core/get txtl-by-id %)) text-layer-ids)
+        enriched-vocabs (mapv #(format-layer % [:vocab/id :vocab/name :vocab/maintainers :config]) vocabs)]
+    (assoc project
+           :project/text-layers enriched-text-layers
+           :project/vocabs enriched-vocabs)))
+
 ;; Reads -------------------------------------------------------------------------
 
 (defn get-document-ids [node-or-map id]
@@ -32,10 +99,12 @@
   ([node-or-map id include-documents?]
    (when-let [record (pxc/entity node-or-map :projects id)]
      (when (:project/id record)
-       (-> (dissoc record :xt/id)
-           (pxc/deserialize-config)
-           (cond-> include-documents?
-             (assoc :project/documents (get-documents node-or-map id))))))))
+       (let [node (pxc/->node node-or-map)]
+         (-> (dissoc record :xt/id)
+             (pxc/deserialize-config)
+             (->> (enrich-layers node))
+             (cond-> include-documents?
+               (assoc :project/documents (get-documents node-or-map id)))))))))
 
 (defn reader-ids [node-or-map id]
   (:project/readers (pxc/entity node-or-map :projects id)))
@@ -65,14 +134,16 @@
          distinct)))
 
 (defn get-accessible [node-or-map user-id]
-  (let [admin? (user/admin? (user/get node-or-map user-id))
+  (let [node (pxc/->node node-or-map)
+        admin? (user/admin? (user/get node-or-map user-id))
         entities (if admin?
                    (pxc/find-entities node-or-map :projects {})
                    (pxc/entities-with-sys-from node-or-map :projects
                                                (vec (get-accessible-ids node-or-map user-id))))]
     (->> entities
          (mapv #(-> (dissoc % :xt/id :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
-                    pxc/deserialize-config)))))
+                    pxc/deserialize-config
+                    (->> (enrich-layers node)))))))
 
 (defn get-by-name [node-or-map name]
   (pxc/find-entity node-or-map :projects {:project/name name}))
@@ -94,7 +165,8 @@
                                                :project/text-layers []
                                                :project/vocabs []
                                                :config {}}
-                                              (select-keys attrs attr-keys))]
+                                              (select-keys attrs attr-keys))
+        record (update record :config pxc/serialize-config)]
     (pxc/valid-name? name)
     [[:put-docs :projects record]]))
 

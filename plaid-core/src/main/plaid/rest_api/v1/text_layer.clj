@@ -18,10 +18,10 @@
 
 (def text-layer-routes
   ["/text-layers"
-   {:middleware [[pra/wrap-maintainer-required get-project-id]]}
 
    [""
     {:post {:summary    "Create a new text layer for a project."
+            :middleware [[pra/wrap-maintainer-required get-project-id]]
             :parameters {:body [:map
                                 [:project-id :uuid]
                                 [:name :string]]}
@@ -39,6 +39,7 @@
 
     [""
      {:get    {:summary "Get a text layer by ID."
+               :middleware [[pra/wrap-reader-required get-project-id]]
                :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xt-map :xt-map :as r}]
                           (let [text-layer (txtl/get xt-map text-layer-id)]
                             (if (some? text-layer)
@@ -47,6 +48,7 @@
                               {:status 404
                                :body   {:error "Text layer not found"}})))}
       :patch  {:summary    "Update a text layer's name."
+               :middleware [[pra/wrap-maintainer-required get-project-id]]
                :parameters {:body [:map [:name :string]]}
                :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [{:keys [success code error]} (txtl/merge {:node xtdb} text-layer-id {:text-layer/name name} user-id)]
@@ -56,6 +58,7 @@
                                  {:status (or code 500)
                                   :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a text layer."
+               :middleware [[pra/wrap-maintainer-required get-project-id]]
                :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                           (let [{:keys [success code error]} (txtl/delete {:node xtdb} text-layer-id user-id)]
                             (if success
@@ -65,6 +68,7 @@
 
     ["/shift"
      {:post {:summary    "Shift a text layer's order within the project."
+             :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
              :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
                            (let [up? (= direction "up")
@@ -74,4 +78,4 @@
                                {:status (or code 400)
                                 :body   {:error (or error "Failed to shift text layer")}})))}}]
 
-    (layer-config-routes :text-layer-id)]])
+    (layer-config-routes :text-layer-id get-project-id)]])

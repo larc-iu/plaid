@@ -9,6 +9,7 @@
 (def attr-keys [:span-layer/id
                 :span-layer/name
                 :span-layer/relation-layers
+                :span-layer/project
                 :config])
 
 ;; Queries ------------------------------------------------------------------------
@@ -23,21 +24,21 @@
   (:span-layer/token-layer (pxc/entity node :span-layers sl-id)))
 
 (defn project-id [node-or-map id]
-  (let [tokl-id (:span-layer/token-layer (pxc/entity node-or-map :span-layers id))
-        txtl-id (when tokl-id (:token-layer/text-layer (pxc/entity node-or-map :token-layers tokl-id)))]
-    (when txtl-id
-      (:text-layer/project (pxc/entity node-or-map :text-layers txtl-id)))))
+  (:span-layer/project (pxc/entity node-or-map :span-layers id)))
 
 ;; Mutations ----------------------------------------------------------------------
 
 (defn create* [xt-map {:span-layer/keys [id] :as attrs} token-layer-id]
   (let [node (pxc/->node xt-map)
+        tokl (pxc/entity-with-sys-from node :token-layers token-layer-id)
+        prj-id (:token-layer/project tokl)
         {:span-layer/keys [name id] :as record}
-        (clojure.core/merge (pxc/new-record "span-layer" id)
-                            {:span-layer/relation-layers []
-                             :span-layer/token-layer token-layer-id}
-                            (select-keys attrs attr-keys))
-        tokl (pxc/entity-with-sys-from node :token-layers token-layer-id)]
+        (-> (clojure.core/merge (pxc/new-record "span-layer" id)
+                               {:span-layer/relation-layers []
+                                :span-layer/token-layer token-layer-id
+                                :span-layer/project prj-id}
+                               (select-keys attrs attr-keys))
+            (update :config pxc/serialize-config))]
     (pxc/valid-name? name)
     (when (pxc/entity node :span-layers id)
       (throw (ex-info (pxc/err-msg-already-exists "Span layer" id) {:id id :code 409})))
@@ -52,9 +53,7 @@
 (defn create-operation [xt-map attrs token-layer-id]
   (let [{:span-layer/keys [name]} attrs
         tx-ops (create* xt-map attrs token-layer-id)
-        node (pxc/->node xt-map)
-        txtl-id (:token-layer/text-layer (pxc/entity node :token-layers token-layer-id))
-        prj-id (when txtl-id (:text-layer/project (pxc/entity node :text-layers txtl-id)))]
+        prj-id (:span-layer/project (nth (last tx-ops) 2))]
     (op/make-operation
      {:type :span-layer/create
       :project prj-id
@@ -70,7 +69,7 @@
   (when-let [name (:span-layer/name m)]
     (pxc/valid-name? name))
   (let [tx-ops (pxc/merge* xt-map :span-layers :span-layer/id eid
-                           (select-keys m [:span-layer/name :config]))]
+                           (select-keys m [:span-layer/name]))]
     (op/make-operation
      {:type :span-layer/update
       :project (project-id xt-map eid)
@@ -122,7 +121,7 @@
 (defn delete-operation [xt-map eid]
   (let [node (pxc/->node xt-map)
         sl (pxc/entity node :span-layers eid)
-        prj-id (project-id xt-map eid)
+        prj-id (:span-layer/project sl)
         tokl-id (parent-id node eid)
         tokl (pxc/entity-with-sys-from node :token-layers tokl-id)
         base-tx (delete* xt-map eid)

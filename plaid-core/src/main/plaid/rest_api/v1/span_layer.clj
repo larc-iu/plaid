@@ -19,10 +19,10 @@
 
 (def span-layer-routes
   ["/span-layers"
-   {:middleware [[pra/wrap-maintainer-required get-project-id]]}
 
    [""
     {:post {:summary    "Create a new span layer."
+            :middleware [[pra/wrap-maintainer-required get-project-id]]
             :parameters {:body [:map
                                 [:token-layer-id :uuid]
                                 [:name :string]]}
@@ -40,6 +40,7 @@
 
     [""
      {:get    {:summary "Get a span layer by ID."
+               :middleware [[pra/wrap-reader-required get-project-id]]
                :handler (fn [{{{:keys [span-layer-id]} :path} :parameters xt-map :xt-map}]
                           (let [span-layer (sl/get xt-map span-layer-id)]
                             (if (some? span-layer)
@@ -48,6 +49,7 @@
                               {:status 404
                                :body   {:error "Span layer not found"}})))}
       :patch  {:summary    "Update a span layer's name."
+               :middleware [[pra/wrap-maintainer-required get-project-id]]
                :parameters {:body [:map [:name :string]]}
                :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
                              (let [{:keys [success code error]} (sl/merge {:node xtdb} span-layer-id {:span-layer/name name} user-id)]
@@ -57,6 +59,7 @@
                                  {:status (or code 500)
                                   :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a span layer."
+               :middleware [[pra/wrap-maintainer-required get-project-id]]
                :handler (fn [{{{:keys [span-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
                           (let [{:keys [success code error]} (sl/delete {:node xtdb} span-layer-id user-id)]
                             (if success
@@ -66,6 +69,7 @@
 
     ["/shift"
      {:post {:summary    "Shift a span layer's order."
+             :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
              :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
                            (let [up? (= direction "up")
@@ -75,4 +79,4 @@
                                {:status (or code 400)
                                 :body   {:error (or error "Failed to shift span layer")}})))}}]
 
-    (layer-config-routes :span-layer-id)]])
+    (layer-config-routes :span-layer-id get-project-id)]])
