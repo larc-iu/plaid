@@ -1,0 +1,14 @@
+{
+  "name": "plaid-client",
+  "version": "1.0.0",
+  "description": "JavaScript client for the Plaid annotation API",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src/",
+    "index.d.ts"
+  ]
+}

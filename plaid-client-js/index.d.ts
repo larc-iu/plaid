@@ -25,6 +25,12 @@ interface ResponseHelper {
   error(error: string | Error): void;
 }
 
+interface SSEConnection {
+  close(): void;
+  getStats(): any;
+  readyState: number;
+}
+
 interface VocabLinksBundle {
   create(vocabItem: string, tokens: any[], metadata?: any): Promise<any>;
   setMetadata(id: string, body: any): Promise<any>;
@@ -116,7 +122,7 @@ interface DocumentsBundle {
   checkLock(documentId: string, asOf?: string): Promise<any>;
   acquireLock(documentId: string): Promise<any>;
   releaseLock(documentId: string): Promise<any>;
-  getMedia(documentId: string, asOf?: string): Promise<any>;
+  getMedia(documentId: string, asOf?: string): Promise<ArrayBuffer>;
   uploadMedia(documentId: string, file: File): Promise<any>;
   deleteMedia(documentId: string): Promise<any>;
   setMetadata(documentId: string, body: any): Promise<any>;
@@ -129,9 +135,8 @@ interface DocumentsBundle {
 }
 
 interface MessagesBundle {
-  sendMessage(id: string, body: any): Promise<any>;
-  heartbeat(id: string, clientId: string): Promise<any>;
-  listen(id: string, onEvent: (eventType: string, data: any) => void): { close(): void; getStats(): any; readyState: number; };
+  sendMessage(projectId: string, body: any): Promise<any>;
+  listen(projectId: string, onEvent: (eventType: string, data: any) => void | boolean): SSEConnection;
   discoverServices(projectId: string, timeout?: number): Promise<DiscoveredService[]>;
   serve(projectId: string, serviceInfo: ServiceInfo, onServiceRequest: (data: any, responseHelper: ResponseHelper) => void, extras?: any): ServiceRegistration;
   requestService(projectId: string, serviceId: string, data: any, timeout?: number): Promise<any>;
@@ -200,23 +205,23 @@ interface TokensBundle {
   deleteMetadata(tokenId: string): Promise<any>;
 }
 
-declare class PlaidClient {
+export declare class PlaidClient {
   constructor(baseUrl: string, token: string);
   static login(baseUrl: string, userId: string, password: string): Promise<PlaidClient>;
-  
+
   // Batch control methods
   beginBatch(): void;
   submitBatch(): Promise<any[]>;
   abortBatch(): void;
   isBatchMode(): boolean;
-  
+
   // Strict mode methods
   enterStrictMode(documentId: string): void;
   exitStrictMode(): void;
-  
+
   // User agent methods
   setAgentName(agentName: string): void;
-  
+
   vocabLinks: VocabLinksBundle;
   vocabLayers: VocabLayersBundle;
   relations: RelationsBundle;
@@ -236,4 +241,4 @@ declare class PlaidClient {
   tokens: TokensBundle;
 }
 
-declare const client: PlaidClient;
+export default PlaidClient;
