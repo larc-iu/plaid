@@ -201,7 +201,7 @@
           :error (ex-message e)
           :code (:code data)}))
      (catch Exception e
-       (log/warn "Transaction failed: " (ex-message e))
+       (log/error e "Transaction failed")
        {:success false
         :error (ex-message e)}))))
 

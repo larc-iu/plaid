@@ -29,10 +29,11 @@
 (defn create* [xt-map {:text-layer/keys [id] :as attrs} project-id]
   (let [node (pxc/->node xt-map)
         {:text-layer/keys [name id] :as record}
-        (clojure.core/merge (pxc/new-record "text-layer" id)
-                            {:text-layer/token-layers []
-                             :text-layer/project project-id}
-                            (select-keys attrs attr-keys))
+        (-> (clojure.core/merge (pxc/new-record "text-layer" id)
+                               {:text-layer/token-layers []
+                                :text-layer/project project-id}
+                               (select-keys attrs attr-keys))
+            (update :config pxc/serialize-config))
         prj (pxc/entity-with-sys-from node :projects project-id)]
     (pxc/valid-name? name)
     (when (pxc/entity node :text-layers id)
@@ -63,7 +64,7 @@
   (when-let [name (:text-layer/name m)]
     (pxc/valid-name? name))
   (let [tx-ops (pxc/merge* xt-map :text-layers :text-layer/id eid
-                           (select-keys m [:text-layer/name :config]))]
+                           (select-keys m [:text-layer/name]))]
     (op/make-operation
      {:type :text-layer/update
       :project (project-id xt-map eid)

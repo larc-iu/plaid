@@ -136,9 +136,10 @@
 
 (defn create* [xt-map attrs]
   (let [node (pxc/->node xt-map)
-        {:vocab/keys [id name] :as record} (clojure.core/merge
-                                             (pxc/new-record "vocab")
-                                             (select-keys attrs attr-keys))]
+        {:vocab/keys [id name] :as record} (-> (clojure.core/merge
+                                                (pxc/new-record "vocab")
+                                                (select-keys attrs attr-keys))
+                                              (update :config pxc/serialize-config))]
     (pxc/valid-name? name)
     [[:put-docs :vocab-layers record]]))
 
@@ -165,7 +166,7 @@
     (op/make-operation
      {:type        :vocab/update
       :description (clojure.core/format "Update vocab '%s'" (:vocab/name current))
-      :tx-ops      (pxc/merge* xt-map :vocab-layers :vocab/id eid m)
+      :tx-ops      (pxc/merge* xt-map :vocab-layers :vocab/id eid (select-keys m [:vocab/name :vocab/maintainers]))
       :project     nil
       :document    nil})))
 
