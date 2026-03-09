@@ -140,7 +140,7 @@
      (pxc/match* :relation-layers layer-e)
      (pxc/match* :spans new-span-e)
      [:put-docs :relations (-> r-e
-                               (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                               (pxc/strip-temporal)
                                (assoc key span-id))]]))
 
 (defn set-end-operation [xt-map eid key span-id]
@@ -231,21 +231,19 @@
                 (clojure.core/merge (pxc/new-record "relation")
                                     {:relation/document doc-id}
                                     (into {} rel-attrs))
-                source-record (clojure.core/get span-cache source)
-                target-record (clojure.core/get span-cache target)
                 source-e (clojure.core/get span-cache source)
                 target-e (clojure.core/get span-cache target)]
             ;; Validate source/target exist
-            (when-not (:span/id source-record)
+            (when-not (:span/id source-e)
               (throw (ex-info (str "Source span " source " does not exist") {:id source :code 400})))
-            (when-not (:span/id target-record)
+            (when-not (:span/id target-e)
               (throw (ex-info (str "Target span " target " does not exist") {:id target :code 400})))
-            (when-not (= (:span/layer source-record) (:span/layer target-record))
+            (when-not (= (:span/layer source-e) (:span/layer target-e))
               (throw (ex-info "Source and target relations must be contained in a single span layer."
-                              {:source-layer (:span/layer source-record)
-                               :target-layer (:span/layer target-record)
+                              {:source-layer (:span/layer source-e)
+                               :target-layer (:span/layer target-e)
                                :code 400})))
-            (when-not (= (:span/document source-record) (:span/document target-record))
+            (when-not (= (:span/document source-e) (:span/document target-e))
               (throw (ex-info "Source and target relations must be in a single document."
                               {:code 400})))
             (into tx-ops [(pxc/match* :spans source-e)

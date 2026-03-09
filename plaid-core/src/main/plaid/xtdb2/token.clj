@@ -306,7 +306,7 @@
                 (let [se (clojure.core/get span-by-id (:xt/id span))]
                   [(pxc/match* :spans se)
                    [:put-docs :spans (-> se
-                                         (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                         (pxc/strip-temporal)
                                          (assoc :span/tokens remaining))]]))
               spans-to-update)
       ;; Delete spans with no remaining tokens

@@ -9,7 +9,6 @@
 (def attr-keys [:token-layer/id
                 :token-layer/name
                 :token-layer/span-layers
-                :token-layer/project
                 :config])
 
 ;; Queries ------------------------------------------------------------------------
@@ -50,15 +49,14 @@
       (throw (ex-info (pxc/err-msg-not-found "Text layer" text-layer-id) {:id text-layer-id :code 400})))
     [(pxc/match* :text-layers txtl)
      [:put-docs :text-layers (-> txtl
-                                 (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                 (pxc/strip-temporal)
                                  (update :text-layer/token-layers conj id))]
      [:put-docs :token-layers record]]))
 
 (defn create-operation [xt-map attrs text-layer-id]
   (let [{:token-layer/keys [name]} attrs
         tx-ops (create* xt-map attrs text-layer-id)
-        ;; project-id is now stored in the record we just built
-        prj-id (:token-layer/project (nth (last tx-ops) 2))]
+        prj-id (:text-layer/project (pxc/entity xt-map :text-layers text-layer-id))]
     (op/make-operation
      {:type :token-layer/create
       :project prj-id
@@ -158,7 +156,7 @@
         base-tx (delete* xt-map eid)
         unlink-tx [(pxc/match* :text-layers txtl)
                    [:put-docs :text-layers (-> txtl
-                                               (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                               (pxc/strip-temporal)
                                                (pxc/remove-id :text-layer/token-layers eid))]]
         all-tx (into base-tx unlink-tx)]
     (op/make-operation

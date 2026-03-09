@@ -6,7 +6,6 @@
 
 (def attr-keys [:relation-layer/id
                 :relation-layer/name
-                :relation-layer/project
                 :config])
 
 ;; Queries ------------------------------------------------------------------------
@@ -45,14 +44,14 @@
       (throw (ex-info (pxc/err-msg-not-found "Span layer" span-layer-id) {:id span-layer-id :code 400})))
     [(pxc/match* :span-layers sl)
      [:put-docs :span-layers (-> sl
-                                 (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                 (pxc/strip-temporal)
                                  (update :span-layer/relation-layers conj id))]
      [:put-docs :relation-layers record]]))
 
 (defn create-operation [xt-map attrs span-layer-id]
   (let [{:relation-layer/keys [name]} attrs
         tx-ops (create* xt-map attrs span-layer-id)
-        prj-id (:relation-layer/project (nth (last tx-ops) 2))]
+        prj-id (:span-layer/project (pxc/entity xt-map :span-layers span-layer-id))]
     (op/make-operation
      {:type :relation-layer/create
       :project prj-id
@@ -114,7 +113,7 @@
         base-tx (delete* xt-map eid)
         unlink-tx [(pxc/match* :span-layers sl)
                    [:put-docs :span-layers (-> sl
-                                               (dissoc :xt/system-from :xt/system-to :xt/valid-from :xt/valid-to)
+                                               (pxc/strip-temporal)
                                                (pxc/remove-id :span-layer/relation-layers eid))]]
         all-tx (into base-tx unlink-tx)]
     (op/make-operation

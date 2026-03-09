@@ -19,8 +19,7 @@
   ([node-or-map id include-items?]
    (when-let [record (pxc/entity node-or-map :vocab-layers id)]
      (when (:vocab/id record)
-       (-> (dissoc record :xt/id)
-           (pxc/deserialize-config)
+       (-> (pxc/deserialize-config (select-keys record attr-keys))
            (cond-> include-items?
                    (assoc :vocab/items (vi/get-all-in-layer node-or-map id))))))))
 
