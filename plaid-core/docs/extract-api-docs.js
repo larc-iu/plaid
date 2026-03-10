@@ -128,9 +128,11 @@ function parseJSDoc(content) {
   const bundleRegex = /this\.(\w+)\s*=\s*\{([\s\S]*?)\n\s*\};/g;
   let bundleMatch;
   
+  const skipBundles = new Set(['documentVersions', 'batchOperations', 'strictModeDocumentId']);
   while ((bundleMatch = bundleRegex.exec(content)) !== null) {
     const [, bundleName, bundleContent] = bundleMatch;
-    
+    if (skipBundles.has(bundleName)) continue;
+
     // Look for method assignments within this bundle
     // Matches both old style (methodName: this._method.bind(this)) and new style (methodName: (args) => ...)
     const methodRegex = /\/\*\*\s*\n([\s\S]*?)\*\/\s*\n?\s*(\w+):\s*(?:this\._|\([^)]*\)\s*=>)/g;
