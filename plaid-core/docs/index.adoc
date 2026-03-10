@@ -39,4 +39,4 @@ To get a feel for how to program an app with Plaid, it may be helpful to see htt
 
 See link:manual.html[the manual] for a comprehensive introduction to Plaid.
 
-Also see https://github.com/larc-iu/plaid/tree/master/target/clients[clients for JavaScript and Python], as well as the API documentation for link:api-js.html[JavaScript] and link:api-py.html[Python].
+Also see the client libraries in `plaid-client-js/` and `plaid-client-py/`, as well as the API documentation for link:api-js.html[JavaScript] and link:api-py.html[Python].

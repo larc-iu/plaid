@@ -17,9 +17,9 @@
 * `clojure -M:test`: run tests
 * `clojure -M:outdated`: find outdated dependencies
 * `clojure -X:uberjar`: compile to a single `.jar` for production
-* `clojure -M:gen target/openapi.json target/clients/client.py py`: generate Python client
-* `clojure -M:gen target/openapi.json target/clients/client.js js`: generate JavaScript client
 * `clojure -M:nrepl`: start nREPL server (for Clojure MCP)
+
+NOTE: Client libraries are maintained separately in `plaid-client-js/` and `plaid-client-py/`.
 
 == OpenAPI Support
 * See playground at <http://localhost:8085/api/v1/docs/index.html#/>

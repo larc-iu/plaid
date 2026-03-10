@@ -47,7 +47,7 @@ Additionally, a global **admin** role exists, which allows the user to see and e
 Plaid's functionality is exposed for development as a REST API.
 This allows you to use Plaid from any programming language with an HTTP client library.
 
-Additionally, we provide https://github.com/larc-iu/plaid/tree/master/target/clients[official clients for two programming languages, Python and JavaScript].
+Additionally, we provide official clients for two programming languages, in `plaid-client-py/` (Python) and `plaid-client-js/` (JavaScript).
 These clients provide an API for interacting with Plaid that is idiomatic for each programming language and frees you from concern about low-level details of HTTP requests.
 Here is an example of how to use the Python client:
 

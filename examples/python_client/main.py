@@ -1,5 +1,5 @@
-from client import PlaidClient
 import getpass
+from plaid_client import PlaidClient
 
 def main():
     client = PlaidClient.login("http://localhost:8085", input("Username: "), getpass.getpass("Password: "))
