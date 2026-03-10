@@ -3,7 +3,7 @@
             [plaid.xtdb2.project :as prj]))
 
 (defn- config-handlers [id-keyword]
-  {:put    {:summary    (str "Set a configuration value for a layer in a editor namespace. Intended for storing "
+  {:put    {:summary    (str "Set a configuration value for a layer in an editor namespace. Intended for storing "
                              "metadata about how the layer is intended to be used, e.g. for morpheme tokenization "
                              "or sentence boundary marking.")
             :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]

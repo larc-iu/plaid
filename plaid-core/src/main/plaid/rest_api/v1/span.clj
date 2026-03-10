@@ -86,7 +86,7 @@
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
-             :post {:summary (str "Create multiple spans in a single operation. Provide an array of objects whose keys"
+             :post {:summary (str "Create multiple spans in a single operation. Provide an array of objects whose keys "
                                   "are:\n"
                                   "<body>span-layer-id</body>, the span's layer\n"
                                   "<body>tokens</body>, the IDs of the span's constituent tokens\n"

@@ -69,7 +69,7 @@
                              "\n<body>layer-id</body>: the relation layer"
                              "\n<body>source-id</body>: the source span this relation originates from"
                              "\n<body>target-id</body>: the target span this relation goes to"
-                             "\n<body>value</value>: the label for the relation")
+                             "\n<body>value</body>: the label for the relation")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]]
                :parameters {:query [:map [:document-version {:optional true} :uuid]]
@@ -92,7 +92,7 @@
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
-             :post {:summary (str "Create multiple relations in a single operation. Provide an array of objects whose keys"
+             :post {:summary (str "Create multiple relations in a single operation. Provide an array of objects whose keys "
                                   "are:\n"
                                   "<body>relation-layer-id</body>, the relation's layer\n"
                                   "<body>source</body>, the span id of the relation's source\n"

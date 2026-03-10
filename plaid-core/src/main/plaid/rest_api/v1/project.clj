@@ -28,7 +28,7 @@
 
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}
-     :get {:summary "Get a project by ID. If <body>include-documents</body> is true, also include document IDs and names."
+     :get {:summary "Get a project by ID. If <query>include-documents</query> is true, also include document IDs and names."
            :middleware [[pra/wrap-reader-required get-project-id]]
            :parameters {:query [:map [:include-documents {:optional true} boolean?]]}
            :handler (fn [{{{:keys [id]} :path
