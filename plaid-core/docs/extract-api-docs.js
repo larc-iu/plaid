@@ -400,94 +400,290 @@ function groupByBundle(methods, isPython = false) {
   return bundles;
 }
 
+// Format bundle name for display: "vocabLinks" / "vocab_links" -> "Vocab Links"
+function formatBundleName(name) {
+  if (name === 'misc') return 'Client';
+  // Handle both camelCase and snake_case
+  return name
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // Generate HTML for a set of methods
-function generateHTML(title, bundles) {
+function generateHTML(title, bundles, lang) {
   const bundleKeys = Object.keys(bundles).sort();
-  
+
   // Move 'misc' to the front for both languages
   if (bundleKeys.includes('misc')) {
     const miscIndex = bundleKeys.indexOf('misc');
     bundleKeys.splice(miscIndex, 1);
     bundleKeys.unshift('misc');
   }
-  
-  const toc = bundleKeys.map(bundle => 
-    `<li><a href="#${bundle}">${bundle}</a></li>`
+
+  const toc = bundleKeys.map(bundle =>
+    `<a class="nav-link" href="#${bundle}">${formatBundleName(bundle)}</a>`
   ).join('\n');
-  
+
   const content = bundleKeys.map(bundle => {
     const methods = bundles[bundle];
     const methodsHTML = methods.map(method => {
-      const decoratorsHTML = method.decorators && method.decorators.length > 0 ?
-        `<div class="decorators">
-           ${method.decorators.map(decorator => 
-             `<span class="decorator">@${decorator}</span>`
-           ).join(' ')}
-         </div>` : '';
-      
-      const staticHTML = method.isStatic ? 
-        `<div class="decorators">
-           <span class="decorator">static</span>
-         </div>` : '';
-      
-      const paramsHTML = method.params.length > 0 ? 
-        `<h4>Parameters</h4>
-         <ul>
-           ${method.params.map(param => 
-             `<li><strong>${param.name}</strong> (${param.type}${param.optional ? ', optional' : ''}) - ${param.description}</li>`
-           ).join('\n')}
-         </ul>` : '';
-      
+      const badges = [];
+      if (method.isStatic) badges.push('<span class="badge badge-static">static</span>');
+      if (method.decorators && method.decorators.length > 0) {
+        method.decorators.forEach(d => badges.push(`<span class="badge badge-decorator">@${d}</span>`));
+      }
+      const badgesHTML = badges.length > 0 ? ` ${badges.join(' ')}` : '';
+
+      // Build a compact signature
+      const paramList = method.params.map(p => p.optional ? `[${p.name}]` : p.name).join(', ');
+      const prefix = bundle === 'misc' ? '' : `${bundle}.`;
+      const sig = `${prefix}${method.name}(${paramList})`;
+
+      const paramsHTML = method.params.length > 0 ?
+        `<table class="params">
+          <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            ${method.params.map(param =>
+              `<tr>
+                <td><code>${param.name}</code>${param.optional ? ' <span class="optional">optional</span>' : ''}</td>
+                <td><code>${param.type}</code></td>
+                <td>${param.description || ''}</td>
+              </tr>`
+            ).join('\n')}
+          </tbody>
+        </table>` : '';
+
       return `
-        <div class="method">
-          <h3><code>${method.name}</code></h3>
-          ${decoratorsHTML}${staticHTML}
-          <p>${method.description}</p>
+        <div class="method" id="${bundle}-${method.name}">
+          <div class="method-sig"><code>${sig}</code>${badgesHTML}</div>
+          <p class="method-desc">${method.description}</p>
           ${paramsHTML}
         </div>
       `;
     }).join('\n');
-    
+
     return `
       <section id="${bundle}">
-        <h2>${bundle}</h2>
+        <h2>${formatBundleName(bundle)}</h2>
         ${methodsHTML}
       </section>
     `;
   }).join('\n');
-  
-  return `
-<!DOCTYPE html>
-<html>
+
+  const otherLang = lang === 'js' ? 'py' : 'js';
+  const otherLabel = lang === 'js' ? 'Python' : 'JavaScript';
+
+  return `<!DOCTYPE html>
+<html lang="en">
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${title}</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-    .toc { background: #f5f5f5; padding: 15px; margin-bottom: 30px; }
-    .method { border-bottom: 1px solid #eee; padding: 20px 0; }
-    .method:last-child { border-bottom: none; }
-    h1 { color: #333; }
-    h2 { color: #666; border-bottom: 2px solid #666; padding-bottom: 5px; }
-    h3 { color: #888; }
-    code { background: #f0f0f0; padding: 2px 4px; border-radius: 3px; }
-    ul { margin: 10px 0; }
-    li { margin: 5px 0; }
-    .decorators { margin: 5px 0; }
-    .decorator { background: #e8f4fd; color: #0366d6; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; margin-right: 5px; }
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      --c-bg: #fff;
+      --c-sidebar: #f8f9fa;
+      --c-border: #e1e4e8;
+      --c-text: #24292e;
+      --c-text-secondary: #586069;
+      --c-accent: #0366d6;
+      --c-accent-light: #e8f0fe;
+      --c-code-bg: #f3f4f6;
+      --c-method-bg: #fff;
+      --c-sig: #1a1a2e;
+      --sidebar-w: 220px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      color: var(--c-text);
+      background: var(--c-bg);
+      margin: 0;
+      line-height: 1.5;
+      font-size: 15px;
+    }
+
+    /* --- Sidebar --- */
+    .sidebar {
+      position: fixed;
+      top: 0; left: 0;
+      width: var(--sidebar-w);
+      height: 100vh;
+      overflow-y: auto;
+      background: var(--c-sidebar);
+      border-right: 1px solid var(--c-border);
+      padding: 20px 0;
+      z-index: 10;
+    }
+    .sidebar-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--c-text-secondary);
+      padding: 0 20px 12px;
+      border-bottom: 1px solid var(--c-border);
+      margin-bottom: 8px;
+    }
+    .nav-link {
+      display: block;
+      padding: 5px 20px;
+      color: var(--c-text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-link:hover, .nav-link.active {
+      color: var(--c-accent);
+      background: var(--c-accent-light);
+    }
+    .lang-switch {
+      display: block;
+      margin: 12px 20px 0;
+      padding: 6px 12px;
+      font-size: 13px;
+      color: var(--c-accent);
+      border: 1px solid var(--c-border);
+      border-radius: 6px;
+      text-decoration: none;
+      text-align: center;
+      transition: background 0.15s;
+    }
+    .lang-switch:hover { background: var(--c-accent-light); }
+
+    /* --- Main --- */
+    .main {
+      margin-left: var(--sidebar-w);
+      max-width: 860px;
+      padding: 40px 48px 80px;
+    }
+    .main h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 32px;
+      color: var(--c-text);
+    }
+    .main h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 48px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--c-border);
+      color: var(--c-text);
+    }
+
+    /* --- Method card --- */
+    .method {
+      margin: 16px 0;
+      padding: 16px 20px;
+      border: 1px solid var(--c-border);
+      border-radius: 8px;
+      background: var(--c-method-bg);
+    }
+    .method-sig {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--c-sig);
+      font-weight: 600;
+      word-break: break-word;
+    }
+    .method-sig code { background: none; padding: 0; font-weight: 600; }
+    .method-desc {
+      margin: 6px 0 0;
+      color: var(--c-text-secondary);
+      font-size: 14px;
+    }
+    .method-desc:empty { display: none; }
+
+    /* --- Badges --- */
+    .badge {
+      display: inline-block;
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 4px;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+    .badge-static { background: #ddf4ff; color: #0550ae; }
+    .badge-decorator { background: #fff3cd; color: #856404; }
+
+    /* --- Param table --- */
+    .params {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+    .params th {
+      text-align: left;
+      font-weight: 600;
+      padding: 6px 10px;
+      background: var(--c-sidebar);
+      border-bottom: 1px solid var(--c-border);
+      color: var(--c-text-secondary);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .params td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--c-border);
+      vertical-align: top;
+    }
+    .params tr:last-child td { border-bottom: none; }
+    .params code {
+      font-size: 13px;
+      background: var(--c-code-bg);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .optional {
+      font-size: 11px;
+      color: var(--c-text-secondary);
+      font-style: italic;
+    }
+
+    /* --- Responsive --- */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 20px; }
+    }
   </style>
 </head>
 <body>
-  <h1>${title}</h1>
-  <nav class="toc">
-    <h2>Table of Contents</h2>
-    <ul>
-      ${toc}
-    </ul>
+  <nav class="sidebar">
+    <div class="sidebar-title">${title}</div>
+    ${toc}
+    <a class="lang-switch" href="api-${otherLang}.html">${otherLabel} API &rarr;</a>
   </nav>
-  ${content}
+  <div class="main">
+    <h1>${title}</h1>
+    ${content}
+  </div>
+  <script>
+    // Highlight active sidebar link on scroll
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.nav-link');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(l => l.classList.remove('active'));
+          const link = document.querySelector('.nav-link[href="#' + entry.target.id + '"]');
+          if (link) link.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-20% 0px -80% 0px' });
+    sections.forEach(s => observer.observe(s));
+  </script>
 </body>
-</html>
-  `;
+</html>`;
 }
 
 // Main execution
@@ -509,14 +705,14 @@ function main() {
   const jsContent = fs.readFileSync(jsClientPath, 'utf8');
   const jsMethods = parseJSDoc(jsContent);
   const jsBundles = groupByBundle(jsMethods, false);
-  const jsHTML = generateHTML('JavaScript API Documentation', jsBundles);
+  const jsHTML = generateHTML('JavaScript API', jsBundles, 'js');
   fs.writeFileSync(path.join(outputDir, 'api-js.html'), jsHTML);
 
   // Process Python client
   const pyContent = fs.readFileSync(pyClientPath, 'utf8');
   const pyMethods = parsePythonDoc(pyContent);
   const pyBundles = groupByBundle(pyMethods, true);
-  const pyHTML = generateHTML('Python API Documentation', pyBundles);
+  const pyHTML = generateHTML('Python API', pyBundles, 'py');
   fs.writeFileSync(path.join(outputDir, 'api-py.html'), pyHTML);
   
   console.log('API documentation generated successfully!');
