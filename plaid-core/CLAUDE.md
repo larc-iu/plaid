@@ -21,7 +21,6 @@ src/
 │   ├── xtdb2/           # Database layer (entity-specific namespaces)
 │   ├── algos/           # Text processing algorithms
 │   └── config/          # Environment-specific configuration
-├── gen/plaid/           # Client code generation utilities
 └── dev/                 # Development utilities and user namespace
 ```
 
@@ -165,19 +164,13 @@ Do not combine `--namespace` and `--var`, just use one or the other.
 
 Tests use a separate XTDB node configuration to avoid affecting development data.
 
-## Client Code Generation
-Plaid includes client generators that create fully-typed API clients from the OpenAPI specification. Both JavaScript and Python clients are supported.
+## Client Libraries
+Client libraries are maintained separately:
 
-### Usage
-```bash
-# JavaScript client
-clojure -M:gen target/openapi.json target/clients/client.js js
+* **JavaScript**: `plaid-client-js/` — ESM package, uses `fetch` for HTTP and SSE
+* **Python**: `plaid-client-py/` — pip-installable package, uses `requests`
 
-# Python client
-clojure -M:gen target/openapi.json target/clients/client.py py
-```
-
-Both clients feature improved parameter casing handling that automatically converts between API conventions (kebab-case) and language-specific conventions (camelCase for JavaScript, snake_case for Python).
+Both clients automatically convert between API conventions (kebab-case) and language-specific conventions (camelCase for JavaScript, snake_case for Python).
 
 ## API Route Reference
 

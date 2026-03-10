@@ -2,7 +2,7 @@ import sys
 import stanza
 import requests
 import traceback
-from client import PlaidClient
+from plaid_client import PlaidClient
 
 
 def get_client(api_url):

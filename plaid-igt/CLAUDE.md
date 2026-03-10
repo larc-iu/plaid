@@ -45,7 +45,7 @@ All configurations use the "plaid" namespace to avoid conflicts with other appli
   As you consider how to implement something, don't be afraid to use your search tools if you suspect that Mantine might provide parts of it.
 * There's typically no need for you to try to test your changes. The user will test it himself in the browser.
 * See `@../ud-editor/` for complete Plaid client usage examples
-* If it's not obvious to you what a certain client function does or returns, do not make assumptions. Instead, investigate whether existing code clarifies it (feel free to grep for `client.bundle.methodName`), or else ask the user. Also, see `@../plaid-core/target/clients/client.d.ts` for helpful signatures.
+* If it's not obvious to you what a certain client function does or returns, do not make assumptions. Instead, investigate whether existing code clarifies it (feel free to grep for `client.bundle.methodName`), or else ask the user. Also, see `@../plaid-client-js/index.d.ts` for helpful signatures.
 * Make sure that you always import icons from individual files: write `import IconLogout from '@tabler/icons-react/dist/esm/icons/IconLogout.mjs';`, not `import { IconLogout } from '@tabler/icons-react';`.
 
 
@@ -310,5 +310,5 @@ The system provides comprehensive operations for managing multi-level linguistic
 ## Related Files
 - `@../ud-editor/` - Reference implementation with full feature set
 - `@../plaid-core/CLAUDE.md` - Main Plaid platform documentation
-- `@../plaid-core/target/clients/client.js` - API client
-- `@../plaid-core/target/clients/client.d.ts` - TypeScript definitions for API client--useful for seeing function signatures at a glance
+- `@../plaid-client-js/` - JavaScript API client package
+- `@../plaid-client-js/index.d.ts` - TypeScript definitions for API client--useful for seeing function signatures at a glance
