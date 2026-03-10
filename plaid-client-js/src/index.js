@@ -39,10 +39,10 @@ class PlaidClient {
 
     this.vocabLinks = {
       /**
-       * Create a new vocab link (link between tokens and vocab item).
-       * @param {string} vocabItem - Required. Vocabitem
-       * @param {Array} tokens - Required. Tokens
-       * @param {any} [metadata] - Optional. Metadata
+       * Create a new vocab link between tokens and a vocab item.
+       * @param {string} vocabItem - The vocab item to link
+       * @param {Array} tokens - The tokens to link
+       * @param {any} [metadata] - Metadata for the link
        */
       create: (vocabItem, tokens, metadata) =>
         this._request('POST', '/api/v1/vocab-links', {
@@ -50,8 +50,8 @@ class PlaidClient {
         }),
       /**
        * Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
-       * @param {string} id - Id identifier
-       * @param {any} body - Required. Body
+       * @param {string} id - The resource ID
+       * @param {any} body - The request body
        */
       setMetadata: (id, body) =>
         this._request('PUT', `/api/v1/vocab-links/${id}/metadata`, {
@@ -59,7 +59,7 @@ class PlaidClient {
         }),
       /**
        * Remove all metadata from a vocab link.
-       * @param {string} id - Id identifier
+       * @param {string} id - The resource ID
        */
       deleteMetadata: (id) =>
         this._request('DELETE', `/api/v1/vocab-links/${id}/metadata`, {
@@ -67,8 +67,8 @@ class PlaidClient {
         }),
       /**
        * Get a vocab link by ID
-       * @param {string} id - Id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} id - The resource ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (id, asOf) =>
         this._request('GET', `/api/v1/vocab-links/${id}`, {
@@ -76,7 +76,7 @@ class PlaidClient {
         }),
       /**
        * Delete a vocab link
-       * @param {string} id - Id identifier
+       * @param {string} id - The resource ID
        */
       delete: (id) =>
         this._request('DELETE', `/api/v1/vocab-links/${id}`),
@@ -85,9 +85,9 @@ class PlaidClient {
     this.vocabLayers = {
       /**
        * Get a vocab layer by ID
-       * @param {string} id - Id identifier
-       * @param {boolean} [includeItems] - Optional includeItems
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} id - The resource ID
+       * @param {boolean} [includeItems] - Include vocab items
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (id, includeItems, asOf) =>
         this._request('GET', `/api/v1/vocab-layers/${id}`, {
@@ -95,24 +95,24 @@ class PlaidClient {
         }),
       /**
        * Delete a vocab layer.
-       * @param {string} id - Id identifier
+       * @param {string} id - The resource ID
        */
       delete: (id) =>
         this._request('DELETE', `/api/v1/vocab-layers/${id}`),
       /**
        * Update a vocab layer's name.
-       * @param {string} id - Id identifier
-       * @param {string} name - Required. Name
+       * @param {string} id - The resource ID
+       * @param {string} name - The name
        */
       update: (id, name) =>
         this._request('PATCH', `/api/v1/vocab-layers/${id}`, {
           body: bodyOf({ name }),
         }),
       /**
-       * Set a configuration value for a layer in a editor namespace.
-       * @param {string} id - Id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * Set a configuration value for a layer in an editor namespace.
+       * @param {string} id - The resource ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
       setConfig: (id, namespace, configKey, configValue) =>
@@ -121,9 +121,9 @@ class PlaidClient {
         }),
       /**
        * Remove a configuration value for a layer.
-       * @param {string} id - Id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * @param {string} id - The resource ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        */
       deleteConfig: (id, namespace, configKey) =>
         this._request('DELETE', `/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`, {
@@ -131,7 +131,7 @@ class PlaidClient {
         }),
       /**
        * List all vocab layers accessible to user
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} [asOf] - Temporal query timestamp
        */
       list: (asOf) =>
         this._request('GET', '/api/v1/vocab-layers', {
@@ -139,7 +139,7 @@ class PlaidClient {
         }),
       /**
        * Create a new vocab layer. Note: this also registers the user as a maintainer.
-       * @param {string} name - Required. Name
+       * @param {string} name - The name
        */
       create: (name) =>
         this._request('POST', '/api/v1/vocab-layers', {
@@ -147,15 +147,15 @@ class PlaidClient {
         }),
       /**
        * Assign a user as a maintainer for this vocab layer.
-       * @param {string} id - Id identifier
-       * @param {string} userId - User-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} userId - The user ID
        */
       addMaintainer: (id, userId) =>
         this._request('POST', `/api/v1/vocab-layers/${id}/maintainers/${userId}`),
       /**
        * Remove a user's maintainer privileges for this vocab layer.
-       * @param {string} id - Id identifier
-       * @param {string} userId - User-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} userId - The user ID
        */
       removeMaintainer: (id, userId) =>
         this._request('DELETE', `/api/v1/vocab-layers/${id}/maintainers/${userId}`),
@@ -164,8 +164,8 @@ class PlaidClient {
     this.relations = {
       /**
        * Replace all metadata for a relation.
-       * @param {string} relationId - Relation-id identifier
-       * @param {any} body - Required. Body
+       * @param {string} relationId - The relation ID
+       * @param {any} body - The request body
        */
       setMetadata: (relationId, body) =>
         this._request('PUT', `/api/v1/relations/${relationId}/metadata`, {
@@ -173,7 +173,7 @@ class PlaidClient {
         }),
       /**
        * Remove all metadata from a relation.
-       * @param {string} relationId - Relation-id identifier
+       * @param {string} relationId - The relation ID
        */
       deleteMetadata: (relationId) =>
         this._request('DELETE', `/api/v1/relations/${relationId}/metadata`, {
@@ -181,8 +181,8 @@ class PlaidClient {
         }),
       /**
        * Update the target span of a relation.
-       * @param {string} relationId - Relation-id identifier
-       * @param {string} spanId - Required. Spanid
+       * @param {string} relationId - The relation ID
+       * @param {string} spanId - The span ID
        */
       setTarget: (relationId, spanId) =>
         this._request('PUT', `/api/v1/relations/${relationId}/target`, {
@@ -190,8 +190,8 @@ class PlaidClient {
         }),
       /**
        * Get a relation by ID.
-       * @param {string} relationId - Relation-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} relationId - The relation ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (relationId, asOf) =>
         this._request('GET', `/api/v1/relations/${relationId}`, {
@@ -199,14 +199,14 @@ class PlaidClient {
         }),
       /**
        * Delete a relation.
-       * @param {string} relationId - Relation-id identifier
+       * @param {string} relationId - The relation ID
        */
       delete: (relationId) =>
         this._request('DELETE', `/api/v1/relations/${relationId}`),
       /**
        * Update a relation's value.
-       * @param {string} relationId - Relation-id identifier
-       * @param {any} value - Required. Value
+       * @param {string} relationId - The relation ID
+       * @param {any} value - The value
        */
       update: (relationId, value) =>
         this._request('PATCH', `/api/v1/relations/${relationId}`, {
@@ -214,8 +214,8 @@ class PlaidClient {
         }),
       /**
        * Update the source span of a relation.
-       * @param {string} relationId - Relation-id identifier
-       * @param {string} spanId - Required. Spanid
+       * @param {string} relationId - The relation ID
+       * @param {string} spanId - The span ID
        */
       setSource: (relationId, spanId) =>
         this._request('PUT', `/api/v1/relations/${relationId}/source`, {
@@ -223,11 +223,11 @@ class PlaidClient {
         }),
       /**
        * Create a new relation.
-       * @param {string} layerId - Required. Layerid
-       * @param {string} sourceId - Required. Sourceid
-       * @param {string} targetId - Required. Targetid
-       * @param {any} value - Required. Value
-       * @param {any} [metadata] - Optional. Metadata
+       * @param {string} layerId - The relation layer ID
+       * @param {string} sourceId - The source span ID
+       * @param {string} targetId - The target span ID
+       * @param {any} value - The value
+       * @param {any} [metadata] - Metadata map
        */
       create: (layerId, sourceId, targetId, value, metadata) =>
         this._request('POST', '/api/v1/relations', {
@@ -235,13 +235,13 @@ class PlaidClient {
         }),
       /**
        * Create multiple relations in a single operation.
-       * @param {Array} body - Required. Body
+       * @param {Array} body - The request body
        */
       bulkCreate: (body) =>
         this._request('POST', '/api/v1/relations/bulk', { body }),
       /**
        * Delete multiple relations in a single operation. Provide an array of IDs.
-       * @param {Array} body - Required. Body
+       * @param {Array} body - The request body
        */
       bulkDelete: (body) =>
         this._request('DELETE', '/api/v1/relations/bulk', { body }),
@@ -249,10 +249,10 @@ class PlaidClient {
 
     this.spanLayers = {
       /**
-       * Set a configuration value for a layer in a editor namespace.
-       * @param {string} spanLayerId - Span-layer-id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * Set a configuration value for a layer in an editor namespace.
+       * @param {string} spanLayerId - The span layer ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
       setConfig: (spanLayerId, namespace, configKey, configValue) =>
@@ -261,9 +261,9 @@ class PlaidClient {
         }),
       /**
        * Remove a configuration value for a layer.
-       * @param {string} spanLayerId - Span-layer-id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * @param {string} spanLayerId - The span layer ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        */
       deleteConfig: (spanLayerId, namespace, configKey) =>
         this._request('DELETE', `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`, {
@@ -271,8 +271,8 @@ class PlaidClient {
         }),
       /**
        * Get a span layer by ID.
-       * @param {string} spanLayerId - Span-layer-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} spanLayerId - The span layer ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (spanLayerId, asOf) =>
         this._request('GET', `/api/v1/span-layers/${spanLayerId}`, {
@@ -280,14 +280,14 @@ class PlaidClient {
         }),
       /**
        * Delete a span layer.
-       * @param {string} spanLayerId - Span-layer-id identifier
+       * @param {string} spanLayerId - The span layer ID
        */
       delete: (spanLayerId) =>
         this._request('DELETE', `/api/v1/span-layers/${spanLayerId}`),
       /**
        * Update a span layer's name.
-       * @param {string} spanLayerId - Span-layer-id identifier
-       * @param {string} name - Required. Name
+       * @param {string} spanLayerId - The span layer ID
+       * @param {string} name - The name
        */
       update: (spanLayerId, name) =>
         this._request('PATCH', `/api/v1/span-layers/${spanLayerId}`, {
@@ -295,8 +295,8 @@ class PlaidClient {
         }),
       /**
        * Create a new span layer.
-       * @param {string} tokenLayerId - Required. Tokenlayerid
-       * @param {string} name - Required. Name
+       * @param {string} tokenLayerId - The token layer ID
+       * @param {string} name - The name
        */
       create: (tokenLayerId, name) =>
         this._request('POST', '/api/v1/span-layers', {
@@ -304,8 +304,8 @@ class PlaidClient {
         }),
       /**
        * Shift a span layer's order.
-       * @param {string} spanLayerId - Span-layer-id identifier
-       * @param {string} direction - Required. Direction
+       * @param {string} spanLayerId - The span layer ID
+       * @param {string} direction - The direction ("up" or "down")
        */
       shift: (spanLayerId, direction) =>
         this._request('POST', `/api/v1/span-layers/${spanLayerId}/shift`, {
@@ -316,8 +316,8 @@ class PlaidClient {
     this.spans = {
       /**
        * Replace tokens for a span.
-       * @param {string} spanId - Span-id identifier
-       * @param {Array} tokens - Required. Tokens
+       * @param {string} spanId - The span ID
+       * @param {Array} tokens - The tokens
        */
       setTokens: (spanId, tokens) =>
         this._request('PUT', `/api/v1/spans/${spanId}/tokens`, {
@@ -325,10 +325,10 @@ class PlaidClient {
         }),
       /**
        * Create a new span.
-       * @param {string} spanLayerId - Required. Spanlayerid
-       * @param {Array} tokens - Required. Tokens
-       * @param {any} value - Required. Value
-       * @param {any} [metadata] - Optional. Metadata
+       * @param {string} spanLayerId - The span layer ID
+       * @param {Array} tokens - The tokens
+       * @param {any} value - The value
+       * @param {any} [metadata] - Metadata map
        */
       create: (spanLayerId, tokens, value, metadata) =>
         this._request('POST', '/api/v1/spans', {
@@ -336,8 +336,8 @@ class PlaidClient {
         }),
       /**
        * Get a span by ID.
-       * @param {string} spanId - Span-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} spanId - The span ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (spanId, asOf) =>
         this._request('GET', `/api/v1/spans/${spanId}`, {
@@ -345,14 +345,14 @@ class PlaidClient {
         }),
       /**
        * Delete a span.
-       * @param {string} spanId - Span-id identifier
+       * @param {string} spanId - The span ID
        */
       delete: (spanId) =>
         this._request('DELETE', `/api/v1/spans/${spanId}`),
       /**
        * Update a span's value.
-       * @param {string} spanId - Span-id identifier
-       * @param {any} value - Required. Value
+       * @param {string} spanId - The span ID
+       * @param {any} value - The value
        */
       update: (spanId, value) =>
         this._request('PATCH', `/api/v1/spans/${spanId}`, {
@@ -360,20 +360,20 @@ class PlaidClient {
         }),
       /**
        * Create multiple spans in a single operation.
-       * @param {Array} body - Required. Body
+       * @param {Array} body - The request body
        */
       bulkCreate: (body) =>
         this._request('POST', '/api/v1/spans/bulk', { body }),
       /**
        * Delete multiple spans in a single operation. Provide an array of IDs.
-       * @param {Array} body - Required. Body
+       * @param {Array} body - The request body
        */
       bulkDelete: (body) =>
         this._request('DELETE', '/api/v1/spans/bulk', { body }),
       /**
        * Replace all metadata for a span.
-       * @param {string} spanId - Span-id identifier
-       * @param {any} body - Required. Body
+       * @param {string} spanId - The span ID
+       * @param {any} body - The request body
        */
       setMetadata: (spanId, body) =>
         this._request('PUT', `/api/v1/spans/${spanId}/metadata`, {
@@ -381,7 +381,7 @@ class PlaidClient {
         }),
       /**
        * Remove all metadata from a span.
-       * @param {string} spanId - Span-id identifier
+       * @param {string} spanId - The span ID
        */
       deleteMetadata: (spanId) =>
         this._request('DELETE', `/api/v1/spans/${spanId}/metadata`, {
@@ -392,7 +392,7 @@ class PlaidClient {
     this.batch = {
       /**
        * Execute multiple API operations atomically.
-       * @param {Array} body - Required. Body
+       * @param {Array} body - The request body
        */
       submit: (body) =>
         this._request('POST', '/api/v1/batch', {
@@ -403,8 +403,8 @@ class PlaidClient {
     this.texts = {
       /**
        * Replace all metadata for a text.
-       * @param {string} textId - Text-id identifier
-       * @param {any} body - Required. Body
+       * @param {string} textId - The text ID
+       * @param {any} body - The request body
        */
       setMetadata: (textId, body) =>
         this._request('PUT', `/api/v1/texts/${textId}/metadata`, {
@@ -412,7 +412,7 @@ class PlaidClient {
         }),
       /**
        * Remove all metadata from a text.
-       * @param {string} textId - Text-id identifier
+       * @param {string} textId - The text ID
        */
       deleteMetadata: (textId) =>
         this._request('DELETE', `/api/v1/texts/${textId}/metadata`, {
@@ -420,10 +420,10 @@ class PlaidClient {
         }),
       /**
        * Create a new text in a document's text layer.
-       * @param {string} textLayerId - Required. Textlayerid
-       * @param {string} documentId - Required. Documentid
-       * @param {string} body - Required. Body
-       * @param {any} [metadata] - Optional. Metadata
+       * @param {string} textLayerId - The text layer ID
+       * @param {string} documentId - The document ID
+       * @param {string} body - The request body
+       * @param {any} [metadata] - Metadata map
        */
       create: (textLayerId, documentId, body, metadata) =>
         this._request('POST', '/api/v1/texts', {
@@ -431,8 +431,8 @@ class PlaidClient {
         }),
       /**
        * Get a text.
-       * @param {string} textId - Text-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} textId - The text ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (textId, asOf) =>
         this._request('GET', `/api/v1/texts/${textId}`, {
@@ -440,14 +440,14 @@ class PlaidClient {
         }),
       /**
        * Delete a text and all dependent data.
-       * @param {string} textId - Text-id identifier
+       * @param {string} textId - The text ID
        */
       delete: (textId) =>
         this._request('DELETE', `/api/v1/texts/${textId}`),
       /**
        * Update a text's body.
-       * @param {string} textId - Text-id identifier
-       * @param {any} body - Required. Body
+       * @param {string} textId - The text ID
+       * @param {any} body - The request body
        */
       update: (textId, body) =>
         this._request('PATCH', `/api/v1/texts/${textId}`, {
@@ -458,7 +458,7 @@ class PlaidClient {
     this.users = {
       /**
        * List all users
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} [asOf] - Temporal query timestamp
        */
       list: (asOf) =>
         this._request('GET', '/api/v1/users', {
@@ -466,9 +466,9 @@ class PlaidClient {
         }),
       /**
        * Create a new user
-       * @param {string} username - Required. Username
-       * @param {string} password - Required. Password
-       * @param {boolean} isAdmin - Required. Isadmin
+       * @param {string} username - The username
+       * @param {string} password - The password
+       * @param {boolean} isAdmin - Whether the user is an admin
        */
       create: (username, password, isAdmin) =>
         this._request('POST', '/api/v1/users', {
@@ -476,10 +476,10 @@ class PlaidClient {
         }),
       /**
        * Get audit log for a user's actions
-       * @param {string} userId - User-id identifier
-       * @param {string} [startTime] - Optional startTime
-       * @param {string} [endTime] - Optional endTime
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} userId - The user ID
+       * @param {string} [startTime] - Start of time range
+       * @param {string} [endTime] - End of time range
+       * @param {string} [asOf] - Temporal query timestamp
        */
       audit: (userId, startTime, endTime, asOf) =>
         this._request('GET', `/api/v1/users/${userId}/audit`, {
@@ -487,8 +487,8 @@ class PlaidClient {
         }),
       /**
        * Get a user by ID
-       * @param {string} id - Id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} id - The resource ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (id, asOf) =>
         this._request('GET', `/api/v1/users/${id}`, {
@@ -496,16 +496,16 @@ class PlaidClient {
         }),
       /**
        * Delete a user
-       * @param {string} id - Id identifier
+       * @param {string} id - The resource ID
        */
       delete: (id) =>
         this._request('DELETE', `/api/v1/users/${id}`),
       /**
        * Modify a user.
-       * @param {string} id - Id identifier
-       * @param {string} [password] - Optional. Password
-       * @param {string} [username] - Optional. Username
-       * @param {boolean} [isAdmin] - Optional. Isadmin
+       * @param {string} id - The resource ID
+       * @param {string} [password] - New password
+       * @param {string} [username] - New username
+       * @param {boolean} [isAdmin] - New admin status
        */
       update: (id, password, username, isAdmin) =>
         this._request('PATCH', `/api/v1/users/${id}`, {
@@ -516,8 +516,8 @@ class PlaidClient {
     this.tokenLayers = {
       /**
        * Shift a token layer's order.
-       * @param {string} tokenLayerId - Token-layer-id identifier
-       * @param {string} direction - Required. Direction
+       * @param {string} tokenLayerId - The token layer ID
+       * @param {string} direction - The direction ("up" or "down")
        */
       shift: (tokenLayerId, direction) =>
         this._request('POST', `/api/v1/token-layers/${tokenLayerId}/shift`, {
@@ -525,18 +525,18 @@ class PlaidClient {
         }),
       /**
        * Create a new token layer.
-       * @param {string} textLayerId - Required. Textlayerid
-       * @param {string} name - Required. Name
+       * @param {string} textLayerId - The text layer ID
+       * @param {string} name - The name
        */
       create: (textLayerId, name) =>
         this._request('POST', '/api/v1/token-layers', {
           body: bodyOf({ 'text-layer-id': textLayerId, name }),
         }),
       /**
-       * Set a configuration value for a layer in a editor namespace.
-       * @param {string} tokenLayerId - Token-layer-id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * Set a configuration value for a layer in an editor namespace.
+       * @param {string} tokenLayerId - The token layer ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
       setConfig: (tokenLayerId, namespace, configKey, configValue) =>
@@ -545,9 +545,9 @@ class PlaidClient {
         }),
       /**
        * Remove a configuration value for a layer.
-       * @param {string} tokenLayerId - Token-layer-id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * @param {string} tokenLayerId - The token layer ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        */
       deleteConfig: (tokenLayerId, namespace, configKey) =>
         this._request('DELETE', `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`, {
@@ -555,8 +555,8 @@ class PlaidClient {
         }),
       /**
        * Get a token layer by ID.
-       * @param {string} tokenLayerId - Token-layer-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} tokenLayerId - The token layer ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (tokenLayerId, asOf) =>
         this._request('GET', `/api/v1/token-layers/${tokenLayerId}`, {
@@ -564,14 +564,14 @@ class PlaidClient {
         }),
       /**
        * Delete a token layer.
-       * @param {string} tokenLayerId - Token-layer-id identifier
+       * @param {string} tokenLayerId - The token layer ID
        */
       delete: (tokenLayerId) =>
         this._request('DELETE', `/api/v1/token-layers/${tokenLayerId}`),
       /**
        * Update a token layer's name.
-       * @param {string} tokenLayerId - Token-layer-id identifier
-       * @param {string} name - Required. Name
+       * @param {string} tokenLayerId - The token layer ID
+       * @param {string} name - The name
        */
       update: (tokenLayerId, name) =>
         this._request('PATCH', `/api/v1/token-layers/${tokenLayerId}`, {
@@ -582,8 +582,8 @@ class PlaidClient {
     this.documents = {
       /**
        * Get information about a document lock
-       * @param {string} documentId - Document-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} documentId - The document ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       checkLock: (documentId, asOf) =>
         this._request('GET', `/api/v1/documents/${documentId}/lock`, {
@@ -591,20 +591,20 @@ class PlaidClient {
         }),
       /**
        * Acquire or refresh a document lock
-       * @param {string} documentId - Document-id identifier
+       * @param {string} documentId - The document ID
        */
       acquireLock: (documentId) =>
         this._request('POST', `/api/v1/documents/${documentId}/lock`),
       /**
        * Release a document lock
-       * @param {string} documentId - Document-id identifier
+       * @param {string} documentId - The document ID
        */
       releaseLock: (documentId) =>
         this._request('DELETE', `/api/v1/documents/${documentId}/lock`),
       /**
        * Get media file for a document
-       * @param {string} documentId - Document-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} documentId - The document ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       getMedia: (documentId, asOf) =>
         this._request('GET', `/api/v1/documents/${documentId}/media`, {
@@ -614,8 +614,8 @@ class PlaidClient {
         }),
       /**
        * Upload a media file for a document. Uses Apache Tika for content validation.
-       * @param {string} documentId - Document-id identifier
-       * @param {File} file - Required. File
+       * @param {string} documentId - The document ID
+       * @param {File} file - The file to upload
        */
       uploadMedia: (documentId, file) => {
         const fd = new FormData();
@@ -626,7 +626,7 @@ class PlaidClient {
       },
       /**
        * Delete media file for a document
-       * @param {string} documentId - Document-id identifier
+       * @param {string} documentId - The document ID
        */
       deleteMedia: (documentId) =>
         this._request('DELETE', `/api/v1/documents/${documentId}/media`, {
@@ -634,8 +634,8 @@ class PlaidClient {
         }),
       /**
        * Replace all metadata for a document.
-       * @param {string} documentId - Document-id identifier
-       * @param {any} body - Required. Body
+       * @param {string} documentId - The document ID
+       * @param {any} body - The request body
        */
       setMetadata: (documentId, body) =>
         this._request('PUT', `/api/v1/documents/${documentId}/metadata`, {
@@ -643,7 +643,7 @@ class PlaidClient {
         }),
       /**
        * Remove all metadata from a document.
-       * @param {string} documentId - Document-id identifier
+       * @param {string} documentId - The document ID
        */
       deleteMetadata: (documentId) =>
         this._request('DELETE', `/api/v1/documents/${documentId}/metadata`, {
@@ -651,20 +651,20 @@ class PlaidClient {
         }),
       /**
        * Get audit log for a document
-       * @param {string} documentId - Document-id identifier
-       * @param {string} [startTime] - Optional startTime
-       * @param {string} [endTime] - Optional endTime
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} documentId - The document ID
+       * @param {string} [startTime] - Start of time range
+       * @param {string} [endTime] - End of time range
+       * @param {string} [asOf] - Temporal query timestamp
        */
       audit: (documentId, startTime, endTime, asOf) =>
         this._request('GET', `/api/v1/documents/${documentId}/audit`, {
           queryParams: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
         }),
       /**
-       * Get a document. Set includeBody to true in order to include all data contained in the document.
-       * @param {string} documentId - Document-id identifier
-       * @param {boolean} [includeBody] - Optional includeBody
-       * @param {string} [asOf] - Optional asOf
+       * Get a document. Set `includeBody` to true to include all data.
+       * @param {string} documentId - The document ID
+       * @param {boolean} [includeBody] - Include document body data
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (documentId, includeBody, asOf) =>
         this._request('GET', `/api/v1/documents/${documentId}`, {
@@ -672,14 +672,14 @@ class PlaidClient {
         }),
       /**
        * Delete a document and all data contained.
-       * @param {string} documentId - Document-id identifier
+       * @param {string} documentId - The document ID
        */
       delete: (documentId) =>
         this._request('DELETE', `/api/v1/documents/${documentId}`),
       /**
        * Update a document's name.
-       * @param {string} documentId - Document-id identifier
-       * @param {string} name - Required. Name
+       * @param {string} documentId - The document ID
+       * @param {string} name - The name
        */
       update: (documentId, name) =>
         this._request('PATCH', `/api/v1/documents/${documentId}`, {
@@ -687,9 +687,9 @@ class PlaidClient {
         }),
       /**
        * Create a new document in a project.
-       * @param {string} projectId - Required. Projectid
-       * @param {string} name - Required. Name
-       * @param {any} [metadata] - Optional. Metadata
+       * @param {string} projectId - The project ID
+       * @param {string} name - The name
+       * @param {any} [metadata] - Metadata map
        */
       create: (projectId, name, metadata) =>
         this._request('POST', '/api/v1/documents', {
@@ -700,37 +700,37 @@ class PlaidClient {
     this.projects = {
       /**
        * Set a user's access level to read and write for this project.
-       * @param {string} id - Id identifier
-       * @param {string} userId - User-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} userId - The user ID
        */
       addWriter: (id, userId) =>
         this._request('POST', `/api/v1/projects/${id}/writers/${userId}`),
       /**
        * Remove a user's writer privileges for this project.
-       * @param {string} id - Id identifier
-       * @param {string} userId - User-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} userId - The user ID
        */
       removeWriter: (id, userId) =>
         this._request('DELETE', `/api/v1/projects/${id}/writers/${userId}`),
       /**
        * Set a user's access level to read-only for this project.
-       * @param {string} id - Id identifier
-       * @param {string} userId - User-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} userId - The user ID
        */
       addReader: (id, userId) =>
         this._request('POST', `/api/v1/projects/${id}/readers/${userId}`),
       /**
        * Remove a user's reader privileges for this project.
-       * @param {string} id - Id identifier
-       * @param {string} userId - User-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} userId - The user ID
        */
       removeReader: (id, userId) =>
         this._request('DELETE', `/api/v1/projects/${id}/readers/${userId}`),
       /**
-       * Set a configuration value for a project in a editor namespace.
-       * @param {string} id - Id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * Set a configuration value for a project in an editor namespace.
+       * @param {string} id - The resource ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
       setConfig: (id, namespace, configKey, configValue) =>
@@ -739,9 +739,9 @@ class PlaidClient {
         }),
       /**
        * Remove a configuration value for a project.
-       * @param {string} id - Id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * @param {string} id - The resource ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        */
       deleteConfig: (id, namespace, configKey) =>
         this._request('DELETE', `/api/v1/projects/${id}/config/${namespace}/${configKey}`, {
@@ -749,24 +749,24 @@ class PlaidClient {
         }),
       /**
        * Assign a user as a maintainer for this project.
-       * @param {string} id - Id identifier
-       * @param {string} userId - User-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} userId - The user ID
        */
       addMaintainer: (id, userId) =>
         this._request('POST', `/api/v1/projects/${id}/maintainers/${userId}`),
       /**
        * Remove a user's maintainer privileges for this project.
-       * @param {string} id - Id identifier
-       * @param {string} userId - User-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} userId - The user ID
        */
       removeMaintainer: (id, userId) =>
         this._request('DELETE', `/api/v1/projects/${id}/maintainers/${userId}`),
       /**
        * Get audit log for a project
-       * @param {string} projectId - Project-id identifier
-       * @param {string} [startTime] - Optional startTime
-       * @param {string} [endTime] - Optional endTime
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} projectId - The project ID
+       * @param {string} [startTime] - Start of time range
+       * @param {string} [endTime] - End of time range
+       * @param {string} [asOf] - Temporal query timestamp
        */
       audit: (projectId, startTime, endTime, asOf) =>
         this._request('GET', `/api/v1/projects/${projectId}/audit`, {
@@ -774,23 +774,23 @@ class PlaidClient {
         }),
       /**
        * Link a vocabulary to a project.
-       * @param {string} id - Id identifier
-       * @param {string} vocabId - Vocab-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} vocabId - The vocab layer ID
        */
       linkVocab: (id, vocabId) =>
         this._request('POST', `/api/v1/projects/${id}/vocabs/${vocabId}`),
       /**
        * Unlink a vocabulary from a project.
-       * @param {string} id - Id identifier
-       * @param {string} vocabId - Vocab-id identifier
+       * @param {string} id - The resource ID
+       * @param {string} vocabId - The vocab layer ID
        */
       unlinkVocab: (id, vocabId) =>
         this._request('DELETE', `/api/v1/projects/${id}/vocabs/${vocabId}`),
       /**
        * Get a project by ID.
-       * @param {string} id - Id identifier
-       * @param {boolean} [includeDocuments] - Optional includeDocuments
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} id - The resource ID
+       * @param {boolean} [includeDocuments] - Include document IDs and names
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (id, includeDocuments, asOf) =>
         this._request('GET', `/api/v1/projects/${id}`, {
@@ -798,14 +798,14 @@ class PlaidClient {
         }),
       /**
        * Delete a project.
-       * @param {string} id - Id identifier
+       * @param {string} id - The resource ID
        */
       delete: (id) =>
         this._request('DELETE', `/api/v1/projects/${id}`),
       /**
        * Update a project's name.
-       * @param {string} id - Id identifier
-       * @param {string} name - Required. Name
+       * @param {string} id - The resource ID
+       * @param {string} name - The name
        */
       update: (id, name) =>
         this._request('PATCH', `/api/v1/projects/${id}`, {
@@ -813,7 +813,7 @@ class PlaidClient {
         }),
       /**
        * List all projects accessible to user
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} [asOf] - Temporal query timestamp
        */
       list: (asOf) =>
         this._request('GET', '/api/v1/projects', {
@@ -821,7 +821,7 @@ class PlaidClient {
         }),
       /**
        * Create a new project. Note: this also registers the user as a maintainer.
-       * @param {string} name - Required. Name
+       * @param {string} name - The name
        */
       create: (name) =>
         this._request('POST', '/api/v1/projects', {
@@ -831,10 +831,10 @@ class PlaidClient {
 
     this.textLayers = {
       /**
-       * Set a configuration value for a layer in a editor namespace.
-       * @param {string} textLayerId - Text-layer-id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * Set a configuration value for a layer in an editor namespace.
+       * @param {string} textLayerId - The text layer ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
       setConfig: (textLayerId, namespace, configKey, configValue) =>
@@ -843,9 +843,9 @@ class PlaidClient {
         }),
       /**
        * Remove a configuration value for a layer.
-       * @param {string} textLayerId - Text-layer-id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * @param {string} textLayerId - The text layer ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        */
       deleteConfig: (textLayerId, namespace, configKey) =>
         this._request('DELETE', `/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`, {
@@ -853,8 +853,8 @@ class PlaidClient {
         }),
       /**
        * Get a text layer by ID.
-       * @param {string} textLayerId - Text-layer-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} textLayerId - The text layer ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (textLayerId, asOf) =>
         this._request('GET', `/api/v1/text-layers/${textLayerId}`, {
@@ -862,14 +862,14 @@ class PlaidClient {
         }),
       /**
        * Delete a text layer.
-       * @param {string} textLayerId - Text-layer-id identifier
+       * @param {string} textLayerId - The text layer ID
        */
       delete: (textLayerId) =>
         this._request('DELETE', `/api/v1/text-layers/${textLayerId}`),
       /**
        * Update a text layer's name.
-       * @param {string} textLayerId - Text-layer-id identifier
-       * @param {string} name - Required. Name
+       * @param {string} textLayerId - The text layer ID
+       * @param {string} name - The name
        */
       update: (textLayerId, name) =>
         this._request('PATCH', `/api/v1/text-layers/${textLayerId}`, {
@@ -877,8 +877,8 @@ class PlaidClient {
         }),
       /**
        * Shift a text layer's order within the project.
-       * @param {string} textLayerId - Text-layer-id identifier
-       * @param {string} direction - Required. Direction
+       * @param {string} textLayerId - The text layer ID
+       * @param {string} direction - The direction ("up" or "down")
        */
       shift: (textLayerId, direction) =>
         this._request('POST', `/api/v1/text-layers/${textLayerId}/shift`, {
@@ -886,8 +886,8 @@ class PlaidClient {
         }),
       /**
        * Create a new text layer for a project.
-       * @param {string} projectId - Required. Projectid
-       * @param {string} name - Required. Name
+       * @param {string} projectId - The project ID
+       * @param {string} name - The name
        */
       create: (projectId, name) =>
         this._request('POST', '/api/v1/text-layers', {
@@ -898,8 +898,8 @@ class PlaidClient {
     this.login = {
       /**
        * Authenticate with a userId and password and get a JWT token.
-       * @param {string} userId - Required. Userid
-       * @param {string} password - Required. Password
+       * @param {string} userId - The user ID
+       * @param {string} password - The password
        */
       create: (userId, password) =>
         this._request('POST', '/api/v1/login', {
@@ -911,8 +911,8 @@ class PlaidClient {
     this.vocabItems = {
       /**
        * Replace all metadata for a vocab item.
-       * @param {string} id - Id identifier
-       * @param {any} body - Required. Body
+       * @param {string} id - The resource ID
+       * @param {any} body - The request body
        */
       setMetadata: (id, body) =>
         this._request('PUT', `/api/v1/vocab-items/${id}/metadata`, {
@@ -920,7 +920,7 @@ class PlaidClient {
         }),
       /**
        * Remove all metadata from a vocab item.
-       * @param {string} id - Id identifier
+       * @param {string} id - The resource ID
        */
       deleteMetadata: (id) =>
         this._request('DELETE', `/api/v1/vocab-items/${id}/metadata`, {
@@ -928,9 +928,9 @@ class PlaidClient {
         }),
       /**
        * Create a new vocab item
-       * @param {string} vocabLayerId - Required. Vocablayerid
-       * @param {string} form - Required. Form
-       * @param {any} [metadata] - Optional. Metadata
+       * @param {string} vocabLayerId - The vocab layer ID
+       * @param {string} form - The vocab item form
+       * @param {any} [metadata] - Metadata map
        */
       create: (vocabLayerId, form, metadata) =>
         this._request('POST', '/api/v1/vocab-items', {
@@ -938,8 +938,8 @@ class PlaidClient {
         }),
       /**
        * Get a vocab item by ID
-       * @param {string} id - Id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} id - The resource ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (id, asOf) =>
         this._request('GET', `/api/v1/vocab-items/${id}`, {
@@ -947,14 +947,14 @@ class PlaidClient {
         }),
       /**
        * Delete a vocab item
-       * @param {string} id - Id identifier
+       * @param {string} id - The resource ID
        */
       delete: (id) =>
         this._request('DELETE', `/api/v1/vocab-items/${id}`),
       /**
        * Update a vocab item's form
-       * @param {string} id - Id identifier
-       * @param {string} form - Required. Form
+       * @param {string} id - The resource ID
+       * @param {string} form - The vocab item form
        */
       update: (id, form) =>
         this._request('PATCH', `/api/v1/vocab-items/${id}`, {
@@ -965,8 +965,8 @@ class PlaidClient {
     this.relationLayers = {
       /**
        * Shift a relation layer's order.
-       * @param {string} relationLayerId - Relation-layer-id identifier
-       * @param {string} direction - Required. Direction
+       * @param {string} relationLayerId - The relation layer ID
+       * @param {string} direction - The direction ("up" or "down")
        */
       shift: (relationLayerId, direction) =>
         this._request('POST', `/api/v1/relation-layers/${relationLayerId}/shift`, {
@@ -974,18 +974,18 @@ class PlaidClient {
         }),
       /**
        * Create a new relation layer.
-       * @param {string} spanLayerId - Required. Spanlayerid
-       * @param {string} name - Required. Name
+       * @param {string} spanLayerId - The span layer ID
+       * @param {string} name - The name
        */
       create: (spanLayerId, name) =>
         this._request('POST', '/api/v1/relation-layers', {
           body: bodyOf({ 'span-layer-id': spanLayerId, name }),
         }),
       /**
-       * Set a configuration value for a layer in a editor namespace.
-       * @param {string} relationLayerId - Relation-layer-id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * Set a configuration value for a layer in an editor namespace.
+       * @param {string} relationLayerId - The relation layer ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
       setConfig: (relationLayerId, namespace, configKey, configValue) =>
@@ -994,9 +994,9 @@ class PlaidClient {
         }),
       /**
        * Remove a configuration value for a layer.
-       * @param {string} relationLayerId - Relation-layer-id identifier
-       * @param {string} namespace - Namespace identifier
-       * @param {string} configKey - Config-key identifier
+       * @param {string} relationLayerId - The relation layer ID
+       * @param {string} namespace - The config namespace
+       * @param {string} configKey - The config key
        */
       deleteConfig: (relationLayerId, namespace, configKey) =>
         this._request('DELETE', `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`, {
@@ -1004,8 +1004,8 @@ class PlaidClient {
         }),
       /**
        * Get a relation layer by ID.
-       * @param {string} relationLayerId - Relation-layer-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} relationLayerId - The relation layer ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (relationLayerId, asOf) =>
         this._request('GET', `/api/v1/relation-layers/${relationLayerId}`, {
@@ -1013,14 +1013,14 @@ class PlaidClient {
         }),
       /**
        * Delete a relation layer.
-       * @param {string} relationLayerId - Relation-layer-id identifier
+       * @param {string} relationLayerId - The relation layer ID
        */
       delete: (relationLayerId) =>
         this._request('DELETE', `/api/v1/relation-layers/${relationLayerId}`),
       /**
        * Update a relation layer's name.
-       * @param {string} relationLayerId - Relation-layer-id identifier
-       * @param {string} name - Required. Name
+       * @param {string} relationLayerId - The relation layer ID
+       * @param {string} name - The name
        */
       update: (relationLayerId, name) =>
         this._request('PATCH', `/api/v1/relation-layers/${relationLayerId}`, {
@@ -1031,12 +1031,12 @@ class PlaidClient {
     this.tokens = {
       /**
        * Create a new token in a token layer.
-       * @param {string} tokenLayerId - Required. Tokenlayerid
-       * @param {string} text - Required. Text
-       * @param {number} begin - Required. Begin
-       * @param {number} end - Required. End
-       * @param {number} [precedence] - Optional. Precedence
-       * @param {any} [metadata] - Optional. Metadata
+       * @param {string} tokenLayerId - The token layer ID
+       * @param {string} text - The text ID
+       * @param {number} begin - Start offset (inclusive)
+       * @param {number} end - End offset (exclusive)
+       * @param {number} [precedence] - Ordering precedence
+       * @param {any} [metadata] - Metadata map
        */
       create: (tokenLayerId, text, begin, end, precedence, metadata) =>
         this._request('POST', '/api/v1/tokens', {
@@ -1044,25 +1044,25 @@ class PlaidClient {
         }),
       /**
        * Get a token.
-       * @param {string} tokenId - Token-id identifier
-       * @param {string} [asOf] - Optional asOf
+       * @param {string} tokenId - The token ID
+       * @param {string} [asOf] - Temporal query timestamp
        */
       get: (tokenId, asOf) =>
         this._request('GET', `/api/v1/tokens/${tokenId}`, {
           queryParams: { 'as-of': asOf },
         }),
       /**
-       * Delete a token.
-       * @param {string} tokenId - Token-id identifier
+       * Delete a token and remove it from any spans.
+       * @param {string} tokenId - The token ID
        */
       delete: (tokenId) =>
         this._request('DELETE', `/api/v1/tokens/${tokenId}`),
       /**
        * Update a token.
-       * @param {string} tokenId - Token-id identifier
-       * @param {number} [begin] - Optional. Begin
-       * @param {number} [end] - Optional. End
-       * @param {number} [precedence] - Optional. Precedence
+       * @param {string} tokenId - The token ID
+       * @param {number} [begin] - New start offset
+       * @param {number} [end] - New end offset
+       * @param {number} [precedence] - Ordering precedence
        */
       update: (tokenId, begin, end, precedence) =>
         this._request('PATCH', `/api/v1/tokens/${tokenId}`, {
@@ -1070,20 +1070,20 @@ class PlaidClient {
         }),
       /**
        * Create multiple tokens in a single operation.
-       * @param {Array} body - Required. Body
+       * @param {Array} body - The request body
        */
       bulkCreate: (body) =>
         this._request('POST', '/api/v1/tokens/bulk', { body }),
       /**
        * Delete multiple tokens in a single operation. Provide an array of IDs.
-       * @param {Array} body - Required. Body
+       * @param {Array} body - The request body
        */
       bulkDelete: (body) =>
         this._request('DELETE', '/api/v1/tokens/bulk', { body }),
       /**
        * Replace all metadata for a token.
-       * @param {string} tokenId - Token-id identifier
-       * @param {any} body - Required. Body
+       * @param {string} tokenId - The token ID
+       * @param {any} body - The request body
        */
       setMetadata: (tokenId, body) =>
         this._request('PUT', `/api/v1/tokens/${tokenId}/metadata`, {
@@ -1091,7 +1091,7 @@ class PlaidClient {
         }),
       /**
        * Remove all metadata from a token.
-       * @param {string} tokenId - Token-id identifier
+       * @param {string} tokenId - The token ID
        */
       deleteMetadata: (tokenId) =>
         this._request('DELETE', `/api/v1/tokens/${tokenId}/metadata`, {

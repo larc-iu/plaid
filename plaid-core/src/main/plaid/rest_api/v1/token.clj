@@ -41,7 +41,7 @@
 (def token-routes
   ["/tokens"
 
-   ["" {:post {:summary (str "Create a new token in a token layer. Tokens define text substrings using"
+   ["" {:post {:summary (str "Create a new token in a token layer. Tokens define text substrings using "
                              "<body>begin</body> and <body>end</body> offsets in the text. Tokens may be zero-width, "
                              "and they may overlap with each other. For tokens which share the same <body>begin</body>, "
                              "<body>precedence</body> may be used to indicate a preferred linear ordering, with "
@@ -76,7 +76,7 @@
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
-             :post {:summary (str "Create multiple tokens in a single operation. Provide an array of objects whose keys"
+             :post {:summary (str "Create multiple tokens in a single operation. Provide an array of objects whose keys "
                                   "are:\n"
                                   "<body>token-layer-id</body>, the token's layer\n"
                                   "<body>text</body>, the ID of the token's text\n"

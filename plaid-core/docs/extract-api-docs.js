@@ -215,11 +215,17 @@ function parsePythonDoc(content) {
       }
       
       if (docstringStart !== -1) {
-        // Find end of docstring
-        for (let j = docstringStart; j < lines.length; j++) {
-          if (j > docstringStart && lines[j].trim().endsWith('"""')) {
-            docstringEnd = j;
-            break;
+        // Check for single-line docstring: """Description."""
+        const trimmedStart = lines[docstringStart].trim();
+        if (trimmedStart.startsWith('"""') && trimmedStart.endsWith('"""') && trimmedStart.length > 6) {
+          docstringEnd = docstringStart;
+        } else {
+          // Find end of multi-line docstring
+          for (let j = docstringStart; j < lines.length; j++) {
+            if (j > docstringStart && lines[j].trim().endsWith('"""')) {
+              docstringEnd = j;
+              break;
+            }
           }
         }
         
