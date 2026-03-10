@@ -494,7 +494,11 @@ function generateHTML(title, bundles) {
 function main() {
   const jsClientPath = path.join(__dirname, '..', '..', 'plaid-client-js', 'src', 'index.js');
   const pyClientPath = path.join(__dirname, '..', '..', 'plaid-client-py', 'src', 'plaid_client', 'client.py');
-  const outputDir = path.join(__dirname, '..', '_site');
+  // In CI the site root is at the repo root; locally it's under plaid-core/
+  const repoRoot = path.join(__dirname, '..', '..');
+  const outputDir = fs.existsSync(path.join(repoRoot, '_site'))
+    ? path.join(repoRoot, '_site')
+    : path.join(__dirname, '..', '_site');
 
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {

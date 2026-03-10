@@ -3,7 +3,7 @@ name: Build and Deploy Docs
 on:
   push:
     branches: [ master ]
-    paths: [ 'plaid-core/docs/**', 'plaid-core/target/clients/**' ]
+    paths: [ 'plaid-core/docs/**', 'plaid-client-js/src/**', 'plaid-client-py/src/**' ]
   workflow_dispatch:
 
 permissions:
