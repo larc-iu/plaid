@@ -124,7 +124,6 @@
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
-    <script src="client.js"></script>
     <script>
         // Global client variable
         let client;
@@ -178,7 +177,7 @@
             // Load TypeScript definitions from client.d.ts
             updateClientTypings = async function() {
                 try {
-                    const response = await fetch('./client.d.ts');
+                    const response = await fetch('/plaid-client/index.d.ts');
                     const tsDefinitions = await response.text();
                     
                     // Add the TypeScript definitions to Monaco
@@ -255,18 +254,22 @@
         }
         
         // Initialize client
-        function updateClient() {
+        async function updateClient() {
             const tokenInput = document.getElementById('token');
             const token = tokenInput.value;
             const baseUrl = ''; // Empty since client will add /api/v1
-            
+
             if (!token) {
                 showOutput('Please enter a token', 'error');
                 return;
             }
-            
+
             try {
-                client = new PlaidClient(baseUrl, token);
+                if (!window.PlaidClient) {
+                    const mod = await import('/plaid-client/src/index.js');
+                    window.PlaidClient = mod.default || mod.PlaidClient;
+                }
+                client = new window.PlaidClient(baseUrl, token);
                 if (updateClientTypings) {
                     updateClientTypings();
                 }

@@ -11,7 +11,7 @@ import requests
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Callable
-from .client import PlaidClient
+from plaid_client import PlaidClient
 
 
 class BaseService(ABC):

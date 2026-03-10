@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import PlaidClient from '../PlaidClient';
+import { PlaidClient } from 'plaid-client';
 
 function LoginView({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -14,19 +14,8 @@ function LoginView({ onLogin }) {
     setError('');
 
     try {
-      // Create client without token first
-      const tempClient = new PlaidClient(baseUrl, '');
-      
-      // Attempt login
-      const loginResponse = await tempClient.login.create(username, password);
-      
-      if (loginResponse && loginResponse.token) {
-        // Create new client with the token
-        const authenticatedClient = new PlaidClient(baseUrl, loginResponse.token);
-        onLogin(authenticatedClient);
-      } else {
-        setError('Login failed: No token received');
-      }
+      const client = await PlaidClient.login(baseUrl, username, password);
+      onLogin(client);
     } catch (err) {
       setError(`Login failed: ${err.message}`);
     } finally {

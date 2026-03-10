@@ -1,6 +1,4 @@
-// Import the PlaidClient - it sets window.PlaidClient
-import './plaidClient.js';
-const PlaidClient = window.PlaidClient;
+import PlaidClient from 'plaid-client';
 
 // Get base URL from environment or use default
 const BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
