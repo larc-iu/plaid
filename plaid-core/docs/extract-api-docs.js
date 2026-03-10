@@ -119,7 +119,8 @@ function parseJSDoc(content) {
     const [, bundleName, bundleContent] = bundleMatch;
     
     // Look for method assignments within this bundle
-    const methodRegex = /\/\*\*\s*\n([\s\S]*?)\*\/\s*\n?\s*(\w+):\s*this\._/g;
+    // Matches both old style (methodName: this._method.bind(this)) and new style (methodName: (args) => ...)
+    const methodRegex = /\/\*\*\s*\n([\s\S]*?)\*\/\s*\n?\s*(\w+):\s*(?:this\._|\([^)]*\)\s*=>)/g;
     let methodMatch;
     
     while ((methodMatch = methodRegex.exec(bundleContent)) !== null) {
@@ -163,10 +164,11 @@ function parsePythonDoc(content) {
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const defMatch = line.match(/^\s*(?:async )?def (\w+)\([^)]*\)(?:\s*->\s*[^:]+)?:/);
-    
+    const defMatch = line.match(/^\s*(?:async )?def (\w+)\(([^)]*)\)(?:\s*->\s*[^:]+)?:/);
+
     if (defMatch) {
       const methodName = defMatch[1];
+      const rawParams = defMatch[2];
       
       // Skip private methods, but allow main PlaidClient.__init__
       if (methodName.startsWith('_')) {
@@ -179,7 +181,7 @@ function parsePythonDoc(content) {
               isMainClient = true;
               break;
             }
-            if (lines[k].match(/^class \w+Resource:/)) {
+            if (lines[k].match(/^class \w+Resource/)) {
               break; // Found a resource class first, not main client
             }
           }
@@ -263,7 +265,7 @@ function parsePythonDoc(content) {
                 isMainClient = true;
                 break;
               }
-              if (lines[k].match(/^class \w+Resource:/)) {
+              if (lines[k].match(/^class \w+Resource/)) {
                 break;
               }
             }
@@ -273,7 +275,7 @@ function parsePythonDoc(content) {
           } else {
             // Look backwards to find the class this method belongs to
             for (let k = i - 1; k >= 0; k--) {
-              const classMatch = lines[k].match(/^class (\w+):/);
+              const classMatch = lines[k].match(/^class (\w+?)(?:\(|:)/);
               if (classMatch) {
                 const className = classMatch[1];
                 if (className.endsWith('Resource')) {
@@ -288,14 +290,64 @@ function parsePythonDoc(content) {
             }
           }
           
-          methods.push({ 
-            name: methodName, 
-            description, 
+          methods.push({
+            name: methodName,
+            description,
             params,
             bundle: bundleName,
             decorators: decorators
           });
         }
+      } else {
+        // No docstring — extract params from function signature
+        const params = [];
+        if (rawParams) {
+          for (const part of rawParams.split(',')) {
+            const trimmed = part.trim();
+            if (!trimmed || trimmed === 'self' || trimmed === 'cls') continue;
+            // Strip default values, *, ** prefixes, and type annotations
+            if (trimmed === '*') continue;
+            const cleaned = trimmed.replace(/^\*{1,2}/, '').replace(/\s*[:=].*$/, '');
+            if (cleaned) {
+              params.push({
+                name: cleaned,
+                type: 'Any',
+                optional: trimmed.includes('=') || trimmed.includes('| None'),
+                description: ''
+              });
+            }
+          }
+        }
+
+        let bundleName = 'misc';
+        if (methodName === '__init__') {
+          let isMainClient = false;
+          for (let k = i - 1; k >= Math.max(0, i - 50); k--) {
+            if (lines[k].match(/^class PlaidClient/)) { isMainClient = true; break; }
+            if (lines[k].match(/^class \w+Resource/)) break;
+          }
+          if (!isMainClient) continue;
+        } else {
+          for (let k = i - 1; k >= 0; k--) {
+            const classMatch = lines[k].match(/^class (\w+?)(?:\(|:)/);
+            if (classMatch) {
+              const className = classMatch[1];
+              if (className.endsWith('Resource')) {
+                bundleName = className.replace('Resource', '')
+                  .replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+              }
+              break;
+            }
+          }
+        }
+
+        methods.push({
+          name: methodName,
+          description: '',
+          params,
+          bundle: bundleName,
+          decorators: decorators
+        });
       }
     }
   }
@@ -434,23 +486,24 @@ function generateHTML(title, bundles) {
 
 // Main execution
 function main() {
-  const clientsDir = path.join(__dirname, '..', 'target', 'clients');
+  const jsClientPath = path.join(__dirname, '..', '..', 'plaid-client-js', 'src', 'index.js');
+  const pyClientPath = path.join(__dirname, '..', '..', 'plaid-client-py', 'src', 'plaid_client', 'client.py');
   const outputDir = path.join(__dirname, '..', '_site');
-  
+
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
-  
+
   // Process JavaScript client
-  const jsContent = fs.readFileSync(path.join(clientsDir, 'client.js'), 'utf8');
+  const jsContent = fs.readFileSync(jsClientPath, 'utf8');
   const jsMethods = parseJSDoc(jsContent);
   const jsBundles = groupByBundle(jsMethods, false);
   const jsHTML = generateHTML('JavaScript API Documentation', jsBundles);
   fs.writeFileSync(path.join(outputDir, 'api-js.html'), jsHTML);
-  
+
   // Process Python client
-  const pyContent = fs.readFileSync(path.join(clientsDir, 'client.py'), 'utf8');
+  const pyContent = fs.readFileSync(pyClientPath, 'utf8');
   const pyMethods = parsePythonDoc(pyContent);
   const pyBundles = groupByBundle(pyMethods, true);
   const pyHTML = generateHTML('Python API Documentation', pyBundles);
