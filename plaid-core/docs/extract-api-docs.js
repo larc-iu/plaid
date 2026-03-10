@@ -124,14 +124,13 @@ function parseJSDoc(content) {
     }
   }
   
-  // Look for bundle assignments like this.vocabLinks = {
-  const bundleRegex = /this\.(\w+)\s*=\s*\{([\s\S]*?)\n\s*\};/g;
+  // Look for bundle assignments like this.vocabLinks = { ... };
+  // Require at least a newline inside the braces to skip one-liners like `this.x = {};`
+  const bundleRegex = /this\.(\w+)\s*=\s*\{(\n[\s\S]*?)\n\s*\};/g;
   let bundleMatch;
-  
-  const skipBundles = new Set(['documentVersions', 'batchOperations', 'strictModeDocumentId']);
+
   while ((bundleMatch = bundleRegex.exec(content)) !== null) {
     const [, bundleName, bundleContent] = bundleMatch;
-    if (skipBundles.has(bundleName)) continue;
 
     // Look for method assignments within this bundle
     // Matches both old style (methodName: this._method.bind(this)) and new style (methodName: (args) => ...)
