@@ -75,36 +75,49 @@ function parseJSDoc(content) {
   }
   
   // Look for specific instance methods that should be in misc
-  const miscMethods = ['enterStrictMode', 'exitStrictMode', 'beginBatch', 'submitBatch', 'abortBatch', 'isBatchMode'];
-  
+  const miscMethods = ['enterStrictMode', 'exitStrictMode', 'setAgentName', 'beginBatch', 'submitBatch', 'abortBatch', 'isBatchMode'];
+
   for (const methodName of miscMethods) {
-    const instanceRegex = new RegExp(`\\/\\*\\*\\s*\\n((?:\\s*\\*.*\\n)*?)\\s*\\*\\/\\s*\\n\\s*(?:async\\s+)?${methodName}\\s*\\([^)]*\\)`, 'g');
-    let instanceMatch = instanceRegex.exec(content);
-    
+    // Try multi-line JSDoc first: /** \n * ... \n */
+    const multiLineRegex = new RegExp(`\\/\\*\\*\\s*\\n((?:\\s*\\*.*\\n)*?)\\s*\\*\\/\\s*\\n\\s*(?:async\\s+)?${methodName}\\s*\\([^)]*\\)`, 'g');
+    // Also try single-line JSDoc: /** ... */
+    const singleLineRegex = new RegExp(`\\/\\*\\*\\s*(.+?)\\s*\\*\\/\\s*\\n\\s*(?:async\\s+)?${methodName}\\s*\\([^)]*\\)`, 'g');
+
+    let instanceMatch = multiLineRegex.exec(content);
+    let isSingleLine = false;
+
+    if (!instanceMatch) {
+      instanceMatch = singleLineRegex.exec(content);
+      isSingleLine = true;
+    }
+
     if (instanceMatch) {
-      const [, docContent] = instanceMatch;
-      
-      // Extract description and parameters
-      const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
-      const description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
-      
-      const params = [];
-      const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
-      let paramMatch;
-      
-      while ((paramMatch = paramRegex.exec(docContent)) !== null) {
-        const [, type, name, desc] = paramMatch;
-        params.push({
-          name: name.replace(/[\[\]]/g, ''),
-          type: type,
-          optional: name.includes('['),
-          description: desc
-        });
+      const docContent = instanceMatch[1];
+
+      let description, params = [];
+      if (isSingleLine) {
+        description = docContent.trim();
+      } else {
+        const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
+        description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
+
+        const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
+        let paramMatch;
+
+        while ((paramMatch = paramRegex.exec(docContent)) !== null) {
+          const [, type, name, desc] = paramMatch;
+          params.push({
+            name: name.replace(/[\[\]]/g, ''),
+            type: type,
+            optional: name.includes('['),
+            description: desc
+          });
+        }
       }
-      
-      methods.push({ 
-        name: methodName, 
-        description, 
+
+      methods.push({
+        name: methodName,
+        description,
         params,
         bundle: 'misc'
       });
@@ -471,9 +484,6 @@ function generateHTML(title, bundles, lang) {
     `;
   }).join('\n');
 
-  const otherLang = lang === 'js' ? 'py' : 'js';
-  const otherLabel = lang === 'js' ? 'Python' : 'JavaScript';
-
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -542,19 +552,36 @@ function generateHTML(title, bundles, lang) {
       color: var(--c-accent);
       background: var(--c-accent-light);
     }
-    .lang-switch {
-      display: block;
-      margin: 12px 20px 0;
-      padding: 6px 12px;
-      font-size: 13px;
-      color: var(--c-accent);
+    /* --- Preamble --- */
+    .preamble {
+      margin-bottom: 32px;
+      padding: 20px 24px;
+      background: var(--c-sidebar);
       border: 1px solid var(--c-border);
-      border-radius: 6px;
-      text-decoration: none;
-      text-align: center;
-      transition: background 0.15s;
+      border-radius: 8px;
     }
-    .lang-switch:hover { background: var(--c-accent-light); }
+    .preamble h2 {
+      font-size: 16px;
+      margin: 0 0 12px;
+      border: none;
+      padding: 0;
+    }
+    .preamble pre {
+      margin: 0;
+      padding: 16px;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .preamble pre code {
+      background: none;
+      padding: 0;
+      color: inherit;
+      font-size: inherit;
+    }
 
     /* --- Main --- */
     .main {
@@ -661,10 +688,52 @@ function generateHTML(title, bundles, lang) {
   <nav class="sidebar">
     <div class="sidebar-title">${title}</div>
     ${toc}
-    <a class="lang-switch" href="api-${otherLang}.html">${otherLabel} API &rarr;</a>
   </nav>
   <div class="main">
     <h1>${title}</h1>
+    ${lang === 'js' ? `
+    <div class="preamble">
+      <h2>Quick Start</h2>
+      <pre><code>import PlaidClient from 'plaid-client';
+
+const client = await PlaidClient.login('http://localhost:8085', 'user@example.com', 'password');
+
+// Create a project
+const project = await client.projects.create('My Project');
+
+// Create a document
+const doc = await client.documents.create(project.id, 'Document 1');
+
+// Get a project with its documents
+const full = await client.projects.get(project.id, true);
+
+// Batch multiple operations atomically
+client.beginBatch();
+client.tokens.create(tokenLayerId, textId, 0, 5);
+client.tokens.create(tokenLayerId, textId, 6, 11);
+const results = await client.submitBatch();</code></pre>
+    </div>` : `
+    <div class="preamble">
+      <h2>Quick Start</h2>
+      <pre><code>from plaid_client import PlaidClient
+
+client = PlaidClient.login("http://localhost:8085", "user@example.com", "password")
+
+# Create a project
+project = client.projects.create("My Project")
+
+# Create a document
+doc = client.documents.create(project["id"], "Document 1")
+
+# Get a project with its documents
+full = client.projects.get(project["id"], include_documents=True)
+
+# Batch multiple operations atomically
+client.begin_batch()
+client.tokens.create(token_layer_id, text_id, 0, 5)
+client.tokens.create(token_layer_id, text_id, 6, 11)
+results = client.submit_batch()</code></pre>
+    </div>`}
     ${content}
   </div>
   <script>
