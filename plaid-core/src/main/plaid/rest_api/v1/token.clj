@@ -36,16 +36,19 @@
     (cond
       text-id (tok/get-doc-id-of-text xt-map text-id)
       (uuid? token-id) (when-let [token (tok/get xt-map token-id)]
-                          (tok/get-doc-id-of-text xt-map (:token/text token))))))
+                         (tok/get-doc-id-of-text xt-map (:token/text token))))))
 
 (def token-routes
   ["/tokens"
 
    ["" {:post {:summary (str "Create a new token in a token layer. Tokens define text substrings using "
-                             "<body>begin</body> and <body>end</body> offsets in the text. Tokens may be zero-width, "
-                             "and they may overlap with each other. For tokens which share the same <body>begin</body>, "
-                             "<body>precedence</body> may be used to indicate a preferred linear ordering, with "
-                             "tokens with lower <body>precedence</body> occurring earlier."
+                             "<body>begin</body> and <body>end</body> offsets in the text. On layers whose "
+                             "<body>overlap-mode</body> is <body>any</body> (the default) tokens may be zero-width "
+                             "and may overlap each other; <body>non-overlapping</body> layers reject a token that "
+                             "overlaps an existing one (409); <body>partitioning</body> layers reject single creation "
+                             "entirely (400) — use bulk-create to establish the partition. For tokens which share the "
+                             "same <body>begin</body>, <body>precedence</body> may be used to indicate a preferred "
+                             "linear ordering, with tokens with lower <body>precedence</body> occurring earlier."
                              "\n"
                              "\n<body>token-layer-id</body>: the layer in which to insert this token."
                              "\n<body>text</body>: the text in which this token is found."
@@ -71,8 +74,8 @@
                                 result (tok/create {:node xtdb} attrs user-id metadata)]
                             (if (:success result)
                               (prm/assoc-document-versions-in-header
-                                {:status 201 :body {:id (:extra result)}}
-                                result)
+                               {:status 201 :body {:id (:extra result)}}
+                               result)
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
@@ -103,7 +106,7 @@
                                                                                :token/text text
                                                                                :token/begin begin
                                                                                :token/end end}
-                                                                              (some? precedence) (assoc :token/precedence precedence))]
+                                                                        (some? precedence) (assoc :token/precedence precedence))]
                                                             (if metadata
                                                               (assoc attrs :metadata metadata)
                                                               attrs)))
@@ -111,8 +114,8 @@
                                      result (tok/bulk-create {:node xtdb} tokens-attrs user-id)]
                                  (if (:success result)
                                    (prm/assoc-document-versions-in-header
-                                     {:status 201 :body {:ids (:extra result)}}
-                                     result)
+                                    {:status 201 :body {:ids (:extra result)}}
+                                    result)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple tokens in a single operation. Provide an array of IDs."
                       :openapi {:x-client-method "bulk-delete"}
@@ -124,8 +127,8 @@
                                  (let [{:keys [success code error] :as result} (tok/bulk-delete {:node xtdb} token-ids user-id)]
                                    (if success
                                      (prm/assoc-document-versions-in-header
-                                       {:status 204}
-                                       result)
+                                      {:status 204}
+                                      result)
                                      {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
    ["/:token-id"
@@ -143,7 +146,13 @@
                                "\n"
                                "\n<body>begin</body>: start index of the token"
                                "\n<body>end</body>: end index of the token"
-                               "\n<body>precedence</body>: ordering value for the token relative to other tokens with the same <body>begin</body>--lower means earlier")
+                               "\n<body>precedence</body>: ordering value for the token relative to other tokens with the same <body>begin</body>--lower means earlier"
+                               "\n"
+                               "\nExtent changes are subject to the layer's <body>overlap-mode</body>: on "
+                               "<body>non-overlapping</body> layers an update that would overlap another token is "
+                               "rejected (409); on <body>partitioning</body> layers direct extent changes are rejected "
+                               "(400) — use the token shift endpoint instead. Non-extent updates (e.g. "
+                               "<body>precedence</body>) are always allowed.")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :uuid]]
@@ -153,17 +162,19 @@
                                      [:precedence {:optional true} int?]]}
                  :handler (fn [{{{:keys [token-id]} :path {:keys [begin end precedence]} :body} :parameters xtdb :xtdb user-id :user/id}]
                             (let [raw-attrs (cond-> {}
-                                                    (some? begin) (assoc :token/begin begin)
-                                                    (some? end) (assoc :token/end end)
-                                                    (some? precedence) (assoc :token/precedence precedence))
+                                              (some? begin) (assoc :token/begin begin)
+                                              (some? end) (assoc :token/end end)
+                                              (some? precedence) (assoc :token/precedence precedence))
                                   {success :success code :code error :error :as result} (tok/merge {:node xtdb} token-id raw-attrs user-id)]
                               (if success
                                 (prm/assoc-document-versions-in-header
-                                  {:status 200 :body (tok/get xtdb token-id)}
-                                  result)
+                                 {:status 200 :body (tok/get xtdb token-id)}
+                                 result)
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary (str "Delete a token and remove it from any spans. If this causes the span to have no "
-                                "remaining associated tokens, the span will also be deleted.")
+                                "remaining associated tokens, the span will also be deleted. On "
+                                "<body>partitioning</body> layers single deletion is rejected (400) — use the token "
+                                "merge endpoint to combine tokens, or bulk-delete to remove the whole partition.")
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
                   :parameters {:query [:map [:document-version {:optional true} :uuid]]}
@@ -171,9 +182,63 @@
                              (let [{:keys [success code error] :as result} (tok/delete {:node xtdb} token-id user-id)]
                                (if success
                                  (prm/assoc-document-versions-in-header
-                                   {:status 204}
-                                   result)
+                                  {:status 204}
+                                  result)
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+
+    ["/split"
+     {:post {:summary "Split a token at a character offset. The original token becomes the left half (keeps ID, spans, vocab-links). Returns the new right token's ID."
+             :middleware [[pra/wrap-writer-required get-project-id]
+                          [prm/wrap-document-version get-document-id]]
+             :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                          :body [:map [:position int?]]}
+             :handler (fn [{{{:keys [token-id]} :path {:keys [position]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                        (let [{:keys [success code error extra] :as result}
+                              (tok/split {:node xtdb} token-id position user-id)]
+                          (if success
+                            (prm/assoc-document-versions-in-header
+                             {:status 201 :body {:id extra}}
+                             result)
+                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+
+    ["/merge"
+     {:post {:summary (str "Merge two tokens. The left token (smaller begin) survives with the combined extent; "
+                           "the right is deleted, and spans and vocab-links referencing it are reparented to the "
+                           "left. On <body>partitioning</body> layers the two tokens must be adjacent (400 "
+                           "otherwise); on <body>non-overlapping</body> layers the merged extent must not engulf a "
+                           "third token (409 otherwise).")
+             :middleware [[pra/wrap-writer-required get-project-id]
+                          [prm/wrap-document-version get-document-id]]
+             :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                          :body [:map [:other-token-id :uuid]]}
+             :handler (fn [{{{:keys [token-id]} :path {:keys [other-token-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                        (let [{:keys [success code error extra] :as result}
+                              (tok/merge-tokens {:node xtdb} token-id other-token-id user-id)]
+                          (if success
+                            (prm/assoc-document-versions-in-header
+                             {:status 200 :body (tok/get xtdb extra)}
+                             result)
+                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+
+    ["/shift"
+     {:post {:summary "Shift a token's boundary. For partitioning layers, auto-adjusts the adjacent token. For non-overlapping layers, validates no overlap."
+             :middleware [[pra/wrap-writer-required get-project-id]
+                          [prm/wrap-document-version get-document-id]]
+             :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                          :body [:map
+                                 [:begin {:optional true} int?]
+                                 [:end {:optional true} int?]]}
+             :handler (fn [{{{:keys [token-id]} :path {:keys [begin end]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                        (let [attrs (cond-> {}
+                                      (some? begin) (assoc :token/begin begin)
+                                      (some? end) (assoc :token/end end))
+                              {:keys [success code error] :as result}
+                              (tok/shift-boundary {:node xtdb} token-id attrs user-id)]
+                          (if success
+                            (prm/assoc-document-versions-in-header
+                             {:status 200 :body (tok/get xtdb token-id)}
+                             result)
+                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "token" :token-id get-project-id get-document-id tok/get tok/set-metadata tok/delete-metadata)]])

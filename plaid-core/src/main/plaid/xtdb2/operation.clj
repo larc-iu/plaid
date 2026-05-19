@@ -120,11 +120,11 @@
           (finally
             (when-not *current-batch-id*
               (op-coord/signal-operation-complete!)))))
-      (catch clojure.lang.ExceptionInfo e#
-        (log/warn e# "Operation failed")
-        {:success false
-         :error (ex-message e#)
-         :code (:code (ex-data e#))})
       (catch Exception e#
-        (log/error e# "Operation failed")
-        {:success false :error (ex-message e#)}))))
+        (if (instance? clojure.lang.IExceptionInfo e#)
+          (do (log/warn e# "Operation failed")
+              {:success false
+               :error (ex-message e#)
+               :code (:code (ex-data e#))})
+          (do (log/error e# "Operation failed")
+              {:success false :error (ex-message e#)}))))))

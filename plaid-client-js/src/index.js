@@ -527,10 +527,11 @@ class PlaidClient {
        * Create a new token layer.
        * @param {string} textLayerId - The text layer ID
        * @param {string} name - The name
+       * @param {string} [overlapMode] - Per-layer, immutable token invariant: "any" (default), "non-overlapping", or "partitioning". On partitioning layers, single token create/update/delete are rejected; use bulkCreate plus split/merge/shift.
        */
-      create: (textLayerId, name) =>
+      create: (textLayerId, name, overlapMode) =>
         this._request('POST', '/api/v1/token-layers', {
-          body: bodyOf({ 'text-layer-id': textLayerId, name }),
+          body: bodyOf({ 'text-layer-id': textLayerId, name, 'overlap-mode': overlapMode }),
         }),
       /**
        * Set a configuration value for a layer in an editor namespace.
@@ -1080,6 +1081,40 @@ class PlaidClient {
        */
       bulkDelete: (body) =>
         this._request('DELETE', '/api/v1/tokens/bulk', { body }),
+      /**
+       * Split a token at a character offset. The original token becomes the left half
+       * (keeps its ID, spans, vocab-links); the new right token's ID is returned.
+       * @param {string} tokenId - The token ID
+       * @param {number} position - Offset to split at (strictly between begin and end)
+       */
+      split: (tokenId, position) =>
+        this._request('POST', `/api/v1/tokens/${tokenId}/split`, {
+          body: bodyOf({ position }),
+        }),
+      /**
+       * Merge two tokens. The left token (smaller begin) survives with the combined
+       * extent; the right is deleted and its spans/vocab-links are reparented to the left.
+       * On partitioning layers the tokens must be adjacent; on non-overlapping layers the
+       * merged extent must not engulf a third token.
+       * @param {string} tokenId - The anchor token ID
+       * @param {string} otherTokenId - The other token to merge in
+       */
+      merge: (tokenId, otherTokenId) =>
+        this._request('POST', `/api/v1/tokens/${tokenId}/merge`, {
+          body: bodyOf({ 'other-token-id': otherTokenId }),
+        }),
+      /**
+       * Shift a token's boundary. On partitioning layers the adjacent token is
+       * auto-adjusted to preserve the partition; on non-overlapping layers a shift that
+       * would create an overlap is rejected.
+       * @param {string} tokenId - The token ID
+       * @param {number} [begin] - New start offset
+       * @param {number} [end] - New end offset
+       */
+      shift: (tokenId, begin, end) =>
+        this._request('POST', `/api/v1/tokens/${tokenId}/shift`, {
+          body: bodyOf({ begin, end }),
+        }),
       /**
        * Replace all metadata for a token.
        * @param {string} tokenId - The token ID

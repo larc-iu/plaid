@@ -4,7 +4,8 @@
             [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
             [plaid.xtdb2.token :as tok]
-            [plaid.xtdb2.metadata :as metadata])
+            [plaid.xtdb2.metadata :as metadata]
+            [plaid.xtdb2.constraints.token :as tc])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:text/id
@@ -47,9 +48,9 @@
         body (or (and (string? (:text/body attrs)) (:text/body attrs)) "")
         text-attrs (filter (fn [[k _]] (= "text" (namespace k))) attrs)
         {:text/keys [id document layer] :as record} (clojure.core/merge
-                                                      (pxc/new-record "text")
-                                                      {:text/body ""}
-                                                      (into {} text-attrs))
+                                                     (pxc/new-record "text")
+                                                     {:text/body ""}
+                                                     (into {} text-attrs))
         doc-e (pxc/entity-with-sys-from node :documents document)
         prj-id (:document/project doc-e)
         prj (pxc/entity node :projects prj-id)
@@ -137,7 +138,11 @@
                               tokens-to-update))
           text-tx [(pxc/match* :texts text-e)
                    [:put-docs :texts (assoc text :text/body (:text/body new-text))]]
-          tx (reduce into [text-tx deletion-tx update-tx])]
+          new-text-len (count (:text/body new-text))
+          constraint-tx (tc/compensate-after-cascade node new-tokens
+                                                     (set deleted-token-ids)
+                                                     new-text-len tokens-e)
+          tx (reduce into [text-tx deletion-tx update-tx constraint-tx])]
       tx)))
 
 (defn update-body-operation

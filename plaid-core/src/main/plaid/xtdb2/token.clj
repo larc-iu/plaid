@@ -5,7 +5,7 @@
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
             [plaid.xtdb2.span :as s]
             [plaid.xtdb2.metadata :as metadata]
-            [taoensso.timbre :as log])
+            [plaid.xtdb2.constraints.token :as tc])
   (:refer-clojure :exclude [get merge format]))
 
 (def attr-keys [:token/id
@@ -43,10 +43,10 @@
 (defn get-span-ids [node-or-map eid]
   (->> (xt/q (pxc/->node node-or-map)
              (xt/template
-               (-> (from :spans [{:xt/id sid :span/tokens toks}])
-                   (unnest {:t toks})
-                   (where (= t ~eid))
-                   (return sid))))
+              (-> (from :spans [{:xt/id sid :span/tokens toks}])
+                  (unnest {:t toks})
+                  (where (= t ~eid))
+                  (return sid))))
        (map :sid)))
 
 (defn get-doc-id-of-text [node-or-map text-id]
@@ -102,7 +102,7 @@
 (defn create* [xt-map attrs]
   (let [node (pxc/->node xt-map)
         token-attrs (filter (fn [[k _]] (token-attr? k)) attrs)
-        {:token/keys [text layer] :as token}
+        {:token/keys [text layer begin end] :as token}
         (clojure.core/merge (pxc/new-record "token")
                             {:token/document (get-doc-id-of-text node (:token/text attrs))}
                             (into {} token-attrs))
@@ -119,7 +119,10 @@
         doc-id (get-doc-id-of-text node text)
         meta-attrs (metadata/transform-metadata-for-storage metadata "token")
         attrs-with-meta (clojure.core/merge attrs meta-attrs)
-        tx-ops (create* xt-map attrs-with-meta)]
+        base-ops (create* xt-map attrs-with-meta)
+        tx-ops (tc/enforce :create node
+                           {:layer layer :doc-id doc-id :begin begin :end end}
+                           base-ops)]
     (op/make-operation
      {:type :token/create
       :project (project-id-from-layer node layer)
@@ -132,7 +135,9 @@
    (create xt-map attrs user-id nil))
   ([xt-map attrs user-id metadata]
    (submit-operations! xt-map [(create-operation xt-map attrs metadata)] user-id
-                       #(-> % last last :xt/id))))
+                       (fn [ops] (->> ops
+                                      (some #(when (and (vector? %) (= :put-docs (first %)) (= :tokens (second %)))
+                                               (:xt/id (nth % 2)))))))))
 
 (defn- set-extent [node eid {new-begin :token/begin new-end :token/end}]
   (let [{:token/keys [begin end text] :as token} (pxc/entity node :tokens eid)
@@ -170,8 +175,16 @@
 
 (defn merge-operation [xt-map eid attrs]
   (let [node (pxc/->node xt-map)
-        token (pxc/entity node :tokens eid)
-        doc-id (:token/document token)
+        {:token/keys [begin end layer document]} (pxc/entity node :tokens eid)
+        new-begin (or (:token/begin attrs) begin)
+        new-end (or (:token/end attrs) end)
+        extents-changing? (or (contains? attrs :token/begin) (contains? attrs :token/end))
+        base-ops (merge* xt-map eid attrs)
+        tx-ops (tc/enforce :update node
+                           {:layer layer :doc-id document :eid eid
+                            :new-begin new-begin :new-end new-end
+                            :extents-changing? extents-changing?}
+                           base-ops)
         changes (cond-> []
                   (contains? attrs :token/begin) (conj "start")
                   (contains? attrs :token/end) (conj "end")
@@ -179,9 +192,9 @@
     (op/make-operation
      {:type :token/update
       :project (project-id xt-map eid)
-      :document doc-id
+      :document document
       :description (str "Update " (clojure.string/join ", " changes) " of token " eid)
-      :tx-ops (merge* xt-map eid attrs)})))
+      :tx-ops tx-ops})))
 
 (defn merge [xt-map eid attrs user-id]
   (submit-operations! xt-map [(merge-operation xt-map eid attrs)] user-id))
@@ -207,19 +220,19 @@
           ;; For spans to delete: batch-fetch their relations
           delete-span-ids (mapv first to-delete)
           rel-entities (if (empty? delete-span-ids) []
-                         (let [ph (str/join ", " (repeat (count delete-span-ids) "?"))]
-                           (->> (xt/q node (into [(str "SELECT *, _system_from FROM relations"
-                                                       " WHERE relation$source IN (" ph ")"
-                                                       " OR relation$target IN (" ph ")")]
-                                                 (concat delete-span-ids delete-span-ids)))
-                                (into {} (map (juxt :xt/id identity)))
-                                vals)))
+                           (let [ph (str/join ", " (repeat (count delete-span-ids) "?"))]
+                             (->> (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                         " WHERE relation$source IN (" ph ")"
+                                                         " OR relation$target IN (" ph ")")]
+                                                   (concat delete-span-ids delete-span-ids)))
+                                  (into {} (map (juxt :xt/id identity)))
+                                  vals)))
           ;; Vocab links
           vl-ids (->> (xt/q node (xt/template
-                          (-> (from :vocab-links [{:xt/id vlid :vocab-link/tokens toks}])
-                              (unnest {:t toks})
-                              (where (= t ~eid))
-                              (return vlid))))
+                                  (-> (from :vocab-links [{:xt/id vlid :vocab-link/tokens toks}])
+                                      (unnest {:t toks})
+                                      (where (= t ~eid))
+                                      (return vlid))))
                       (map :vlid))
           vl-entities (pxc/entities-with-sys-from node :vocab-links vl-ids)]
       (reduce into
@@ -240,13 +253,15 @@
 (defn delete-operation [xt-map eid]
   (let [node (pxc/->node xt-map)
         t (pxc/entity node :tokens eid)
-        doc-id (when t (:token/document t))]
+        doc-id (when t (:token/document t))
+        base-ops (delete* xt-map eid)
+        tx-ops (tc/enforce :delete node {:layer (when t (:token/layer t))} base-ops)]
     (op/make-operation
      {:type :token/delete
       :project (project-id xt-map eid)
       :document doc-id
       :description (str "Delete token " eid)
-      :tx-ops (delete* xt-map eid)})))
+      :tx-ops tx-ops})))
 
 (defn delete [xt-map eid user-id]
   (submit-operations! xt-map [(delete-operation xt-map eid)] user-id))
@@ -346,34 +361,41 @@
     (when-not (some #{layer} token-layers)
       (throw (ex-info (str "Text layer " text-layer-id " is not linked to token layer " layer ".")
                       {:text-layer-id text-layer-id :token-layer-id layer})))
-    {:tx-ops
-     (vec
-      (concat
-       [(pxc/match* :token-layers layer-e)
-        (pxc/match* :texts text-e)]
-       (reduce
-        (fn [tx-ops attrs]
-          (let [token-attrs (filter (fn [[k _]] (token-attr? k)) attrs)
-                {:token/keys [id begin end precedence] :as token}
-                (clojure.core/merge (pxc/new-record "token")
-                                    {:token/document doc-id}
-                                    (into {} token-attrs))]
-            (check-token-bounds! begin end text-body)
-            (check-token-precedence! precedence)
-            (into tx-ops [[:put-docs :tokens token]])))
-        []
-        tokens-attrs)))
-     :doc-id doc-id
-     :project-id project-id}))
+    ;; Build token records
+    (let [token-records
+          (mapv (fn [attrs]
+                  (let [token-attrs (filter (fn [[k _]] (token-attr? k)) attrs)
+                        {:token/keys [id begin end precedence] :as token}
+                        (clojure.core/merge (pxc/new-record "token")
+                                            {:token/document doc-id}
+                                            (into {} token-attrs))]
+                    (check-token-bounds! begin end text-body)
+                    (check-token-precedence! precedence)
+                    token))
+                tokens-attrs)]
+      {:tx-ops
+       (vec
+        (concat
+         [(pxc/match* :token-layers layer-e)
+          (pxc/match* :texts text-e)]
+         (mapv (fn [token] [:put-docs :tokens token]) token-records)))
+       :doc-id doc-id
+       :project-id project-id})))
 
 (defn bulk-create-operation [xt-map tokens-attrs]
-  (let [{:keys [tx-ops doc-id project-id]} (bulk-create* xt-map tokens-attrs)
-        layer (-> tokens-attrs first :token/layer)]
+  (let [node (pxc/->node xt-map)
+        layer-id (-> tokens-attrs first :token/layer)
+        text-id (-> tokens-attrs first :token/text)
+        text-body (:text/body (pxc/entity node :texts text-id))
+        {:keys [tx-ops doc-id project-id]} (bulk-create* xt-map tokens-attrs)
+        tx-ops (tc/enforce :bulk-create node
+                           {:layer layer-id :doc-id doc-id :text-length (count text-body)}
+                           tx-ops)]
     (op/make-operation
      {:type :token/bulk-create
       :project project-id
       :document doc-id
-      :description (str "Bulk create " (count tokens-attrs) " tokens in layer " layer)
+      :description (str "Bulk create " (count tokens-attrs) " tokens in layer " layer-id)
       :tx-ops tx-ops})))
 
 (defn bulk-create [xt-map tokens-attrs user-id]
@@ -388,14 +410,211 @@
 
 (defn bulk-delete-operation [xt-map eids]
   (let [node (pxc/->node xt-map)
-        first-t (pxc/entity node :tokens (first eids))
-        doc-id (when first-t (:token/document first-t))]
+        token-map (pxc/entities-with-sys-from-by-id node :tokens eids)
+        tokens-by-layer (group-by :token/layer (vals token-map))
+        first-t (clojure.core/get token-map (first eids))
+        doc-id (when first-t (:token/document first-t))
+        base-ops (multi-delete* xt-map eids)
+        tx-ops (tc/enforce :bulk-delete node {:tokens-by-layer tokens-by-layer} base-ops)]
     (op/make-operation
      {:type :token/bulk-delete
       :project (when first-t (project-id xt-map (first eids)))
       :document doc-id
       :description (str "Bulk delete " (count eids) " tokens")
-      :tx-ops (multi-delete* xt-map eids)})))
+      :tx-ops tx-ops})))
 
 (defn bulk-delete [xt-map eids user-id]
   (submit-operations! xt-map [(bulk-delete-operation xt-map eids)] user-id))
+
+;; ---------------------------------------------------------------------------
+;; Split / Merge / Shift operations
+;; ---------------------------------------------------------------------------
+
+(defn split* [xt-map token-id position]
+  (let [node (pxc/->node xt-map)
+        t (pxc/entity-with-sys-from node :tokens token-id)]
+    (when (nil? (:token/id t))
+      (throw (ex-info (pxc/err-msg-not-found "Token" token-id) {:code 404 :id token-id})))
+    (let [{:token/keys [begin end layer document text]} t]
+      ;; Validate position
+      (when-not (and (int? position) (> position begin) (< position end))
+        (throw (ex-info "Split position must be strictly between token begin and end"
+                        {:code 400 :position position :begin begin :end end})))
+      (let [new-id (random-uuid)
+            left-token (-> t
+                           (pxc/strip-temporal)
+                           (assoc :token/end position))
+            right-token (-> (pxc/new-record "token" new-id)
+                            (assoc :token/begin position
+                                   :token/end end
+                                   :token/text text
+                                   :token/layer layer
+                                   :token/document document))
+            text-e (pxc/entity-with-sys-from node :texts text)]
+        {:new-token-id new-id
+         :tx-ops [(pxc/match* :tokens t)
+                  (pxc/match* :texts text-e)
+                  [:put-docs :tokens left-token]
+                  [:put-docs :tokens right-token]]}))))
+
+(defn split-operation [xt-map token-id position]
+  (let [node (pxc/->node xt-map)
+        t (pxc/entity node :tokens token-id)
+        doc-id (when t (:token/document t))
+        {:keys [tx-ops new-token-id]} (split* xt-map token-id position)]
+    {:operation (op/make-operation
+                 {:type :token/split
+                  :project (project-id xt-map token-id)
+                  :document doc-id
+                  :description (str "Split token " token-id " at position " position)
+                  :tx-ops tx-ops})
+     :new-token-id new-token-id}))
+
+(defn split [xt-map token-id position user-id]
+  (submit-operations! xt-map
+                      (let [{:keys [operation]} (split-operation xt-map token-id position)]
+                        [operation])
+                      user-id
+                      (fn [entity-ops]
+      ;; Find the new (right half) token ID - it's the put-docs with a different ID
+                        (some (fn [[op-type _table record]]
+                                (when (and (= op-type :put-docs) (:token/id record)
+                                           (not= (:xt/id record) token-id))
+                                  (:xt/id record)))
+                              entity-ops))))
+
+(defn merge-tokens* [xt-map token-id-1 token-id-2]
+  (let [node (pxc/->node xt-map)
+        t1 (pxc/entity-with-sys-from node :tokens token-id-1)
+        t2 (pxc/entity-with-sys-from node :tokens token-id-2)]
+    (when (nil? (:token/id t1))
+      (throw (ex-info (pxc/err-msg-not-found "Token" token-id-1) {:code 404 :id token-id-1})))
+    (when (nil? (:token/id t2))
+      (throw (ex-info (pxc/err-msg-not-found "Token" token-id-2) {:code 404 :id token-id-2})))
+    ;; Must be same layer and document
+    (when (not= (:token/layer t1) (:token/layer t2))
+      (throw (ex-info "Tokens must belong to the same layer" {:code 400})))
+    (when (not= (:token/document t1) (:token/document t2))
+      (throw (ex-info "Tokens must belong to the same document" {:code 400})))
+    ;; Determine left/right by begin
+    (let [[left right] (if (<= (:token/begin t1) (:token/begin t2)) [t1 t2] [t2 t1])
+          left-id (:xt/id left)
+          right-id (:xt/id right)
+          layer-id (:token/layer left)]
+      ;; Merged token: left survives with expanded extent
+      (let [merged-token (-> left
+                             (pxc/strip-temporal)
+                             (assoc :token/begin (min (:token/begin left) (:token/begin right))
+                                    :token/end (max (:token/end left) (:token/end right))))
+            ;; Find spans referencing the right token and reparent to left
+            right-span-ids (get-span-ids node right-id)
+            span-map (pxc/entities-with-sys-from-by-id node :spans right-span-ids)
+            span-reparent-ops
+            (vec (mapcat (fn [[_sid span]]
+                           (let [new-tokens (mapv #(if (= % right-id) left-id %) (:span/tokens span))
+                                 ;; Deduplicate if left was already in span
+                                 new-tokens (vec (distinct new-tokens))]
+                             [(pxc/match* :spans span)
+                              [:put-docs :spans (-> span
+                                                    (pxc/strip-temporal)
+                                                    (assoc :span/tokens new-tokens))]]))
+                         span-map))
+            ;; Reparent vocab-links referencing right token
+            vl-entities (->> (xt/q node (xt/template
+                                         (-> (from :vocab-links [{:xt/id vlid :vocab-link/tokens toks}])
+                                             (unnest {:t toks})
+                                             (where (= t ~right-id))
+                                             (return vlid))))
+                             (map :vlid))
+            vl-map (pxc/entities-with-sys-from-by-id node :vocab-links vl-entities)
+            vl-reparent-ops
+            (vec (mapcat (fn [[_vlid vl]]
+                           (let [new-tokens (mapv #(if (= % right-id) left-id %) (:vocab-link/tokens vl))
+                                 new-tokens (vec (distinct new-tokens))]
+                             [(pxc/match* :vocab-links vl)
+                              [:put-docs :vocab-links (-> vl
+                                                          (pxc/strip-temporal)
+                                                          (assoc :vocab-link/tokens new-tokens))]]))
+                         vl-map))
+            text-e (pxc/entity-with-sys-from node :texts (:token/text left))]
+        {:surviving-id left-id
+         :tx-ops (reduce into
+                         [[(pxc/match* :tokens left)
+                           (pxc/match* :tokens right)
+                           (pxc/match* :texts text-e)
+                           [:put-docs :tokens merged-token]
+                           [:delete-docs :tokens right-id]]
+                          span-reparent-ops
+                          vl-reparent-ops])}))))
+
+(defn merge-tokens-operation [xt-map token-id-1 token-id-2]
+  (let [node (pxc/->node xt-map)
+        t1 (pxc/entity node :tokens token-id-1)
+        t2 (pxc/entity node :tokens token-id-2)
+        doc-id (when t1 (:token/document t1))
+        ;; merge-tokens* throws 404 if either token is missing, so t1/t2 exist here
+        {:keys [tx-ops surviving-id]} (merge-tokens* xt-map token-id-1 token-id-2)
+        tx-ops (tc/enforce :merge node
+                           {:layer (:token/layer t1) :doc-id doc-id
+                            :t1 t1 :t2 t2 :surviving-id surviving-id}
+                           tx-ops)]
+    {:operation (op/make-operation
+                 {:type :token/merge
+                  :project (project-id xt-map token-id-1)
+                  :document doc-id
+                  :description (str "Merge tokens " token-id-1 " and " token-id-2)
+                  :tx-ops tx-ops})
+     :surviving-id surviving-id}))
+
+(defn merge-tokens [xt-map token-id-1 token-id-2 user-id]
+  (submit-operations! xt-map
+                      (let [{:keys [operation]} (merge-tokens-operation xt-map token-id-1 token-id-2)]
+                        [operation])
+                      user-id
+                      (fn [entity-ops]
+      ;; Find the surviving token ID from the put-docs ops
+                        (some (fn [[op-type _table record]]
+                                (when (and (= op-type :put-docs) (:token/id record))
+                                  (:xt/id record)))
+                              entity-ops))))
+
+(defn shift-boundary* [xt-map token-id attrs]
+  (let [node (pxc/->node xt-map)
+        t (pxc/entity-with-sys-from node :tokens token-id)]
+    (when (nil? (:token/id t))
+      (throw (ex-info (pxc/err-msg-not-found "Token" token-id) {:code 404 :id token-id})))
+    (let [{:token/keys [begin end layer document text]} t
+          new-begin (or (:token/begin attrs) begin)
+          new-end (or (:token/end attrs) end)
+          text-body (:text/body (pxc/entity node :texts text))
+          _ (check-token-bounds! new-begin new-end text-body)
+          text-e (pxc/entity-with-sys-from node :texts text)
+          updated (-> t (pxc/strip-temporal) (assoc :token/begin new-begin :token/end new-end))]
+      [(pxc/match* :tokens t)
+       (pxc/match* :texts text-e)
+       [:put-docs :tokens updated]])))
+
+(defn shift-boundary-operation [xt-map token-id attrs]
+  (let [node (pxc/->node xt-map)
+        t (pxc/entity node :tokens token-id)
+        doc-id (when t (:token/document t))
+        {:token/keys [begin end layer text]} (or t {})
+        new-begin (or (:token/begin attrs) begin)
+        new-end (or (:token/end attrs) end)
+        text-length (when text (count (:text/body (pxc/entity node :texts text))))
+        ;; shift-boundary* throws 404 if the token is missing
+        base-ops (shift-boundary* xt-map token-id attrs)
+        tx-ops (tc/enforce :shift node
+                           {:layer layer :doc-id doc-id :token-id token-id
+                            :begin begin :end end :new-begin new-begin :new-end new-end
+                            :text-length text-length}
+                           base-ops)]
+    (op/make-operation
+     {:type :token/shift-boundary
+      :project (project-id xt-map token-id)
+      :document doc-id
+      :description (str "Shift boundary of token " token-id)
+      :tx-ops tx-ops})))
+
+(defn shift-boundary [xt-map token-id attrs user-id]
+  (submit-operations! xt-map [(shift-boundary-operation xt-map token-id attrs)] user-id))

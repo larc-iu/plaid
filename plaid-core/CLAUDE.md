@@ -138,6 +138,42 @@ The audit log therefore consists of records with `:audit/id` which includes the 
 
 There is exactly one such audit record for all audited non-GET endpoints.
 
+### Constraint System
+
+Constraints enforce invariants on token operations (e.g. overlap modes: `:any`, `:non-overlapping`, `:partitioning`). The architecture follows these principles:
+
+1. **Constraints must be part of the atomic transaction.** The DB must never be in an invalid state. Pre-flight checks are a UX optimization (fail fast with a good error message), not the safety mechanism.
+
+2. **`match*` on read entities provides TOCTOU safety for complex invariants.** Read all relevant entities, validate in Clojure, include `match*` ops for everything read → either the tx succeeds or a `match*` fails (concurrent modification, tx rolls back). SQL ASSERTs are an optimization for simple cases (overlap checks).
+
+3. **`*` functions are constraint-unaware.** They build tx-ops for what was asked, period. No constraint checks, no ASSERT ops, no compensation, no skip flags.
+
+4. **`-operation` functions call `tc/enforce` once.** They build base tx-ops via the `*` fn, then call `(tc/enforce op-kw node ctx base-ops)` which runs pre-flight checks (throwing on violation) and returns base-ops augmented with ASSERTs/neighbor-adjustments. No overlap-mode interpretation lives in `token.clj`.
+
+5. **Cascade paths call `*` functions directly** then do their own compensation. No flags needed.
+
+The three-layer pattern:
+```
+*            → pure tx-op builders (token.clj)
+-operation   → call * for base ops, then tc/enforce once (token.clj)
+public API   → submit-operations! wrapper (token.clj)
+```
+
+Cascade pattern (e.g. text body edits deleting tokens):
+```
+tok/multi-delete*           → called directly, no constraint checks
+tc/compensate-after-cascade → separate compensation step
+```
+
+Constraint logic lives in `plaid.xtdb2.constraints.token` (`tc`). Public surface is just two fns:
+- `enforce` — single entry point keyed on op (`:create :update :delete :bulk-create :bulk-delete :merge :shift`); takes `[op node ctx base-ops]`, runs the pre-flight check + appends safety ops, returns augmented tx-ops. All the per-op overlap-mode logic (incl. merge adjacency and shift neighbor-adjustment) lives here.
+- `compensate-after-cascade` — partition gap-filling after a text-body-edit cascade.
+- `find-overlapping-tokens` / `validate-partition!` remain public as reusable utilities; the `check-*` pre-flight fns and ASSERT builders are private to `enforce`.
+
+**Concurrency note:** the operation coordinator serializes *batches* against regular ops but does NOT serialize regular ops against each other. Per-row `match*`/overlap-`ASSERT`s make `:non-overlapping` and the partition-preserving ops (split/merge/shift each `match*` both sides of every boundary they touch) safe. Partitioning *establishment* (`bulk-create`) has no row to `match*`, so `enforce` adds `partition-establish-assert-sql` — an `ASSERT NOT EXISTS` for any token in the layer+doc other than the ones being inserted — to block a concurrent establishment.
+
+**Adding a new token constraint:** add its logic to `tc/enforce` (and helpers in `constraints/token.clj`). No changes to `*` functions or `-operation` call sites. (A general cross-entity constraint protocol is deliberately deferred until a second real constraint kind exists — see conversation history.)
+
 ## API Structure
 Base path: `/api/v1/`.
 Default port for development: `8085`.

@@ -190,16 +190,19 @@
      (xt/execute-tx node tx)
      (cond-> {:success true}
        get-extra (assoc :extra (get-extra tx)))
-     (catch clojure.lang.ExceptionInfo e
-       (let [data (ex-data e)]
-         (log/warn "Transaction failed: " data)
-         {:success false
-          :error (ex-message e)
-          :code (:code data)}))
      (catch Exception e
-       (log/error e "Transaction failed")
-       {:success false
-        :error (ex-message e)}))))
+       (if (instance? clojure.lang.IExceptionInfo e)
+         (let [data (ex-data e)
+               code (or (:code data)
+                        (when (= :xtdb/assert-failed (:xtdb.error/code data)) 409))]
+           (log/warn "Transaction failed: " data)
+           {:success false
+            :error (ex-message e)
+            :code code})
+         (do (log/error e "Transaction failed")
+             {:success false
+              :error (ex-message e)}))))))
+
 
 (defn match*
   "Returns a SQL ASSERT op that checks _system_from hasn't changed since the entity was read.

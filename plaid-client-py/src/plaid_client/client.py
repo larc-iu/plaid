@@ -344,10 +344,19 @@ class TokenLayersResource(_Resource):
         return self._request('POST', f'/api/v1/token-layers/{token_layer_id}/shift',
                              body=_body_of(direction=direction))
 
-    def create(self, text_layer_id: str, name: str) -> Any:
-        """Create a new token layer."""
+    def create(self, text_layer_id: str, name: str, *, overlap_mode: str | None = None) -> Any:
+        """Create a new token layer.
+
+        ``overlap_mode`` sets a per-layer, immutable invariant on the layer's
+        tokens: ``any`` (default; tokens may overlap and leave gaps),
+        ``non-overlapping`` (tokens in a document may not overlap), or
+        ``partitioning`` (tokens must form a gap-free, non-overlapping cover of
+        the text). On partitioning layers, single token create/update/delete are
+        rejected -- use bulk-create plus the token split/merge/shift methods.
+        """
         return self._request('POST', '/api/v1/token-layers',
-                             body=_body_of(text_layer_id=text_layer_id, name=name))
+                             body=_body_of(text_layer_id=text_layer_id, name=name,
+                                           overlap_mode=overlap_mode))
 
 
 class DocumentsResource(_Resource):
@@ -685,6 +694,37 @@ class TokensResource(_Resource):
     def bulk_delete(self, body: list) -> Any:
         """Delete multiple tokens in a single operation."""
         return self._request('DELETE', '/api/v1/tokens/bulk', body=body)
+
+    def split(self, token_id: str, position: int) -> Any:
+        """Split a token at a character offset.
+
+        The original token becomes the left half (keeping its ID, spans, and
+        vocab-links); a new token is created for the right half and its ID is
+        returned. ``position`` must be strictly between the token's begin and end.
+        """
+        return self._request('POST', f'/api/v1/tokens/{token_id}/split',
+                             body=_body_of(position=position))
+
+    def merge(self, token_id: str, other_token_id: str) -> Any:
+        """Merge two tokens.
+
+        The left token (smaller ``begin``) survives with the combined extent;
+        the right is deleted and its spans and vocab-links are reparented to the
+        left. On partitioning layers the two tokens must be adjacent; on
+        non-overlapping layers the merged extent must not engulf a third token.
+        """
+        return self._request('POST', f'/api/v1/tokens/{token_id}/merge',
+                             body=_body_of(other_token_id=other_token_id))
+
+    def shift(self, token_id: str, *, begin: int | None = None, end: int | None = None) -> Any:
+        """Shift a token's boundary.
+
+        On partitioning layers the adjacent token is auto-adjusted to preserve
+        the partition; on non-overlapping layers the shift is rejected if it
+        would create an overlap.
+        """
+        return self._request('POST', f'/api/v1/tokens/{token_id}/shift',
+                             body=_body_of(begin=begin, end=end))
 
 
 class BatchResource(_Resource):

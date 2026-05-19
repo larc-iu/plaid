@@ -21,13 +21,22 @@
   ["/token-layers"
 
    [""
-    {:post {:summary    "Create a new token layer."
+    {:post {:summary    (str "Create a new token layer. The optional <body>overlap-mode</body> sets a per-layer "
+                             "invariant on the layer's tokens and is immutable after creation:"
+                             "\n<body>any</body> (default): tokens may overlap each other and leave gaps."
+                             "\n<body>non-overlapping</body>: tokens in the same document may not overlap."
+                             "\n<body>partitioning</body>: tokens must form a gap-free, non-overlapping cover of the "
+                             "entire text. On partitioning layers, single token create/update/delete are rejected — "
+                             "use bulk-create to establish the partition and the token split/merge/shift endpoints to "
+                             "modify it.")
             :middleware [[pra/wrap-maintainer-required get-project-id]]
             :parameters {:body [:map
                                 [:text-layer-id :uuid]
-                                [:name :string]]}
-            :handler    (fn [{{{:keys [name text-layer-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                          (let [attrs {:token-layer/name name}
+                                [:name :string]
+                                [:overlap-mode {:optional true} [:enum "any" "non-overlapping" "partitioning"]]]}
+            :handler    (fn [{{{:keys [name text-layer-id overlap-mode]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                          (let [attrs (cond-> {:token-layer/name name}
+                                        overlap-mode (assoc :token-layer/overlap-mode (keyword overlap-mode)))
                                 result (tokl/create {:node xtdb} attrs text-layer-id user-id)]
                             (if (:success result)
                               {:status 201

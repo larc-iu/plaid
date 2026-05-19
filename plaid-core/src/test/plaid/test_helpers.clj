@@ -30,10 +30,16 @@
                              :path "/api/v1/text-layers"
                              :body {:project-id project-id :name name}}))
 
-(defn create-token-layer [user-request-fn text-layer-id name]
-  (api-call user-request-fn {:method :post
-                             :path "/api/v1/token-layers"
-                             :body {:text-layer-id text-layer-id :name name}}))
+(defn create-token-layer
+  ([user-request-fn text-layer-id name]
+   (api-call user-request-fn {:method :post
+                              :path "/api/v1/token-layers"
+                              :body {:text-layer-id text-layer-id :name name}}))
+  ([user-request-fn text-layer-id name overlap-mode]
+   (api-call user-request-fn {:method :post
+                              :path "/api/v1/token-layers"
+                              :body (cond-> {:text-layer-id text-layer-id :name name}
+                                      overlap-mode (assoc :overlap-mode overlap-mode))})))
 
 (defn create-span-layer [user-request-fn token-layer-id name]
   (api-call user-request-fn {:method :post
@@ -134,6 +140,23 @@
 (defn delete-token [user-request-fn token-id]
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/tokens/" token-id)}))
+
+(defn split-token [user-request-fn token-id position]
+  (api-call user-request-fn {:method :post
+                             :path (str "/api/v1/tokens/" token-id "/split")
+                             :body {:position position}}))
+
+(defn merge-tokens [user-request-fn token-id other-token-id]
+  (api-call user-request-fn {:method :post
+                             :path (str "/api/v1/tokens/" token-id "/merge")
+                             :body {:other-token-id other-token-id}}))
+
+(defn shift-token-boundary [user-request-fn token-id & {:keys [begin end]}]
+  (api-call user-request-fn {:method :post
+                             :path (str "/api/v1/tokens/" token-id "/shift")
+                             :body (cond-> {}
+                                     begin (assoc :begin begin)
+                                     end (assoc :end end))}))
 
 ;; Span helpers
 (defn create-span

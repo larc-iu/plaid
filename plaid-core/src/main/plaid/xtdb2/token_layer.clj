@@ -9,6 +9,7 @@
 (def attr-keys [:token-layer/id
                 :token-layer/name
                 :token-layer/span-layers
+                :token-layer/overlap-mode
                 :config])
 
 ;; Queries ------------------------------------------------------------------------
@@ -16,13 +17,19 @@
 (defn get [node-or-map id]
   (when-let [e (pxc/entity node-or-map :token-layers id)]
     (when (:token-layer/id e)
-      (pxc/deserialize-config (select-keys e attr-keys)))))
+      (-> (select-keys e attr-keys)
+          (update :token-layer/overlap-mode #(or % :any))
+          (pxc/deserialize-config)))))
 
 (defn- parent-id [node tokl-id]
   (:token-layer/text-layer (pxc/entity node :token-layers tokl-id)))
 
 (defn project-id [node-or-map id]
   (:token-layer/project (pxc/entity node-or-map :token-layers id)))
+
+(defn overlap-mode [node-or-map id]
+  (or (:token-layer/overlap-mode (pxc/entity node-or-map :token-layers id))
+      :any))
 
 (defn sort-token-records [tokens]
   (->> tokens
@@ -31,15 +38,23 @@
 
 ;; Mutations ----------------------------------------------------------------------
 
+(def valid-overlap-modes #{:any :non-overlapping :partitioning})
+
 (defn create* [xt-map {:token-layer/keys [id] :as attrs} text-layer-id]
   (let [node (pxc/->node xt-map)
         txtl (pxc/entity-with-sys-from node :text-layers text-layer-id)
         prj-id (:text-layer/project txtl)
+        overlap-mode (or (:token-layer/overlap-mode attrs) :any)
+        _ (when-not (valid-overlap-modes overlap-mode)
+            (throw (ex-info (str "Invalid overlap-mode: " overlap-mode
+                                 ". Must be one of: " (str/join ", " (map name valid-overlap-modes)))
+                            {:overlap-mode overlap-mode :code 400})))
         {:token-layer/keys [name id] :as record}
         (-> (clojure.core/merge (pxc/new-record "token-layer" id)
                                {:token-layer/span-layers []
                                 :token-layer/text-layer text-layer-id
-                                :token-layer/project prj-id}
+                                :token-layer/project prj-id
+                                :token-layer/overlap-mode overlap-mode}
                                (select-keys attrs attr-keys))
             (update :config pxc/serialize-config))]
     (pxc/valid-name? name)
