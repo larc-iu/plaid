@@ -151,7 +151,13 @@
             project-id (-> create-response :body :id)
             update-response (update-project admin-request project-id {:name "Updated Name"})]
         (assert-ok update-response)
-        #_(is (= (-> update-response :body :project/name) "Updated Name"))))
+        (is (= "Updated Name" (-> update-response :body :project/name))
+            "PATCH response body should reflect the new name")
+        ;; Confirm the change actually persisted via an independent read-back
+        (let [get-response (get-project admin-request project-id)]
+          (assert-ok get-response)
+          (is (= "Updated Name" (-> get-response :body :project/name))
+              "Updated name should persist across a fresh GET"))))
 
     (testing "Delete project"
       (let [create-response (create-project admin-request {:name "To Be Deleted"})
@@ -243,9 +249,14 @@
           (assert-no-content response)))
 
       (testing "User1 can now manage access"
+        ;; user1 is a maintainer (granted just above), so adding user2 as a
+        ;; reader must succeed — and user2 must actually land in the readers list.
         (let [response (add-reader user1-request project-id "user2@example.com")]
-          ;; This might still return 404 if the middleware blocks it
-          (is (contains? #{204 404} (:status response))))))))
+          (assert-no-content response)
+          (let [project (get-project admin-request project-id)]
+            (assert-ok project)
+            (is (contains? (set (-> project :body :project/readers)) "user2@example.com")
+                "user2 should appear in the project's readers after the grant")))))))
 
 (deftest layer-config-operations
   (testing "Layer configuration management"
@@ -369,9 +380,15 @@
         (assert-no-content response1)
         (assert-no-content response2)))
 
-    (testing "Removing non-existent reader access is idempotent"
+    (testing "Removing access for a non-existent user returns 400"
       (let [response (remove-reader admin-request project-id "nonexistent@example.com")]
         (assert-status 400 response)))
+
+    (testing "Removing reader access from a valid non-member is idempotent (204)"
+      ;; user2 was never granted any role on this project, so removing it is a
+      ;; harmless no-op that should still succeed.
+      (let [response (remove-reader admin-request project-id "user2@example.com")]
+        (assert-no-content response)))
 
     (testing "Access operations require maintainer permissions"
       ;; Grant user1 only writer access, not maintainer

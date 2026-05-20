@@ -84,13 +84,13 @@
                         {:path "/api/v1/users/nonexistent@example.com"
                          :method "get"
                          :body nil}]
-            response (make-batch-request operations admin-token)
-            response-body (when (:body response) (parse-response-body response))]
+            response (make-batch-request operations admin-token)]
 
         ;; Batch should fail with 404 from the second operation
         (is (>= (:status response) 400))
-        (when response-body
-          (is (map? response-body)) ; Single error object, not array
+        (is (some? (:body response)) "Failed batch should return an error body")
+        (let [response-body (parse-response-body response)]
+          (is (map? response-body) "Single error object, not array")
           (is (contains? response-body :error)))
 
         ;; Verify rollback: document should still have original name
@@ -547,32 +547,32 @@
               "regular2 and batch2 should be queued")
 
         ;; Complete first regular - should trigger first batch
-        ((:complete-fn regular1))
+          ((:complete-fn regular1))
 
         ;; DEBUG: Check if batch1 receives its response
-        (is (wait-for-coordinator-responses [batch1-future] 3000)
-            "Batch1 should receive coordinator response after regular1 completes")
+          (is (wait-for-coordinator-responses [batch1-future] 3000)
+              "Batch1 should receive coordinator response after regular1 completes")
 
         ;; Use polling to wait for first batch to start
-        (is (wait-for-operations-to-start-polling [batch1] 5000)
-            "First batch should start after regular completes")
+          (is (wait-for-operations-to-start-polling [batch1] 5000)
+              "First batch should start after regular completes")
 
         ;; Complete first batch - should trigger second regular
-        ((:complete-fn batch1))
+          ((:complete-fn batch1))
 
         ;; Use polling to wait for second regular to start
-        (is (wait-for-operations-to-start-polling [regular2] 5000)
-            "Second regular should start after first batch completes")
+          (is (wait-for-operations-to-start-polling [regular2] 5000)
+              "Second regular should start after first batch completes")
 
         ;; Complete second regular - should trigger second batch
-        ((:complete-fn regular2))
+          ((:complete-fn regular2))
 
         ;; Use polling to wait for second batch to start
-        (is (wait-for-operations-to-start-polling [batch2] 5000)
-            "Second batch should start after second regular completes")
+          (is (wait-for-operations-to-start-polling [batch2] 5000)
+              "Second batch should start after second regular completes")
 
-        ((:complete-fn batch2))
-        (async/<!! (:response-future batch2-future)))))))
+          ((:complete-fn batch2))
+          (async/<!! (:response-future batch2-future)))))))
 
 ;; Race Condition Tests =================================================================
 
@@ -707,12 +707,12 @@
           ;; Batch that should fail: successful operation followed by failure
           operations [{:path (str "/api/v1/projects/" project-id) :method "get" :body nil}
                       {:path "/api/v1/users/nonexistent@example.com" :method "get" :body nil}]
-          response (make-batch-request operations admin-token)
-          response-body (when (:body response) (parse-response-body response))]
+          response (make-batch-request operations admin-token)]
 
       ;; Verify batch failed appropriately
       (is (>= (:status response) 400))
-      (when response-body
+      (is (some? (:body response)) "Failed batch should return an error body")
+      (let [response-body (parse-response-body response)]
         (is (map? response-body) "Should return single error object, not array")
         (is (contains? response-body :error) "Should contain error information")))))
 (deftest test-batch-rollback-comprehensive

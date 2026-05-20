@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.vocab-test
   (:require [clojure.test :refer :all]
+            [clojure.string]
             [plaid.fixtures :refer [with-xtdb
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request
@@ -30,16 +31,34 @@
       (assert-no-content (delete-vocab-layer admin-request vocab-id))
       (assert-not-found (get-vocab-layer admin-request vocab-id))))
 
-  (testing "Vocab layer with config"
-    ;; Create vocab layer first
+  (testing "Vocab layer config round-trips with mixed-case keys"
     (let [vocab-res (create-vocab-layer admin-request "Config Vocab")
           vocab-id (-> vocab-res :body :id)]
       (assert-created vocab-res)
 
-      ;; Set config via separate endpoint (if available) or verify basic creation
+      ;; Set a config value via the config endpoint, using mixed-case editor/key
+      ;; names that XTDB v2 would lowercase if not serialized as a JSON string.
+      (assert-no-content
+       (api-call admin-request {:method :put
+                                :path (str "/api/v1/vocab-layers/" vocab-id "/config/MyEditor/displayName")
+                                :body "Lexicon"}))
+
+      ;; Read it back and confirm both the value and the key casing survived.
       (let [get-res (get-vocab-layer admin-request vocab-id)]
         (assert-ok get-res)
-        (is (= "Config Vocab" (-> get-res :body :vocab/name))))
+        (is (= "Config Vocab" (-> get-res :body :vocab/name)))
+        (is (= "Lexicon" (get-in (:body get-res) [:config "MyEditor" "displayName"]))
+            "Vocab layer config should preserve mixed-case keys"))
+
+      ;; Removing the key should drop it from config.
+      (assert-no-content
+       (api-call admin-request {:method :delete
+                                :path (str "/api/v1/vocab-layers/" vocab-id "/config/MyEditor/displayName")}))
+      (let [get-res (get-vocab-layer admin-request vocab-id)]
+        (assert-ok get-res)
+        (is (nil? (get-in (:body get-res) [:config "MyEditor" "displayName"]))
+            "Removed config key should be gone"))
+
       (assert-no-content (delete-vocab-layer admin-request vocab-id))))
 
   (testing "Vocab layer maintainer management"
@@ -437,16 +456,26 @@
         (assert-no-content (delete-vocab-link user2-request link-id))))
 
     (testing "Vocab link edge cases"
-      ;; Create link to non-existent vocab item
-      (let [fake-item-id (java.util.UUID/randomUUID)]
-        (assert-bad-request (create-vocab-link admin-request fake-item-id [token1-id])))
+      ;; Create link to non-existent vocab item — must fail *because the item is missing*,
+      ;; not because of some incidental 400 (e.g. project-not-linked).
+      (let [fake-item-id (java.util.UUID/randomUUID)
+            res (create-vocab-link admin-request fake-item-id [token1-id])]
+        (assert-bad-request res)
+        (is (clojure.string/includes? (-> res :body :error) "Vocab item")
+            "Error should identify the missing vocab item"))
 
-      ;; Create link to non-existent token
-      (let [fake-token-id (java.util.UUID/randomUUID)]
-        (assert-bad-request (create-vocab-link admin-request item-id [fake-token-id])))
+      ;; Create link to non-existent token — must fail *because of the token reference*
+      (let [fake-token-id (java.util.UUID/randomUUID)
+            res (create-vocab-link admin-request item-id [fake-token-id])]
+        (assert-bad-request res)
+        (is (clojure.string/includes? (-> res :body :error) "token")
+            "Error should be about the invalid token reference"))
 
-      ;; Create link with empty token list
-      (assert-bad-request (create-vocab-link admin-request item-id []))
+      ;; Create link with empty token list — must fail *because the list is empty*
+      (let [res (create-vocab-link admin-request item-id [])]
+        (assert-bad-request res)
+        (is (clojure.string/includes? (-> res :body :error) "at least one token")
+            "Error should be about requiring at least one token"))
 
       ;; Operations on non-existent link
       (let [fake-link-id (java.util.UUID/randomUUID)]
@@ -609,6 +638,10 @@
             (is (contains? vocab :vocab/id))
             (is (contains? vocab :vocab/name))
             (is (contains? vocab :vocab-layer/vocab-links))
+            ;; Guard: every vocab here has at least one link, so the per-link
+            ;; assertions below cannot be vacuously skipped by an empty list.
+            (is (seq (:vocab-layer/vocab-links vocab))
+                (str "Vocab '" (:vocab/name vocab) "' should have at least one link"))
 
             ;; Each vocab-link should have expanded vocab-item
             (doseq [link (:vocab-layer/vocab-links vocab)]
@@ -630,8 +663,16 @@
               (is (= [token1-id] (:vocab-link/tokens article-link)))
               (is (= {"confidence" 1.0} (:metadata article-link))))
 
-            ;; Adjectives vocab should have two links
+            ;; Adjectives vocab should have two links — verify *which* items/tokens
+            ;; they expand to, not just the count (a swap would otherwise pass).
             (is (= 2 (count (:vocab-layer/vocab-links adjectives-vocab))))
+            (let [adj-links (:vocab-layer/vocab-links adjectives-vocab)
+                  by-form (into {} (map (fn [l] [(get-in l [:vocab-link/vocab-item :vocab-item/form]) l])
+                                        adj-links))]
+              (is (= #{"speed-adjective" "color-adjective"} (set (keys by-form)))
+                  "Adjectives links should expand to both adjective items")
+              (is (= [token2-id] (:vocab-link/tokens (by-form "speed-adjective"))))
+              (is (= [token3-id] (:vocab-link/tokens (by-form "color-adjective")))))
 
             ;; Animals vocab should have one link
             (is (= 1 (count (:vocab-layer/vocab-links animals-vocab))))
