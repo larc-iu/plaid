@@ -41,6 +41,14 @@
                               :body (cond-> {:text-layer-id text-layer-id :name name}
                                       overlap-mode (assoc :overlap-mode overlap-mode))})))
 
+(defn create-token-layer-opts
+  "Create a token layer with an opts map merged into the body, e.g.
+  {:overlap-mode \"partitioning\" :parent-token-layer-id <uuid>}."
+  [user-request-fn text-layer-id name opts]
+  (api-call user-request-fn {:method :post
+                             :path "/api/v1/token-layers"
+                             :body (merge {:text-layer-id text-layer-id :name name} opts)}))
+
 (defn create-span-layer [user-request-fn token-layer-id name]
   (api-call user-request-fn {:method :post
                              :path "/api/v1/span-layers"

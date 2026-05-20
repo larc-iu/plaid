@@ -28,15 +28,23 @@
                              "\n<body>partitioning</body>: tokens must form a gap-free, non-overlapping cover of the "
                              "entire text. On partitioning layers, single token create/update/delete are rejected — "
                              "use bulk-create to establish the partition and the token split/merge/shift endpoints to "
-                             "modify it.")
+                             "modify it."
+                             "\n"
+                             "\nThe optional <body>parent-token-layer-id</body> makes this a nested layer (also "
+                             "immutable): every token in this layer must be contained within a token of the parent "
+                             "layer (which must belong to the same text layer). Combined with "
+                             "<body>partitioning</body>, the layer's tokens must tile each parent token's extent — "
+                             "e.g. morphemes (partitioning, parent=words) within words (parent=sentences).")
             :middleware [[pra/wrap-maintainer-required get-project-id]]
             :parameters {:body [:map
                                 [:text-layer-id :uuid]
                                 [:name :string]
-                                [:overlap-mode {:optional true} [:enum "any" "non-overlapping" "partitioning"]]]}
-            :handler    (fn [{{{:keys [name text-layer-id overlap-mode]} :body} :parameters xtdb :xtdb user-id :user/id}]
+                                [:overlap-mode {:optional true} [:enum "any" "non-overlapping" "partitioning"]]
+                                [:parent-token-layer-id {:optional true} :uuid]]}
+            :handler    (fn [{{{:keys [name text-layer-id overlap-mode parent-token-layer-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
                           (let [attrs (cond-> {:token-layer/name name}
-                                        overlap-mode (assoc :token-layer/overlap-mode (keyword overlap-mode)))
+                                        overlap-mode (assoc :token-layer/overlap-mode (keyword overlap-mode))
+                                        parent-token-layer-id (assoc :token-layer/parent-token-layer parent-token-layer-id))
                                 result (tokl/create {:node xtdb} attrs text-layer-id user-id)]
                             (if (:success result)
                               {:status 201

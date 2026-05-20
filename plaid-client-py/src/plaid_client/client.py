@@ -344,7 +344,8 @@ class TokenLayersResource(_Resource):
         return self._request('POST', f'/api/v1/token-layers/{token_layer_id}/shift',
                              body=_body_of(direction=direction))
 
-    def create(self, text_layer_id: str, name: str, *, overlap_mode: str | None = None) -> Any:
+    def create(self, text_layer_id: str, name: str, *, overlap_mode: str | None = None,
+               parent_token_layer_id: str | None = None) -> Any:
         """Create a new token layer.
 
         ``overlap_mode`` sets a per-layer, immutable invariant on the layer's
@@ -353,10 +354,16 @@ class TokenLayersResource(_Resource):
         ``partitioning`` (tokens must form a gap-free, non-overlapping cover of
         the text). On partitioning layers, single token create/update/delete are
         rejected -- use bulk-create plus the token split/merge/shift methods.
+
+        ``parent_token_layer_id`` (immutable) makes this a nested layer: every
+        token must be contained within a token of the parent layer (which must
+        belong to the same text layer). Combined with ``partitioning``, tokens
+        must tile each parent token's extent -- e.g. morphemes within words.
         """
         return self._request('POST', '/api/v1/token-layers',
                              body=_body_of(text_layer_id=text_layer_id, name=name,
-                                           overlap_mode=overlap_mode))
+                                           overlap_mode=overlap_mode,
+                                           parent_token_layer_id=parent_token_layer_id))
 
 
 class DocumentsResource(_Resource):

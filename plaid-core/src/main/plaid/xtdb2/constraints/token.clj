@@ -19,6 +19,68 @@
 (defn- layer-overlap-mode [node layer-id]
   (or (:token-layer/overlap-mode (pxc/entity node :token-layers layer-id)) :any))
 
+(defn- layer-parent
+  "The parent token-layer id of layer-id, or nil for a root (flat) layer."
+  [node layer-id]
+  (:token-layer/parent-token-layer (pxc/entity node :token-layers layer-id)))
+
+(defn- containing-parent
+  "The parent-layer token (same doc, with :xt/system-from) whose extent contains
+  [begin, end), or nil. Containment is inclusive: a child equal to its parent's
+  extent counts as contained."
+  [node parent-layer-id doc-id begin end]
+  (first (xt/q node [(str "SELECT *, _system_from FROM tokens"
+                          " WHERE token$layer = ? AND token$document = ?"
+                          " AND token$begin <= ? AND token$end >= ?")
+                     parent-layer-id doc-id begin end])))
+
+(defn- child-layer-ids
+  "Token-layer ids that declare layer-id as their parent (the reverse of
+  layer-parent)."
+  [node layer-id]
+  (->> (xt/q node ["SELECT _id FROM token_layers WHERE token_layer$parent_token_layer = ?" layer-id])
+       (mapv :xt/id)))
+
+(defn- children-in-extent
+  "Tokens (with :xt/system-from) in any child layer of layer-id, in the same doc,
+  fully within [lo, hi). Empty when layer-id has no child layers."
+  [node layer-id doc-id lo hi]
+  (let [clids (child-layer-ids node layer-id)]
+    (if (empty? clids)
+      []
+      (let [ph (str/join ", " (repeat (count clids) "?"))]
+        (xt/q node (into [(str "SELECT *, _system_from FROM tokens"
+                               " WHERE token$layer IN (" ph ") AND token$document = ?"
+                               " AND token$begin >= ? AND token$end <= ?")]
+                         (concat clids [doc-id lo hi])))))))
+
+(defn- no-children-assert-sql
+  "ASSERT NOT EXISTS a child-layer token within [lo, hi) — TOCTOU guard for parent
+  structural ops (a concurrent child create inside the affected region has no row
+  to match*, so we assert it away)."
+  [child-layer-ids doc-id lo hi]
+  (let [ph (str/join ", " (repeat (count child-layer-ids) "?"))]
+    [:sql (str "ASSERT NOT EXISTS (SELECT 1 FROM tokens"
+               " WHERE token$layer IN (" ph ") AND token$document = ?"
+               " AND token$begin >= ? AND token$end <= ?)")
+     (into (vec child-layer-ids) [doc-id lo hi])]))
+
+(defn- guard-parent-extent
+  "Phase-1 reject-don't-cascade guard: if layer-id has child layers and any child
+  currently sits in [lo, hi), reject the op (clear child tokens before
+  re-segmenting the parent). Returns TOCTOU assert ops (empty if layer-id has no
+  child layers)."
+  [node layer-id doc-id lo hi]
+  (let [clids (child-layer-ids node layer-id)]
+    (if (empty? clids)
+      []
+      (do
+        (when (seq (children-in-extent node layer-id doc-id lo hi))
+          (throw (ex-info (str "Cannot modify this token: it has child-layer tokens nested within it. "
+                               "Clear the child tokens first.")
+                          {:code 400 :layer layer-id :begin lo :end hi})))
+        [(no-children-assert-sql clids doc-id lo hi)]))))
+
 (defn- put-token-records
   "Token records from the :put-docs :tokens ops in a tx-op vector."
   [tx-ops]
@@ -75,58 +137,64 @@
     [(overlap-assert-sql layer-id doc-id begin end :exclude-id exclude-id)]))
 
 (defn- partition-establish-assert-sql
-  "ASSERT tx-op ensuring the ONLY tokens in layer+doc are the ones being inserted
-  (inserted-ids). XTDB evaluates ASSERTs against the in-tx state including this
-  tx's own put-docs, so we exclude the inserted ids and assert nothing else
-  exists. This makes partitioning bulk-create safe against a concurrent
-  establishment that committed first (the pre-flight emptiness read is not enough
-  on its own — see operation-coordinator: regular ops are not serialized against
-  each other)."
-  [layer-id doc-id inserted-ids]
-  (if (seq inserted-ids)
-    (let [ph (str/join ", " (repeat (count inserted-ids) "?"))]
-      [:sql (str "ASSERT NOT EXISTS (SELECT 1 FROM tokens"
-                 " WHERE token$layer = ? AND token$document = ?"
-                 " AND _id NOT IN (" ph "))")
-       (into [layer-id doc-id] inserted-ids)])
+  "ASSERT tx-op ensuring the ONLY tokens in layer+doc (optionally restricted to
+  the range [lo, hi)) are the ones being inserted (inserted-ids). XTDB evaluates
+  ASSERTs against the in-tx state including this tx's own put-docs, so we exclude
+  the inserted ids and assert nothing else exists. This makes partitioning
+  bulk-create safe against a concurrent establishment that committed first (the
+  pre-flight emptiness read is not enough on its own — see operation-coordinator:
+  regular ops are not serialized against each other). For a nested partitioning
+  layer, pass :lo/:hi = the parent token's extent so the assert is scoped to that
+  parent."
+  [layer-id doc-id inserted-ids & {:keys [lo hi]}]
+  (let [range? (and (some? lo) (some? hi))
+        range-clause (when range? " AND token$begin >= ? AND token$end <= ?")
+        range-params (when range? [lo hi])
+        ids? (seq inserted-ids)
+        id-clause (when ids?
+                    (str " AND _id NOT IN (" (str/join ", " (repeat (count inserted-ids) "?")) ")"))]
     [:sql (str "ASSERT NOT EXISTS (SELECT 1 FROM tokens"
-               " WHERE token$layer = ? AND token$document = ?)")
-     [layer-id doc-id]]))
+               " WHERE token$layer = ? AND token$document = ?"
+               range-clause id-clause ")")
+     (into (into [layer-id doc-id] range-params) (when ids? inserted-ids))]))
 
 ;; ---------------------------------------------------------------------------
 ;; Partition validation
 ;; ---------------------------------------------------------------------------
 
+(defn validate-partition-range!
+  "Validate that tokens form a complete, gap-free, overlap-free partition of
+  [lo, hi). Throws on violation. The scope is [0, text-length) for a root
+  partitioning layer, or a parent token's [begin, end) for a nested one."
+  [tokens lo hi]
+  (if (empty? tokens)
+    (when (> hi lo)
+      (throw (ex-info "Partitioning requires tokens covering the entire extent"
+                      {:code 400 :lo lo :hi hi})))
+    (let [sorted (sort-by :token/begin tokens)]
+      (when (not= lo (:token/begin (first sorted)))
+        (throw (ex-info "Partition must start at the extent's begin"
+                        {:code 400 :expected-begin lo :actual-begin (:token/begin (first sorted))})))
+      (when (not= hi (:token/end (last sorted)))
+        (throw (ex-info "Partition must end at the extent's end"
+                        {:code 400 :expected-end hi :actual-end (:token/end (last sorted))})))
+      ;; Contiguous (no gaps, no overlaps)
+      (doseq [[a b] (partition 2 1 sorted)]
+        (when (not= (:token/end a) (:token/begin b))
+          (throw (ex-info "Partition requires contiguous tokens (no gaps or overlaps)"
+                          {:code 400
+                           :token-a-end (:token/end a)
+                           :token-b-begin (:token/begin b)}))))
+      ;; No zero-width tokens
+      (doseq [t sorted]
+        (when (= (:token/begin t) (:token/end t))
+          (throw (ex-info "Zero-width tokens are not allowed in partitioning mode"
+                          {:code 400 :token-id (:xt/id t)})))))))
+
 (defn validate-partition!
-  "Validate that a set of tokens forms a complete, gap-free, overlap-free
-  partition of [0, text-length). Tokens must be sorted by :token/begin.
-  Throws on violation."
+  "Validate that tokens partition [0, text-length). See validate-partition-range!."
   [tokens text-length]
-  (when (empty? tokens)
-    (when (pos? text-length)
-      (throw (ex-info "Partitioning layer requires tokens covering the entire text"
-                      {:code 400 :text-length text-length}))))
-  (let [sorted (sort-by :token/begin tokens)]
-    ;; Check first token starts at 0
-    (when (not= 0 (:token/begin (first sorted)))
-      (throw (ex-info "Partitioning requires first token to start at 0"
-                      {:code 400 :first-begin (:token/begin (first sorted))})))
-    ;; Check last token ends at text-length
-    (when (not= text-length (:token/end (last sorted)))
-      (throw (ex-info "Partitioning requires last token to end at text length"
-                      {:code 400 :last-end (:token/end (last sorted)) :text-length text-length})))
-    ;; Check contiguous (no gaps, no overlaps)
-    (doseq [[a b] (partition 2 1 sorted)]
-      (when (not= (:token/end a) (:token/begin b))
-        (throw (ex-info "Partitioning requires contiguous tokens (no gaps or overlaps)"
-                        {:code 400
-                         :token-a-end (:token/end a)
-                         :token-b-begin (:token/begin b)}))))
-    ;; Check no zero-width tokens
-    (doseq [t sorted]
-      (when (= (:token/begin t) (:token/end t))
-        (throw (ex-info "Zero-width tokens are not allowed in partitioning mode"
-                        {:code 400 :token-id (:xt/id t)}))))))
+  (validate-partition-range! tokens 0 text-length))
 
 (defn- check-no-intra-batch-overlaps!
   "Validate that tokens within a batch don't overlap each other."
@@ -305,11 +373,9 @@
 ;; Single entry point
 ;; ---------------------------------------------------------------------------
 
-(defn enforce
-  "Run overlap-mode constraint enforcement for a token op and return base-ops
-  augmented with TOCTOU-safety ops. Pre-flight checks throw ex-info with a :code
-  on violation. This is the only place overlap-mode is interpreted for token
-  writes; the `*` fns are constraint-unaware.
+(defn- enforce-overlap
+  "Overlap-mode enforcement (axis 1). Returns base-ops augmented with overlap
+  ASSERTs / shift neighbor ops. Nesting (axis 2) is layered on by enforce-nesting.
 
   ctx keys by op:
     :create       {:layer :doc-id :begin :end}
@@ -349,19 +415,27 @@
     :bulk-create
     (let [{:keys [layer doc-id text-length]} ctx
           overlap-mode (layer-overlap-mode node layer)
+          nested? (some? (layer-parent node layer))
           records (vec (put-token-records base-ops))]
-      (check-bulk-create! overlap-mode node layer doc-id records text-length)
       (case overlap-mode
         :non-overlapping
-        (into (vec base-ops)
-              (mapcat (fn [rec]
-                        (create-overlap-asserts :non-overlapping layer doc-id
-                                                (:token/begin rec) (:token/end rec)
-                                                :exclude-id (:xt/id rec)))
-                      records))
+        (do
+          (check-bulk-create! :non-overlapping node layer doc-id records text-length)
+          (into (vec base-ops)
+                (mapcat (fn [rec]
+                          (create-overlap-asserts :non-overlapping layer doc-id
+                                                  (:token/begin rec) (:token/end rec)
+                                                  :exclude-id (:xt/id rec)))
+                        records)))
         :partitioning
-        (conj (vec base-ops)
-              (partition-establish-assert-sql layer doc-id (mapv :xt/id records)))
+        (if nested?
+          ;; Nested partitioning is validated per parent extent by enforce-nesting,
+          ;; not against the whole text — skip the root partition checks here.
+          (vec base-ops)
+          (do
+            (check-bulk-create! :partitioning node layer doc-id records text-length)
+            (conj (vec base-ops)
+                  (partition-establish-assert-sql layer doc-id (mapv :xt/id records)))))
         (vec base-ops)))
 
     :bulk-delete
@@ -372,7 +446,117 @@
       (vec base-ops))
 
     :merge (enforce-merge node ctx base-ops)
-    :shift (enforce-shift node ctx base-ops)))
+    :shift (enforce-shift node ctx base-ops)
+    ;; split has no overlap constraints (both halves stay within the original
+    ;; extent); the parent-side guard runs in enforce-parent-guard
+    :split (vec base-ops)))
+
+;; ---------------------------------------------------------------------------
+;; Nesting enforcement (axis 2): child tokens must be contained in a parent token
+;; ---------------------------------------------------------------------------
+
+(defn- enforce-nesting
+  "If the operated layer declares a parent token layer, enforce containment:
+  every new/changed child token in `ops` must sit inside some parent-layer token
+  (same document). Each containing parent is match*ed so a concurrent parent
+  delete/shrink rolls this tx back. For a nested :partitioning layer being
+  established via bulk-create, the children must additionally tile each touched
+  parent extent (validate + scoped establish ASSERT). Containment also makes
+  cross-parent merge/shift impossible: a merged/shifted extent that escapes its
+  parent has no containing token and is rejected.
+
+  Only create/update/bulk-create/merge/shift can introduce/move a child; delete
+  and bulk-delete never break containment, so they are passed through."
+  [op node ctx ops]
+  (let [layer (:layer ctx)
+        parent-layer (when layer (layer-parent node layer))]
+    (if (or (nil? parent-layer)
+            (not (contains? #{:create :update :bulk-create :merge :shift} op)))
+      ops
+      (let [doc-id (:doc-id ctx)
+            child-records (filter #(= layer (:token/layer %)) (put-token-records ops))
+            child+parent
+            (mapv (fn [rec]
+                    (let [b (:token/begin rec) e (:token/end rec)
+                          p (containing-parent node parent-layer doc-id b e)]
+                      (when (nil? p)
+                        (throw (ex-info "Token is not contained within any parent-layer token"
+                                        {:code 400 :begin b :end e :parent-layer parent-layer})))
+                      [rec p]))
+                  child-records)
+            parent-match-ops (->> child+parent
+                                  (reduce (fn [m [_ p]] (assoc m (:xt/id p) p)) {})
+                                  vals
+                                  (mapv #(pxc/match* :tokens %)))
+            tiling-ops (if (and (= op :bulk-create)
+                                (= :partitioning (layer-overlap-mode node layer)))
+                         (->> (group-by (fn [[_ p]] (:xt/id p)) child+parent)
+                              (mapcat (fn [[_pid pairs]]
+                                        (let [p (second (first pairs))
+                                              recs (map first pairs)]
+                                          (validate-partition-range! recs (:token/begin p) (:token/end p))
+                                          [(partition-establish-assert-sql
+                                            layer doc-id (mapv :xt/id recs)
+                                            :lo (:token/begin p) :hi (:token/end p))])))
+                              vec)
+                         [])]
+        (into (vec ops) (concat parent-match-ops tiling-ops))))))
+
+;; ---------------------------------------------------------------------------
+;; Parent-side guard (axis 2, reverse): structural ops on a token that has
+;; child-layer tokens nested in it are rejected (phase 1: clear children first)
+;; ---------------------------------------------------------------------------
+
+(defn- enforce-parent-guard
+  "Reject structural ops on a parent token that would orphan nested child-layer
+  tokens. Phase 1 is reject-don't-cascade: if the operated/affected token sits in
+  a layer that has child layers and any child currently nests within it, throw.
+  Appends a TOCTOU ASSERT NOT EXISTS child-in-extent. No-op for layers with no
+  child layers (so flat/leaf layers are unaffected).
+
+  Needs ctx :doc-id and the affected extent: :begin/:end for
+  :delete/:shift/:split, old :begin/:end for :update (extent change). :bulk-delete
+  reads :tokens-by-layer."
+  [op node ctx ops]
+  (case op
+    (:delete :split)
+    (let [{:keys [layer doc-id begin end]} ctx]
+      (if (and layer (some? begin) (some? end))
+        (into (vec ops) (guard-parent-extent node layer doc-id begin end))
+        (vec ops)))
+
+    (:shift :update)
+    (let [{:keys [layer doc-id begin end extents-changing?]} ctx]
+      (if (and layer (some? begin) (some? end) (not (false? extents-changing?)))
+        (into (vec ops) (guard-parent-extent node layer doc-id begin end))
+        (vec ops)))
+
+    :bulk-delete
+    (into (vec ops)
+          (mapcat (fn [[layer-id tokens]]
+                    (let [doc-id (:token/document (first tokens))]
+                      (mapcat (fn [t] (guard-parent-extent node layer-id doc-id
+                                                           (:token/begin t) (:token/end t)))
+                              tokens)))
+                  (:tokens-by-layer ctx)))
+
+    (vec ops)))
+
+;; ---------------------------------------------------------------------------
+;; Single entry point
+;; ---------------------------------------------------------------------------
+
+(defn enforce
+  "Run constraint enforcement for a token op and return base-ops augmented with
+  TOCTOU-safety ops. Composes three concerns: overlap-mode (within-layer), nesting
+  containment (child must sit in a parent), and the parent-side guard (don't
+  orphan children). Pre-flight checks throw ex-info with a :code on violation.
+  This is the only place token-layer constraints are interpreted; the `*` fns are
+  constraint-unaware. See enforce-overlap for ctx keys by op."
+  [op node ctx base-ops]
+  (->> (enforce-overlap op node ctx base-ops)
+       (enforce-nesting op node ctx)
+       (enforce-parent-guard op node ctx)))
 
 ;; ---------------------------------------------------------------------------
 ;; Cascade compensation
@@ -405,7 +589,13 @@
        (mapcat
         (fn [[layer-id layer-tokens]]
           (let [mode (layer-overlap-mode node layer-id)]
-            (if (not= mode :partitioning)
+            ;; Only gap-fill ROOT partitioning layers against the whole text. A
+            ;; nested partitioning layer (e.g. morphemes) tiles each parent token,
+            ;; not [0, text-len); its tokens are resized consistently by the text
+            ;; edit (every layer clips to the same body), preserving per-parent
+            ;; tiling, so we must NOT fill it against the whole text here.
+            (if (or (not= mode :partitioning)
+                    (some? (layer-parent node layer-id)))
               []
               ;; For partitioning: check if the surviving tokens still form a partition
               ;; If text is now empty and no tokens survive, that's fine

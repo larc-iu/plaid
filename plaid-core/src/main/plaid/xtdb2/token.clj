@@ -182,6 +182,7 @@
         base-ops (merge* xt-map eid attrs)
         tx-ops (tc/enforce :update node
                            {:layer layer :doc-id document :eid eid
+                            :begin begin :end end
                             :new-begin new-begin :new-end new-end
                             :extents-changing? extents-changing?}
                            base-ops)
@@ -255,7 +256,10 @@
         t (pxc/entity node :tokens eid)
         doc-id (when t (:token/document t))
         base-ops (delete* xt-map eid)
-        tx-ops (tc/enforce :delete node {:layer (when t (:token/layer t))} base-ops)]
+        tx-ops (tc/enforce :delete node {:layer (when t (:token/layer t))
+                                         :doc-id doc-id
+                                         :begin (:token/begin t) :end (:token/end t)}
+                           base-ops)]
     (op/make-operation
      {:type :token/delete
       :project (project-id xt-map eid)
@@ -461,7 +465,13 @@
   (let [node (pxc/->node xt-map)
         t (pxc/entity node :tokens token-id)
         doc-id (when t (:token/document t))
-        {:keys [tx-ops new-token-id]} (split* xt-map token-id position)]
+        ;; split* throws 404 if the token is missing, so t exists past this point
+        {:keys [tx-ops new-token-id]} (split* xt-map token-id position)
+        ;; parent-side guard: can't split a parent token that has nested children
+        tx-ops (tc/enforce :split node
+                           {:layer (:token/layer t) :doc-id doc-id
+                            :begin (:token/begin t) :end (:token/end t)}
+                           tx-ops)]
     {:operation (op/make-operation
                  {:type :token/split
                   :project (project-id xt-map token-id)

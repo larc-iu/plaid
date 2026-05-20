@@ -10,6 +10,7 @@
                 :token-layer/name
                 :token-layer/span-layers
                 :token-layer/overlap-mode
+                :token-layer/parent-token-layer
                 :config])
 
 ;; Queries ------------------------------------------------------------------------
@@ -49,24 +50,39 @@
             (throw (ex-info (str "Invalid overlap-mode: " overlap-mode
                                  ". Must be one of: " (str/join ", " (map name valid-overlap-modes)))
                             {:overlap-mode overlap-mode :code 400})))
+        ;; Optional parent token layer (immutable; child tokens must nest within parent tokens)
+        parent-tl-id (:token-layer/parent-token-layer attrs)
+        parent-tl (when parent-tl-id (pxc/entity-with-sys-from node :token-layers parent-tl-id))
+        _ (when parent-tl-id
+            (cond
+              (nil? (:token-layer/id parent-tl))
+              (throw (ex-info (pxc/err-msg-not-found "Parent token layer" parent-tl-id)
+                              {:id parent-tl-id :code 400}))
+              ;; Same text layer ⇒ same text body (so offset containment is meaningful) and same project
+              (not= (:token-layer/text-layer parent-tl) text-layer-id)
+              (throw (ex-info "Parent token layer must belong to the same text layer as this layer."
+                              {:parent-token-layer parent-tl-id :code 400}))))
         {:token-layer/keys [name id] :as record}
         (-> (clojure.core/merge (pxc/new-record "token-layer" id)
-                               {:token-layer/span-layers []
-                                :token-layer/text-layer text-layer-id
-                                :token-layer/project prj-id
-                                :token-layer/overlap-mode overlap-mode}
-                               (select-keys attrs attr-keys))
+                                {:token-layer/span-layers []
+                                 :token-layer/text-layer text-layer-id
+                                 :token-layer/project prj-id
+                                 :token-layer/overlap-mode overlap-mode}
+                                (select-keys attrs attr-keys))
             (update :config pxc/serialize-config))]
     (pxc/valid-name? name)
     (when (pxc/entity node :token-layers id)
       (throw (ex-info (pxc/err-msg-already-exists "Token layer" id) {:id id :code 409})))
     (when (nil? (:text-layer/id txtl))
       (throw (ex-info (pxc/err-msg-not-found "Text layer" text-layer-id) {:id text-layer-id :code 400})))
-    [(pxc/match* :text-layers txtl)
-     [:put-docs :text-layers (-> txtl
-                                 (pxc/strip-temporal)
-                                 (update :text-layer/token-layers conj id))]
-     [:put-docs :token-layers record]]))
+    ;; NB: keep [:put-docs :token-layers record] LAST — create's get-extra reads
+    ;; (-> tx-ops last last :xt/id) to return the new layer id. Parent match* goes first.
+    (vec (concat (when parent-tl [(pxc/match* :token-layers parent-tl)])
+                 [(pxc/match* :text-layers txtl)
+                  [:put-docs :text-layers (-> txtl
+                                              (pxc/strip-temporal)
+                                              (update :text-layer/token-layers conj id))]
+                  [:put-docs :token-layers record]]))))
 
 (defn create-operation [xt-map attrs text-layer-id]
   (let [{:token-layer/keys [name]} attrs
@@ -123,16 +139,16 @@
         rl-entities (pxc/entities-with-sys-from node :relation-layers all-rl-ids)
         ;; All relations across all relation-layers (1 query)
         all-relations (if (empty? all-rl-ids) []
-                        (let [ph (str/join ", " (repeat (count all-rl-ids) "?"))]
-                          (xt/q node (into [(str "SELECT *, _system_from FROM relations"
-                                                 " WHERE relation$layer IN (" ph ")")]
-                                           all-rl-ids))))
+                          (let [ph (str/join ", " (repeat (count all-rl-ids) "?"))]
+                            (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                   " WHERE relation$layer IN (" ph ")")]
+                                             all-rl-ids))))
         ;; All spans across all span-layers (1 query)
         all-spans (if (empty? span-layer-ids) []
-                    (let [ph (str/join ", " (repeat (count span-layer-ids) "?"))]
-                      (xt/q node (into [(str "SELECT *, _system_from FROM spans"
-                                              " WHERE span$layer IN (" ph ")")]
-                                        span-layer-ids))))
+                      (let [ph (str/join ", " (repeat (count span-layer-ids) "?"))]
+                        (xt/q node (into [(str "SELECT *, _system_from FROM spans"
+                                               " WHERE span$layer IN (" ph ")")]
+                                         span-layer-ids))))
         ;; Tokens + vocab-links
         tokens (pxc/find-entities-with-sys-from node :tokens {:token/layer eid})
         token-ids (mapv :xt/id tokens)
