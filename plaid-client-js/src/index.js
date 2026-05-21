@@ -528,7 +528,7 @@ class PlaidClient {
        * @param {string} textLayerId - The text layer ID
        * @param {string} name - The name
        * @param {string} [overlapMode] - Per-layer, immutable token invariant: "any" (default), "non-overlapping", or "partitioning". On partitioning layers, single token create/update/delete are rejected; use bulkCreate plus split/merge/shift.
-       * @param {string} [parentTokenLayerId] - Optional immutable parent token layer. Tokens in this layer must nest within a parent-layer token (same text layer). With "partitioning", they must tile each parent token (e.g. morphemes within words).
+       * @param {string} [parentTokenLayerId] - Optional immutable parent token layer. Tokens in this layer must nest within a parent-layer token; the parent layer must be in the same text layer and be "non-overlapping" or "partitioning" (an "any" parent is rejected). A nested layer may be "any" or "non-overlapping" but not "partitioning" (partitioning is only for root layers), e.g. words (non-overlapping, parent=sentences) within sentences (partitioning).
        */
       create: (textLayerId, name, overlapMode, parentTokenLayerId) =>
         this._request('POST', '/api/v1/token-layers', {

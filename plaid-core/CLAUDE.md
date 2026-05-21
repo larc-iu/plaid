@@ -165,14 +165,40 @@ tok/multi-delete*           → called directly, no constraint checks
 tc/compensate-after-cascade → separate compensation step
 ```
 
-Constraint logic lives in `plaid.xtdb2.constraints.token` (`tc`). Public surface is just two fns:
-- `enforce` — single entry point keyed on op (`:create :update :delete :bulk-create :bulk-delete :merge :shift`); takes `[op node ctx base-ops]`, runs the pre-flight check + appends safety ops, returns augmented tx-ops. All the per-op overlap-mode logic (incl. merge adjacency and shift neighbor-adjustment) lives here.
-- `compensate-after-cascade` — partition gap-filling after a text-body-edit cascade.
-- `find-overlapping-tokens` / `validate-partition!` remain public as reusable utilities; the `check-*` pre-flight fns and ASSERT builders are private to `enforce`.
+`tc/enforce` composes three independent concerns (each a no-op when not applicable), so it is the single place all token-layer constraints are interpreted:
+- **`enforce-overlap`** — within-layer overlap mode (`:any`/`:non-overlapping`/`:partitioning`), incl. merge adjacency and shift neighbor-adjustment.
+- **`enforce-nesting`** — containment for a *nested* layer (one with `:token-layer/parent-token-layer`): every new/changed child token must sit inside some parent-layer token (the containing parent is `match*`ed). See "Token-layer hierarchy" below.
+- **`enforce-parent-guard`** — the reverse: structural ops on a token that has nested children must not orphan them.
+
+**Partitioning invariant:** a `:partitioning` layer is, for any document, always **empty or a complete cover** of the text — never partial. Single create/delete/extent-update are rejected; bulk-create establishes (validated), bulk-delete removes the whole partition at once, split/merge/shift are partition-preserving. `enforce-shift` bounds-checks the moved boundary against the neighbor (it must land strictly inside the neighbor's extent) so a shift can't zero-width, invert, or overshoot a token; the layer is otherwise not re-validated after a shift.
+
+Public surface of `tc`:
+- `enforce` — single entry point keyed on op (`:create :update :delete :bulk-create :bulk-delete :merge :shift :split`); takes `[op node ctx base-ops]`, runs pre-flight checks + appends safety ops, returns augmented tx-ops.
+- `compensate-after-cascade` / `text-edit-partition-asserts` — the text-body-edit cascade's partitioning guards (root partitioning layers only; nested layers resize with the text). compensate runs after EVERY edit (insert/append/prepend/delete), extending tokens to close gaps then fail-closed `validate-partition!`; the asserts handle concurrency (see Concurrency note).
+- `straddling-descendant-token-ids-at` / `-in` — used by the resize and split cascades respectively (see below).
+- `find-overlapping-tokens` / `validate-partition!` remain public utilities; `check-*`, `validate-partition-range!`, `guard-dlids`, the ASSERT builders, and the per-axis `enforce-*` fns are private.
 
 **Concurrency note:** the operation coordinator serializes *batches* against regular ops but does NOT serialize regular ops against each other. Per-row `match*`/overlap-`ASSERT`s make `:non-overlapping` and the partition-preserving ops (split/merge/shift each `match*` both sides of every boundary they touch) safe. Partitioning *establishment* (`bulk-create`) has no row to `match*`, so `enforce` adds `partition-establish-assert-sql` — an `ASSERT NOT EXISTS` for any token in the layer+doc other than the ones being inserted — to block a concurrent establishment.
 
-**Adding a new token constraint:** add its logic to `tc/enforce` (and helpers in `constraints/token.clj`). No changes to `*` functions or `-operation` call sites. (A general cross-entity constraint protocol is deliberately deferred until a second real constraint kind exists — see conversation history.)
+Text-body edits (`text/update-body*`) are the one extent-changing path outside `enforce`, so they carry their own two TOCTOU `ASSERT`s for concurrency (a concurrently-created token has no row for the edit to `match*`): (1) **`oob-assert`** — no token of the text may end past the new length, so a token created concurrently with a *shrink* can't survive out-of-bounds; (2) **`text-edit-partition-asserts`** — each root partitioning layer that is empty at the edit's read must stay empty, so a concurrent establishment can't leave a partition covering only the old extent after a *grow*. A concurrent token write on a text being edited therefore conflicts and one side rolls back (retry).
+
+### Token-layer hierarchy (nesting)
+
+A token layer may declare an immutable `:token-layer/parent-token-layer` (must share the same text layer). This models e.g. sentence > word > morpheme. Parentage is **derived by offset containment** — there is no per-token parent ref — so spans/vocab-links/merge keep working unchanged and migration is a no-op (existing flat layers have no parent).
+
+- **Containment** (`enforce-nesting`): every token in a nested layer must be contained in some parent-layer token (same doc), enforced on create/update/bulk-create/merge/shift; the containing parent is `match*`ed for TOCTOU. Cross-parent merges/shifts are impossible (the escaping extent has no containing parent).
+- **Partitioning is root-only**: `:partitioning` is rejected on a nested layer (one with a parent) — `create*` in token_layer.clj throws. On a nested layer it could only mean "tile each parent token," a leaky invariant (a freshly created parent has no children yet, and merging non-adjacent parents gaps the tiling), so it was dropped. Nested layers are `:any` or `:non-overlapping`. Natural IGT mapping now: sentence = `:partitioning` (root), word = `:non-overlapping` + parent=sentence, morpheme = `:any` + parent=word (`:any`, not `:non-overlapping`, so fused/non-concatenative morphemes can share a span — see manual.adoc; containment is still enforced regardless of overlap-mode).
+- **Delete cascades** (`-operation` expands the delete set with descendants): deleting a parent token deletes every token nested in it — and, via `multi-delete*`, those tokens' spans/relations/vocab-links. This is the same "delete dependents that can no longer validly exist" pattern as token→span deletion. `enforce-parent-guard` adds a TOCTOU assert that no descendant remains. Applies to both single delete and bulk-delete.
+- **Split cascades**: splitting a token at `p` also splits every straddling descendant at `p` (via `straddling-descendant-token-ids-in` + `split-straddlers*`), so a split never orphans a child; descendants re-home into the two halves by offset.
+- **Resize cascades** (shift/update extent, via `resize-child-cascade*` in token.clj): mode-dependent, and symmetric for shrink/grow. A **`:partitioning` parent** grows/shrinks its neighbor, so straddling descendants are *split* at the moved boundary and the outside half re-homes to the neighbor by offset — works whether the boundary moved into this token (the straddler is its own child) or into the neighbor (the straddler is the neighbor's child), because the partitioning scan is doc-wide and a disjoint partition puts the moved boundary inside exactly one parent. A **non-overlapping/`:any` parent** has no neighbor, so descendants straddling the new extent are *trimmed* to it and descendants left fully outside are *deleted* (with dependents). `enforce-parent-guard` adds the matching TOCTOU assert (no-straddler for partitioning, no-out-of-bounds for the rest).
+
+- **Read API**: `GET /documents/:id?include-body=true` surfaces each token layer's `overlap-mode` (defaulted to `:any`) and `parent-token-layer` (omitted for roots) in the projection (`document.clj` `get-doc-info`), so a client can render the hierarchy without a per-layer `GET /token-layers/:id`.
+
+**Deferred**: a general cross-entity constraint protocol (the only thing left — every parent op now cascades correctly).
+
+**CORS**: `:access-control-allow-methods` includes `:patch` (config/defaults.edn + middleware.clj fallback) — PATCH endpoints (token/text/layer/project/document updates) were otherwise blocked for cross-origin browser clients.
+
+**Adding a new token constraint:** add its logic to the relevant `enforce-*` axis (and helpers) in `constraints/token.clj`. No changes to `*` functions or `-operation` call sites beyond passing any new ctx keys.
 
 ## API Structure
 Base path: `/api/v1/`.
@@ -226,11 +252,11 @@ jq -r '.paths | keys[] | select(contains("projects"))' target/openapi.json
 jq -r '.paths | to_entries[] | select(.value | to_entries[] | .value.security) | .key' target/openapi.json
 ```
 
-## clojure-mcp
-* When `clojure-mcp` is active, you can use it to start an nREPL server and launch the web server if necessary. Use `user/start` and `user/stop` to control the web server. See @src/dev/user.clj.
-* If `clojure-mcp` is active, you should **prefer to use its tools** to edit Clojure files, as this will help you keep parentheses balanced more easily.
-  * Use `mcp__clojure-mcp__clojure_edit` for editing top-level Clojure forms (`defn`, `def`, `ns`, `defmethod`, etc.). Always try the regular `Edit` tool first; fall back to `clojure_edit` if it returns "String to replace not found".
-  * Use `mcp__clojure-mcp__clojure_eval` to evaluate expressions in the running REPL (nREPL on port 7888 when server is running). Useful for verifying DB queries, checking entity state, etc. before writing code.
+## REPL access & Clojure editing (clojure-mcp-light)
+* A running nREPL is the most powerful way to develop here. The dev REPL writes its port to `plaid-core/.nrepl-port`. Use `user/start` / `user/stop` to control the web server (see @src/dev/user.clj).
+* Evaluate Clojure against the running nREPL with the `clojure-eval` skill, or directly from a shell:
+  `clj-nrepl-eval -p "$(cat plaid-core/.nrepl-port)" "(your-expr)"`. Use it to call application fns (e.g. `plaid.xtdb2.project/get`), run XTQL/SQL against the node, and verify behavior before writing code.
+* Just use the normal `Edit`/`Write` tools for Clojure files — a `clj-paren-repair` PostToolUse hook automatically fixes delimiter/balance errors after each edit.
 * Try not to run all the tests at once. Prefer testing individual namespaces like `clojure -M:test --namespace plaid.rest-api.v1.project-test`. Pipe the output to a /tmp file so you can easily inspect it later.
 * When running tests, use `tee` to capture output: `clojure -M:test 2>&1 | tee /tmp/test-run.txt | tail -10` then grep the file for failures.
 
@@ -240,7 +266,7 @@ jq -r '.paths | to_entries[] | select(.value | to_entries[] | .value.security) |
 * **XTDB pgwire**: Connect via `psql -h localhost -p 5433 -d xtdb` (must specify `-h localhost` for TCP and `-d xtdb` for the database name).
 
 ### When to use each interface
-* **REPL** (`clojure_eval`): Best for most development tasks. Call application-level functions directly (e.g. `plaid.xtdb2.project/get`), run XTQL or SQL queries against the node, test code changes interactively. This is the most powerful option — you have full access to application internals and can require/call any namespace.
+* **REPL** (`clojure-eval` skill / `clj-nrepl-eval`): Best for most development tasks. Call application-level functions directly (e.g. `plaid.xtdb2.project/get`), run XTQL or SQL queries against the node, test code changes interactively. This is the most powerful option — you have full access to application internals and can require/call any namespace.
 * **HTTP API** (`curl`): Use when testing the REST API itself — verifying request/response formats, coercion, auth, middleware behavior, error handling. Also useful for end-to-end validation of a feature. Requires a JWT token from the login endpoint.
 * **pgwire** (`psql`): Use for quick ad-hoc SQL exploration of the database — checking what tables exist, viewing raw column names (note: nested keys use `$` separator, e.g. `project$name`), and querying history with `FOR ALL SYSTEM_TIME`. Handy for inspecting data without needing to write Clojure, but read-only and no access to application logic.
 

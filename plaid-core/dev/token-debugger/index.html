@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  Plaid Token Debugger  -- THROWAWAY DEV TOOL, NOT PRODUCTION CODE
+  ============================================================================
+  Single-file, dependency-free debugging UI for the Plaid annotation server.
+  Purpose: interactively exercise token-layer CONSTRAINTS (overlap modes:
+  any / non-overlapping / partitioning) and token-layer HIERARCHY (nesting)
+  and watch the server accept or reject operations.
+
+  - Pure vanilla HTML/CSS/JS. No build step, no npm, no CDN. Works offline.
+  - Open this file directly (file://) or serve the dir with
+    `python3 -m http.server`. The server allows all CORS origins.
+  - Default server: http://localhost:8085  (API base /api/v1)
+  - Default dev creds: user-id `a@b.com` / password `password`
+
+  NOTE ON JSON KEYS: the Plaid server uses KEBAB-CASE JSON keys on both
+  request and response (e.g. "text-layer-id", "overlap-mode",
+  "parent-token-layer-id", "other-token-id"), and namespaced keys on
+  responses ("document/text-layers", "token-layer/tokens", ...). This was
+  verified against the live server; the original task spec said snake_case,
+  which is incorrect for this server.
+  ============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plaid Token Debugger</title>
+<style>
+  :root {
+    --bg: #1e1e23; --panel: #2a2a32; --panel2: #33333d; --ink: #e6e6ea;
+    --muted: #9a9aa6; --line: #44444f; --accent: #6db3f2; --ok: #3fb950;
+    --err: #f85149; --warn: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 13px/1.4 -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  h2 { font-size: 14px; margin: 0 0 8px; color: var(--accent); }
+  h3 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .section {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 12px; margin: 10px;
+  }
+  label { color: var(--muted); margin-right: 4px; }
+  input, select, textarea, button {
+    background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 6px; font-size: 12px; font-family: inherit;
+  }
+  input[type=number] { width: 64px; }
+  textarea { font-family: ui-monospace, Menlo, Consolas, monospace; width: 100%; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: #2d4a6b; border-color: var(--accent); }
+  button.danger { background: #5a2326; border-color: var(--err); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+  .row > * { flex: none; }
+  .grow { flex: 1 1 auto; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .pill {
+    display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 11px;
+    background: var(--panel2); border: 1px solid var(--line); margin-right: 4px;
+  }
+  .muted { color: var(--muted); }
+  .kv { color: var(--muted); }
+  .kv b { color: var(--ink); font-weight: 600; }
+
+  /* status / banner */
+  #authStatus.on { color: var(--ok); }
+  #authStatus.off { color: var(--err); }
+  #banner {
+    margin: 10px; padding: 8px 12px; border-radius: 6px; min-height: 18px;
+    font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap;
+    border: 1px solid var(--line); background: var(--panel);
+  }
+  #banner.ok { background: #15321c; border-color: var(--ok); color: #c5f0cd; }
+  #banner.err { background: #3a1518; border-color: var(--err); color: #ffc9c9; }
+
+  /* log */
+  #log {
+    max-height: 160px; overflow-y: auto; background: #16161a; border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 6px; font-family: ui-monospace, monospace; font-size: 11px;
+  }
+  .logline { padding: 1px 0; border-bottom: 1px solid #222; white-space: pre-wrap; }
+  .logline .s2 { color: var(--ok); }
+  .logline .s4, .logline .s5 { color: var(--err); }
+
+  /* token layer list */
+  .tl-item { padding: 6px; border: 1px solid var(--line); border-radius: 4px; margin: 4px 0; }
+
+  /* ribbon */
+  #ribbon { overflow-x: auto; background: #161619; border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+  .ribbon-grid { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+  .char-cell { display: inline-block; text-align: center; }
+  .ruler { color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+  .ruler .tick { color: var(--accent); }
+  .bodyrow { letter-spacing: 0; padding: 2px 0; }
+  .bodyrow .sp { color: #555; }      /* visible space marker */
+  .layerrow { position: relative; margin: 3px 0; min-height: 20px; }
+  .layerlabel { font-size: 11px; color: var(--muted); margin: 6px 0 1px; font-family: -apple-system, sans-serif; }
+  .subrow { position: relative; height: 20px; }
+  .tokbar {
+    position: absolute; height: 16px; top: 1px; border-radius: 3px; cursor: pointer;
+    box-sizing: border-box; border: 1px solid rgba(0,0,0,.35); overflow: hidden;
+    font-size: 10px; color: #111; text-align: center; line-height: 16px; white-space: nowrap;
+  }
+  .tokbar.zero { width: 3px !important; border-radius: 0; }
+  .tokbar.sel { outline: 2px solid #fff; outline-offset: 0; filter: brightness(1.25); z-index: 5; }
+  .tokbar.sel2 { outline: 2px dashed #ffd34d; outline-offset: 0; z-index: 5; }
+
+  /* raw table */
+  table.raw { border-collapse: collapse; font-size: 11px; margin: 4px 0; }
+  table.raw th, table.raw td { border: 1px solid var(--line); padding: 2px 6px; text-align: left; }
+  table.raw th { color: var(--muted); }
+  details { margin: 2px 0; }
+  summary { cursor: pointer; color: var(--accent); font-size: 11px; }
+  .hidden { display: none; }
+  #selInfo { font-family: ui-monospace, monospace; font-size: 12px; margin-bottom: 8px; }
+
+  /* top-level tabs */
+  .tabbar { display: flex; gap: 4px; margin: 10px 10px 0; border-bottom: 1px solid var(--line); }
+  .tab {
+    background: var(--panel2); border: 1px solid var(--line); border-bottom: none;
+    border-radius: 6px 6px 0 0; padding: 8px 18px; color: var(--muted);
+    cursor: pointer; font-size: 13px; user-select: none; margin-bottom: -1px;
+  }
+  .tab:hover { border-color: var(--accent); }
+  .tab.active { background: var(--panel); color: var(--accent); font-weight: 600; border-bottom: 1px solid var(--panel); }
+
+  /* edit tab: token ops + ribbon side by side */
+  .cols { display: flex; gap: 10px; align-items: flex-start; margin: 10px; }
+  .cols > .section { margin: 0; }
+  .col-ops { flex: 0 0 440px; min-width: 0; }
+  .col-viz { flex: 1 1 auto; min-width: 0; }
+  @media (max-width: 1100px) {
+    .cols { flex-wrap: wrap; }
+    .col-ops, .col-viz { flex: 1 1 100%; }
+  }
+
+  /* op cards: visually group operations inside the ops column */
+  .card { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
+  .card > h3 { margin: 0 0 6px; }
+  /* the selected-token card lights up when a token is active */
+  #selCard { transition: border-color .1s, box-shadow .1s; }
+  #selCard.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  /* dim controls that don't apply right now (e.g. nothing selected) */
+  button:disabled, input:disabled, textarea:disabled { opacity: .35; cursor: not-allowed; }
+  button:disabled:hover { border-color: var(--line); }
+  .hint { color: var(--muted); font-size: 11px; }
+  .sel-empty { color: var(--muted); font-style: italic; }
+  .rng { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="tabbar">
+  <div class="tab" data-tab="config">Config</div>
+  <div class="tab" data-tab="edit">Edit</div>
+</div>
+
+<!-- global status banner: visible on both tabs -->
+<div id="banner">ready.</div>
+
+<!-- ===================== TAB: CONFIG (windows 1-3) ====================== -->
+<div class="tabpanel" id="tab-config">
+
+<!-- ============================ 1. CONNECTION / AUTH ===================== -->
+<div class="section">
+  <h2>1 &middot; Connection / Auth</h2>
+  <div class="row">
+    <label>API base</label>
+    <input id="apiBase" class="grow" value="http://localhost:8085" style="min-width:260px">
+  </div>
+  <div class="row">
+    <label>user-id</label><input id="userId" value="a@b.com">
+    <label>password</label><input id="password" type="password" value="password">
+    <button id="btnLogin" class="primary">Login</button>
+    <button id="btnLogout">Logout</button>
+    <span id="authStatus" class="off">not logged in</span>
+  </div>
+</div>
+
+<!-- ============================ 2. SETUP ================================= -->
+<div class="section">
+  <h2>2 &middot; Setup</h2>
+
+  <h3>New sandbox</h3>
+  <div class="row">
+    <label>Text body</label>
+    <textarea id="sandboxBody" rows="2" class="grow">He wasn't very fuzzy, was he? I'd never seen such a thing before.</textarea>
+  </div>
+  <div class="row">
+    <button id="btnNewSandbox" class="primary">New IGT sandbox (project + doc + 3 token layers, seeded)</button>
+  </div>
+  <div class="muted">Creates a sentence (partitioning) &rang; word &rang; morpheme (non-overlapping) hierarchy like docs/manual.adoc. Tokens are seeded only for the default body above; edit it and you get 3 empty IGT layers instead.</div>
+
+  <h3>Select existing</h3>
+  <div class="row">
+    <button id="btnReloadProjects">Reload projects</button>
+    <label>Project</label><select id="projSelect" style="min-width:220px"></select>
+    <label>Document</label><select id="docSelect" style="min-width:220px"></select>
+    <button id="btnLoadDoc">Load document</button>
+  </div>
+
+  <h3>Active context</h3>
+  <div id="activeCtx" class="kv">none</div>
+  <div class="row">
+    <button id="btnReloadDoc">Reload &amp; redraw</button>
+    <button id="btnDeleteDoc" class="danger">Delete sandbox (active document)</button>
+  </div>
+</div>
+
+<!-- ============================ 3. TOKEN LAYERS ========================== -->
+<div class="section">
+  <h2>3 &middot; Token layers (for active document's text layer)</h2>
+  <div id="tlList" class="muted">load a document first</div>
+
+  <h3>Create token layer</h3>
+  <div class="row">
+    <label>name</label><input id="tlName" value="words">
+    <label>overlap-mode</label>
+    <select id="tlOverlap">
+      <option value="any">any</option>
+      <option value="non-overlapping">non-overlapping</option>
+      <option value="partitioning">partitioning</option>
+    </select>
+    <label>parent</label><select id="tlParent" style="min-width:240px"></select>
+    <button id="btnCreateTL" class="primary">Create</button>
+  </div>
+  <div class="muted">No client-side validation of parent/partitioning rules &mdash; the server enforces them; rejections appear in the banner.</div>
+</div>
+
+</div><!-- /tab-config -->
+
+<!-- ============== TAB: EDIT (ops + ribbon side by side, then log) ======== -->
+<div class="tabpanel hidden" id="tab-edit">
+<div class="cols">
+
+<!-- ============================ 4. TOKEN OPERATIONS ====================== -->
+<div class="section col-ops">
+  <h2>4 &middot; Token operations</h2>
+
+  <!-- CREATE -->
+  <div class="card">
+    <h3>Create tokens</h3>
+    <div class="row">
+      <label>Layer</label>
+      <select id="opLayer" class="grow"></select>
+    </div>
+    <div class="row">
+      <label>begin</label><input id="cBegin" type="number" value="0">
+      <label>end</label><input id="cEnd" type="number" value="3">
+      <label>prec</label><input id="cPrec" type="number" placeholder="opt">
+      <button id="btnCreateTok" class="primary" title="POST /tokens">Create</button>
+    </div>
+    <details>
+      <summary>Bulk create (one token per line: <span class="mono">begin end [prec]</span>)</summary>
+      <div class="row"><textarea id="bulkText" rows="3" class="grow" placeholder="0 3&#10;4 7&#10;8 11"></textarea></div>
+      <div class="row"><button id="btnBulkCreate" class="primary" title="POST /tokens/bulk">Bulk create</button></div>
+    </details>
+  </div>
+
+  <!-- SELECTED TOKEN: actions here are enabled only when a token is selected -->
+  <div class="card" id="selCard">
+    <h3>Selected token</h3>
+    <div id="selInfo"><span class="sel-empty">Click a token in the ribbon to act on it.</span></div>
+    <div class="row">
+      <button id="btnDelSel" class="danger" title="DELETE /tokens/:id" disabled>Delete</button>
+      <button id="btnSplit" title="POST /tokens/:id/split" disabled>Split at</button>
+      <input id="splitPos" type="number" disabled>
+      <span class="grow"></span>
+      <button id="btnClearSel" title="deselect" disabled>Clear</button>
+    </div>
+    <div class="row">
+      <button id="btnShift" title="POST /tokens/:id/shift" disabled>Shift to</button>
+      <input id="shiftBegin" type="number" disabled><span class="rng">&ndash;</span><input id="shiftEnd" type="number" disabled>
+    </div>
+    <div class="row">
+      <button id="btnUpdate" title="PATCH /tokens/:id" disabled>Set extent</button>
+      <input id="updBegin" type="number" disabled><span class="rng">&ndash;</span><input id="updEnd" type="number" disabled>
+      <label>prec</label><input id="updPrec" type="number" placeholder="opt" disabled>
+    </div>
+    <div class="hint">Shift moves a boundary (neighbors absorb on partitioning); Set extent (PATCH) is rejected on partitioning layers.</div>
+    <div class="row">
+      <button id="btnMerge" title="POST /tokens/:id/merge" disabled>Merge with 2nd</button>
+      <span class="hint">ctrl/shift-click a second token to enable</span>
+    </div>
+  </div>
+
+  <!-- MULTI-SELECT DELETE -->
+  <div class="card">
+    <h3>Multi-select delete</h3>
+    <div class="row">
+      <button id="btnMultiMode">Multi-select: <b id="multiState">OFF</b></button>
+      <span id="multiInfo" class="muted">0 selected</span>
+      <span class="grow"></span>
+      <button id="btnBulkDelete" class="danger" title="DELETE /tokens/bulk" disabled>Delete these</button>
+    </div>
+  </div>
+
+  <!-- TEXT EDIT -->
+  <div class="card">
+    <h3>Text edit <span class="hint">&mdash; cascades to tokens</span></h3>
+    <div class="row"><textarea id="textBody" rows="2" class="grow" placeholder="full replacement body"></textarea></div>
+    <div class="row"><button id="btnReplaceBody" title="PATCH /texts/:id {body}">Replace body</button></div>
+    <details>
+      <summary>Edit directives (insert / delete by index)</summary>
+      <div class="row">
+        <label>insert @</label><input id="insIdx" type="number">
+        <label>text</label><input id="insVal" placeholder="string">
+        <button id="btnInsert">Insert</button>
+      </div>
+      <div class="row">
+        <label>delete @</label><input id="delIdx" type="number">
+        <label>len</label><input id="delLen" type="number">
+        <button id="btnDelete2">Delete</button>
+      </div>
+    </details>
+  </div>
+</div>
+
+<!-- ============================ VISUALIZATION ============================ -->
+<div class="section col-viz">
+  <h2>Ribbon (char-aligned visualization)</h2>
+  <div id="ribbon" class="muted">load a document to render</div>
+</div>
+
+</div><!-- /cols -->
+
+<!-- ============================ REQUEST LOG ============================== -->
+<div class="section">
+  <h2>Request log (last 20)</h2>
+  <div id="log"></div>
+</div>
+
+</div><!-- /tab-edit -->
+
+<script>
+"use strict";
+/* ===========================================================================
+ * Throwaway dev tool. Organized into:
+ *   STATE -> HTTP -> AUTH -> SETUP -> TOKEN LAYERS -> TOKEN OPS -> RIBBON
+ * All server JSON keys are kebab-case + namespaced (verified against server).
+ * =========================================================================== */
+
+/* ---------------------------- STATE ------------------------------------- */
+const S = {
+  token: localStorage.getItem('plaid_token') || null,
+  // active context (ids)
+  projectId: null, docId: null, textId: null, textLayerId: null, body: '',
+  // last fetched document body (raw GET ...?include-body=true)
+  doc: null,
+  // token layers of the active text layer, in document order. each: {id,name,overlap,parent,tokens:[...]}
+  layers: [],
+  // cache of per-layer {overlap,parent} (immutable; not in the include-body tree, so fetched once per id)
+  layerMeta: {},
+  // selection: primary + secondary token (for merge). multi: set of ids for bulk delete
+  sel: null, sel2: null, multiMode: false, multi: new Set(),
+};
+const $ = (id) => document.getElementById(id);
+const apiBase = () => $('apiBase').value.replace(/\/+$/, '');
+const apiUrl = (p) => apiBase() + '/api/v1' + p;
+
+/* ---------------------------- BANNER / LOG ------------------------------ */
+function banner(msg, kind) {           // kind: 'ok' | 'err' | undefined
+  const b = $('banner');
+  b.className = kind || '';
+  b.textContent = msg;
+}
+function logReq(method, path, status, errMsg) {
+  const div = document.createElement('div');
+  div.className = 'logline';
+  const cls = status >= 500 ? 's5' : status >= 400 ? 's4' : status >= 200 ? 's2' : '';
+  div.innerHTML = `<span class="${cls}">${status}</span> ${method} ${escapeHtml(path)}` +
+                  (errMsg ? `  <span class="s4">${escapeHtml(errMsg)}</span>` : '');
+  const log = $('log');
+  log.insertBefore(div, log.firstChild);
+  while (log.childElementCount > 20) log.removeChild(log.lastChild);
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/* ---------------------------- HTTP -------------------------------------- */
+// Core fetch wrapper. Returns parsed body on 2xx, throws {status,error} otherwise.
+// Surfaces every non-2xx in the banner + log. Never swallows errors.
+async function api(method, path, body) {
+  const headers = {};
+  if (S.token) headers['Authorization'] = 'Bearer ' + S.token;
+  let payload;
+  if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
+  let res, text;
+  try {
+    res = await fetch(apiUrl(path), { method, headers, body: payload });
+  } catch (e) {
+    // network / CORS failure (no HTTP status)
+    logReq(method, path, 0, e.message);
+    banner('NETWORK ERROR ' + method + ' ' + path + '\n' + e.message, 'err');
+    throw { status: 0, error: e.message };
+  }
+  text = await res.text();
+  let json = null;
+  if (text) { try { json = JSON.parse(text); } catch (_) { /* non-JSON (e.g. coercion error text) */ } }
+  if (res.ok) {
+    logReq(method, path, res.status, null);
+    return json;                       // may be null on 204
+  }
+  // error: server returns {"error": "..."} on 400/409 etc., or raw coercion text
+  const errMsg = (json && (json.error || JSON.stringify(json))) || text || res.statusText;
+  logReq(method, path, res.status, errMsg);
+  banner('HTTP ' + res.status + '  ' + method + ' ' + path + '\n' + errMsg, 'err');
+  throw { status: res.status, error: errMsg };
+}
+
+/* ---------------------------- AUTH ------------------------------------- */
+function refreshAuthUI() {
+  const el = $('authStatus');
+  if (S.token) { el.textContent = 'logged in'; el.className = 'on'; }
+  else { el.textContent = 'not logged in'; el.className = 'off'; }
+}
+async function login() {
+  try {
+    // NOTE: login body uses literal "user-id" (hyphen) -- matches auth.clj exactly.
+    const r = await api('POST', '/login', { 'user-id': $('userId').value, 'password': $('password').value });
+    S.token = r.token;
+    localStorage.setItem('plaid_token', S.token);
+    refreshAuthUI();
+    banner('logged in', 'ok');
+    await reloadProjects();
+  } catch (e) { /* banner already set */ }
+}
+function logout() {
+  S.token = null;
+  localStorage.removeItem('plaid_token');
+  refreshAuthUI();
+  banner('logged out');
+}
+
+/* ---------------------------- SETUP ------------------------------------ */
+async function reloadProjects() {
+  try {
+    const list = await api('GET', '/projects');
+    const sel = $('projSelect');
+    sel.innerHTML = '';
+    (list || []).forEach(p => {
+      const o = document.createElement('option');
+      o.value = p['project/id'];
+      o.textContent = (p['project/name'] || '(unnamed)') + '  [' + p['project/id'].slice(0, 8) + ']';
+      sel.appendChild(o);
+    });
+    if (sel.value) await reloadDocsForProject(sel.value);
+  } catch (e) {}
+}
+async function reloadDocsForProject(pid) {
+  try {
+    const proj = await api('GET', '/projects/' + pid + '?include-documents=true');
+    const sel = $('docSelect');
+    sel.innerHTML = '';
+    (proj['project/documents'] || []).forEach(d => {
+      const o = document.createElement('option');
+      o.value = d['document/id'];
+      o.textContent = (d['document/name'] || '(unnamed)') + '  [' + d['document/id'].slice(0, 8) + ']';
+      sel.appendChild(o);
+    });
+  } catch (e) {}
+}
+// Canonical IGT example mirroring docs/manual.adoc: a partitioning sentence
+// layer (the root, tiling the whole text) with non-overlapping word and
+// morpheme layers nested under it. Offsets are exact for IGT.text -- contractions
+// (wasn't -> was+n't, I'd -> I+'d), derivation (fuzzy -> fuzz+y) and a participle
+// (seen -> see+n) split at the morpheme level; punctuation/spaces are word gaps.
+const IGT = {
+  text: "He wasn't very fuzzy, was he? I'd never seen such a thing before.",
+  sentences: [[0, 30], [30, 65]],
+  words: [[0, 2], [3, 9], [10, 14], [15, 20], [22, 25], [26, 28],
+          [30, 33], [34, 39], [40, 44], [45, 49], [50, 51], [52, 57], [58, 64]],
+  morphemes: [[0, 2], [3, 6], [6, 9], [10, 14], [15, 19], [19, 20], [22, 25], [26, 28],
+              [30, 31], [31, 33], [34, 39], [40, 43], [43, 44], [45, 49], [50, 51], [52, 57], [58, 64]],
+};
+
+async function newSandbox() {
+  try {
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const body = $('sandboxBody').value;
+    const proj = await api('POST', '/projects', { name: 'debug-' + ts });
+    const pid = proj.id;
+    const tl = await api('POST', '/text-layers', { 'project-id': pid, name: 'text layer' });
+    const tlid = tl.id;
+    const doc = await api('POST', '/documents', { 'project-id': pid, name: 'doc-' + ts });
+    const did = doc.id;
+    const txt = await api('POST', '/texts', { 'text-layer-id': tlid, 'document-id': did, body });
+    const txtid = txt.id;
+    // 3 IGT layers: Sentences (partitioning root) > Words > Morphemes (both non-overlapping).
+    const sent = await api('POST', '/token-layers', { 'text-layer-id': tlid, name: 'Sentences', 'overlap-mode': 'partitioning' });
+    const word = await api('POST', '/token-layers', { 'text-layer-id': tlid, name: 'Words', 'overlap-mode': 'non-overlapping', 'parent-token-layer-id': sent.id });
+    const morph = await api('POST', '/token-layers', { 'text-layer-id': tlid, name: 'Morphemes', 'overlap-mode': 'non-overlapping', 'parent-token-layer-id': word.id });
+    // Seed tokens only for the canonical body (offsets must line up). Parents
+    // before children so offset-based containment resolves at creation time.
+    if (body === IGT.text) {
+      const mk = (lid, pairs) => pairs.map(([b, e]) => ({ 'token-layer-id': lid, text: txtid, begin: b, end: e }));
+      await api('POST', '/tokens/bulk', mk(sent.id, IGT.sentences));
+      await api('POST', '/tokens/bulk', mk(word.id, IGT.words));
+      await api('POST', '/tokens/bulk', mk(morph.id, IGT.morphemes));
+      banner('IGT sandbox seeded: project ' + pid.slice(0, 8) + ' / doc ' + did.slice(0, 8) + ' (2 sentences, 13 words, 17 morphemes)', 'ok');
+    } else {
+      banner('sandbox created with 3 empty IGT layers (custom body — tokens not seeded): project ' + pid.slice(0, 8) + ' / doc ' + did.slice(0, 8), 'ok');
+    }
+    await reloadProjects();
+    $('projSelect').value = pid;
+    await reloadDocsForProject(pid);
+    $('docSelect').value = did;
+    await loadDocument(did);
+  } catch (e) {}
+}
+async function deleteActiveDoc() {
+  if (!S.docId) { banner('no active document', 'err'); return; }
+  if (!confirm('Delete active document ' + S.docId + '?')) return;
+  try {
+    await api('DELETE', '/documents/' + S.docId);
+    banner('document deleted', 'ok');
+    S.doc = null; S.docId = null; S.textId = null; S.textLayerId = null; S.layers = []; clearSelection();
+    renderActiveCtx(); renderLayers(); renderRibbon();
+  } catch (e) {}
+}
+
+/* Load a document's full nested body and rebuild active context + UI. */
+async function loadDocument(docId) {
+  try {
+    const doc = await api('GET', '/documents/' + docId + '?include-body=true');
+    S.doc = doc;
+    S.docId = doc['document/id'];
+    S.projectId = doc['document/project'];
+    // The debugger focuses on ONE text layer / text: take the first text layer that has a text.
+    const tls = doc['document/text-layers'] || [];
+    const tl = tls.find(t => t['text-layer/text']) || tls[0];
+    if (!tl) { banner('document has no text layer', 'err'); return; }
+    S.textLayerId = tl['text-layer/id'];
+    const txt = tl['text-layer/text'];
+    if (txt) { S.textId = txt['text/id']; S.body = txt['text/body'] || ''; }
+    else { S.textId = null; S.body = ''; }
+    // Flatten token layers of this text layer into S.layers.
+    // NB: the include-body projection OMITS overlap-mode and parent-token-layer,
+    // so fetch each layer once (both immutable) to learn its mode/parent.
+    const rawLayers = tl['text-layer/token-layers'] || [];
+    await Promise.all(rawLayers.map(async (L) => {
+      const id = L['token-layer/id'];
+      if (!S.layerMeta[id]) {
+        if (L['token-layer/overlap-mode'] != null) {
+          // include-body carries the fields (server has the projection fix): use them, no extra request.
+          S.layerMeta[id] = { overlap: L['token-layer/overlap-mode'],
+                              parent: L['token-layer/parent-token-layer'] || null };
+        } else {
+          // Older server omits them from include-body: fall back to a one-time per-layer fetch.
+          try {
+            const meta = await api('GET', '/token-layers/' + id);
+            S.layerMeta[id] = { overlap: meta['token-layer/overlap-mode'] || 'any',
+                                parent: meta['token-layer/parent-token-layer'] || null };
+          } catch (e) { S.layerMeta[id] = { overlap: 'any', parent: null }; }
+        }
+      }
+    }));
+    S.layers = rawLayers.map(L => {
+      const id = L['token-layer/id'];
+      const meta = S.layerMeta[id] || { overlap: 'any', parent: null };
+      return {
+        id,
+        name: L['token-layer/name'],
+        overlap: meta.overlap,
+        parent: meta.parent,
+        tokens: (L['token-layer/tokens'] || []).map(t => ({
+          id: t['token/id'], begin: t['token/begin'], end: t['token/end'],
+          precedence: (t['token/precedence'] != null ? t['token/precedence'] : null),
+        })),
+      };
+    });
+    // drop selections that no longer exist
+    pruneSelection();
+    renderSelInfo();
+    updateMultiUI();
+    $('textBody').value = S.body;
+    renderActiveCtx();
+    renderLayerPickers();
+    renderLayers();
+    renderRibbon();
+    banner('loaded document ' + S.docId.slice(0, 8) + ' (' + S.layers.length + ' token layers)', 'ok');
+  } catch (e) {}
+}
+
+function renderActiveCtx() {
+  const el = $('activeCtx');
+  if (!S.docId) { el.textContent = 'none'; return; }
+  el.innerHTML =
+    `<span class="kv">project <b>${S.projectId || '-'}</b></span><br>` +
+    `<span class="kv">document <b>${S.docId}</b></span><br>` +
+    `<span class="kv">text-layer <b>${S.textLayerId || '-'}</b></span><br>` +
+    `<span class="kv">text <b>${S.textId || '-'}</b> (len ${S.body.length})</span><br>` +
+    `<span class="kv">body: <b class="mono">${escapeHtml(S.body)}</b></span>`;
+}
+
+/* ---------------------------- TOKEN LAYERS ----------------------------- */
+function layerName(id) { const L = S.layers.find(x => x.id === id); return L ? L.name : '(?)'; }
+
+function renderLayers() {
+  const el = $('tlList');
+  if (!S.textLayerId) { el.textContent = 'load a document first'; return; }
+  if (S.layers.length === 0) { el.innerHTML = '<span class="muted">no token layers</span>'; }
+  else {
+    el.innerHTML = '';
+    S.layers.forEach(L => {
+      const div = document.createElement('div');
+      div.className = 'tl-item';
+      const parentTxt = L.parent ? ('parent: ' + layerName(L.parent)) : 'root';
+      div.innerHTML =
+        `<span class="pill" style="background:${colorFor(L.id)};color:#111">${escapeHtml(L.name)}</span>` +
+        `<span class="pill">${L.overlap}</span><span class="pill">${parentTxt}</span>` +
+        `<span class="muted mono">${L.id.slice(0, 8)}  (${L.tokens.length} tokens)</span> `;
+      const del = document.createElement('button');
+      del.className = 'danger'; del.textContent = 'delete layer';
+      del.onclick = () => deleteLayer(L.id);
+      div.appendChild(del);
+      el.appendChild(div);
+    });
+  }
+  // populate parent dropdown (existing layers + none) -- show overlap mode in label
+  const psel = $('tlParent');
+  psel.innerHTML = '<option value="">(none / root)</option>';
+  S.layers.forEach(L => {
+    const o = document.createElement('option');
+    o.value = L.id;
+    o.textContent = L.name + '  [' + L.overlap + ']';
+    psel.appendChild(o);
+  });
+}
+async function createTokenLayer() {
+  if (!S.textLayerId) { banner('no active text layer', 'err'); return; }
+  const body = { 'text-layer-id': S.textLayerId, name: $('tlName').value, 'overlap-mode': $('tlOverlap').value };
+  const parent = $('tlParent').value;
+  if (parent) body['parent-token-layer-id'] = parent;   // let server reject bad combos
+  try {
+    await api('POST', '/token-layers', body);
+    banner('token layer created', 'ok');
+    await loadDocument(S.docId);
+  } catch (e) {}
+}
+async function deleteLayer(id) {
+  if (!confirm('Delete token layer ' + id + '?')) return;
+  try { await api('DELETE', '/token-layers/' + id); banner('layer deleted', 'ok'); await loadDocument(S.docId); }
+  catch (e) {}
+}
+
+/* layer pickers used by token-op create + bulk-create */
+function renderLayerPickers() {
+  const sel = $('opLayer');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  S.layers.forEach(L => {
+    const o = document.createElement('option');
+    o.value = L.id;
+    o.textContent = L.name + '  [' + L.overlap + ']' + (L.parent ? ' (child of ' + layerName(L.parent) + ')' : '');
+    sel.appendChild(o);
+  });
+  if (prev && S.layers.some(L => L.id === prev)) sel.value = prev;
+}
+
+/* ---------------------------- SELECTION -------------------------------- */
+function findToken(id) {
+  for (const L of S.layers) { const t = L.tokens.find(x => x.id === id); if (t) return { ...t, layerId: L.id, layer: L }; }
+  return null;
+}
+function clearSelection() { S.sel = null; S.sel2 = null; renderSelInfo(); }
+function pruneSelection() {
+  if (S.sel && !findToken(S.sel)) S.sel = null;
+  if (S.sel2 && !findToken(S.sel2)) S.sel2 = null;
+  for (const id of [...S.multi]) if (!findToken(id)) S.multi.delete(id);
+}
+// Selection-dependent action controls: disabled until a token is clicked.
+const SEL_CONTROLS = ['btnDelSel', 'btnClearSel', 'btnSplit', 'btnShift', 'btnUpdate',
+                      'splitPos', 'shiftBegin', 'shiftEnd', 'updBegin', 'updEnd', 'updPrec'];
+function setSelActionsEnabled(on, mergeOn) {
+  SEL_CONTROLS.forEach(id => { $(id).disabled = !on; });
+  $('btnMerge').disabled = !mergeOn;
+}
+// Prefill the action inputs from the selected token so its current extent is the
+// starting point (split -> midpoint; shift/set -> current begin..end).
+function prefillSelInputs(t) {
+  $('shiftBegin').value = t.begin; $('shiftEnd').value = t.end;
+  $('updBegin').value = t.begin; $('updEnd').value = t.end;
+  $('updPrec').value = (t.precedence != null ? t.precedence : '');
+  // A split must land strictly inside (begin,end); only width >= 2 has a valid
+  // interior point, so prefill the midpoint then, else leave blank.
+  $('splitPos').value = (t.end - t.begin) >= 2 ? Math.floor((t.begin + t.end) / 2) : '';
+}
+function updateMultiUI() {
+  $('multiState').textContent = S.multiMode ? 'ON' : 'OFF';
+  $('multiInfo').textContent = S.multi.size + ' selected';
+  $('btnBulkDelete').disabled = !(S.multiMode && S.multi.size > 0);
+}
+function renderSelInfo() {
+  const el = $('selInfo'), card = $('selCard');
+  const fmt = (id) => {
+    const t = findToken(id);
+    if (!t) return '<span class="muted">(gone)</span>';
+    return `<span class="mono">${t.id.slice(0, 8)}</span> [${t.begin},${t.end}) ` +
+           `<span class="muted">"${escapeHtml(S.body.slice(t.begin, t.end))}"</span> in <b>${escapeHtml(t.layer.name)}</b>`;
+  };
+  if (S.multiMode) {
+    card.classList.remove('active');
+    el.innerHTML = '<span class="sel-empty">Multi-select mode is ON — single-token actions are paused.</span>';
+    setSelActionsEnabled(false, false);
+    return;
+  }
+  const t = S.sel ? findToken(S.sel) : null;
+  if (!t) {
+    card.classList.remove('active');
+    el.innerHTML = '<span class="sel-empty">Click a token in the ribbon to act on it.</span>';
+    setSelActionsEnabled(false, false);
+    return;
+  }
+  card.classList.add('active');
+  el.innerHTML = fmt(S.sel) + (S.sel2 ? `<br><span class="muted">+ 2nd:</span> ${fmt(S.sel2)}` : '');
+  setSelActionsEnabled(true, !!S.sel2);
+}
+function selectToken(id, additive) {
+  if (S.multiMode) {
+    if (S.multi.has(id)) S.multi.delete(id); else S.multi.add(id);
+    updateMultiUI();
+    renderRibbon();
+    return;
+  }
+  if (additive && S.sel && S.sel !== id) { S.sel2 = id; }
+  else { S.sel = id; S.sel2 = null; }
+  renderSelInfo();
+  const t = findToken(S.sel);
+  if (t) prefillSelInputs(t);
+  renderRibbon();
+}
+
+/* ---------------------------- TOKEN OPS -------------------------------- */
+function requireSel() { if (!S.sel) { banner('select a token first', 'err'); return false; } return true; }
+// '' / null / non-numeric all map to undefined (so we omit the field rather than
+// send JSON null, which the server rejects with an opaque coercion error).
+function numOrUndef(v) {
+  if (v === '' || v == null) return undefined;
+  const n = Number(v);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+async function createToken() {
+  const layerId = $('opLayer').value;
+  if (!layerId) { banner('pick a target layer', 'err'); return; }
+  const begin = numOrUndef($('cBegin').value), end = numOrUndef($('cEnd').value);
+  if (begin === undefined || end === undefined) { banner('enter numeric begin and end', 'err'); return; }
+  const body = { 'token-layer-id': layerId, text: S.textId, begin, end };
+  const prec = numOrUndef($('cPrec').value);
+  if (prec !== undefined) body.precedence = prec;
+  try { await api('POST', '/tokens', body); banner('token created', 'ok'); await loadDocument(S.docId); } catch (e) {}
+}
+async function bulkCreate() {
+  const layerId = $('opLayer').value;
+  if (!layerId) { banner('pick a target layer', 'err'); return; }
+  const lines = $('bulkText').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const arr = [];
+  for (const line of lines) {
+    const parts = line.split(/[\s,]+/).map(Number);
+    const [b, e, p] = parts;
+    if (Number.isNaN(b) || Number.isNaN(e)) { banner('bad bulk line: ' + line, 'err'); return; }
+    const obj = { 'token-layer-id': layerId, text: S.textId, begin: b, end: e };
+    if (parts.length >= 3 && !Number.isNaN(p)) obj.precedence = p;
+    arr.push(obj);
+  }
+  if (arr.length === 0) { banner('no bulk lines', 'err'); return; }
+  try { await api('POST', '/tokens/bulk', arr); banner('bulk created ' + arr.length + ' tokens', 'ok'); await loadDocument(S.docId); } catch (e) {}
+}
+async function deleteSelected() {
+  if (!requireSel()) return;
+  try { await api('DELETE', '/tokens/' + S.sel); banner('token deleted', 'ok'); clearSelection(); await loadDocument(S.docId); } catch (e) {}
+}
+async function mergeSelected() {
+  if (!S.sel || !S.sel2) { banner('select two tokens (ctrl/shift-click second)', 'err'); return; }
+  try { await api('POST', '/tokens/' + S.sel + '/merge', { 'other-token-id': S.sel2 }); banner('merged', 'ok'); clearSelection(); await loadDocument(S.docId); } catch (e) {}
+}
+async function splitSelected() {
+  if (!requireSel()) return;
+  const pos = numOrUndef($('splitPos').value);
+  if (pos === undefined) { banner('enter split position', 'err'); return; }
+  try { await api('POST', '/tokens/' + S.sel + '/split', { position: pos }); banner('split', 'ok'); await loadDocument(S.docId); } catch (e) {}
+}
+async function shiftSelected() {
+  if (!requireSel()) return;
+  const body = {};
+  const b = numOrUndef($('shiftBegin').value), e = numOrUndef($('shiftEnd').value);
+  if (b !== undefined) body.begin = b;
+  if (e !== undefined) body.end = e;
+  if (Object.keys(body).length === 0) { banner('enter shift begin and/or end', 'err'); return; }
+  try { await api('POST', '/tokens/' + S.sel + '/shift', body); banner('shifted', 'ok'); await loadDocument(S.docId); } catch (e) {}
+}
+async function updateSelected() {
+  if (!requireSel()) return;
+  const body = {};
+  const b = numOrUndef($('updBegin').value), e = numOrUndef($('updEnd').value), p = numOrUndef($('updPrec').value);
+  if (b !== undefined) body.begin = b;
+  if (e !== undefined) body.end = e;
+  if (p !== undefined) body.precedence = p;
+  if (Object.keys(body).length === 0) { banner('enter begin/end/precedence', 'err'); return; }
+  try { await api('PATCH', '/tokens/' + S.sel, body); banner('extent updated', 'ok'); await loadDocument(S.docId); } catch (e) {}
+}
+async function bulkDelete() {
+  if (S.multi.size === 0) { banner('multi-select some tokens first', 'err'); return; }
+  const ids = [...S.multi];
+  try { await api('DELETE', '/tokens/bulk', ids); banner('bulk deleted ' + ids.length, 'ok'); S.multi.clear(); updateMultiUI(); await loadDocument(S.docId); } catch (e) {}
+}
+function toggleMultiMode() {
+  S.multiMode = !S.multiMode;
+  if (S.multiMode) { S.sel = null; S.sel2 = null; }  // multi mode and single selection are mutually exclusive
+  else { S.multi.clear(); }
+  updateMultiUI();
+  renderSelInfo();
+  renderRibbon();
+}
+
+/* text edits (cascade to tokens) */
+async function replaceBody() {
+  if (!S.textId) { banner('no active text', 'err'); return; }
+  try { await api('PATCH', '/texts/' + S.textId, { body: $('textBody').value }); banner('body replaced', 'ok'); await loadDocument(S.docId); } catch (e) {}
+}
+async function insertDirective() {
+  if (!S.textId) { banner('no active text', 'err'); return; }
+  const idx = numOrUndef($('insIdx').value);
+  if (idx === undefined) { banner('enter insert index', 'err'); return; }
+  // Directives go INSIDE `body`: the handler reads {:keys [body]}, and body may be
+  // a string (full replace) OR an array of {type,index,value} edit directives.
+  try { await api('PATCH', '/texts/' + S.textId, { body: [{ type: 'insert', index: idx, value: $('insVal').value }] }); banner('inserted', 'ok'); await loadDocument(S.docId); } catch (e) {}
+}
+async function deleteDirective() {
+  if (!S.textId) { banner('no active text', 'err'); return; }
+  const idx = numOrUndef($('delIdx').value), len = numOrUndef($('delLen').value);
+  if (idx === undefined || len === undefined) { banner('enter delete index and length', 'err'); return; }
+  try { await api('PATCH', '/texts/' + S.textId, { body: [{ type: 'delete', index: idx, value: len }] }); banner('deleted range', 'ok'); await loadDocument(S.docId); } catch (e) {}
+}
+
+/* ---------------------------- RIBBON ----------------------------------- */
+const CELL = 11;   // px width per character column -- keeps body + bars aligned
+const PALETTE = ['#6db3f2', '#7ee787', '#f0883e', '#d2a8ff', '#f2cc60', '#ff7b72', '#56d4dd', '#e3b341', '#a5d6ff', '#ffa657'];
+function colorFor(layerId) {
+  const idx = S.layers.findIndex(L => L.id === layerId);
+  return PALETTE[(idx < 0 ? 0 : idx) % PALETTE.length];
+}
+
+// Order layers root-first (parents before children) and compute a depth for indent.
+function orderedLayers() {
+  const byId = {}; S.layers.forEach(L => byId[L.id] = L);
+  const depth = (L) => { let d = 0, cur = L; const seen = new Set();
+    while (cur && cur.parent && byId[cur.parent] && !seen.has(cur.id)) { seen.add(cur.id); cur = byId[cur.parent]; d++; } return d; };
+  return S.layers.map(L => ({ L, depth: depth(L) }))
+    .sort((a, b) => (a.depth - b.depth) || 0);   // stable: parents first
+}
+
+// Greedy sub-row packing so overlapping tokens in a layer stack instead of hiding.
+function packRows(tokens) {
+  const sorted = [...tokens].sort((a, b) => a.begin - b.begin || a.end - b.end);
+  const rows = [];   // each row = array of tokens; track max end
+  const rowEnd = [];
+  for (const t of sorted) {
+    let placed = false;
+    for (let i = 0; i < rows.length; i++) {
+      if (t.begin >= rowEnd[i]) { rows[i].push(t); rowEnd[i] = Math.max(rowEnd[i], t.end, t.begin + 1); placed = true; break; }
+    }
+    if (!placed) { rows.push([t]); rowEnd.push(Math.max(t.end, t.begin + 1)); }
+  }
+  return rows;
+}
+
+function renderRibbon() {
+  const el = $('ribbon');
+  if (!S.doc || !S.textId) { el.className = 'muted'; el.textContent = 'load a document to render'; return; }
+  el.className = '';
+  const body = S.body;
+  const n = body.length;
+  const totalW = (n + 1) * CELL;   // +1 so end==len bars/carets are visible
+
+  let html = '<div class="ribbon-grid">';
+
+  // ruler: tick every 5 columns
+  html += `<div class="ruler" style="width:${totalW}px;white-space:nowrap">`;
+  for (let i = 0; i <= n; i++) {
+    const tick = (i % 5 === 0);
+    html += `<span class="char-cell ${tick ? 'tick' : ''}" style="width:${CELL}px">${tick ? i : '&middot;'}</span>`;
+  }
+  html += '</div>';
+
+  // body row
+  html += `<div class="bodyrow" style="width:${totalW}px;white-space:nowrap">`;
+  for (let i = 0; i < n; i++) {
+    const ch = body[i];
+    if (ch === ' ') html += `<span class="char-cell sp" style="width:${CELL}px">&middot;</span>`;
+    else html += `<span class="char-cell" style="width:${CELL}px">${escapeHtml(ch)}</span>`;
+  }
+  html += '</div>';
+
+  // layer rows (root-first, indented by depth)
+  for (const { L, depth } of orderedLayers()) {
+    const color = colorFor(L.id);
+    const parentTxt = L.parent ? ' &lt; ' + escapeHtml(layerName(L.parent)) : '';
+    html += `<div class="layerlabel" style="margin-left:${depth * 14}px">` +
+            `<span class="pill" style="background:${color};color:#111">${escapeHtml(L.name)}</span>` +
+            `<span class="pill">${L.overlap}</span>${parentTxt}</div>`;
+    const rows = packRows(L.tokens);
+    if (rows.length === 0) {
+      html += `<div class="subrow" style="width:${totalW}px"></div>`;
+    }
+    for (const row of rows) {
+      html += `<div class="subrow" style="width:${totalW}px">`;
+      for (const t of row) {
+        const zero = t.begin === t.end;
+        const left = t.begin * CELL;
+        const w = zero ? 3 : Math.max(1, (t.end - t.begin) * CELL);
+        const selCls = (t.id === S.sel) ? ' sel' : (t.id === S.sel2) ? ' sel2' : '';
+        const multiCls = (S.multiMode && S.multi.has(t.id)) ? ' sel' : '';
+        const label = zero ? '' : escapeHtml(body.slice(t.begin, t.end));
+        const title = `id=${t.id}\n[${t.begin},${t.end})` + (t.precedence != null ? `\nprec=${t.precedence}` : '') + `\n"${body.slice(t.begin, t.end)}"`;
+        html += `<div class="tokbar${zero ? ' zero' : ''}${selCls}${multiCls}" ` +
+                `data-tok="${t.id}" style="left:${left}px;width:${w}px;background:${color}" ` +
+                `title="${escapeHtml(title)}">${label}</div>`;
+      }
+      html += '</div>';
+    }
+    // collapsible raw table
+    html += `<details><summary>raw &middot; ${escapeHtml(L.name)} (${L.tokens.length})</summary>`;
+    html += '<table class="raw"><tr><th>id</th><th>begin</th><th>end</th><th>text</th><th>prec</th></tr>';
+    for (const t of [...L.tokens].sort((a, b) => a.begin - b.begin)) {
+      html += `<tr><td class="mono">${t.id.slice(0, 8)}</td><td>${t.begin}</td><td>${t.end}</td>` +
+              `<td class="mono">${escapeHtml(body.slice(t.begin, t.end))}</td><td>${t.precedence != null ? t.precedence : ''}</td></tr>`;
+    }
+    html += '</table></details>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+
+  // wire token bar clicks
+  el.querySelectorAll('.tokbar').forEach(bar => {
+    bar.addEventListener('click', (ev) => {
+      selectToken(bar.getAttribute('data-tok'), ev.ctrlKey || ev.metaKey || ev.shiftKey);
+    });
+  });
+}
+
+/* ---------------------------- TABS ------------------------------------- */
+function showTab(name) {
+  document.querySelectorAll('.tabpanel').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + name));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+}
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => showTab(t.dataset.tab));
+
+/* ---------------------------- WIRING ----------------------------------- */
+$('btnLogin').onclick = login;
+$('btnLogout').onclick = logout;
+$('btnReloadProjects').onclick = reloadProjects;
+$('projSelect').onchange = (e) => reloadDocsForProject(e.target.value);
+$('btnLoadDoc').onclick = () => { const d = $('docSelect').value; if (d) loadDocument(d); else banner('pick a document', 'err'); };
+$('btnNewSandbox').onclick = newSandbox;
+$('btnReloadDoc').onclick = () => { if (S.docId) loadDocument(S.docId); else banner('no active document', 'err'); };
+$('btnDeleteDoc').onclick = deleteActiveDoc;
+
+$('btnCreateTL').onclick = createTokenLayer;
+
+$('btnCreateTok').onclick = createToken;
+$('btnBulkCreate').onclick = bulkCreate;
+$('btnClearSel').onclick = clearSelection;
+$('btnDelSel').onclick = deleteSelected;
+$('btnMerge').onclick = mergeSelected;
+$('btnSplit').onclick = splitSelected;
+$('btnShift').onclick = shiftSelected;
+$('btnUpdate').onclick = updateSelected;
+$('btnMultiMode').onclick = toggleMultiMode;
+$('btnBulkDelete').onclick = bulkDelete;
+$('btnReplaceBody').onclick = replaceBody;
+$('btnInsert').onclick = insertDirective;
+$('btnDelete2').onclick = deleteDirective;
+
+/* ---------------------------- INIT ------------------------------------- */
+showTab('config');                      // start on Config (login + setup)
+renderSelInfo();                        // selection-dependent actions start disabled
+updateMultiUI();
+refreshAuthUI();
+if (S.token) { reloadProjects(); }      // session persisted across reloads
+</script>
+</body>
+</html>

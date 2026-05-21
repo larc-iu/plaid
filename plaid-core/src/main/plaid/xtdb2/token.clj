@@ -173,6 +173,8 @@
             base)
       base)))
 
+(declare resize-child-cascade*)
+
 (defn merge-operation [xt-map eid attrs]
   (let [node (pxc/->node xt-map)
         {:token/keys [begin end layer document]} (pxc/entity node :tokens eid)
@@ -180,12 +182,20 @@
         new-end (or (:token/end attrs) end)
         extents-changing? (or (contains? attrs :token/begin) (contains? attrs :token/end))
         base-ops (merge* xt-map eid attrs)
+        ;; a direct extent change cascades to nested descendants, same as shift.
+        ;; Resolve descendant layers once (only when extents change) and reuse for
+        ;; both the cascade and enforce's parent-side guard.
+        dlids (when extents-changing? (tc/descendant-layer-ids node layer))
+        cascade-ops (if extents-changing?
+                      (resize-child-cascade* xt-map dlids layer document begin end new-begin new-end)
+                      [])
         tx-ops (tc/enforce :update node
                            {:layer layer :doc-id document :eid eid
                             :begin begin :end end
                             :new-begin new-begin :new-end new-end
-                            :extents-changing? extents-changing?}
-                           base-ops)
+                            :extents-changing? extents-changing?
+                            :dlids dlids}
+                           (into (vec base-ops) cascade-ops))
         changes (cond-> []
                   (contains? attrs :token/begin) (conj "start")
                   (contains? attrs :token/end) (conj "end")
@@ -206,65 +216,34 @@
 (defn delete-metadata [xt-map eid user-id]
   (metadata/delete-metadata xt-map eid user-id "token" project-id :token/document))
 
-(defn delete* [xt-map eid]
-  (let [node (pxc/->node xt-map)
-        t (pxc/entity-with-sys-from node :tokens eid)]
-    (when (nil? (:token/id t))
-      (throw (ex-info (pxc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
-    (let [span-ids (get-span-ids node eid)
-          span-map (pxc/entities-with-sys-from-by-id node :spans span-ids)
-          ;; Partition: spans with only this token → delete; others → update
-          {to-delete true to-update false}
-          (group-by (fn [[_ s]] (and (= 1 (count (:span/tokens s)))
-                                     (= eid (first (:span/tokens s)))))
-                    span-map)
-          ;; For spans to delete: batch-fetch their relations
-          delete-span-ids (mapv first to-delete)
-          rel-entities (if (empty? delete-span-ids) []
-                           (let [ph (str/join ", " (repeat (count delete-span-ids) "?"))]
-                             (->> (xt/q node (into [(str "SELECT *, _system_from FROM relations"
-                                                         " WHERE relation$source IN (" ph ")"
-                                                         " OR relation$target IN (" ph ")")]
-                                                   (concat delete-span-ids delete-span-ids)))
-                                  (into {} (map (juxt :xt/id identity)))
-                                  vals)))
-          ;; Vocab links
-          vl-ids (->> (xt/q node (xt/template
-                                  (-> (from :vocab-links [{:xt/id vlid :vocab-link/tokens toks}])
-                                      (unnest {:t toks})
-                                      (where (= t ~eid))
-                                      (return vlid))))
-                      (map :vlid))
-          vl-entities (pxc/entities-with-sys-from node :vocab-links vl-ids)]
-      (reduce into
-              [;; Delete vocab-links
-               (pxc/batch-delete-ops :vocab-links vl-entities)
-               ;; Update spans that still have other tokens
-               (vec (mapcat (fn [[_sid s]]
-                              (pxc/remove-join-ops* :spans s :span/tokens eid))
-                            to-update))
-               ;; Delete relations of spans being deleted
-               (pxc/batch-delete-ops :relations rel-entities)
-               ;; Delete spans that only had this token
-               (pxc/batch-delete-ops :spans (mapv second to-delete))
-               ;; Delete the token itself
-               [(pxc/match* :tokens t)
-                [:delete-docs :tokens eid]]]))))
+;; Single-token delete is just multi-delete* of one id (declared below); see
+;; multi-delete* for the span/relation/vocab-link cascade.
+(declare multi-delete*)
 
 (defn delete-operation [xt-map eid]
   (let [node (pxc/->node xt-map)
         t (pxc/entity node :tokens eid)
         doc-id (when t (:token/document t))
-        base-ops (delete* xt-map eid)
+        ;; Cascade: deleting a parent token deletes all descendant tokens nested in
+        ;; it (and, via multi-delete*, their spans/relations/vocab-links) — same
+        ;; "delete dependents that can no longer validly exist" pattern as token→span.
+        dlids (when t (tc/descendant-layer-ids node (:token/layer t)))
+        descendant-ids (when t (tc/descendant-token-ids-in-extent
+                                node dlids doc-id
+                                (:token/begin t) (:token/end t)))
+        base-ops (multi-delete* xt-map (cons eid descendant-ids))
         tx-ops (tc/enforce :delete node {:layer (when t (:token/layer t))
                                          :doc-id doc-id
-                                         :begin (:token/begin t) :end (:token/end t)}
+                                         :begin (:token/begin t) :end (:token/end t)
+                                         :dlids dlids}
                            base-ops)]
     (op/make-operation
      {:type :token/delete
       :project (project-id xt-map eid)
       :document doc-id
-      :description (str "Delete token " eid)
+      :description (str "Delete token " eid
+                        (when (seq descendant-ids)
+                          (str " (cascading to " (count descendant-ids) " nested token(s))")))
       :tx-ops tx-ops})))
 
 (defn delete [xt-map eid user-id]
@@ -281,8 +260,10 @@
                     (xt/q node (into [(str "SELECT *, _system_from FROM spans s, UNNEST(s.span$tokens) AS t(tid)"
                                            " WHERE t.tid IN (" placeholders ")")]
                                      eids)))
-        ;; Deduplicate spans (a span may match multiple tokens)
-        span-by-id (into {} (map (juxt :xt/id identity) all-spans))
+        ;; Deduplicate spans (a span may match multiple tokens). Drop the `:tid`
+        ;; column the UNNEST alias adds — otherwise the span-update branch would
+        ;; persist it (a stray, now-deleted token id) back onto the surviving span.
+        span-by-id (into {} (map (juxt :xt/id #(dissoc % :tid))) all-spans)
         span-updates (mapv (fn [span]
                              (let [remaining (vec (remove eids-set (:span/tokens span)))]
                                {:span span
@@ -309,11 +290,24 @@
                       (xt/q node (into [(str "SELECT *, _system_from FROM vocab_links vl, UNNEST(vl.vocab_link$tokens) AS t(tid)"
                                              " WHERE t.tid IN (" placeholders ")")]
                                        eids)))
-        vl-by-id (into {} (map (juxt :xt/id identity) vl-entities))]
+        ;; Drop the UNNEST `:tid` alias — we now re-put trimmed vocab-links (like
+        ;; spans), so a stray deleted-token id must not be persisted onto them.
+        vl-by-id (into {} (map (juxt :xt/id #(dissoc % :tid))) vl-entities)
+        vl-updates (mapv (fn [vl]
+                           (let [remaining (vec (remove eids-set (:vocab-link/tokens vl)))]
+                             {:vl vl :remaining remaining :should-delete? (empty? remaining)}))
+                         (vals vl-by-id))
+        vls-to-delete (filter :should-delete? vl-updates)
+        vls-to-update (remove :should-delete? vl-updates)]
     (vec
      (concat
-      ;; Delete vocab-links
-      (pxc/batch-delete-ops :vocab-links (vals vl-by-id))
+      ;; Trim vocab-links to their remaining tokens (delete only those left empty),
+      ;; mirroring the span handling below.
+      (mapcat (fn [{:keys [vl remaining]}]
+                [(pxc/match* :vocab-links vl)
+                 [:put-docs :vocab-links (-> vl (pxc/strip-temporal) (assoc :vocab-link/tokens remaining))]])
+              vls-to-update)
+      (pxc/batch-delete-ops :vocab-links (map :vl vls-to-delete))
       ;; Delete tokens
       (mapcat (fn [eid]
                 (when-let [te (clojure.core/get token-map eid)]
@@ -418,13 +412,28 @@
         tokens-by-layer (group-by :token/layer (vals token-map))
         first-t (clojure.core/get token-map (first eids))
         doc-id (when first-t (:token/document first-t))
-        base-ops (multi-delete* xt-map eids)
-        tx-ops (tc/enforce :bulk-delete node {:tokens-by-layer tokens-by-layer} base-ops)]
+        ;; Cascade: each requested token also drags down its nested descendants.
+        ;; Resolve descendant layers ONCE per distinct parent layer (was a BFS per
+        ;; token), then reuse for every token in that layer.
+        dlids-by-layer (into {} (map (fn [[lid _]] [lid (tc/descendant-layer-ids node lid)]))
+                             tokens-by-layer)
+        descendant-ids (mapcat (fn [t] (tc/descendant-token-ids-in-extent
+                                        node (clojure.core/get dlids-by-layer (:token/layer t))
+                                        (:token/document t)
+                                        (:token/begin t) (:token/end t)))
+                               (vals token-map))
+        all-ids (distinct (concat eids descendant-ids))
+        base-ops (multi-delete* xt-map all-ids)
+        ;; enforce asserts (per requested token's extent) that no descendant slips in
+        tx-ops (tc/enforce :bulk-delete node {:tokens-by-layer tokens-by-layer
+                                              :dlids-by-layer dlids-by-layer} base-ops)]
     (op/make-operation
      {:type :token/bulk-delete
       :project (when first-t (project-id xt-map (first eids)))
       :document doc-id
-      :description (str "Bulk delete " (count eids) " tokens")
+      :description (str "Bulk delete " (count eids) " tokens"
+                        (when (seq descendant-ids)
+                          (str " (cascading to " (count (distinct descendant-ids)) " nested token(s))")))
       :tx-ops tx-ops})))
 
 (defn bulk-delete [xt-map eids user-id]
@@ -434,32 +443,54 @@
 ;; Split / Merge / Shift operations
 ;; ---------------------------------------------------------------------------
 
+(defn- split-token-ops
+  "Pure tx-op builder: split a pre-fetched token entity t (with :xt/system-from)
+   at position, given its pre-fetched text entity text-e. Returns
+   {:new-token-id .. :tx-ops ..}. Fetching is the caller's job so batch callers can
+   read the token + text once (split* re-reads per call)."
+  [t text-e position]
+  (let [{:token/keys [begin end layer document text]} t]
+    (when-not (and (int? position) (> position begin) (< position end))
+      (throw (ex-info "Split position must be strictly between token begin and end"
+                      {:code 400 :position position :begin begin :end end})))
+    (let [new-id (random-uuid)
+          left-token (-> t
+                         (pxc/strip-temporal)
+                         (assoc :token/end position))
+          right-token (-> (pxc/new-record "token" new-id)
+                          (assoc :token/begin position
+                                 :token/end end
+                                 :token/text text
+                                 :token/layer layer
+                                 :token/document document))]
+      {:new-token-id new-id
+       :tx-ops [(pxc/match* :tokens t)
+                (pxc/match* :texts text-e)
+                [:put-docs :tokens left-token]
+                [:put-docs :tokens right-token]]})))
+
 (defn split* [xt-map token-id position]
   (let [node (pxc/->node xt-map)
         t (pxc/entity-with-sys-from node :tokens token-id)]
     (when (nil? (:token/id t))
       (throw (ex-info (pxc/err-msg-not-found "Token" token-id) {:code 404 :id token-id})))
-    (let [{:token/keys [begin end layer document text]} t]
-      ;; Validate position
-      (when-not (and (int? position) (> position begin) (< position end))
-        (throw (ex-info "Split position must be strictly between token begin and end"
-                        {:code 400 :position position :begin begin :end end})))
-      (let [new-id (random-uuid)
-            left-token (-> t
-                           (pxc/strip-temporal)
-                           (assoc :token/end position))
-            right-token (-> (pxc/new-record "token" new-id)
-                            (assoc :token/begin position
-                                   :token/end end
-                                   :token/text text
-                                   :token/layer layer
-                                   :token/document document))
-            text-e (pxc/entity-with-sys-from node :texts text)]
-        {:new-token-id new-id
-         :tx-ops [(pxc/match* :tokens t)
-                  (pxc/match* :texts text-e)
-                  [:put-docs :tokens left-token]
-                  [:put-docs :tokens right-token]]}))))
+    (split-token-ops t (pxc/entity-with-sys-from node :texts (:token/text t)) position)))
+
+(defn- split-straddlers*
+  "tx-ops splitting each token in straddler-ids at position, batching the token +
+   text reads (split* re-reads the text per call → an N+1 across a cascade)."
+  [xt-map straddler-ids position]
+  (if (empty? straddler-ids)
+    []
+    (let [node (pxc/->node xt-map)
+          token-map (pxc/entities-with-sys-from-by-id node :tokens straddler-ids)
+          text-ids (distinct (keep :token/text (vals token-map)))
+          text-map (into {} (map (fn [tid] [tid (pxc/entity-with-sys-from node :texts tid)])) text-ids)]
+      (vec (mapcat (fn [tid]
+                     (let [t (clojure.core/get token-map tid)]
+                       (when (:token/id t)
+                         (:tx-ops (split-token-ops t (clojure.core/get text-map (:token/text t)) position)))))
+                   straddler-ids)))))
 
 (defn split-operation [xt-map token-id position]
   (let [node (pxc/->node xt-map)
@@ -467,11 +498,22 @@
         doc-id (when t (:token/document t))
         ;; split* throws 404 if the token is missing, so t exists past this point
         {:keys [tx-ops new-token-id]} (split* xt-map token-id position)
-        ;; parent-side guard: can't split a parent token that has nested children
+        ;; Cascade: also split every descendant token that straddles the position,
+        ;; so the split never orphans a nested child (their parent re-derives by
+        ;; offset). Splitting at the same position keeps containment and per-parent
+        ;; tiling intact at every level.
+        dlids (tc/descendant-layer-ids node (:token/layer t))
+        straddler-ids (tc/straddling-descendant-token-ids-in
+                       node dlids doc-id
+                       (:token/begin t) (:token/end t) position)
+        cascade-tx (split-straddlers* xt-map straddler-ids position)
+        ;; parent-side guard appends a TOCTOU no-straddler assert over descendants
         tx-ops (tc/enforce :split node
                            {:layer (:token/layer t) :doc-id doc-id
-                            :begin (:token/begin t) :end (:token/end t)}
-                           tx-ops)]
+                            :begin (:token/begin t) :end (:token/end t)
+                            :position position
+                            :dlids dlids}
+                           (into (vec tx-ops) cascade-tx))]
     {:operation (op/make-operation
                  {:type :token/split
                   :project (project-id xt-map token-id)
@@ -604,6 +646,62 @@
        (pxc/match* :texts text-e)
        [:put-docs :tokens updated]])))
 
+(defn- resize-child-cascade*
+  "Cascade a parent token resize ([begin,end] → [nb,ne]) to its descendant tokens.
+   - :partitioning parent (its neighbor grows to cover the freed region): split each
+     descendant straddling a moved boundary so the outside half re-homes to the
+     neighbor by offset containment.
+   - non-overlapping / :any parent (no neighbor): delete descendants that retain no
+     positive overlap with the new extent (left fully outside it, or collapsed when
+     the parent shrinks to zero width) along with their dependents, and trim those
+     straddling the new edge to fit.
+   Descendants are processed across all levels by offset, so nesting stays valid at
+   every depth. `dlids` (descendant layer ids) is precomputed by the caller and also
+   threaded into `enforce` so the BFS runs once per op."
+  [xt-map dlids layer doc-id begin end nb ne]
+  (let [node (pxc/->node xt-map)]
+    (cond
+      (empty? dlids) []
+
+      (= :partitioning (tc/layer-overlap-mode node layer))
+      (let [moved (cond-> []
+                    (not= nb begin) (conj nb)
+                    (not= ne end) (conj ne))]
+        ;; doc-wide scan: a partitioning parent is disjoint, so a moved boundary p
+        ;; sits in exactly one parent pre-shift — this catches the straddler whether
+        ;; we shrank (straddler is our child) or grew into the neighbor (its child).
+        (vec (mapcat (fn [p]
+                       (split-straddlers* xt-map
+                                          (tc/straddling-descendant-token-ids-at node dlids doc-id p)
+                                          p))
+                     moved)))
+
+      :else
+      (let [descendants (tc/descendant-token-entities-in-extent node dlids doc-id begin end)
+            ;; A descendant survives only if it keeps POSITIVE overlap with the new
+            ;; extent. Clipped extent = [max(begin,nb), min(end,ne)]:
+            ;;   lo >= hi  → no positive overlap (fully outside, or collapsed to
+            ;;               zero when the parent itself shrinks to zero width) → delete
+            ;;   unchanged → fully inside → keep untouched
+            ;;   else      → straddles the new edge → trim to fit
+            classify (fn [d]
+                       (let [lo (max (:token/begin d) nb)
+                             hi (min (:token/end d) ne)]
+                         (cond
+                           (>= lo hi) :delete
+                           (and (= lo (:token/begin d)) (= hi (:token/end d))) :keep
+                           :else :trim)))
+            {to-delete :delete to-trim :trim} (group-by classify descendants)
+            delete-tx (if (seq to-delete) (vec (multi-delete* xt-map (mapv :xt/id to-delete))) [])
+            trim-tx (vec (mapcat (fn [d]
+                                   [(pxc/match* :tokens d)
+                                    [:put-docs :tokens (-> d
+                                                           (pxc/strip-temporal)
+                                                           (assoc :token/begin (max (:token/begin d) nb)
+                                                                  :token/end (min (:token/end d) ne)))]])
+                                 to-trim))]
+        (into delete-tx trim-tx)))))
+
 (defn shift-boundary-operation [xt-map token-id attrs]
   (let [node (pxc/->node xt-map)
         t (pxc/entity node :tokens token-id)
@@ -614,11 +712,16 @@
         text-length (when text (count (:text/body (pxc/entity node :texts text))))
         ;; shift-boundary* throws 404 if the token is missing
         base-ops (shift-boundary* xt-map token-id attrs)
+        ;; resolve descendant layers once; reuse for the cascade and enforce's guard
+        dlids (when t (tc/descendant-layer-ids node layer))
+        ;; cascade the resize to nested descendants (split-rebalance / trim+delete)
+        cascade-ops (if t (resize-child-cascade* xt-map dlids layer doc-id begin end new-begin new-end) [])
         tx-ops (tc/enforce :shift node
                            {:layer layer :doc-id doc-id :token-id token-id
                             :begin begin :end end :new-begin new-begin :new-end new-end
-                            :text-length text-length}
-                           base-ops)]
+                            :text-length text-length
+                            :dlids dlids}
+                           (into (vec base-ops) cascade-ops))]
     (op/make-operation
      {:type :token/shift-boundary
       :project (project-id xt-map token-id)

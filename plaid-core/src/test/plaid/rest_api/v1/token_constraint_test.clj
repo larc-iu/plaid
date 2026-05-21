@@ -350,24 +350,9 @@
 ;; Text cascade compensation
 ;; ---------------------------------------------------------------------------
 
-(deftest text-cascade-partitioning-fills-gaps
-  (let [{:keys [token-layer text-id]} (setup-layer "partitioning" "abcdef")]
-    (let [tokens [{:token-layer-id token-layer :text text-id :begin 0 :end 3}
-                  {:token-layer-id token-layer :text text-id :begin 3 :end 6}]
-          res (bulk-create-tokens admin-request tokens)
-          [t1 t2] (-> res :body :ids)]
-      (assert-created res)
-      (testing "After deleting middle of text, partition is maintained"
-        ;; Edit: "abcdef" -> "abef" (delete "cd" at positions 2-4)
-        (let [edit-res (update-text admin-request text-id "abef")]
-          (assert-ok edit-res)
-          ;; Tokens should be adjusted to cover "abef"
-          (let [left (get-token admin-request t1)
-                right (get-token admin-request t2)]
-            ;; Both tokens should still exist and cover the text
-            ;; Exact extents depend on the text edit algorithm
-            (assert-ok left)
-            (assert-ok right)))))))
+;; (text-cascade-partitioning-fills-gaps removed — it only asserted the tokens
+;; still existed, never that the partition stayed gap-free; the test below
+;; supersedes it with a real cover check.)
 
 (deftest text-cascade-partitioning-maintains-valid-partition
   (let [{:keys [token-layer text-id]} (setup-layer "partitioning" "abcdef")

@@ -117,7 +117,10 @@
                                     {:status 201 :body {:ids (:extra result)}}
                                     result)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
-             :delete {:summary "Delete multiple tokens in a single operation. Provide an array of IDs."
+             :delete {:summary (str "Delete multiple tokens in a single operation. Provide an array of IDs. As with "
+                                    "single delete, each deleted token also drags down the descendant tokens nested "
+                                    "within it (and their dependent spans, relations, and vocab-links) if the layer "
+                                    "has child token layers.")
                       :openapi {:x-client-method "bulk-delete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
@@ -152,7 +155,10 @@
                                "<body>non-overlapping</body> layers an update that would overlap another token is "
                                "rejected (409); on <body>partitioning</body> layers direct extent changes are rejected "
                                "(400) — use the token shift endpoint instead. Non-extent updates (e.g. "
-                               "<body>precedence</body>) are always allowed.")
+                               "<body>precedence</body>) are always allowed."
+                               "\n"
+                               "\nIf the layer has child token layers, an extent change cascades to descendants exactly "
+                               "as the shift endpoint does (straddlers split/trimmed, fully-outside children deleted).")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :uuid]]
@@ -172,7 +178,9 @@
                                  result)
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary (str "Delete a token and remove it from any spans. If this causes the span to have no "
-                                "remaining associated tokens, the span will also be deleted. On "
+                                "remaining associated tokens, the span will also be deleted. If the layer has child "
+                                "token layers, deleting a parent token also deletes the descendant tokens nested "
+                                "within its extent (and their dependent spans, relations, and vocab-links). On "
                                 "<body>partitioning</body> layers single deletion is rejected (400) — use the token "
                                 "merge endpoint to combine tokens, or bulk-delete to remove the whole partition.")
                   :middleware [[pra/wrap-writer-required get-project-id]
@@ -187,7 +195,11 @@
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ["/split"
-     {:post {:summary "Split a token at a character offset. The original token becomes the left half (keeps ID, spans, vocab-links). Returns the new right token's ID."
+     {:post {:summary (str "Split a token at a character offset. The original token becomes the left half (keeps ID, "
+                           "spans, vocab-links). Returns the new right token's ID. If the layer has child token "
+                           "layers, every descendant token that straddles the split position is split there too, so "
+                           "nesting is preserved at every level (a split aligned to an existing child boundary needs "
+                           "no child split).")
              :middleware [[pra/wrap-writer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
              :parameters {:query [:map [:document-version {:optional true} :uuid]]
@@ -206,7 +218,8 @@
                            "the right is deleted, and spans and vocab-links referencing it are reparented to the "
                            "left. On <body>partitioning</body> layers the two tokens must be adjacent (400 "
                            "otherwise); on <body>non-overlapping</body> layers the merged extent must not engulf a "
-                           "third token (409 otherwise).")
+                           "third token (409 otherwise). The merged token contains both originals, so any tokens "
+                           "nested in either remain contained — nothing is orphaned.")
              :middleware [[pra/wrap-writer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
              :parameters {:query [:map [:document-version {:optional true} :uuid]]
@@ -221,7 +234,14 @@
                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ["/shift"
-     {:post {:summary "Shift a token's boundary. For partitioning layers, auto-adjusts the adjacent token. For non-overlapping layers, validates no overlap."
+     {:post {:summary (str "Shift a token's boundary (move its <body>begin</body> and/or <body>end</body>). On "
+                           "<body>partitioning</body> layers the adjacent token auto-adjusts so coverage is preserved; "
+                           "on <body>non-overlapping</body> layers the new extent is validated against overlap (409). "
+                           "If the layer has child token layers the resize cascades to descendants: on partitioning "
+                           "layers a descendant straddling the moved boundary is split so its outer part re-homes to "
+                           "the grown neighbor; on non-overlapping/any layers descendants that retain no overlap with "
+                           "the new extent are deleted (including every child if the parent collapses to zero width) "
+                           "and straddlers are trimmed to fit.")
              :middleware [[pra/wrap-writer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
              :parameters {:query [:map [:document-version {:optional true} :uuid]]

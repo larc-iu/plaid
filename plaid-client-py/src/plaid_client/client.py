@@ -351,14 +351,17 @@ class TokenLayersResource(_Resource):
         ``overlap_mode`` sets a per-layer, immutable invariant on the layer's
         tokens: ``any`` (default; tokens may overlap and leave gaps),
         ``non-overlapping`` (tokens in a document may not overlap), or
-        ``partitioning`` (tokens must form a gap-free, non-overlapping cover of
-        the text). On partitioning layers, single token create/update/delete are
+        ``partitioning`` (tokens must form a gap-free, non-overlapping,
+        zero-width-free cover of the text). On partitioning layers, single token create/update/delete are
         rejected -- use bulk-create plus the token split/merge/shift methods.
 
         ``parent_token_layer_id`` (immutable) makes this a nested layer: every
-        token must be contained within a token of the parent layer (which must
-        belong to the same text layer). Combined with ``partitioning``, tokens
-        must tile each parent token's extent -- e.g. morphemes within words.
+        token must be contained within a token of the parent layer, which must
+        belong to the same text layer and be ``non-overlapping`` or
+        ``partitioning`` (an ``any`` parent is rejected). A nested layer may be
+        ``any`` or ``non-overlapping`` but not ``partitioning`` (partitioning is
+        only for root layers) -- e.g. words (non-overlapping, parent=sentences)
+        within sentences (partitioning).
         """
         return self._request('POST', '/api/v1/token-layers',
                              body=_body_of(text_layer_id=text_layer_id, name=name,

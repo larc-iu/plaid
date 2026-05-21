@@ -320,11 +320,15 @@ For each **token layer**, each document may have many **token**s, which are defi
 Note the following:
 
 1. `begin` and `end` must form valid substring indices for the given text.
-2. Zero-length tokens where `begin == end` are valid.
-3. Tokens may overlap.
-4. Plaid sorts tokens by `begin` when determining their linear order in the document. For tokens with identical `begin`, Plaid uses the optional `prevalence` value wherever available, such that tokens with lower precedence appear earlier in linear order.
+2. By default, zero-length tokens where `begin == end` are valid.
+3. By default, tokens may overlap.
+4. Plaid sorts tokens by `begin` when determining their linear order in the document. For tokens with identical `begin`, Plaid uses the optional `precedence` value wherever available, such that tokens with lower precedence appear earlier in linear order.
 
-Tokens are intended to serve ast he basic units for further linguistic analysis using spans and relations.
+Token layers are unique in that their invariants are configurable.
+In addition to the default configuration, it is possible to constrain them further: for example, a token layer may require that no tokens be overlapping in extent of `begin` and `end`.
+For full details, see <<Token Layer Constraints>> below.
+
+Tokens are intended to serve as the basic units for further linguistic analysis using spans and relations.
 
 == Spans
 
@@ -457,7 +461,156 @@ Consider these examples:
 These invariants have been incorporated into Plaid because of their broad desirability in linguistic annotation.
 However, some invariants will vary by annotation framework.
 For example, it is quite common to want a span layer's spans to be in one-to-one correspondence with tokens in the parent token layer.
-This is not directly enforced by Plaid, but Plaid provides you with three mechanisms which allow you to enforce your own data integrity constraints.
+
+For **token layers**, you can ask Plaid to enforce some commonly needed additional invariants for you, server-side: these are described in <<Token Layer Constraints>> below.
+For everything else, Plaid provides three further mechanisms--**strict mode**, **locking**, and **atomic batches**--which help you coordinate writes from the client so that you can enforce your own data integrity constraints without needing to write any code outside of your client.
+
+== Token Layer Constraints
+
+The constraints in the previous section are always on.
+Token layers additionally support a set of **opt-in, server-side constraints** which capture some of the most common token-level invariants in linguistic annotation.
+Because they are enforced by the server on every write, there is no need for extra measures on the client side in order to maintain them.
+They are configured per token layer at creation time, and are immutable thereafter.
+
+=== Overlap Modes
+
+Every token layer has an **overlap mode**, chosen at creation, which governs how its tokens may sit relative to one another:
+
+* `any` (the default): no restrictions. Tokens may overlap, leave gaps, and be zero-width. This is the behavior described in the <<Tokens>> section.
+* `non-overlapping`: no two tokens in the same document may overlap (share any character). Gaps between tokens are still allowed--for instance, the whitespace between words.
+* `partitioning`: the tokens must form a gap-free, non-overlapping, zero-width-free cover of the whole text. Partitioning is allowed only on a **root** (parentless) token layer; see <<Token Layer Hierarchy>>.
+
+[NOTE]
+====
+A partitioning layer is, at every moment, in exactly one of two valid states for a given document: **empty** (no tokens at all--the document is simply not yet tokenized at this layer, which is the state every layer starts in), or a **complete partition** (the gap-free, overlap-free, zero-width-free cover described above).
+Plaid never lets it reach a _partial_ state in between: every operation either moves it between empty and complete, or is rejected.
+
+In particular, there is no automatic establishment--a newly created partitioning layer is empty until you `bulk-create` its partition, and `bulk-delete` (which must remove the whole partition at once) returns it to empty.
+The editing operations below each preserve the complete-partition state: a split divides one token, a merge joins two adjacent ones, and a boundary shift only moves a shared boundary _within_ the two tokens it separates (a shift that would collapse, invert, or overshoot a token is rejected).
+====
+
+You set the mode when creating the layer:
+
+[,python]
+----
+# A non-overlapping "words" layer
+client.token_layers.create(text_layer_id, "Words", overlap_mode="non-overlapping")
+----
+
+Because a `partitioning` layer must always tile its extent, the ordinary per-token create, delete, and extent-update operations are rejected on it--each would necessarily leave a gap or an overlap.
+Instead, you build and edit the partition with four operations:
+
+* **bulk-create** establishes a whole partition at once.
+* **split** divides one token into two at an offset.
+* **merge** combines two adjacent tokens into one.
+* **shift-boundary** moves the boundary between two tokens, growing one and shrinking its neighbor so that the cover is preserved.
+
+These editing operations are available on `any` and `non-overlapping` layers too, where they serve as convenient shortcuts.
+In every case, dependent spans and vocab-links are preserved: a split keeps them on the original (left) token, and a merge reparents the right token's spans and vocab-links onto the surviving left token.
+
+[,python]
+----
+# Establish the partition "dogs run" -> "dogs", "run"
+result = client.tokens.bulk_create([
+    {"token_layer_id": words, "text": text_id, "begin": 0, "end": 4},
+    {"token_layer_id": words, "text": text_id, "begin": 5, "end": 8},
+])
+dogs_id, run_id = result["ids"]
+
+# Split "dogs" into "dog" + "s"
+new_id = client.tokens.split(dogs_id, 3)["id"]
+
+# Merge the two halves back together
+client.tokens.merge(dogs_id, new_id)
+----
+
+=== Token Layer Hierarchy
+
+Although all token layers must depend on a text layer, a token layer may also declare another token layer as its **parent** token layer.
+As with the parent text layer, this must be done at time of layer creation and it is immutable.
+This models nesting between levels of tokenization, which is commonly needed for most approaches to interlinear glossed text, where morphemes are nested within whole words which are nested within sentences.
+
+Nesting is expressed purely through character offsets: a child token belongs to the parent token whose extent contains it.
+There is no separate parent pointer on each token to keep in sync.
+These rules apply to nested token layers:
+
+* The parent layer must belong to the same text layer as the child, so they index into the same text.
+* The parent layer must be `non-overlapping` or `partitioning`--its tokens must not overlap, so that each child has exactly one containing parent. (An `any` parent is rejected.)
+* A nested layer may not itself be `partitioning`.
+* Every token in the nested layer must be contained within some parent token. A token that escapes its parent, or that spans across two parents, is rejected.
+* Tokens on a nested layer may not be zero-width--a zero-width token sitting on a parent boundary would belong to two parents at once. (For morphemes that have no clean surface segmentation, see <<Non-concatenative morphology>> below.)
+
+Hierarchical containment and overlap mode provide complementary guarantees.
+Hierarchical containment is used to restrict the ranges in which tokens for that layer may occur: that is to say, only within the extant tokens in the parent layer.
+On the other hand, the overlap mode dictates how a layer's own tokens may occur within that range relative to each other.
+
+Here is the canonical three-level IGT hierarchy for the text "dogs run", assuming `tl` is a text layer and `text_id` is its text:
+
+[,python]
+----
+# Three token layers: sentences contain words contain morphemes. Only the root
+# (sentence) layer may be partitioning. Words are non-overlapping; morphemes are
+# `any` so that fused forms (overlapping morphemes) are representable too -- see
+# "Non-concatenative morphology" below.
+sentences = client.token_layers.create(tl, "Sentences", overlap_mode="partitioning")["id"]
+words     = client.token_layers.create(tl, "Words", overlap_mode="non-overlapping",
+                                       parent_token_layer_id=sentences)["id"]
+morphemes = client.token_layers.create(tl, "Morphemes", overlap_mode="any",
+                                       parent_token_layer_id=words)["id"]
+
+# One sentence covering the whole text
+client.tokens.bulk_create([{"token_layer_id": sentences, "text": text_id, "begin": 0, "end": 8}])
+
+# Two words, with a gap at index 4 for the space
+client.tokens.bulk_create([
+    {"token_layer_id": words, "text": text_id, "begin": 0, "end": 4},
+    {"token_layer_id": words, "text": text_id, "begin": 5, "end": 8},
+])
+
+# Morphemes within each word: "dog|s", then "run"
+client.tokens.bulk_create([
+    {"token_layer_id": morphemes, "text": text_id, "begin": 0, "end": 3},
+    {"token_layer_id": morphemes, "text": text_id, "begin": 3, "end": 4},
+    {"token_layer_id": morphemes, "text": text_id, "begin": 5, "end": 8},
+])
+----
+
+==== Non-concatenative morphology
+
+The morphemes in the example could be seen as purely concatenative: each is a contiguous slice of its word, and together they cover it without gaps.
+Plenty of morphology does not decompose so cleanly.
+The French contraction _aux_, for instance, is analyzed as the preposition _à_ plus the article _les_, yet neither morpheme corresponds to a contiguous slice of the surface string "aux".
+
+Because the morpheme layer above is `any`, it accommodates this directly--this is exactly why a morpheme layer is usually `any` rather than `non-overlapping`.
+Represent a fused form with **overlapping morphemes that share the fused span**, ordered with `precedence`:
+
+[,python]
+----
+# "aux" is the word token [0,3]; the morpheme layer's overlap-mode is `any`
+client.tokens.bulk_create([
+    {"token_layer_id": morphemes, "text": text_id, "begin": 0, "end": 3, "precedence": 0},  # à
+    {"token_layer_id": morphemes, "text": text_id, "begin": 0, "end": 3, "precedence": 1},  # les
+])
+----
+
+Both morphemes span the whole surface form, so the overlap between them is itself the signal that the correspondence is non-concatenative: an agglutinative word yields disjoint, contiguous morphemes, while a fused word yields morphemes that share a span.
+`precedence` records their linear order (_à_ before _les_).
+
+Zero-width morphemes are not an alternative here: tokens on a nested layer may not be zero-width, for the disambiguation reason given above.
+Anchor the fused morphemes to the whole word's span, as shown.
+
+=== Cascading Edits
+
+Plaid's general philosophy is to make destructive, cascading changes where necessary to preserve its invariants--recall that deleting a token deletes the spans which depended on it.
+Editing a parent token follows the same philosophy: structural operations cascade down the hierarchy so that nesting always remains valid.
+
+* **Deleting** a parent token deletes every token nested within it (and, transitively, their spans, relations, and vocab-links). Deleting a word deletes its morphemes, while leaving the word's siblings and their morphemes untouched.
+* **Splitting** a parent at an offset also splits any descendant that straddles that offset, so a nested token is never bisected. (A split that lands exactly on an existing child boundary needs no child split; the children simply re-home into the two new parents by offset.)
+* **Shifting a boundary** (or otherwise resizing a parent) cascades according to the layer's mode. On a `partitioning` parent, the neighbor grows to absorb the freed region, and any descendant straddling the moved boundary is split so that its outer half re-homes to the neighbor. On a `non-overlapping` or `any` parent, descendants that retain no overlap with the new extent are deleted--including every child when the parent is shrunk to zero width--and descendants straddling the new edge are trimmed to fit.
+* **Merging** two parent tokens yields a token spanning both, which therefore still contains all of their descendants--nothing is orphaned.
+* **Editing the text body** cascades here too: as tokens shrink, grow, or disappear along with the characters they cover (per the core constraints above), nested tokens are clipped consistently, so a child never ends up outside its parent.
+
+Because all of these are enforced and cascaded server-side, you can rely on the hierarchy remaining internally consistent no matter how the document is edited, including under concurrent edits by multiple users.
 
 == Strict Mode
 
@@ -569,6 +722,8 @@ Since there is no server-side validation for this constraint, the server will ha
 This is a fundamental limitation of Plaid which was deliberately adopted in order to support frontend-only development.
 You therefore must only grant write privileges only to users who you trust not to circumvent client-side validation guardrails.
 Fortunately, we think this is not an onerous imposition in most real-world circumstances.
+
+NOTE: The token layer constraints described in <<Token Layer Constraints>> are the exception to this caveat. Because they are enforced on the server, they cannot be circumvented by a malicious client, and they hold no matter how a request is crafted.
 
 = Development
 

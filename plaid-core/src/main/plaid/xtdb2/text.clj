@@ -130,7 +130,20 @@
                               (not= end (:token/end (clojure.core/get indexed-tokens id)))))
           deletion-tx (when (seq deleted-token-ids)
                         (tok/multi-delete* xt-map deleted-token-ids))
-          tokens-to-update (filter needs-update? new-tokens)
+          new-text-len (count (:text/body new-text))
+          ;; Partitioning gap-fill. compensate emits the FINAL put (reindex + gap
+          ;; close) for any token it touches, so those tokens must be excluded from
+          ;; update-tx below — otherwise a token would be match*ed + put twice in the
+          ;; same tx, and the second match* (seeing the first put) would conflict.
+          constraint-tx (tc/compensate-after-cascade node new-tokens new-text-len tokens-e)
+          compensated-ids (into #{}
+                                (keep (fn [op]
+                                        (when (and (vector? op) (= :put-docs (first op)))
+                                          (:xt/id (nth op 2)))))
+                                constraint-tx)
+          tokens-to-update (filter #(and (needs-update? %)
+                                         (not (compensated-ids (:token/id %))))
+                                   new-tokens)
           update-tx (when (seq tokens-to-update)
                       (mapcat (fn [{:token/keys [id] :as new-token}]
                                 [(pxc/match* :tokens (clojure.core/get indexed-tokens-e id))
@@ -138,11 +151,20 @@
                               tokens-to-update))
           text-tx [(pxc/match* :texts text-e)
                    [:put-docs :texts (assoc text :text/body (:text/body new-text))]]
-          new-text-len (count (:text/body new-text))
-          constraint-tx (tc/compensate-after-cascade node new-tokens
-                                                     (set deleted-token-ids)
-                                                     new-text-len tokens-e)
-          tx (reduce into [text-tx deletion-tx update-tx constraint-tx])]
+          ;; Concurrency guard: a token created by another writer between our read and
+          ;; our commit has no row for us to match*. Assert that no token of this text
+          ;; now ends past the new length, so a concurrent create racing a text shrink
+          ;; cannot survive as an out-of-bounds token (which would also break a
+          ;; partition cover or nesting containment). Our own reindexed tokens all end
+          ;; within the new length, so this only fires on a foreign insert.
+          oob-assert [[:sql (str "ASSERT NOT EXISTS (SELECT 1 FROM tokens"
+                                 " WHERE token$text = ? AND token$end > ?)")
+                       [eid new-text-len]]]
+          ;; Concurrency guard: a partitioning layer empty at our read must stay
+          ;; empty, so a concurrent establishment (validated against the old text
+          ;; length) can't leave it partially covering an edited text.
+          partition-asserts (tc/text-edit-partition-asserts node eid (:text/layer text-e) tokens-e)
+          tx (reduce into [text-tx deletion-tx update-tx constraint-tx oob-assert partition-asserts])]
       tx)))
 
 (defn update-body-operation

@@ -3,7 +3,8 @@
             [clojure.string :as str]
             [plaid.xtdb2.common :as pxc]
             [plaid.xtdb2.operation :as op :refer [submit-operations!]]
-            [plaid.xtdb2.span-layer :as sl])
+            [plaid.xtdb2.span-layer :as sl]
+            [plaid.xtdb2.constraints.token :as tc])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:token-layer/id
@@ -28,9 +29,10 @@
 (defn project-id [node-or-map id]
   (:token-layer/project (pxc/entity node-or-map :token-layers id)))
 
+;; Single source of truth lives in the constraint layer (used heavily in the
+;; enforce hot path); delegate so the default-:any logic isn't duplicated.
 (defn overlap-mode [node-or-map id]
-  (or (:token-layer/overlap-mode (pxc/entity node-or-map :token-layers id))
-      :any))
+  (tc/layer-overlap-mode node-or-map id))
 
 (defn sort-token-records [tokens]
   (->> tokens
@@ -55,13 +57,31 @@
         parent-tl (when parent-tl-id (pxc/entity-with-sys-from node :token-layers parent-tl-id))
         _ (when parent-tl-id
             (cond
+              ;; Partitioning is only meaningful for a layer that tiles the whole
+              ;; text — a root layer. On a nested layer it would only ever tile
+              ;; "each parent token", an invariant that is leaky (un-segmented
+              ;; parents) and not cleanly maintainable, so it is disallowed.
+              (= :partitioning overlap-mode)
+              (throw (ex-info (str "A nested token layer may not use overlap-mode :partitioning"
+                                   " (partitioning is only allowed on root token layers).")
+                              {:overlap-mode overlap-mode :parent-token-layer parent-tl-id :code 400}))
               (nil? (:token-layer/id parent-tl))
               (throw (ex-info (pxc/err-msg-not-found "Parent token layer" parent-tl-id)
                               {:id parent-tl-id :code 400}))
               ;; Same text layer ⇒ same text body (so offset containment is meaningful) and same project
               (not= (:token-layer/text-layer parent-tl) text-layer-id)
               (throw (ex-info "Parent token layer must belong to the same text layer as this layer."
-                              {:parent-token-layer parent-tl-id :code 400}))))
+                              {:parent-token-layer parent-tl-id :code 400}))
+              ;; Parent tokens must be disjoint so each child has at most one
+              ;; containing parent (offset-derived containment is otherwise
+              ;; ambiguous). Only the disjoint modes qualify; :any (incl. the
+              ;; nil default) is rejected.
+              (not (#{:non-overlapping :partitioning} (:token-layer/overlap-mode parent-tl)))
+              (throw (ex-info (str "Parent token layer must be :non-overlapping or :partitioning"
+                                   " (a parent's tokens must be disjoint so child containment is unambiguous).")
+                              {:parent-token-layer parent-tl-id
+                               :parent-overlap-mode (:token-layer/overlap-mode parent-tl)
+                               :code 400}))))
         {:token-layer/keys [name id] :as record}
         (-> (clojure.core/merge (pxc/new-record "token-layer" id)
                                 {:token-layer/span-layers []
@@ -128,12 +148,15 @@
 (defn shift-token-layer [xt-map tokl-id up? user-id]
   (submit-operations! xt-map [(shift-token-layer-operation xt-map tokl-id up?)] user-id))
 
-(defn- delete*-impl
-  "Delete a token-layer given a pre-fetched entity (with sys-from). Does NOT remove ref from parent."
-  [node tokl]
-  (let [eid (:xt/id tokl)
-        span-layer-ids (:token-layer/span-layers tokl)
-        ;; Flatten span-layer cascade: batch across all span-layers
+(defn- delete-layers*-impl
+  "Delete a SET of token-layers (pre-fetched entities, with sys-from) and ALL their
+  data — span-layers, relation-layers, spans, relations, tokens, and the vocab-links
+  referencing those tokens — batched across the whole set (deduped via IN queries).
+  Does NOT remove the layers' refs from their text-layer. Callers pass the target
+  layer plus its descendant token-layers so a hierarchy is torn down atomically."
+  [node tokls]
+  (let [tokl-ids (mapv :xt/id tokls)
+        span-layer-ids (vec (mapcat :token-layer/span-layers tokls))
         sl-entities (pxc/entities-with-sys-from node :span-layers span-layer-ids)
         all-rl-ids (vec (mapcat :span-layer/relation-layers sl-entities))
         rl-entities (pxc/entities-with-sys-from node :relation-layers all-rl-ids)
@@ -149,9 +172,15 @@
                         (xt/q node (into [(str "SELECT *, _system_from FROM spans"
                                                " WHERE span$layer IN (" ph ")")]
                                          span-layer-ids))))
-        ;; Tokens + vocab-links
-        tokens (pxc/find-entities-with-sys-from node :tokens {:token/layer eid})
-        token-ids (mapv :xt/id tokens)
+        ;; All tokens across all token-layers (1 query)
+        all-tokens (if (empty? tokl-ids) []
+                       (let [ph (str/join ", " (repeat (count tokl-ids) "?"))]
+                         (xt/q node (into [(str "SELECT *, _system_from FROM tokens"
+                                                " WHERE token$layer IN (" ph ")")]
+                                          tokl-ids))))
+        token-ids (mapv :xt/id all-tokens)
+        ;; All vocab-links referencing any of those tokens (1 query; deduped by id —
+        ;; a multi-token link spanning two deleted layers is removed once)
         vl-entities (if (empty? token-ids)
                       []
                       (let [ph (str/join ", " (repeat (count token-ids) "?"))]
@@ -165,18 +194,24 @@
              (pxc/batch-delete-ops :relation-layers rl-entities)
              (pxc/batch-delete-ops :spans all-spans)
              (pxc/batch-delete-ops :span-layers sl-entities)
-             (pxc/batch-delete-ops :tokens tokens)
-             [(pxc/match* :token-layers tokl)
-              [:delete-docs :token-layers eid]]])))
+             (pxc/batch-delete-ops :tokens all-tokens)
+             (pxc/batch-delete-ops :token-layers tokls)])))
 
 (defn delete*
-  "Delete a token-layer and all its span-layers, tokens, and vocab-links. Does NOT remove ref from parent."
+  "Delete a token-layer, all its DESCENDANT token-layers (transitive children in the
+  parent-token-layer hierarchy), and all of their span-layers, tokens, spans,
+  relations, and vocab-links. Cascading to child layers is required: a nested layer
+  derives containment from its parent layer, so leaving one behind would orphan its
+  tokens (un-editable) and dangle its parent ref. Does NOT remove refs from the
+  text-layer (see delete-operation)."
   [xt-map eid]
   (let [node (pxc/->node xt-map)
         tokl (pxc/entity-with-sys-from node :token-layers eid)]
     (when (nil? (:token-layer/id tokl))
       (throw (ex-info (pxc/err-msg-not-found "Token layer" eid) {:code 404})))
-    (delete*-impl node tokl)))
+    (let [descendant-ids (tc/descendant-layer-ids node eid)
+          descendant-entities (pxc/entities-with-sys-from node :token-layers descendant-ids)]
+      (delete-layers*-impl node (into [tokl] descendant-entities)))))
 
 (defn delete-operation [xt-map eid]
   (let [node (pxc/->node xt-map)
@@ -184,18 +219,25 @@
         prj-id (:token-layer/project tokl)
         txtl-id (parent-id node eid)
         txtl (pxc/entity-with-sys-from node :text-layers txtl-id)
+        ;; the delete cascades to descendant token-layers; unlink ALL of them from
+        ;; the text-layer's token-layers list (each token-layer, nested or not, is
+        ;; listed there) so no dangling id is left behind
+        descendant-ids (tc/descendant-layer-ids node eid)
+        deleted-ids (set (cons eid descendant-ids))
         base-tx (delete* xt-map eid)
         unlink-tx [(pxc/match* :text-layers txtl)
                    [:put-docs :text-layers (-> txtl
                                                (pxc/strip-temporal)
-                                               (pxc/remove-id :text-layer/token-layers eid))]]
+                                               (update :text-layer/token-layers
+                                                       (fn [ids] (vec (remove deleted-ids ids)))))]]
         all-tx (into base-tx unlink-tx)]
     (op/make-operation
      {:type :token-layer/delete
       :project prj-id
       :document nil
-      :description (str "Delete token layer " eid " with "
-                        (count (:token-layer/span-layers tokl)) " span layers")
+      :description (str "Delete token layer " eid
+                        (when (seq descendant-ids)
+                          (str " (cascading to " (count descendant-ids) " child token layer(s))")))
       :tx-ops all-tx})))
 
 (defn delete [xt-map eid user-id]

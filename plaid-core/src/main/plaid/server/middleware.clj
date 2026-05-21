@@ -59,10 +59,10 @@
                             (str file-path "index.html")
                             file-path)
               file (io/file resources-path actual-path)]
-          (if (and (.exists file) 
+          (if (and (.exists file)
                    (.isFile file)
                    ;; Security: ensure the file is within our resources directory
-                   (str/starts-with? (.getCanonicalPath file) 
+                   (str/starts-with? (.getCanonicalPath file)
                                      (.getCanonicalPath (io/file resources-path))))
             (-> (response/file-response (.getPath file))
                 (response/content-type (mime/ext-mime-type (.getName file))))
@@ -73,9 +73,9 @@
   :start
   (let [defaults-config (:ring.middleware/defaults-config config)
         cors-config (or (:plaid.server.middleware/cors-config config)
-                         {:access-control-allow-origin ["*"]
-                          :access-control-allow-methods [:get :put :post :delete :options]
-                          :access-control-allow-headers ["Authorization" "Content-Type"]})]
+                        {:access-control-allow-origin ["*"]
+                         :access-control-allow-methods [:get :put :post :patch :delete :options]
+                         :access-control-allow-headers ["Authorization" "Content-Type"]})]
     (-> (fn [_] {:status 404 :body "Not Found"})
         (wrap-rest-routes xtdb-node)
         wrap-static-resources

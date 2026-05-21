@@ -107,7 +107,7 @@
         vi-cache (into {} (keep (fn [[id e]]
                                   (when (:vocab-item/id e)
                                     [id (metadata/add-metadata-to-response
-                                          (select-keys e vocab-item/attr-keys) e "vocab-item")]))
+                                         (select-keys e vocab-item/attr-keys) e "vocab-item")]))
                                 vi-entities))
         ;; Group vocab-links by vocab-layer
         vocabs (->> vocab-links
@@ -119,7 +119,12 @@
                                                        links)]
                               (assoc vl-rec :vocab-layer/vocab-links expanded-links))))
                     (filterv #(some? (first %))))]
-    (-> (select-keys token-layer [:token-layer/id :token-layer/name :config])
+    (-> (select-keys token-layer [:token-layer/id :token-layer/name :config
+                                  :token-layer/overlap-mode :token-layer/parent-token-layer])
+        ;; Default overlap-mode the same way token-layer/get does, so the field
+        ;; is never absent. parent-token-layer is left off entirely for roots
+        ;; (select-keys drops it when nil), matching single-entity GET.
+        (update :token-layer/overlap-mode #(or % :any))
         (pxc/deserialize-config)
         (assoc :token-layer/tokens all-tokens)
         (assoc :token-layer/span-layers (mapv #(get-doc-info node doc-id id [:span-layer/id %]) sl-ids))

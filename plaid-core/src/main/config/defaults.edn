@@ -32,7 +32,7 @@
                                  :max-consecutive-misses 2}
 
  :plaid.server.middleware/cors-config {:access-control-allow-origin [".*"]
-                                       :access-control-allow-methods [:get :put :post :delete :options]
+                                       :access-control-allow-methods [:get :put :post :patch :delete :options]
                                        :access-control-allow-headers ["Authorization" "Content-Type"]}
 
  :plaid.server.middleware/static-resources-path "resources"

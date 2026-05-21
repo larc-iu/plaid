@@ -25,16 +25,23 @@
                              "invariant on the layer's tokens and is immutable after creation:"
                              "\n<body>any</body> (default): tokens may overlap each other and leave gaps."
                              "\n<body>non-overlapping</body>: tokens in the same document may not overlap."
-                             "\n<body>partitioning</body>: tokens must form a gap-free, non-overlapping cover of the "
-                             "entire text. On partitioning layers, single token create/update/delete are rejected — "
-                             "use bulk-create to establish the partition and the token split/merge/shift endpoints to "
-                             "modify it."
+                             "\n<body>partitioning</body>: tokens must form a gap-free, non-overlapping, zero-width-free "
+                             "cover of the entire text. A partitioning layer is always either empty (un-tokenized) or a "
+                             "complete cover — never partial. On partitioning layers, single token create/update/delete "
+                             "are rejected — use bulk-create to establish the partition and the token split/merge/shift "
+                             "endpoints to modify it."
                              "\n"
                              "\nThe optional <body>parent-token-layer-id</body> makes this a nested layer (also "
                              "immutable): every token in this layer must be contained within a token of the parent "
-                             "layer (which must belong to the same text layer). Combined with "
-                             "<body>partitioning</body>, the layer's tokens must tile each parent token's extent — "
-                             "e.g. morphemes (partitioning, parent=words) within words (parent=sentences).")
+                             "layer (which must belong to the same text layer). The parent layer must be "
+                             "<body>non-overlapping</body> or <body>partitioning</body> (its tokens must be disjoint "
+                             "so each child has exactly one containing parent — an <body>any</body> parent is rejected, "
+                             "400), and tokens on a nested layer may not be zero-width. A nested layer may itself be "
+                             "<body>any</body> or <body>non-overlapping</body> but not <body>partitioning</body> "
+                             "(partitioning is reserved for root layers that tile the whole text) — e.g. words "
+                             "(non-overlapping, parent=sentences) within sentences (partitioning). Structural "
+                             "operations on a parent token cascade to the tokens nested in it: see the token "
+                             "delete/split/merge/shift endpoints.")
             :middleware [[pra/wrap-maintainer-required get-project-id]]
             :parameters {:body [:map
                                 [:text-layer-id :uuid]
