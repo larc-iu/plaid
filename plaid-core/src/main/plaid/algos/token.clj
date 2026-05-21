@@ -142,11 +142,11 @@
         (space? (first chars))
         (let [chunk (take-while space? chars)]
           (recur
-            (drop-while space? chars)
-            (into output-chars chunk)
-            offsets
-            (+ i (count chunk))
-            ops))
+           (drop-while space? chars)
+           (into output-chars chunk)
+           offsets
+           (+ i (count chunk))
+           ops))
 
         ;; Skip newlines always
         (= \newline (first chars))
@@ -162,13 +162,13 @@
               new-chars (into output-chars token)
               span [(count output-chars) (count new-chars)]]
           (recur
-            (drop-while token-char? chars)
-            new-chars
-            (if (covered? [i (+ i (count token))])
-              offsets
-              (conj offsets span))
-            (+ i (count token))
-            ops))
+           (drop-while token-char? chars)
+           new-chars
+           (if (covered? [i (+ i (count token))])
+             offsets
+             (conj offsets span))
+           (+ i (count token))
+           ops))
 
         ;; We have at least one boundary char in the mix--definitely take the first char, and
         ;; take the rest as long as it's token-chars, producing a token
@@ -177,13 +177,13 @@
               new-chars (into output-chars token)
               span [(count output-chars) (count new-chars)]]
           (recur
-            (drop (count token) chars)
-            new-chars
-            (if (covered? [i (+ i (count token))])
-              offsets
-              (conj offsets span))
-            (+ i (count token))
-            ops))
+           (drop (count token) chars)
+           new-chars
+           (if (covered? [i (+ i (count token))])
+             offsets
+             (conj offsets span))
+           (+ i (count token))
+           ops))
 
         :else
         (throw (ex-info "Unexpected case!" {:chars        chars
@@ -248,5 +248,4 @@
   (let [text "John-'s sav-ed two--hundred dogs"
         existing []
         {:keys [ops]} (morpheme-tokenize text existing \-)]
-    (plaid.algos.text/apply-text-edits ops text []))
-  )
+    (plaid.algos.text/apply-text-edits ops text [])))

@@ -87,8 +87,8 @@
                                 result (r/create {:node xtdb} attrs user-id metadata)]
                             (if (:success result)
                               (prm/assoc-document-versions-in-header
-                                {:status 201 :body {:id (:extra result)}}
-                                result)
+                               {:status 201 :body {:id (:extra result)}}
+                               result)
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
@@ -124,8 +124,8 @@
                                      result (r/bulk-create {:node xtdb} relations-attrs user-id)]
                                  (if (:success result)
                                    (prm/assoc-document-versions-in-header
-                                     {:status 201 :body {:ids (:extra result)}}
-                                     result)
+                                    {:status 201 :body {:ids (:extra result)}}
+                                    result)
                                    {:status (or (:code result) 500)
                                     :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple relations in a single operation. Provide an array of IDs."
@@ -138,8 +138,8 @@
                                  (let [{:keys [success code error] :as result} (r/bulk-delete {:node xtdb} relation-ids user-id)]
                                    (if success
                                      (prm/assoc-document-versions-in-header
-                                       {:status 204}
-                                       result)
+                                      {:status 204}
+                                      result)
                                      {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
    ;; Get, update, delete by ID
@@ -162,8 +162,8 @@
                             (let [{:keys [success code error] :as result} (r/merge {:node xtdb} relation-id {:relation/value value} user-id)]
                               (if success
                                 (prm/assoc-document-versions-in-header
-                                  {:status 200 :body (r/get xtdb relation-id)}
-                                  result)
+                                 {:status 200 :body (r/get xtdb relation-id)}
+                                 result)
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a relation."
                   :parameters {:query [:map [:document-version {:optional true} :uuid]]}
@@ -173,8 +173,8 @@
                              (let [{:keys [success code error] :as result} (r/delete {:node xtdb} relation-id user-id)]
                                (if success
                                  (prm/assoc-document-versions-in-header
-                                   {:status 204}
-                                   result)
+                                  {:status 204}
+                                  result)
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
     ["/source" {:put {:summary "Update the source span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]
@@ -186,8 +186,8 @@
                                  (let [{:keys [success code error] :as result} (r/set-end {:node xtdb} relation-id :relation/source span-id user-id)]
                                    (if success
                                      (prm/assoc-document-versions-in-header
-                                       {:status 200 :body (r/get xtdb relation-id)}
-                                       result)
+                                      {:status 200 :body (r/get xtdb relation-id)}
+                                      result)
                                      {:status (or code 400) :body {:error (or error "Failed to update relation source")}})))}}]
     ["/target" {:put {:summary "Update the target span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]
@@ -199,8 +199,8 @@
                                  (let [{:keys [success code error] :as result} (r/set-end {:node xtdb} relation-id :relation/target span-id user-id)]
                                    (if success
                                      (prm/assoc-document-versions-in-header
-                                       {:status 200 :body (r/get xtdb relation-id)}
-                                       result)
+                                      {:status 200 :body (r/get xtdb relation-id)}
+                                      result)
                                      {:status (or code 400) :body {:error (or error "Failed to update relation target")}})))}}]
 
     ;; Metadata operations  

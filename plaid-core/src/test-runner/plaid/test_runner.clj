@@ -20,5 +20,5 @@
                 :else       (eftest/find-tests "src/test"))
         results (eftest/run-tests tests {:multithread? false})]
     (System/exit (if (or (pos? (:fail results 0))
-                          (pos? (:error results 0)))
+                         (pos? (:error results 0)))
                    1 0))))

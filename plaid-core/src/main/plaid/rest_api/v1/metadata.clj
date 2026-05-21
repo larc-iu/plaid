@@ -19,8 +19,8 @@
    Returns:
      Vector of route definitions for metadata operations"
   [entity-type entity-id-key get-project-id-fn get-document-id-fn entity-get-fn entity-set-metadata-fn entity-delete-metadata-fn]
-  
-  ["/metadata" 
+
+  ["/metadata"
    {:put    {:summary    (str "Replace all metadata for a " entity-type ". The entire metadata map is replaced - existing metadata keys not included in the request will be removed.")
              :middleware [[pra/wrap-writer-required get-project-id-fn]
                           [prm/wrap-document-version get-document-id-fn]]
@@ -32,8 +32,8 @@
                                  {:keys [success code error] :as result} (entity-set-metadata-fn {:node xtdb} entity-id metadata user-id)]
                              (if success
                                (prm/assoc-document-versions-in-header
-                                 {:status 200 :body (entity-get-fn xtdb entity-id)}
-                                 result)
+                                {:status 200 :body (entity-get-fn xtdb entity-id)}
+                                result)
                                {:status (or code 500) :body {:error (or error "Internal server error")}})))}
     :delete {:summary (str "Remove all metadata from a " entity-type ".")
              :middleware [[pra/wrap-writer-required get-project-id-fn]
@@ -45,6 +45,6 @@
                               {:keys [success code error] :as result} (entity-delete-metadata-fn {:node xtdb} entity-id user-id)]
                           (if success
                             (prm/assoc-document-versions-in-header
-                              {:status 200 :body (entity-get-fn xtdb entity-id)}
-                              result)
+                             {:status 200 :body (entity-get-fn xtdb entity-id)}
+                             result)
                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}}])

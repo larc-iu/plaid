@@ -75,9 +75,9 @@
                              result (vocab-link/create {:node xtdb} attrs user-id metadata)]
                          (if (:success result)
                            (prm/assoc-document-versions-in-header
-                             {:status 201
-                              :body {:id (:extra result)}}
-                             result)
+                            {:status 201
+                             :body {:id (:extra result)}}
+                            result)
                            {:status (or (:code result) 500)
                             :body {:error (:error result)}})))}}]
    ["/:id"
@@ -106,8 +106,8 @@
                              (let [{:keys [success code error] :as result} (vocab-link/delete {:node xtdb} id user-id)]
                                (if success
                                  (prm/assoc-document-versions-in-header
-                                   {:status 204}
-                                   result)
+                                  {:status 204}
+                                  result)
                                  {:status (or code 500)
                                   :body {:error (or error "Internal server error")}})))}}]
 

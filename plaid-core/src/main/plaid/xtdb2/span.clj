@@ -291,8 +291,8 @@
         spans-attrs)))
      :doc-id doc-id
      :project-id (:text-layer/project
-                   (when-let [txtl-id (:token-layer/text-layer token-layer-e)]
-                     (pxc/entity node :text-layers txtl-id)))}))
+                  (when-let [txtl-id (:token-layer/text-layer token-layer-e)]
+                    (pxc/entity node :text-layers txtl-id)))}))
 
 (defn bulk-create-operation [xt-map spans-attrs]
   (let [{:keys [tx-ops doc-id project-id]} (bulk-create* xt-map spans-attrs)

@@ -32,8 +32,8 @@
   (let [node (pxc/->node xt-map)
         attrs (into {} (filter (fn [[k _]] (= "vocab-item" (namespace k))) attrs))
         {:vocab-item/keys [id layer] :as record} (clojure.core/merge
-                                                   (pxc/new-record "vocab-item")
-                                                   attrs)
+                                                  (pxc/new-record "vocab-item")
+                                                  attrs)
         layer-e (pxc/entity-with-sys-from node :vocab-layers layer)]
     (cond
       (nil? (:vocab/id layer-e))

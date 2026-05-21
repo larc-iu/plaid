@@ -26,7 +26,6 @@
 ;; Change the default output of spec to be more readable
 ;; (alter-var-root #'s/*explain-out* (constantly expound/printer))
 
-
 (defn start-internal "Start the web server + services" []
   (let [result (mount/start)]
     (def node plaid.server.xtdb/xtdb-node)
@@ -55,15 +54,15 @@
 
   ;; Browse audit log
   (mapv
-    #(->> %
-          :audit/ops
-          first
-          (pxc/entity node :operations))
-    (pxc/find-entities node :audits {:audit/id '_}))
+   #(->> %
+         :audit/ops
+         first
+         (pxc/entity node :operations))
+   (pxc/find-entities node :audits {:audit/id '_}))
 
   (mapv
-    #(-> % :audit/ops first :op/description)
-    (pxa/get-project-audit-log node prj-id))
+   #(-> % :audit/ops first :op/description)
+   (pxa/get-project-audit-log node prj-id))
 
   ;; Create a full layer stack
   (do
@@ -86,6 +85,4 @@
   (txtl/delete xt-map txtl-id-1 nil)
   (tokl/delete xt-map tokl-id-1 nil)
   (prj/delete xt-map prj-id nil)
-  (prj/get node prj-id)
-
-  )
+  (prj/get node prj-id))

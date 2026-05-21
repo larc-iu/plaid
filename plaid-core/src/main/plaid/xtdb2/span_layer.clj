@@ -33,10 +33,10 @@
         prj-id (:token-layer/project tokl)
         {:span-layer/keys [name id] :as record}
         (-> (clojure.core/merge (pxc/new-record "span-layer" id)
-                               {:span-layer/relation-layers []
-                                :span-layer/token-layer token-layer-id
-                                :span-layer/project prj-id}
-                               (select-keys attrs attr-keys))
+                                {:span-layer/relation-layers []
+                                 :span-layer/token-layer token-layer-id
+                                 :span-layer/project prj-id}
+                                (select-keys attrs attr-keys))
             (update :config pxc/serialize-config))]
     (pxc/valid-name? name)
     (when (pxc/entity node :span-layers id)
@@ -105,10 +105,10 @@
           rl-entities (pxc/entities-with-sys-from node :relation-layers relation-layer-ids)
           ;; Find ALL relations across ALL relation-layers in one query
           all-relations (if (empty? relation-layer-ids) []
-                          (let [ph (str/join ", " (repeat (count relation-layer-ids) "?"))]
-                            (xt/q node (into [(str "SELECT *, _system_from FROM relations"
-                                                   " WHERE relation$layer IN (" ph ")")]
-                                             relation-layer-ids))))
+                            (let [ph (str/join ", " (repeat (count relation-layer-ids) "?"))]
+                              (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                     " WHERE relation$layer IN (" ph ")")]
+                                               relation-layer-ids))))
           spans (pxc/find-entities-with-sys-from node :spans {:span/layer eid})]
       (reduce into
               [(pxc/batch-delete-ops :relations all-relations)

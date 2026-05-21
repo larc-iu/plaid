@@ -123,7 +123,7 @@
 
     (testing "include-body with as-of before tokens shows empty token list"
       (let [r (api-call admin-request {:method :get
-                                        :path (str "/api/v1/documents/" doc "?include-body=true&as-of=" before-tokens)})]
+                                       :path (str "/api/v1/documents/" doc "?include-body=true&as-of=" before-tokens)})]
         (assert-ok r)
         (let [token-layers (-> r :body :document/text-layers first :text-layer/token-layers)]
           (is (= [] (-> token-layers first :token-layer/tokens))
@@ -131,7 +131,7 @@
 
     (testing "include-body with as-of after tokens but before spans shows tokens but no spans"
       (let [r (api-call admin-request {:method :get
-                                        :path (str "/api/v1/documents/" doc "?include-body=true&as-of=" after-tokens)})]
+                                       :path (str "/api/v1/documents/" doc "?include-body=true&as-of=" after-tokens)})]
         (assert-ok r)
         (let [token-layer (-> r :body :document/text-layers first :text-layer/token-layers first)
               all-spans (->> (:token-layer/span-layers token-layer)
@@ -143,7 +143,7 @@
 
     (testing "include-body without as-of shows current state with all data"
       (let [r (api-call admin-request {:method :get
-                                        :path (str "/api/v1/documents/" doc "?include-body=true")})]
+                                       :path (str "/api/v1/documents/" doc "?include-body=true")})]
         (assert-ok r)
         (let [token-layer (-> r :body :document/text-layers first :text-layer/token-layers first)]
           (is (= 2 (count (:token-layer/tokens token-layer))))

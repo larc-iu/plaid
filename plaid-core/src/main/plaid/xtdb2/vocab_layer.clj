@@ -21,7 +21,7 @@
      (when (:vocab/id record)
        (-> (pxc/deserialize-config (select-keys record attr-keys))
            (cond-> include-items?
-                   (assoc :vocab/items (vi/get-all-in-layer node-or-map id))))))))
+             (assoc :vocab/items (vi/get-all-in-layer node-or-map id))))))))
 
 (defn get-all-ids [node-or-map]
   (->> (pxc/find-entities node-or-map :vocab-layers {})
@@ -36,28 +36,28 @@
       (get-all-ids node-or-map)
       (let [;; Vocabs where user is a maintainer (single query)
             maintainer-ids (->> (xt/q node (xt/template
-                                             (-> (from :vocab-layers [{:xt/id vid :vocab/maintainers ms}])
-                                                 (unnest {:m ms})
-                                                 (where (= m ~user-id))
-                                                 (return vid))))
+                                            (-> (from :vocab-layers [{:xt/id vid :vocab/maintainers ms}])
+                                                (unnest {:m ms})
+                                                (where (= m ~user-id))
+                                                (return vid))))
                                 (map :vid))
             ;; Vocabs granted through project access (query per role)
             project-vocab-ids
             (concat
              (->> (xt/q node (xt/template
-                               (-> (from :projects [{:xt/id _pid :project/vocabs vs :project/readers rs}])
-                                   (unnest {:r rs}) (where (= r ~user-id))
-                                   (unnest {:v vs}) (return v))))
+                              (-> (from :projects [{:xt/id _pid :project/vocabs vs :project/readers rs}])
+                                  (unnest {:r rs}) (where (= r ~user-id))
+                                  (unnest {:v vs}) (return v))))
                   (map :v))
              (->> (xt/q node (xt/template
-                               (-> (from :projects [{:xt/id _pid :project/vocabs vs :project/writers ws}])
-                                   (unnest {:w ws}) (where (= w ~user-id))
-                                   (unnest {:v vs}) (return v))))
+                              (-> (from :projects [{:xt/id _pid :project/vocabs vs :project/writers ws}])
+                                  (unnest {:w ws}) (where (= w ~user-id))
+                                  (unnest {:v vs}) (return v))))
                   (map :v))
              (->> (xt/q node (xt/template
-                               (-> (from :projects [{:xt/id _pid :project/vocabs vs :project/maintainers ms}])
-                                   (unnest {:m ms}) (where (= m ~user-id))
-                                   (unnest {:v vs}) (return v))))
+                              (-> (from :projects [{:xt/id _pid :project/vocabs vs :project/maintainers ms}])
+                                  (unnest {:m ms}) (where (= m ~user-id))
+                                  (unnest {:v vs}) (return v))))
                   (map :v)))]
         (distinct (concat maintainer-ids project-vocab-ids))))))
 
@@ -86,50 +86,50 @@
   [node-or-map vocab-id user-id]
   (let [node (pxc/->node node-or-map)]
     (or (seq (xt/q node (xt/template
-                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/readers rs}])
-                              (unnest {:v vs})
-                              (where (= v ~vocab-id))
-                              (unnest {:r rs})
-                              (where (= r ~user-id))
-                              (limit 1)
-                              (return pid)))))
+                         (-> (from :projects [{:xt/id pid :project/vocabs vs :project/readers rs}])
+                             (unnest {:v vs})
+                             (where (= v ~vocab-id))
+                             (unnest {:r rs})
+                             (where (= r ~user-id))
+                             (limit 1)
+                             (return pid)))))
         (seq (xt/q node (xt/template
-                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/writers ws}])
-                              (unnest {:v vs})
-                              (where (= v ~vocab-id))
-                              (unnest {:w ws})
-                              (where (= w ~user-id))
-                              (limit 1)
-                              (return pid)))))
+                         (-> (from :projects [{:xt/id pid :project/vocabs vs :project/writers ws}])
+                             (unnest {:v vs})
+                             (where (= v ~vocab-id))
+                             (unnest {:w ws})
+                             (where (= w ~user-id))
+                             (limit 1)
+                             (return pid)))))
         (seq (xt/q node (xt/template
-                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/maintainers ms}])
-                              (unnest {:v vs})
-                              (where (= v ~vocab-id))
-                              (unnest {:m ms})
-                              (where (= m ~user-id))
-                              (limit 1)
-                              (return pid))))))))
+                         (-> (from :projects [{:xt/id pid :project/vocabs vs :project/maintainers ms}])
+                             (unnest {:v vs})
+                             (where (= v ~vocab-id))
+                             (unnest {:m ms})
+                             (where (= m ~user-id))
+                             (limit 1)
+                             (return pid))))))))
 
 (defn write-accessible-through-project?
   "Check if a user has write access to vocab items through a project."
   [node-or-map vocab-id user-id]
   (let [node (pxc/->node node-or-map)]
     (or (seq (xt/q node (xt/template
-                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/writers ws}])
-                              (unnest {:v vs})
-                              (where (= v ~vocab-id))
-                              (unnest {:w ws})
-                              (where (= w ~user-id))
-                              (limit 1)
-                              (return pid)))))
+                         (-> (from :projects [{:xt/id pid :project/vocabs vs :project/writers ws}])
+                             (unnest {:v vs})
+                             (where (= v ~vocab-id))
+                             (unnest {:w ws})
+                             (where (= w ~user-id))
+                             (limit 1)
+                             (return pid)))))
         (seq (xt/q node (xt/template
-                          (-> (from :projects [{:xt/id pid :project/vocabs vs :project/maintainers ms}])
-                              (unnest {:v vs})
-                              (where (= v ~vocab-id))
-                              (unnest {:m ms})
-                              (where (= m ~user-id))
-                              (limit 1)
-                              (return pid))))))))
+                         (-> (from :projects [{:xt/id pid :project/vocabs vs :project/maintainers ms}])
+                             (unnest {:v vs})
+                             (where (= v ~vocab-id))
+                             (unnest {:m ms})
+                             (where (= m ~user-id))
+                             (limit 1)
+                             (return pid))))))))
 
 ;; Mutations ---------------------------------------------------------------------
 
@@ -138,7 +138,7 @@
         {:vocab/keys [id name] :as record} (-> (clojure.core/merge
                                                 (pxc/new-record "vocab")
                                                 (select-keys attrs attr-keys))
-                                              (update :config pxc/serialize-config))]
+                                               (update :config pxc/serialize-config))]
     (pxc/valid-name? name)
     [[:put-docs :vocab-layers record]]))
 
@@ -184,7 +184,7 @@
                         []
                         (let [ph (clojure.string/join ", " (repeat (count vocab-item-ids) "?"))]
                           (xt/q node (into [(str "SELECT *, _system_from FROM vocab_links WHERE vocab_link$vocab_item IN (" ph ")")]
-                                          vocab-item-ids))))]
+                                           vocab-item-ids))))]
       (vec (concat (pxc/batch-delete-ops :vocab-links vl-entities)
                    (pxc/batch-delete-ops :vocab-items vi-entities)
                    [(pxc/match* :vocab-layers record)

@@ -30,9 +30,9 @@
   (let [node (pxc/->node xt-map)
         {:text-layer/keys [name id] :as record}
         (-> (clojure.core/merge (pxc/new-record "text-layer" id)
-                               {:text-layer/token-layers []
-                                :text-layer/project project-id}
-                               (select-keys attrs attr-keys))
+                                {:text-layer/token-layers []
+                                 :text-layer/project project-id}
+                                (select-keys attrs attr-keys))
             (update :config pxc/serialize-config))
         prj (pxc/entity-with-sys-from node :projects project-id)]
     (pxc/valid-name? name)
@@ -107,22 +107,22 @@
           rl-entities (pxc/entities-with-sys-from node :relation-layers all-rl-ids)
           ;; All relations across all relation-layers (1 query)
           all-relations (if (empty? all-rl-ids) []
-                          (let [ph (str/join ", " (repeat (count all-rl-ids) "?"))]
-                            (xt/q node (into [(str "SELECT *, _system_from FROM relations"
-                                                   " WHERE relation$layer IN (" ph ")")]
-                                             all-rl-ids))))
+                            (let [ph (str/join ", " (repeat (count all-rl-ids) "?"))]
+                              (xt/q node (into [(str "SELECT *, _system_from FROM relations"
+                                                     " WHERE relation$layer IN (" ph ")")]
+                                               all-rl-ids))))
           ;; All spans across all span-layers (1 query)
           all-spans (if (empty? all-sl-ids) []
-                      (let [ph (str/join ", " (repeat (count all-sl-ids) "?"))]
-                        (xt/q node (into [(str "SELECT *, _system_from FROM spans"
-                                                " WHERE span$layer IN (" ph ")")]
-                                          all-sl-ids))))
+                        (let [ph (str/join ", " (repeat (count all-sl-ids) "?"))]
+                          (xt/q node (into [(str "SELECT *, _system_from FROM spans"
+                                                 " WHERE span$layer IN (" ph ")")]
+                                           all-sl-ids))))
           ;; All tokens across all token-layers (1 query)
           all-tokens (if (empty? token-layer-ids) []
-                       (let [ph (str/join ", " (repeat (count token-layer-ids) "?"))]
-                         (xt/q node (into [(str "SELECT *, _system_from FROM tokens"
-                                                 " WHERE token$layer IN (" ph ")")]
-                                           token-layer-ids))))
+                         (let [ph (str/join ", " (repeat (count token-layer-ids) "?"))]
+                           (xt/q node (into [(str "SELECT *, _system_from FROM tokens"
+                                                  " WHERE token$layer IN (" ph ")")]
+                                            token-layer-ids))))
           token-ids (mapv :xt/id all-tokens)
           ;; All vocab-links for all tokens (1 query)
           vl-entities (if (empty? token-ids)

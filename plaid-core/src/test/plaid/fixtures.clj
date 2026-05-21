@@ -26,25 +26,25 @@
 
 (defn with-rest-handler [f]
   (binding [rest-handler
-                (-> (rest/rest-handler xtdb-node "fake-secret")
-                    (wrap-defaults
-                     {:params {:keywordize true
-                               :multipart true
-                               :nested true
-                               :urlencoded true}
-                      :cookies false
-                      :responses {:absolute-redirects true
-                                  :content-types true
-                                  :default-charset "utf-8"
-                                  :not-modified-responses true}
-                      :static {:resources "public"}
-                      :session false
-                      :security {:anti-forgery false
-                                 :hsts true
-                                 :ssl-redirect false
-                                 :frame-options :sameorigin
-                                 :xss-protection {:enable? true
-                                                  :mode :block}}}))]
+            (-> (rest/rest-handler xtdb-node "fake-secret")
+                (wrap-defaults
+                 {:params {:keywordize true
+                           :multipart true
+                           :nested true
+                           :urlencoded true}
+                  :cookies false
+                  :responses {:absolute-redirects true
+                              :content-types true
+                              :default-charset "utf-8"
+                              :not-modified-responses true}
+                  :static {:resources "public"}
+                  :session false
+                  :security {:anti-forgery false
+                             :hsts true
+                             :ssl-redirect false
+                             :frame-options :sameorigin
+                             :xss-protection {:enable? true
+                                              :mode :block}}}))]
     (f)))
 
 (defn with-xtdb [f]
@@ -87,7 +87,7 @@
                                     (mock/json-body {:user-id "user2@example.com"
                                                      :password "password2"})))]
     (binding [user1-token (-> user1-req :body slurp read-string :token)
-                  user2-token (-> user2-req :body slurp read-string :token)]
+              user2-token (-> user2-req :body slurp read-string :token)]
       (f))))
 
 (defn admin-request [method path]

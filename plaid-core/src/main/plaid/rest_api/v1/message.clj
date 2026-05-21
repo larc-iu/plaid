@@ -42,56 +42,56 @@
                             ;; JavaScript setup we have is causing channel closes to never happen.
                             (async/go-loop [consecutive-misses 0
                                             last-check-time (System/currentTimeMillis)]
-                                           (let [hb-config (events/heartbeat-config)
-                                                 interval-ms (:interval-ms hb-config)
-                                                 max-misses (:max-consecutive-misses hb-config)
-                                                 [_ ch] (async/alts! [(async/timeout interval-ms) stop-chan])]
-                                             (if (= ch stop-chan)
-                                               nil  ; exit loop on stop signal
-                                               (do
+                              (let [hb-config (events/heartbeat-config)
+                                    interval-ms (:interval-ms hb-config)
+                                    max-misses (:max-consecutive-misses hb-config)
+                                    [_ ch] (async/alts! [(async/timeout interval-ms) stop-chan])]
+                                (if (= ch stop-chan)
+                                  nil  ; exit loop on stop signal
+                                  (do
                                                  ;; Send heartbeat ping
-                                                 (try
-                                                   (http-kit/send! channel "event: heartbeat\ndata: \"ping\"\n\n" false)
-                                                   (catch Exception e
-                                                     (log/warn "Heartbeat send failed for client" client-id ":" (.getMessage e))))
+                                    (try
+                                      (http-kit/send! channel "event: heartbeat\ndata: \"ping\"\n\n" false)
+                                      (catch Exception e
+                                        (log/warn "Heartbeat send failed for client" client-id ":" (.getMessage e))))
 
                                                  ;; Check if we received a confirmation since last check
-                                                 (if-let [client-info (get @events/heartbeat-registry client-id)]
-                                                   (let [last-heartbeat (:last-heartbeat client-info)]
-                                                     (if (> last-heartbeat last-check-time)
+                                    (if-let [client-info (get @events/heartbeat-registry client-id)]
+                                      (let [last-heartbeat (:last-heartbeat client-info)]
+                                        (if (> last-heartbeat last-check-time)
                                                        ;; Got response since last check - reset miss counter
-                                                       (recur 0 (System/currentTimeMillis))
+                                          (recur 0 (System/currentTimeMillis))
                                                        ;; No response since last check - count as miss
-                                                       (let [new-misses (inc consecutive-misses)]
-                                                         (if (>= new-misses max-misses)
-                                                           (do
-                                                             (log/info "Client" client-id "disconnected after" new-misses "consecutive missed heartbeats")
-                                                             (events/cleanup-channel! channel)
-                                                             nil)  ; exit loop
-                                                           (recur new-misses (System/currentTimeMillis))))))
-                                                   (do
-                                                     (log/warn "Client" client-id "not found in heartbeat registry, disconnecting")
-                                                     (events/cleanup-channel! channel)
-                                                     nil))))))
+                                          (let [new-misses (inc consecutive-misses)]
+                                            (if (>= new-misses max-misses)
+                                              (do
+                                                (log/info "Client" client-id "disconnected after" new-misses "consecutive missed heartbeats")
+                                                (events/cleanup-channel! channel)
+                                                nil)  ; exit loop
+                                              (recur new-misses (System/currentTimeMillis))))))
+                                      (do
+                                        (log/warn "Client" client-id "not found in heartbeat registry, disconnecting")
+                                        (events/cleanup-channel! channel)
+                                        nil))))))
 
                             ;; Main event loop
                             (async/go-loop []
-                                           (let [[event ch] (async/alts! [client-chan stop-chan])]
-                                             (cond
-                                               (= ch stop-chan) nil  ; exit loop on stop signal
-                                               event (do
-                                                       (try
-                                                         (let [event-type (case (:event/type event)
-                                                                            :audit-log "audit-log"
-                                                                            :message "message"
-                                                                            "unknown")
-                                                               event-str (str "event: " event-type "\n"
-                                                                              "data: " (json/write-str event) "\n\n")]
-                                                           (http-kit/send! channel event-str false))
-                                                         (catch Exception e
-                                                           (log/warn "Event send failed for client" client-id ":" (.getMessage e))))
-                                                       (recur))
-                                               :else nil)))  ; channel closed, exit
+                              (let [[event ch] (async/alts! [client-chan stop-chan])]
+                                (cond
+                                  (= ch stop-chan) nil  ; exit loop on stop signal
+                                  event (do
+                                          (try
+                                            (let [event-type (case (:event/type event)
+                                                               :audit-log "audit-log"
+                                                               :message "message"
+                                                               "unknown")
+                                                  event-str (str "event: " event-type "\n"
+                                                                 "data: " (json/write-str event) "\n\n")]
+                                              (http-kit/send! channel event-str false))
+                                            (catch Exception e
+                                              (log/warn "Event send failed for client" client-id ":" (.getMessage e))))
+                                          (recur))
+                                  :else nil)))  ; channel closed, exit
 
                             ;; Store mapping for cleanup using the channel itself as key
                             (events/register-channel-mapping! channel client-chan id stop-chan client-id)))

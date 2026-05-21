@@ -36,8 +36,8 @@
             _ (assert-ok (update-text admin-request text-id "another update"))
             ;; Now try with stale version
             conflict-res (api-call admin-request {:method :patch
-                                                   :path (str "/api/v1/texts/" text-id "?document-version=" stale-version)
-                                                   :body {:body "should fail"}})]
+                                                  :path (str "/api/v1/texts/" text-id "?document-version=" stale-version)
+                                                  :body {:body "should fail"}})]
         (assert-status 409 conflict-res)
         (is (some? (-> conflict-res :body :error)))))))
 
@@ -147,8 +147,8 @@
 
             ;; First write with v0
             r1 (api-call admin-request {:method :post
-                                         :path (str "/api/v1/relations?document-version=" v0)
-                                         :body {:layer-id rl :source-id s1 :target-id s2 :value "rel1"}})
+                                        :path (str "/api/v1/relations?document-version=" v0)
+                                        :body {:layer-id rl :source-id s1 :target-id s2 :value "rel1"}})
             _ (assert-created r1)
             r1-id (-> r1 :body :id)
             v1 (get (parse-version-header r1) doc)]
@@ -158,8 +158,8 @@
         ;; Second write using v1 from the header — this is the exact scenario
         ;; that was failing (client sent stale v0 for second request → 409)
         (let [r2 (api-call admin-request {:method :post
-                                           :path (str "/api/v1/relations?document-version=" v1)
-                                           :body {:layer-id rl :source-id s2 :target-id s3 :value "rel2"}})
+                                          :path (str "/api/v1/relations?document-version=" v1)
+                                          :body {:layer-id rl :source-id s2 :target-id s3 :value "rel2"}})
               _ (assert-created r2)
               v2 (get (parse-version-header r2) doc)]
           (is (some? v2) "Second write must return updated version")
@@ -167,7 +167,7 @@
 
           ;; Third write using v2
           (let [r3 (api-call admin-request {:method :delete
-                                             :path (str "/api/v1/relations/" r1-id "?document-version=" v2)})]
+                                            :path (str "/api/v1/relations/" r1-id "?document-version=" v2)})]
             (assert-no-content r3)
             (let [v3 (get (parse-version-header r3) doc)]
               (is (some? v3) "Delete must also return updated version")
@@ -204,12 +204,12 @@
 
             ;; First write succeeds, version advances
             r1 (api-call admin-request {:method :post
-                                         :path (str "/api/v1/relations?document-version=" v0)
-                                         :body {:layer-id rl :source-id s1 :target-id s2 :value "dep"}})
+                                        :path (str "/api/v1/relations?document-version=" v0)
+                                        :body {:layer-id rl :source-id s1 :target-id s2 :value "dep"}})
             _ (assert-created r1)]
 
         ;; Second write with the SAME (now stale) version must fail
         (let [r2 (api-call admin-request {:method :post
-                                           :path (str "/api/v1/relations?document-version=" v0)
-                                           :body {:layer-id rl :source-id s2 :target-id s1 :value "dep2"}})]
+                                          :path (str "/api/v1/relations?document-version=" v0)
+                                          :body {:layer-id rl :source-id s2 :target-id s1 :value "dep2"}})]
           (assert-status 409 r2))))))

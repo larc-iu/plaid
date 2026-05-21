@@ -203,7 +203,6 @@
              {:success false
               :error (ex-message e)}))))))
 
-
 (defn match*
   "Returns a SQL ASSERT op that checks _system_from hasn't changed since the entity was read.
   entity must be a result from entity-with-sys-from (has :xt/system-from key)."

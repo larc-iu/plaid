@@ -33,9 +33,9 @@
         prj-id (:span-layer/project sl)
         {:relation-layer/keys [name id] :as record}
         (-> (clojure.core/merge (pxc/new-record "relation-layer" id)
-                               {:relation-layer/span-layer span-layer-id
-                                :relation-layer/project prj-id}
-                               (select-keys attrs attr-keys))
+                                {:relation-layer/span-layer span-layer-id
+                                 :relation-layer/project prj-id}
+                                (select-keys attrs attr-keys))
             (update :config pxc/serialize-config))]
     (pxc/valid-name? name)
     (when (pxc/entity node :relation-layers id)

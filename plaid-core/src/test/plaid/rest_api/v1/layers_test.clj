@@ -82,7 +82,6 @@
                              :path   (str "/api/v1/relation-layers/" relation-layer-id "/shift")
                              :body   {:direction direction}}))
 
-
 (deftest layer-crud-and-shift-operations
   (let [project-id (create-test-project admin-request "Layer Test Project")]
     (try
@@ -138,7 +137,7 @@
           (testing "Delete TokenLayer"
             (assert-no-content (delete-token-layer admin-request token-layer-id))
             (assert-not-found (get-token-layer admin-request token-layer-id)))
-          
+
           (delete-text-layer admin-request parent-text-layer-id))) ; Cleanup parent
 
       (testing "SpanLayer operations"
@@ -160,7 +159,7 @@
               (is (= (-> update-res :body :span-layer/name) "Updated Span Layer"))))
 
           (testing "Shift SpanLayer"
-             (let [span-layer-id-2 (-> (create-span-layer admin-request parent-token-layer-id "Second Span Layer") :body :id)
+            (let [span-layer-id-2 (-> (create-span-layer admin-request parent-token-layer-id "Second Span Layer") :body :id)
                   shift-res (shift-span-layer admin-request span-layer-id "down")]
               (assert-no-content shift-res)
               (delete-span-layer admin-request span-layer-id-2)))
@@ -190,7 +189,7 @@
             (let [update-res (update-relation-layer admin-request relation-layer-id "Updated Relation Layer")]
               (assert-ok update-res)
               (is (= (-> update-res :body :relation-layer/name) "Updated Relation Layer"))))
-          
+
           (testing "Shift RelationLayer"
             (let [relation-layer-id-2 (-> (create-relation-layer admin-request parent-span-layer-id "Second Relation Layer") :body :id)
                   shift-res (shift-relation-layer admin-request relation-layer-id "down")]
@@ -205,4 +204,4 @@
           (delete-token-layer admin-request parent-token-layer-id)
           (delete-text-layer admin-request parent-text-layer-id)))
       (finally
-        (delete-test-project admin-request project-id))))) 
+        (delete-test-project admin-request project-id)))))

@@ -25,9 +25,7 @@
   (diff x1 x2)
   (let [ops (diff x1 x2)]
     (prn ops)
-    (apply-text-edits ops {:text/body x1} []))
-
-  )
+    (apply-text-edits ops {:text/body x1} [])))
 
 (defn- editscript-diff
   "Use editscript to get a character-level diff and convert it into the same format used
@@ -241,8 +239,7 @@
                                    ;; deletion range is contained inside token
                                    :else
                                    (-> token
-                                       (update :token/end #(- % value)))
-                                   ))
+                                       (update :token/end #(- % value)))))
                                affected-tokens))
            :deleted (mapv :token/id deleted-tokens)})))))
 
