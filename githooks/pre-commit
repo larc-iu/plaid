@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pre-commit: ensure staged plaid-core Clojure files are cljfmt-clean.
+#
+# cljfmt is plaid-core's exclusive formatter (see plaid-core/deps.edn :format alias,
+# cljfmt 0.16.4). Claude edits are auto-formatted by the clj-paren-repair --cljfmt
+# hook; this guards hand edits and anything else from drifting.
+#
+# Enabled via:  git config core.hooksPath githooks   (run once per clone)
+# Bypass once:  git commit --no-verify
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+# Staged (added/copied/modified) Clojure files under plaid-core/
+mapfile -t staged < <(
+  git diff --cached --name-only --diff-filter=ACM -- plaid-core \
+    | grep -E '\.clj[cs]?$' || true
+)
+[ "${#staged[@]}" -eq 0 ] && exit 0
+
+# cljfmt expects paths relative to plaid-core/
+rel=()
+for f in "${staged[@]}"; do rel+=("${f#plaid-core/}"); done
+
+if ! ( cd "$repo_root/plaid-core" && clojure -M:format check "${rel[@]}" ); then
+  cat >&2 <<'MSG'
+
+✖ cljfmt: staged Clojure files are not formatted.
+  Fix and re-stage:
+      (cd plaid-core && clojure -M:format fix) && git add -u
+  Or bypass once:  git commit --no-verify
+MSG
+  exit 1
+fi
