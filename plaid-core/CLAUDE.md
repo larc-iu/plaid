@@ -6,7 +6,7 @@ Thanks to its immutable database, XTDB (v2), it is also able to offer a full his
 
 ## Core Technologies
 * **Language**: Clojure
-* **Database**: XTDB v2 (currently in-memory; disk persistence not yet configured)
+* **Database**: XTDB v2 (immutable & bitemporal; storage persisted under `data/`)
 * **Web Server**: HTTP-kit with Ring middleware
 * **Routing**: Reitit
 * **Authentication**: JWT tokens
