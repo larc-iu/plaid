@@ -1,0 +1,9 @@
+# Revisions listed here are skipped by `git blame` (and GitHub's blame view),
+# so bulk reformatting doesn't obscure the real authorship of each line.
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub honors this file automatically.
+
+# Format all Clojure source with cljfmt 0.16.4
+48d22fcf763bc666406d9e0e6f94190092934110
