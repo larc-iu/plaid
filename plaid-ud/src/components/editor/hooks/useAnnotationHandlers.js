@@ -11,8 +11,12 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       if (!client) return;
       
       let targetLayer, spans;
-      
+
       switch (field) {
+        case 'form':
+          targetLayer = layerInfo.formLayer;
+          spans = targetLayer?.spans || [];
+          break;
         case 'lemma':
           targetLayer = layerInfo.lemmaLayer;
           spans = targetLayer?.spans || [];
@@ -67,12 +71,9 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
         
       } else {
         // For other fields (lemma, upos, xpos), find existing span or create new one
-        const existingSpan = spans.find(span => {
-          if (span.tokens && span.tokens.length > 0) {
-            return span.tokens.includes(tokenId);
-          }
-          return span.begin === tokenId;
-        });
+        const existingSpan = spans.find(span =>
+          Array.isArray(span.tokens) && span.tokens.includes(tokenId)
+        );
         
         if (existingSpan) {
           // Update existing span
@@ -132,7 +133,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to update ${field}: ${error.message}`);
       await refreshData();
     }
-  }, [layerInfo, document]);
+  }, [layerInfo, document, setDocument, setError, refreshData, getClient]);
 
   const handleFeatureDelete = useCallback(async (spanId) => {
     try {
@@ -160,7 +161,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to delete feature: ${error.message}`);
       await refreshData();
     }
-  }, [layerInfo]);
+  }, [layerInfo, setDocument, setError, refreshData, getClient]);
 
   const handleRelationCreate = useCallback(async (sourceSpanId, targetSpanId, deprel) => {
     try {
@@ -191,11 +192,10 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
           return existingById.id;
         }
 
-        // Match by token membership
+        // Match by token membership (new model: span.tokens is the canonical list).
         const tokenId = candidateId;
         const existingByToken = lemmaSpans.find(span => {
-          const spanTokensRaw = span.tokens && span.tokens.length > 0 ? span.tokens : (span.begin ? [span.begin] : []);
-          const spanTokens = Array.isArray(spanTokensRaw) ? spanTokensRaw : [];
+          const spanTokens = Array.isArray(span.tokens) ? span.tokens : [];
           return spanTokens.some(tokenEntry => {
             if (!tokenEntry) return false;
             if (typeof tokenEntry === 'string') {
@@ -234,16 +234,12 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
           value: lemmaValue
         };
 
-        // Update layerInfo cache immediately to avoid duplicate creations within this call
-        if (layerInfo.lemmaLayer) {
-          if (!layerInfo.lemmaLayer.spans) {
-            layerInfo.lemmaLayer.spans = [];
-          }
-          const alreadyCached = layerInfo.lemmaLayer.spans.some(span => span.id === createdSpanId);
-          if (!alreadyCached) {
-            layerInfo.lemmaLayer.spans.push({ ...createdSpan });
-          }
-        }
+        // Fix #6: previously we also pushed the new span onto `layerInfo.lemmaLayer.spans`
+        // here, mutating memoized props. That mutation was advertised as a
+        // per-call dedupe, but each `handleRelationCreate` only calls
+        // `ensureLemmaSpan` once per source and once per target, so there is no
+        // intra-call duplication to dedupe. Drop the mutation; downstream state
+        // is correctly updated via setDocument below.
 
         // Update local document state so derived hooks receive the new span
         setDocument(prevDocument => {
@@ -290,38 +286,25 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
         }
       }
       
-      let relation = null;
-      
-      // For ROOT relations (self-pointing), we'll use a special handling
-      if (resolvedSourceId === resolvedTargetId) {
-        const apiResponse = await client.relations.create(
-          layerInfo.relationLayer.id,
-          resolvedTargetId,
-          resolvedTargetId,
-          deprel || 'root'
-        );
-        
-        relation = {
-          id: apiResponse.id || apiResponse,
-          source: resolvedTargetId,
-          target: resolvedTargetId,
-          value: deprel || 'root'
-        };
-      } else {
-        const apiResponse = await client.relations.create(
-          layerInfo.relationLayer.id,
-          resolvedSourceId,
-          resolvedTargetId,
-          deprel || 'dep'
-        );
-        
-        relation = {
-          id: apiResponse.id || apiResponse,
-          source: resolvedSourceId,
-          target: resolvedTargetId,
-          value: deprel || 'dep'
-        };
-      }
+      // Fix #14: ROOT (self-pointing) vs ordinary relation share their build.
+      // Default deprel is 'root' for self-loops, 'dep' otherwise. The original
+      // code computed source==target on the ROOT branch but read sourceTokenId
+      // on the non-ROOT branch — `resolvedSourceId` is the right value for
+      // both (it's the resolved source; for ROOT it equals resolvedTargetId).
+      const isRoot = resolvedSourceId === resolvedTargetId;
+      const finalDeprel = deprel || (isRoot ? 'root' : 'dep');
+      const apiResponse = await client.relations.create(
+        layerInfo.relationLayer.id,
+        resolvedSourceId,
+        resolvedTargetId,
+        finalDeprel
+      );
+      const relation = {
+        id: apiResponse.id || apiResponse,
+        source: resolvedSourceId,
+        target: resolvedTargetId,
+        value: finalDeprel
+      };
 
       // Update local state
       setDocument(prevDocument => {
@@ -359,7 +342,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to create relation: ${error.message}`);
       await refreshData();
     }
-  }, [layerInfo]);
+  }, [layerInfo, setDocument, setError, refreshData, getClient]);
 
   const handleRelationUpdate = useCallback(async (relationId, deprel) => {
     try {
@@ -389,7 +372,7 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to update relation: ${error.message}`);
       await refreshData();
     }
-  }, [layerInfo]);
+  }, [layerInfo, setDocument, setError, refreshData, getClient]);
 
   const handleRelationDelete = useCallback(async (relationId) => {
     try {
@@ -418,125 +401,13 @@ export const useAnnotationHandlers = (document, setDocument, setError, layerInfo
       setError(`Failed to delete relation: ${error.message}`);
       await refreshData();
     }
-  }, [layerInfo]);
-
-  const handleMwtCreate = useCallback(async (tokenIds, form) => {
-    try {
-      const client = getClient();
-      if (!client) return;
-      
-      if (!layerInfo.mwtLayer) {
-        console.warn('MWT layer not found, cannot create multi-word token');
-        return;
-      }
-      
-      if (!tokenIds || tokenIds.length < 2) {
-        throw new Error('Multi-word token requires at least 2 tokens');
-      }
-      
-      // Validate tokens are contiguous (optional check for good UX)
-      const sortedTokenIds = [...tokenIds].sort((a, b) => a.localeCompare(b));
-      
-      const spanResult = await client.spans.create(layerInfo.mwtLayer.id, tokenIds, form);
-      
-      // Update local state
-      setDocument(prevDocument => {
-        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const info = getUdLayerInfo(updatedDocument);
-        const mwtLayerDoc = info.mwtLayer;
-
-        if (mwtLayerDoc) {
-          if (!Array.isArray(mwtLayerDoc.spans)) {
-            mwtLayerDoc.spans = [];
-          }
-          mwtLayerDoc.spans.push({
-            ...spanResult,
-            tokens: tokenIds,
-            value: form
-          });
-        }
-
-        return updatedDocument;
-      });
-      
-      setError('');
-      
-    } catch (error) {
-      console.error('Failed to create MWT:', error);
-      setError(`Failed to create multi-word token: ${error.message}`);
-      await refreshData();
-    }
-  }, [layerInfo]);
-
-  const handleMwtUpdate = useCallback(async (spanId, form) => {
-    try {
-      const client = getClient();
-      if (!client) return;
-      
-      await client.spans.update(spanId, form);
-      
-      // Update local state
-      setDocument(prevDocument => {
-        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const info = getUdLayerInfo(updatedDocument);
-        const mwtLayerDoc = info.mwtLayer;
-
-        if (mwtLayerDoc?.spans) {
-          const spanIndex = mwtLayerDoc.spans.findIndex(span => span.id === spanId);
-          if (spanIndex !== -1) {
-            mwtLayerDoc.spans[spanIndex].value = form;
-          }
-        }
-
-        return updatedDocument;
-      });
-      
-      setError('');
-      
-    } catch (error) {
-      console.error('Failed to update MWT:', error);
-      setError(`Failed to update multi-word token: ${error.message}`);
-      await refreshData();
-    }
-  }, [layerInfo]);
-
-  const handleMwtDelete = useCallback(async (spanId) => {
-    try {
-      const client = getClient();
-      if (!client) return;
-      
-      await client.spans.delete(spanId);
-      
-      // Update local state
-      setDocument(prevDocument => {
-        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const info = getUdLayerInfo(updatedDocument);
-        const mwtLayerDoc = info.mwtLayer;
-
-        if (mwtLayerDoc?.spans) {
-          mwtLayerDoc.spans = mwtLayerDoc.spans.filter(span => span.id !== spanId);
-        }
-
-        return updatedDocument;
-      });
-      
-      setError('');
-      
-    } catch (error) {
-      console.error('Failed to delete MWT:', error);
-      setError(`Failed to delete multi-word token: ${error.message}`);
-      await refreshData();
-    }
-  }, [layerInfo]);
+  }, [layerInfo, setDocument, setError, refreshData, getClient]);
 
   return {
     handleAnnotationUpdate,
     handleFeatureDelete,
     handleRelationCreate,
     handleRelationUpdate,
-    handleRelationDelete,
-    handleMwtCreate,
-    handleMwtUpdate,
-    handleMwtDelete
+    handleRelationDelete
   };
 };

@@ -1,171 +1,157 @@
 import { useMemo } from 'react';
-import { getUdLayerInfo } from '../../../utils/udLayerUtils.js';
+import { getUdLayerInfo, containsToken } from '../../../utils/udLayerUtils.js';
 
+// Derive the annotation table from the three-layer token hierarchy
+// (sentences > words > morphemes) by character-offset containment.
+//
+// Each emitted sentence row's `tokens` array holds one entry per MORPHEME
+// (the numbered CoNLL-U word rows) — that is where all annotation lives. A word
+// with multiple morphemes is a multiword token; its morphemes share the word's
+// full extent and are ordered by `precedence`, distinguished by their Form span.
 export const useSentenceData = (document) => {
   return useMemo(() => {
     if (!document) return [];
 
     const {
       textLayer,
-      tokenLayer,
+      sentenceTokenLayer,
+      wordTokenLayer,
+      morphemeTokenLayer,
+      formLayer,
       lemmaLayer,
       uposLayer,
       xposLayer,
       featuresLayer,
-      sentenceLayer,
-      mwtLayer,
       relationLayer
     } = getUdLayerInfo(document);
 
-    const text = textLayer?.text;
-    const tokens = tokenLayer?.tokens || [];
+    const body = textLayer?.text?.body;
+    if (!body) return [];
 
-    if (!text?.body || tokens.length === 0) {
-      return [];
-    }
+    const byPosition = (a, b) =>
+      (a.begin - b.begin) || (a.end - b.end) || ((a.precedence ?? 0) - (b.precedence ?? 0));
 
-    const sortedTokens = [...tokens].sort((a, b) => a.begin - b.begin);
+    const sentenceTokens = [...(sentenceTokenLayer?.tokens || [])].sort(byPosition);
+    const wordTokens = [...(wordTokenLayer?.tokens || [])].sort(byPosition);
+    const morphemeTokens = [...(morphemeTokenLayer?.tokens || [])].sort(byPosition);
 
-    const sentenceSpans = sentenceLayer?.spans || [];
-    const sentenceStartTokenIds = new Set(
-      sentenceSpans
-        .map(span => (span.tokens && span.tokens.length > 0 ? span.tokens[0] : span.begin))
-        .filter(id => id != null)
-    );
+    if (morphemeTokens.length === 0) return [];
 
-    const tokenSentences = [];
-    let currentSentence = [];
-
-    for (const token of sortedTokens) {
-      if (sentenceStartTokenIds.has(token.id) && currentSentence.length > 0) {
-        tokenSentences.push(currentSentence);
-        currentSentence = [];
-      }
-      currentSentence.push(token);
-    }
-
-    if (currentSentence.length > 0) {
-      tokenSentences.push(currentSentence);
-    }
-
-    if (tokenSentences.length === 0 && sortedTokens.length > 0) {
-      tokenSentences.push(sortedTokens);
-    }
-
+    // Index every annotation span layer by the morpheme token id it covers.
     const buildSpanIndex = (layer) => {
-      if (!layer?.spans) return new Map();
       const index = new Map();
-      layer.spans.forEach(span => {
-        const spanTokens = Array.isArray(span.tokens) && span.tokens.length > 0
-          ? span.tokens
-          : [span.begin];
+      (layer?.spans || []).forEach(span => {
+        const spanTokens = Array.isArray(span.tokens) ? span.tokens : [];
         spanTokens
           .filter(tokenId => tokenId != null)
           .forEach(tokenId => {
-            if (!index.has(tokenId)) {
-              index.set(tokenId, []);
-            }
+            if (!index.has(tokenId)) index.set(tokenId, []);
             index.get(tokenId).push(span);
           });
       });
       return index;
     };
 
+    const formIndex = buildSpanIndex(formLayer);
     const lemmaIndex = buildSpanIndex(lemmaLayer);
     const uposIndex = buildSpanIndex(uposLayer);
     const xposIndex = buildSpanIndex(xposLayer);
     const featuresIndex = buildSpanIndex(featuresLayer);
-    const mwtIndex = buildSpanIndex(mwtLayer);
 
     const relationList = relationLayer?.relations || [];
 
-    const getAnnotationsForToken = (tokenId) => {
-      const lemmaSpans = lemmaIndex.get(tokenId) || [];
-      const uposSpans = uposIndex.get(tokenId) || [];
-      const xposSpans = xposIndex.get(tokenId) || [];
-      const featureSpans = featuresIndex.get(tokenId) || [];
-      const mwtSpans = mwtIndex.get(tokenId) || [];
+    // Half-open containment: see `containsToken` in udLayerUtils. Zero-width
+    // children at `parent.end` correctly attach to the right-side parent only.
+    const contains = containsToken;
+
+    const buildMorphemeEntry = (morphemeToken, tokenIndex, word) => {
+      const id = morphemeToken.id;
+      const substring = body.substring(morphemeToken.begin, morphemeToken.end);
+      const formSpan = (formIndex.get(id) || [])[0] || null;
+      const lemma = (lemmaIndex.get(id) || [])[0] || null;
+      const upos = (uposIndex.get(id) || [])[0] || null;
+      const xpos = (xposIndex.get(id) || [])[0] || null;
+      const feats = (featuresIndex.get(id) || []).filter(span => span.value);
+
+      const tokenForm = (formSpan?.value != null && formSpan.value !== '') ? formSpan.value : substring;
 
       return {
-        lemma: lemmaSpans[0] || null,
-        upos: uposSpans[0] || null,
-        xpos: xposSpans[0] || null,
-        feats: featureSpans.filter(span => span.value),
-        mwt: mwtSpans[0] || null
+        token: morphemeToken,
+        tokenForm,
+        form: formSpan,
+        lemma,
+        upos,
+        xpos,
+        feats,
+        word: word || null,
+        wordForm: word ? body.substring(word.begin, word.end) : tokenForm,
+        spanIds: {
+          form: formSpan?.id || null,
+          lemma: lemma?.id || null,
+          upos: upos?.id || null,
+          xpos: xpos?.id || null,
+          features: feats.map(span => ({ value: span.value, spanId: span.id }))
+        },
+        tokenIndex
       };
     };
 
-    const getRelationsForSentence = (sentenceTokens) => {
-      if (!lemmaLayer?.spans || relationList.length === 0) return [];
+    // Group morphemes into sentence rows: sentence > word > morpheme.
+    const effectiveSentences = sentenceTokens.length > 0
+      ? sentenceTokens
+      : [{ id: '__all__', begin: 0, end: body.length }];
 
-      const sentenceTokenIds = new Set(sentenceTokens.map(t => t.id));
-      const sentenceLemmaSpans = lemmaLayer.spans.filter(span => {
-        const spanTokens = Array.isArray(span.tokens) && span.tokens.length > 0
-          ? span.tokens
-          : [span.begin];
-        return spanTokens.some(tokenId => sentenceTokenIds.has(tokenId));
+    const rows = [];
+
+    effectiveSentences.forEach((sentence, sentenceIdx) => {
+      const wordsInSentence = wordTokens.filter(word => contains(sentence, word));
+
+      const morphemeEntries = [];
+      let tokenIndex = 0;
+
+      if (wordsInSentence.length > 0) {
+        wordsInSentence.forEach(word => {
+          const wordMorphemes = morphemeTokens.filter(m => contains(word, m));
+          wordMorphemes.forEach((morpheme, i) => {
+            const entry = buildMorphemeEntry(morpheme, tokenIndex + 1, word);
+            entry.isFirstMorphemeOfWord = i === 0;
+            entry.wordHasMultipleMorphemes = wordMorphemes.length > 1;
+            morphemeEntries.push(entry);
+            tokenIndex += 1;
+          });
+        });
+      } else {
+        // No word layer yet — fall back to morphemes directly under the sentence.
+        morphemeTokens.filter(m => contains(sentence, m)).forEach(morpheme => {
+          const entry = buildMorphemeEntry(morpheme, tokenIndex + 1, null);
+          entry.isFirstMorphemeOfWord = true;
+          entry.wordHasMultipleMorphemes = false;
+          morphemeEntries.push(entry);
+          tokenIndex += 1;
+        });
+      }
+
+      if (morphemeEntries.length === 0) return;
+
+      const morphemeIds = new Set(morphemeEntries.map(entry => entry.token.id));
+
+      const sentenceLemmaSpans = (lemmaLayer?.spans || []).filter(span => {
+        const spanTokens = Array.isArray(span.tokens) ? span.tokens : [];
+        return spanTokens.some(tokenId => morphemeIds.has(tokenId));
       });
-
       const sentenceLemmaSpanIds = new Set(sentenceLemmaSpans.map(span => span.id));
-      return relationList.filter(rel => sentenceLemmaSpanIds.has(rel.source));
-    };
+      const relations = relationList.filter(rel => sentenceLemmaSpanIds.has(rel.source));
 
-    const getLemmaSpansForSentence = (sentenceTokens) => {
-      if (!lemmaLayer?.spans) return [];
-      const sentenceTokenIds = new Set(sentenceTokens.map(t => t.id));
-      return lemmaLayer.spans.filter(span => {
-        const spanTokens = Array.isArray(span.tokens) && span.tokens.length > 0
-          ? span.tokens
-          : [span.begin];
-        return spanTokens.some(tokenId => sentenceTokenIds.has(tokenId));
+      rows.push({
+        id: sentence.id ?? sentenceIdx,
+        text: body.substring(sentence.begin, sentence.end),
+        sentenceToken: sentenceTokens.length > 0 ? sentence : null,
+        tokens: morphemeEntries,
+        relations,
+        lemmaSpans: sentenceLemmaSpans
       });
-    };
-
-    const getMwtSpansForSentence = (sentenceTokens) => {
-      if (!mwtLayer?.spans) return [];
-      const sentenceTokenIds = new Set(sentenceTokens.map(t => t.id));
-      return mwtLayer.spans.filter(span => {
-        const spanTokens = Array.isArray(span.tokens) && span.tokens.length > 0
-          ? span.tokens
-          : [span.begin];
-        return spanTokens.some(tokenId => sentenceTokenIds.has(tokenId));
-      });
-    };
-
-    return tokenSentences.map((sentenceTokens, index) => {
-      const processedTokens = sentenceTokens.map((token, tokenIndex) => {
-        const tokenForm = text.body.substring(token.begin, token.end);
-        const annotations = getAnnotationsForToken(token.id);
-
-        return {
-          token,
-          tokenForm,
-          lemma: annotations.lemma,
-          upos: annotations.upos,
-          xpos: annotations.xpos,
-          feats: annotations.feats,
-          mwt: annotations.mwt,
-          spanIds: {
-            lemma: annotations.lemma?.id || null,
-            upos: annotations.upos?.id || null,
-            xpos: annotations.xpos?.id || null,
-            features: annotations.feats.map(span => ({ value: span.value, spanId: span.id })),
-            mwt: annotations.mwt?.id || null
-          },
-          tokenIndex: tokenIndex + 1
-        };
-      });
-
-      return {
-        id: index,
-        text: sentenceTokens
-          .map(token => text.body.substring(token.begin, token.end))
-          .join(' '),
-        tokens: processedTokens,
-        relations: getRelationsForSentence(sentenceTokens),
-        lemmaSpans: getLemmaSpansForSentence(sentenceTokens),
-        mwtSpans: getMwtSpansForSentence(sentenceTokens)
-      };
     });
+
+    return rows;
   }, [document]);
 };

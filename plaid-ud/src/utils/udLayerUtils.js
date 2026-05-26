@@ -1,27 +1,45 @@
 const UD_NAMESPACE = 'ud';
 
+// Half-open containment: a child is contained in a parent iff its range fits
+// AND the parent has non-zero remaining extent at the child's begin. This
+// excludes a zero-width child sitting exactly at `parent.end`, which would
+// otherwise double-attach to both adjacent parents in a partitioning layer.
+// Use this everywhere parent/child containment is computed.
+export const containsToken = (parent, child) =>
+  parent.begin <= child.begin && child.end <= parent.end && child.begin < parent.end;
+
 export const UD_TEXT_CONFIG_KEY = 'textLayer';
-export const UD_TOKEN_CONFIG_KEY = 'tokenLayer';
 export const UD_RELATION_CONFIG_KEY = 'dependency';
 
+// The three token layers of the UD hierarchy: sentences > words > morphemes.
+// - sentences:  overlap-mode "partitioning" (root) — tile the whole text
+// - words:      overlap-mode "non-overlapping", parent = sentences — UD surface tokens
+// - morphemes:  overlap-mode "any", parent = words — UD syntactic words (annotations live here)
+export const UD_TOKEN_CONFIG_KEYS = {
+  sentence: 'sentenceTokenLayer',
+  word: 'wordTokenLayer',
+  morpheme: 'morphemeTokenLayer'
+};
+
+// Span layers, all attached to the MORPHEME token layer.
 export const UD_SPAN_CONFIG_KEYS = {
+  form: 'form',
   lemma: 'lemma',
   upos: 'upos',
   xpos: 'xpos',
-  features: 'features',
-  sentence: 'sentence',
-  mwt: 'mwt'
+  features: 'features'
 };
 
 export const UD_LAYER_LABELS = {
   textLayer: 'Text layer',
-  tokenLayer: 'Token layer',
+  sentenceTokenLayer: 'Sentence layer',
+  wordTokenLayer: 'Word layer',
+  morphemeTokenLayer: 'Morpheme layer',
+  form: 'Form layer',
   lemma: 'Lemma layer',
   upos: 'UPOS layer',
   xpos: 'XPOS layer',
   features: 'Features layer',
-  sentence: 'Sentence layer',
-  mwt: 'Multi-word token layer',
   dependency: 'Dependency relation layer'
 };
 
@@ -32,9 +50,9 @@ export const findUdTextLayer = (document) => {
   return document.textLayers.find(layer => hasConfigFlag(layer.config, UD_TEXT_CONFIG_KEY)) || null;
 };
 
-export const findUdTokenLayer = (textLayer) => {
+export const findUdTokenLayer = (textLayer, configKey) => {
   if (!textLayer?.tokenLayers) return null;
-  return textLayer.tokenLayers.find(layer => hasConfigFlag(layer.config, UD_TOKEN_CONFIG_KEY)) || null;
+  return textLayer.tokenLayers.find(layer => hasConfigFlag(layer.config, configKey)) || null;
 };
 
 export const findUdSpanLayer = (tokenLayer, configKey) => {
@@ -47,69 +65,72 @@ export const findUdRelationLayer = (spanLayer, configKey = UD_RELATION_CONFIG_KE
   return spanLayer.relationLayers.find(layer => hasConfigFlag(layer.config, configKey)) || null;
 };
 
+const EMPTY_MISSING = [
+  'textLayer',
+  'sentenceTokenLayer',
+  'wordTokenLayer',
+  'morphemeTokenLayer',
+  'form',
+  'lemma',
+  'upos',
+  'xpos',
+  'features',
+  'dependency'
+];
+
 export const getUdLayerInfo = (document) => {
   if (!document) {
     return {
       textLayer: null,
+      sentenceTokenLayer: null,
+      wordTokenLayer: null,
+      morphemeTokenLayer: null,
       tokenLayer: null,
       spanLayers: [],
+      formLayer: null,
       lemmaLayer: null,
       uposLayer: null,
       xposLayer: null,
       featuresLayer: null,
-      sentenceLayer: null,
-      mwtLayer: null,
       relationLayer: null,
-      missingLayers: [
-        'textLayer',
-        'tokenLayer',
-        'lemma',
-        'upos',
-        'xpos',
-        'features',
-        'sentence',
-        'mwt',
-        'dependency'
-      ],
+      missingLayers: [...EMPTY_MISSING],
       isConfigured: false
     };
   }
 
   const missingLayers = [];
 
-  // Text layer detection
-  const textLayerConfigured = findUdTextLayer(document);
-  const textLayer = textLayerConfigured || document.textLayers?.[0] || null;
-  if (!textLayer || !textLayerConfigured) {
-    missingLayers.push('textLayer');
-  }
+  // Text layer
+  const textLayer = findUdTextLayer(document);
+  if (!textLayer) missingLayers.push('textLayer');
 
-  // Token layer detection
-  const tokenLayerConfigured = findUdTokenLayer(textLayer);
-  const tokenLayer = tokenLayerConfigured || textLayer?.tokenLayers?.[0] || null;
-  if (!tokenLayer || !tokenLayerConfigured) {
-    missingLayers.push('tokenLayer');
-  }
+  // Token layers (sentences > words > morphemes)
+  const sentenceTokenLayer = findUdTokenLayer(textLayer, UD_TOKEN_CONFIG_KEYS.sentence);
+  if (!sentenceTokenLayer) missingLayers.push('sentenceTokenLayer');
 
-  const spanLayers = tokenLayer?.spanLayers || [];
+  const wordTokenLayer = findUdTokenLayer(textLayer, UD_TOKEN_CONFIG_KEYS.word);
+  if (!wordTokenLayer) missingLayers.push('wordTokenLayer');
 
-  const lemmaLayer = findUdSpanLayer(tokenLayer, UD_SPAN_CONFIG_KEYS.lemma);
+  const morphemeTokenLayer = findUdTokenLayer(textLayer, UD_TOKEN_CONFIG_KEYS.morpheme);
+  if (!morphemeTokenLayer) missingLayers.push('morphemeTokenLayer');
+
+  // All annotation span layers hang off the morpheme token layer.
+  const spanLayers = morphemeTokenLayer?.spanLayers || [];
+
+  const formLayer = findUdSpanLayer(morphemeTokenLayer, UD_SPAN_CONFIG_KEYS.form);
+  if (!formLayer) missingLayers.push('form');
+
+  const lemmaLayer = findUdSpanLayer(morphemeTokenLayer, UD_SPAN_CONFIG_KEYS.lemma);
   if (!lemmaLayer) missingLayers.push('lemma');
 
-  const uposLayer = findUdSpanLayer(tokenLayer, UD_SPAN_CONFIG_KEYS.upos);
+  const uposLayer = findUdSpanLayer(morphemeTokenLayer, UD_SPAN_CONFIG_KEYS.upos);
   if (!uposLayer) missingLayers.push('upos');
 
-  const xposLayer = findUdSpanLayer(tokenLayer, UD_SPAN_CONFIG_KEYS.xpos);
+  const xposLayer = findUdSpanLayer(morphemeTokenLayer, UD_SPAN_CONFIG_KEYS.xpos);
   if (!xposLayer) missingLayers.push('xpos');
 
-  const featuresLayer = findUdSpanLayer(tokenLayer, UD_SPAN_CONFIG_KEYS.features);
+  const featuresLayer = findUdSpanLayer(morphemeTokenLayer, UD_SPAN_CONFIG_KEYS.features);
   if (!featuresLayer) missingLayers.push('features');
-
-  const sentenceLayer = findUdSpanLayer(tokenLayer, UD_SPAN_CONFIG_KEYS.sentence);
-  if (!sentenceLayer) missingLayers.push('sentence');
-
-  const mwtLayer = findUdSpanLayer(tokenLayer, UD_SPAN_CONFIG_KEYS.mwt);
-  if (!mwtLayer) missingLayers.push('mwt');
 
   const relationLayer = lemmaLayer ? findUdRelationLayer(lemmaLayer) : null;
   if (!relationLayer) missingLayers.push('dependency');
@@ -118,14 +139,18 @@ export const getUdLayerInfo = (document) => {
 
   return {
     textLayer,
-    tokenLayer,
+    sentenceTokenLayer,
+    wordTokenLayer,
+    morphemeTokenLayer,
+    // Alias: annotations live under the morpheme layer, so consumers that look up
+    // span layers under "the token layer" keep working unchanged.
+    tokenLayer: morphemeTokenLayer,
     spanLayers,
+    formLayer,
     lemmaLayer,
     uposLayer,
     xposLayer,
     featuresLayer,
-    sentenceLayer,
-    mwtLayer,
     relationLayer,
     missingLayers: normalizedMissing,
     isConfigured: normalizedMissing.length === 0

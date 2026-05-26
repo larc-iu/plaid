@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
-import { getUdLayerInfo, missingUdLayerLabels, UD_SPAN_CONFIG_KEYS, UD_NAMESPACE } from '../../utils/udLayerUtils.js';
+import { getUdLayerInfo, missingUdLayerLabels, containsToken } from '../../utils/udLayerUtils.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { DocumentTabs } from './DocumentTabs.jsx';
 
@@ -19,39 +19,37 @@ export const TextEditor = () => {
   const { getClient } = useAuth();
   const layerInfo = useLayerInfo(document);
 
+  const loadDocument = async () => {
+    const client = getClient();
+    if (!client) {
+      window.location.href = '/login';
+      return;
+    }
+    const [projectData, documentData] = await Promise.all([
+      client.projects.get(projectId),
+      client.documents.get(documentId, true) // includes all layer data
+    ]);
+    setProject(projectData);
+    setDocument(documentData);
+
+    const info = getUdLayerInfo(documentData);
+    const text = info.textLayer?.text;
+    if (text?.body) {
+      setTextContent(text.body);
+      const hasTokens = (info.sentenceTokenLayer?.tokens || []).length > 0
+        || (info.wordTokenLayer?.tokens || []).length > 0;
+      if (hasTokens && !originalTokenizedText) {
+        setOriginalTokenizedText(text.body);
+      }
+    }
+    setError('');
+  };
+
   // Fetch initial data (with loading screen)
   const fetchData = async () => {
     try {
       setLoading(true);
-      const client = getClient();
-      if (!client) {
-        window.location.href = '/login';
-        return;
-      }
-
-      // Get project and document with all layer data
-      const [projectData, documentData] = await Promise.all([
-        client.projects.get(projectId),
-        client.documents.get(documentId, true) // This includes all layer data!
-      ]);
-
-      setProject(projectData);
-      setDocument(documentData);
-
-      const info = getUdLayerInfo(documentData);
-      const textLayer = info.textLayer;
-      const text = textLayer?.text;
-      if (text?.body) {
-        setTextContent(text.body);
-
-        const tokenLayer = info.tokenLayer;
-        const tokens = tokenLayer?.tokens || [];
-        if (tokens.length > 0 && !originalTokenizedText) {
-          setOriginalTokenizedText(text.body);
-        }
-      }
-
-      setError('');
+      await loadDocument();
     } catch (err) {
       if (err.status === 401) {
         window.location.href = '/login';
@@ -64,38 +62,10 @@ export const TextEditor = () => {
     }
   };
 
-  // Refresh data without loading screen (for updates after operations)
+  // Refresh data without loading screen (after operations)
   const refreshData = async () => {
     try {
-      const client = getClient();
-      if (!client) {
-        window.location.href = '/login';
-        return;
-      }
-
-      // Get project and document with all layer data
-      const [projectData, documentData] = await Promise.all([
-        client.projects.get(projectId),
-        client.documents.get(documentId, true) // This includes all layer data!
-      ]);
-
-      setProject(projectData);
-      setDocument(documentData);
-
-      const info = getUdLayerInfo(documentData);
-      const textLayer = info.textLayer;
-      const text = textLayer?.text;
-      if (text?.body) {
-        setTextContent(text.body);
-
-        const tokenLayer = info.tokenLayer;
-        const tokens = tokenLayer?.tokens || [];
-        if (tokens.length > 0 && !originalTokenizedText) {
-          setOriginalTokenizedText(text.body);
-        }
-      }
-
-      setError('');
+      await loadDocument();
     } catch (err) {
       if (err.status === 401) {
         window.location.href = '/login';
@@ -110,79 +80,79 @@ export const TextEditor = () => {
     fetchData();
   }, [projectId, documentId]);
 
-  useEffect(() => {
-    if (document && !layerInfo.isConfigured) {
-      const missing = missingUdLayerLabels(layerInfo.missingLayers);
-      const missingList = missing.length > 0 ? missing.join(', ') : 'required UD layers';
-      setError(`Project configuration incomplete: ${missingList}`);
-    }
-  }, [document, layerInfo]);
+  // Fix #8: the misconfig state used to be funneled through `setError`, which
+  // (a) clobbered operational errors and (b) never cleared itself. The misconfig
+  // banner is now derived from `layerInfo` directly in the render path; the red
+  // error banner is reserved for op-level errors set via `setError`.
 
-  // Get helper data from document structure
-  const getLayerData = () => {
-    if (!document) {
-      return { layerInfo };
-    }
+  const contains = containsToken;
+
+  // Helper data derived from the three-layer token hierarchy.
+  // Memoized — fix #10: avoid recomputing this per call (handlers called it
+  // multiple times and render called it once more on top).
+  const layerData = useMemo(() => {
+    if (!document) return { layerInfo };
 
     const {
       textLayer,
-      tokenLayer,
-      sentenceLayer,
+      sentenceTokenLayer,
+      wordTokenLayer,
+      morphemeTokenLayer,
       lemmaLayer,
-      relationLayer,
-      mwtLayer
+      formLayer,
+      relationLayer
     } = layerInfo;
 
     const text = textLayer?.text;
-    const tokens = tokenLayer?.tokens || [];
-    const sentenceSpans = sentenceLayer?.spans || [];
-    const lemmaSpans = lemmaLayer?.spans || [];
-    const relations = relationLayer?.relations || [];
-    const mwtSpans = mwtLayer?.spans || [];
+    const sentenceTokens = sentenceTokenLayer?.tokens || [];
+    const wordTokens = wordTokenLayer?.tokens || [];
+    const morphemeTokens = morphemeTokenLayer?.tokens || [];
+
+    // morpheme id -> Form span value (overrides the text substring for display)
+    const morphemeForms = new Map();
+    (formLayer?.spans || []).forEach(span => {
+      const tokenId = Array.isArray(span.tokens) && span.tokens.length > 0 ? span.tokens[0] : null;
+      if (tokenId != null && span.value != null) morphemeForms.set(tokenId, span.value);
+    });
 
     return {
       layerInfo,
       textLayer,
       text,
-      tokenLayer,
-      tokens,
-      sentenceLayer,
-      sentenceSpans,
+      sentenceTokenLayer,
+      wordTokenLayer,
+      morphemeTokenLayer,
+      sentenceTokens,
+      wordTokens,
+      morphemeTokens,
       lemmaLayer,
-      lemmaSpans,
+      formLayer,
       relationLayer,
-      relations,
-      mwtLayer,
-      mwtSpans
+      morphemeForms
     };
-  };
+  }, [document, layerInfo]);
+
+  // Compatibility shim so handler code reads `const { ... } = getLayerData();`
+  // unchanged. Returns the memoized object.
+  const getLayerData = () => layerData;
 
   // Save text function
   const saveText = async () => {
     if (!textContent.trim() || saving) return;
-
     try {
       setSaving(true);
       const client = getClient();
       const { textLayer, text } = getLayerData();
-      
+
       if (text?.id) {
-        // Update existing text
         await client.texts.update(text.id, textContent);
       } else if (textLayer?.id) {
-        // Create new text
-        await client.texts.create(
-          textLayer.id,
-          documentId,
-          textContent
-        );
+        await client.texts.create(textLayer.id, documentId, textContent);
       }
-      
+
       setLastSaved(new Date());
       setError('');
-      // Update the original tokenized text since we've saved the current content
       setOriginalTokenizedText(textContent);
-      // Refresh the document data to ensure everything is in sync
       await refreshData();
     } catch (err) {
       setError('Failed to save text: ' + (err.message || 'Unknown error'));
@@ -194,613 +164,456 @@ export const TextEditor = () => {
 
   const handleTextChange = (e) => {
     setTextContent(e.target.value);
-    // Clear the "saved" message as soon as text becomes dirty
-    if (lastSaved) {
-      setLastSaved(null);
-    }
+    if (lastSaved) setLastSaved(null);
   };
 
+  // Tokenize: build the full sentence > word > morpheme hierarchy top-down.
   const handleTokenize = async () => {
-    const { text, tokenLayer, tokens } = getLayerData();
-    
+    const {
+      text,
+      sentenceTokenLayer,
+      wordTokenLayer,
+      morphemeTokenLayer,
+      lemmaLayer,
+      sentenceTokens,
+      wordTokens,
+      morphemeTokens
+    } = getLayerData();
+
     if (!textContent.trim()) {
       setError('Please enter some text before tokenizing');
       return;
     }
-
     if (!text?.id) {
       setError('Please save the text first before tokenizing');
       return;
     }
+    if (!sentenceTokenLayer?.id || !wordTokenLayer?.id || !morphemeTokenLayer?.id) {
+      setError('Token layers are not fully configured');
+      return;
+    }
+    if (sentenceTokens.length || wordTokens.length || morphemeTokens.length) {
+      setError('Tokens already exist. Use "Clear Tokens" before re-tokenizing.');
+      return;
+    }
 
+    if (saving) return;
     try {
       setSaving(true);
       setError('');
       const client = getClient();
-      
-      // Helper function to check if two ranges overlap
-      const rangesOverlap = (begin1, end1, begin2, end2) => {
-        return begin1 < end2 && begin2 < end1;
-      };
-      
-      // Generate proposed tokens from whitespace tokenization
-      const proposedTokens = [];
-      let currentIndex = 0;
+      const body = textContent;
+      const len = body.length;
 
-      // Split by whitespace but preserve positions
-      const parts = textContent.split(/(\s+)/);
-      
-      for (const part of parts) {
-        if (part.trim()) {
-          proposedTokens.push({
-            tokenLayerId: tokenLayer.id,
-            text: text.id,
-            begin: currentIndex,
-            end: currentIndex + part.length,
-          });
-        }
-        currentIndex += part.length;
+      // 1. Sentences: a gap-free partition of [0, len). Runs of newlines end a sentence
+      //    and are kept with the preceding sentence so there are no gaps.
+      const sentenceRanges = [];
+      let start = 0;
+      const newlineRun = /\n+/g;
+      let m;
+      while ((m = newlineRun.exec(body)) !== null) {
+        sentenceRanges.push([start, m.index + m[0].length]);
+        start = m.index + m[0].length;
+      }
+      if (start < len) sentenceRanges.push([start, len]);
+      if (sentenceRanges.length === 0) sentenceRanges.push([0, len]);
+
+      // 2. Words: non-whitespace runs.
+      const wordRanges = [];
+      let idx = 0;
+      for (const part of body.split(/(\s+)/)) {
+        if (part.trim()) wordRanges.push([idx, idx + part.length]);
+        idx += part.length;
       }
 
-      // Filter out proposed tokens that overlap with existing tokens
-      const nonOverlappingTokens = proposedTokens.filter(proposed => {
-        return !tokens.some(existing => 
-          rangesOverlap(proposed.begin, proposed.end, existing.begin, existing.end)
-        );
-      });
+      // Create the token hierarchy atomically in one batch (sentences -> words ->
+      // morphemes). Batch ops run sequentially server-side, so each nested layer
+      // sees the one above it; if any step fails the whole hierarchy rolls back
+      // (no orphaned tokens). The batch returns each op's ids, so we read the
+      // morpheme ids back for the lemma spans.
+      client.beginBatch();
+      client.tokens.bulkCreate(sentenceRanges.map(([begin, end]) => ({
+        tokenLayerId: sentenceTokenLayer.id, text: text.id, begin, end
+      })));
+      let morphemeResultIndex = -1;
+      if (wordRanges.length > 0) {
+        client.tokens.bulkCreate(wordRanges.map(([begin, end]) => ({
+          tokenLayerId: wordTokenLayer.id, text: text.id, begin, end
+        })));
+        client.tokens.bulkCreate(wordRanges.map(([begin, end]) => ({
+          tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end
+        })));
+        morphemeResultIndex = 2; // [sentences, words, morphemes]
+      }
+      const batchResults = await client.submitBatch();
+      const morphemeIds = morphemeResultIndex >= 0
+        ? (batchResults[morphemeResultIndex]?.body?.ids || [])
+        : [];
 
-      const skippedCount = proposedTokens.length - nonOverlappingTokens.length;
-
-      // Create only non-overlapping tokens
-      if (nonOverlappingTokens.length > 0) {
-        const tokenResult = await client.tokens.bulkCreate(nonOverlappingTokens);
-        
-        // Create corresponding lemma spans for the new tokens
-        const { lemmaLayer } = getLayerData();
-        if (lemmaLayer && tokenResult?.ids) {
-          console.log(`Creating lemma spans for ${tokenResult.ids.length} new tokens`);
-          
-          const lemmaOperations = tokenResult.ids.map((tokenId, index) => {
-            const tokenData = nonOverlappingTokens[index];
-            return {
-              spanLayerId: lemmaLayer.id,
-              tokens: [tokenId],
-              value: textContent.substring(tokenData.begin, tokenData.end) // Use token text as default lemma
-            };
-          });
-          
-          try {
-            await client.spans.bulkCreate(lemmaOperations);
-            console.log(`Successfully created ${lemmaOperations.length} lemma spans`);
-          } catch (lemmaError) {
-            console.error('Failed to create lemma spans:', lemmaError);
-            // Don't fail the whole operation if lemma creation fails
-          }
+      // Default lemma spans on morphemes (lemma = surface form), in a follow-up
+      // call since they depend on the new morpheme ids.
+      if (lemmaLayer?.id && morphemeIds.length) {
+        const lemmaOps = morphemeIds.map((tokenId, i) => ({
+          spanLayerId: lemmaLayer.id,
+          tokens: [tokenId],
+          value: body.substring(wordRanges[i][0], wordRanges[i][1])
+        }));
+        try {
+          await client.spans.bulkCreate(lemmaOps);
+        } catch (lemmaError) {
+          console.error('Failed to create lemma spans:', lemmaError);
         }
       }
 
-      // Store the text that was tokenized
       setOriginalTokenizedText(textContent);
-      
-      // Refresh document to get updated tokens
       await refreshData();
-      
-      // Show feedback about the operation
-      if (skippedCount > 0) {
-        setError(`Created ${nonOverlappingTokens.length} tokens. Skipped ${skippedCount} tokens that would overlap with existing tokens.`);
-      } else if (nonOverlappingTokens.length === 0) {
-        setError('No new tokens created - all proposed tokens would overlap with existing tokens.');
-      }
-      
     } catch (err) {
       setError('Failed to create tokens: ' + (err.message || 'Unknown error'));
       console.error('Error tokenizing:', err);
+      await fetchData();
     } finally {
       setSaving(false);
     }
   };
 
+  // Clear all tokens by deleting the sentence (root) tokens — cascades to words,
+  // morphemes, spans and relations server-side.
   const handleClearTokens = async () => {
-    const { tokens } = getLayerData();
-    
+    const { sentenceTokens, wordTokens, morphemeTokens } = getLayerData();
+
     if (!confirm('Are you sure you want to clear all tokens? This action cannot be undone.')) {
       return;
     }
 
+    if (saving) return;
     try {
       setSaving(true);
       const client = getClient();
-      
-      // Delete all tokens using bulk delete
-      if (tokens.length > 0) {
-        const tokenIds = tokens.map(token => token.id);
-        await client.tokens.bulkDelete(tokenIds);
+      if (sentenceTokens.length > 0) {
+        await client.tokens.bulkDelete(sentenceTokens.map(t => t.id));
+      } else if (wordTokens.length > 0) {
+        await client.tokens.bulkDelete(wordTokens.map(t => t.id));
+      } else if (morphemeTokens.length > 0) {
+        await client.tokens.bulkDelete(morphemeTokens.map(t => t.id));
       }
-      
-      // Clear the original tokenized text
       setOriginalTokenizedText('');
-      
-      // Refresh document
       await refreshData();
-      
     } catch (err) {
       setError('Failed to clear tokens: ' + (err.message || 'Unknown error'));
       console.error('Error clearing tokens:', err);
+      await fetchData();
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTokenUpdate = async (tokenId, newBegin, newEnd) => {
+  // Toggle a sentence boundary at a character position (a word's begin offset).
+  // The sentence layer is partitioning, so this is a split (add) or merge (remove).
+  const handleSentenceBoundaryToggle = async (charPos) => {
+    if (saving) return;
     try {
+      setSaving(true);
       const client = getClient();
-      console.log('Updating token:', tokenId, 'from', newBegin, 'to', newEnd);
-      await client.tokens.update(tokenId, newBegin, newEnd);
-      console.log('Token update successful');
-      
-      // Success - update the client-side state
-      setDocument(prevDocument => {
-        const updatedDocument = JSON.parse(JSON.stringify(prevDocument)); // Deep clone
-        
-        // Find and update the token in the document structure
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayer = textLayer?.tokenLayers?.[0];
-        const tokens = tokenLayer?.tokens;
-        
-        if (tokens) {
-          const tokenIndex = tokens.findIndex(token => token.id === tokenId);
-          if (tokenIndex !== -1) {
-            tokens[tokenIndex] = {
-              ...tokens[tokenIndex],
-              begin: newBegin,
-              end: newEnd
-            };
+      const { sentenceTokens, morphemeTokens, lemmaLayer, relationLayer } = getLayerData();
+
+      const startsHere = sentenceTokens.find(s => s.begin === charPos);
+      if (startsHere) {
+        // Remove the boundary: merge with the preceding sentence. Merging only
+        // widens a sentence, so no dependency relation can become invalid.
+        const prevSent = sentenceTokens.find(s => s.end === charPos);
+        if (!prevSent) return;
+        await client.tokens.merge(prevSent.id, startsHere.id);
+        setDocument(prev => {
+          const next = JSON.parse(JSON.stringify(prev));
+          const info = getUdLayerInfo(next);
+          if (info.sentenceTokenLayer?.tokens) {
+            const p = info.sentenceTokenLayer.tokens.find(t => t.id === prevSent.id);
+            if (p) p.end = startsHere.end;
+            info.sentenceTokenLayer.tokens = info.sentenceTokenLayer.tokens.filter(t => t.id !== startsHere.id);
           }
-        }
-        
-        return updatedDocument;
-      });
-    } catch (error) {
-      // Error - refresh document
-      console.error('Token update failed, refreshing:', error);
-      await fetchData();
-      throw error;
-    }
-  };
-
-  const handleTokenDelete = async (tokenId) => {
-    try {
-      const client = getClient();
-      console.log('Deleting token:', tokenId);
-      
-      // MWT maintenance: Delete any MWT spans that include this token
-      // and would become invalid (single token) after this deletion
-      const mwtLayer = layerInfo.mwtLayer;
-      
-      if (mwtLayer?.spans) {
-        const mwtsToDelete = [];
-        
-        for (const mwtSpan of mwtLayer.spans) {
-          const spanTokens = mwtSpan.tokens || [];
-          
-          // Check if this MWT includes the token being deleted
-          if (spanTokens.includes(tokenId)) {
-            // Check if this MWT would become invalid (only one token left)
-            const remainingTokens = spanTokens.filter(id => id !== tokenId);
-            if (remainingTokens.length <= 1) {
-              mwtsToDelete.push(mwtSpan);
-            }
-          }
-        }
-        
-        // Delete invalid MWT spans before deleting the token
-        for (const mwtSpan of mwtsToDelete) {
-          try {
-            console.log('Deleting MWT span due to token deletion:', mwtSpan.id);
-            await client.spans.delete(mwtSpan.id);
-          } catch (mwtError) {
-            console.warn('Failed to delete MWT span:', mwtSpan.id, mwtError);
-            // Continue with token deletion even if MWT deletion fails
-          }
-        }
-      }
-      
-      await client.tokens.delete(tokenId);
-      console.log('Token deletion successful');
-      
-      // Success - update the client-side state
-      setDocument(prevDocument => {
-        const updatedDocument = JSON.parse(JSON.stringify(prevDocument)); // Deep clone
-        const info = getUdLayerInfo(updatedDocument);
-        const tokens = info.tokenLayer?.tokens;
-
-        if (tokens) {
-          const tokenIndex = tokens.findIndex(token => token.id === tokenId);
-          if (tokenIndex !== -1) {
-            tokens.splice(tokenIndex, 1);
-          }
-        }
-
-        return updatedDocument;
-      });
-    } catch (error) {
-      // Error - refresh document
-      console.error('Token deletion failed, refreshing:', error);
-      await fetchData();
-      throw error;
-    }
-  };
-
-  const handleTokenCreate = async (begin, end) => {
-    try {
-      const client = getClient();
-      const { text, tokenLayer } = getLayerData();
-      
-      if (!text?.id || !tokenLayer?.id) {
-        throw new Error('Missing text or token layer');
-      }
-
-      console.log('Creating token:', begin, 'to', end);
-      const newToken = await client.tokens.create(tokenLayer.id, text.id, begin, end);
-      console.log('Token creation successful, response:', newToken);
-      
-      // Create corresponding lemma span for the new token
-      const { lemmaLayer } = getLayerData();
-      if (lemmaLayer && newToken?.id) {
-        try {
-          const tokenText = textContent.substring(begin, end);
-          await client.spans.create(lemmaLayer.id, [newToken.id], tokenText);
-          console.log(`Created lemma span for token: "${tokenText}"`);
-        } catch (lemmaError) {
-          console.error('Failed to create lemma span:', lemmaError);
-          // Don't fail the whole operation if lemma creation fails
-        }
-      }
-      
-      // Success - update the client-side state
-      setDocument(prevDocument => {
-        const updatedDocument = JSON.parse(JSON.stringify(prevDocument)); // Deep clone
-        
-        // Add the new token to the document structure
-        const textLayer = updatedDocument.textLayers?.[0];
-        const tokenLayerDoc = textLayer?.tokenLayers?.[0];
-        const tokens = tokenLayerDoc?.tokens;
-        
-        if (tokens) {
-          // Ensure the token has the correct begin/end values
-          const tokenToAdd = {
-            ...newToken,
-            begin: begin,
-            end: end
-          };
-          console.log('Adding token to client state:', tokenToAdd);
-          tokens.push(tokenToAdd);
-        }
-        
-        return updatedDocument;
-      });
-    } catch (error) {
-      // Error - refresh document
-      console.error('Token creation failed, refreshing:', error);
-      await fetchData();
-      throw error;
-    }
-  };
-
-  // Helper function to delete relations that cross sentence boundaries
-  const deleteInvalidRelations = async (updatedSentenceSpans = null) => {
-    const client = getClient();
-    const { tokens, sentenceSpans, lemmaSpans, relations } = getLayerData();
-    
-    if (!relations || relations.length === 0) return [];
-    
-    // Use provided sentence spans or fall back to current ones
-    const currentSentenceSpans = updatedSentenceSpans || sentenceSpans;
-    
-    // Build a map of token ID to sentence number
-    const tokenToSentence = new Map();
-    
-    // Sort sentence spans by their starting token position
-    const sentenceStartTokenIds = currentSentenceSpans
-      .map(span => span.tokens?.[0] || span.begin)
-      .filter(id => id != null);
-    
-    // Sort tokens by their position in text
-    const sortedTokens = [...tokens].sort((a, b) => a.begin - b.begin);
-    
-    let currentSentence = 0;
-    sortedTokens.forEach(token => {
-      // Check if this token starts a new sentence
-      if (sentenceStartTokenIds.includes(token.id) && tokenToSentence.size > 0) {
-        currentSentence++;
-      }
-      tokenToSentence.set(token.id, currentSentence);
-    });
-    
-    // Build a map of span ID to the tokens it covers
-    const spanToTokens = new Map();
-    lemmaSpans.forEach(span => {
-      if (span.tokens && span.tokens.length > 0) {
-        spanToTokens.set(span.id, span.tokens);
-      }
-    });
-    
-    // Find relations to delete
-    const relationsToDelete = [];
-    
-    relations.forEach(relation => {
-      const sourceTokens = spanToTokens.get(relation.source) || [];
-      const targetTokens = spanToTokens.get(relation.target) || [];
-      
-      // Check if source and target are in different sentences
-      let sourceSentence = null;
-      let targetSentence = null;
-      
-      // Get sentence for source span (use first token)
-      if (sourceTokens.length > 0) {
-        sourceSentence = tokenToSentence.get(sourceTokens[0]);
-      }
-      
-      // Get sentence for target span (use first token)
-      if (targetTokens.length > 0) {
-        targetSentence = tokenToSentence.get(targetTokens[0]);
-      }
-      
-      // If they're in different sentences, mark for deletion
-      if (sourceSentence !== null && targetSentence !== null && sourceSentence !== targetSentence) {
-        relationsToDelete.push(relation);
-      }
-    });
-    
-    // Delete the invalid relations
-    const deletedRelationIds = [];
-    for (const relation of relationsToDelete) {
-      try {
-        await client.relations.delete(relation.id);
-        deletedRelationIds.push(relation.id);
-        console.log(`Deleted cross-sentence relation: ${relation.id} (${relation.value})`);
-      } catch (error) {
-        console.error(`Failed to delete relation ${relation.id}:`, error);
-      }
-    }
-    
-    return deletedRelationIds;
-  };
-
-  const handleSentenceToggle = async (tokenId, isStartOfSentence) => {
-    try {
-      const client = getClient();
-      const { sentenceLayer, sentenceSpans, tokens } = getLayerData();
-      
-      if (!sentenceLayer?.id) {
-        throw new Error('No sentence layer found');
-      }
-
-      const token = tokens.find(t => t.id === tokenId);
-      if (!token) {
-        throw new Error('Token not found');
-      }
-
-      // Find existing sentence span for this token
-      const existingSpan = sentenceSpans.find(span => {
-        // Check if span has tokens array
-        if (span.tokens && span.tokens.length > 0) {
-          return span.tokens.includes(token.id);
-        }
-        // Fallback to begin/end properties
-        return span.begin === token.id && span.end === token.id;
-      });
-
-      if (isStartOfSentence && !existingSpan) {
-        // Create new sentence span
-        console.log('Creating sentence span for token:', tokenId);
-        const newSpan = await client.spans.create(
-          sentenceLayer.id,
-          [token.id],
-          null
-        );
-        
-        // Delete any relations that now cross sentence boundaries
-        // Create updated sentence spans array that includes the new span
-        const updatedSentenceSpans = [...sentenceSpans, {
-          ...newSpan,
-          tokens: [token.id]
-        }];
-        const deletedRelationIds = await deleteInvalidRelations(updatedSentenceSpans);
-        
-        // Update client state
-        setDocument(prevDocument => {
-          const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-          const info = getUdLayerInfo(updatedDocument);
-          const sentenceLayerDoc = info.sentenceLayer;
-
-          if (sentenceLayerDoc) {
-            if (!sentenceLayerDoc.spans) {
-              sentenceLayerDoc.spans = [];
-            }
-            // Ensure the span has the correct structure with tokens array
-            const spanToAdd = {
-              ...newSpan,
-              tokens: [token.id]  // Ensure tokens array exists
-            };
-            sentenceLayerDoc.spans.push(spanToAdd);
-          }
-          
-          // Remove deleted relations from the client state
-          if (deletedRelationIds.length > 0) {
-            const lemmaLayerDoc = info.lemmaLayer;
-            const relationLayerDoc = lemmaLayerDoc?.relationLayers?.[0];
-            if (relationLayerDoc && relationLayerDoc.relations) {
-              relationLayerDoc.relations = relationLayerDoc.relations.filter(
-                relation => !deletedRelationIds.includes(relation.id)
-              );
-            }
-          }
-          
-          return updatedDocument;
+          return next;
         });
-      } else if (!isStartOfSentence && existingSpan) {
-        // Delete existing sentence span
-        console.log('Deleting sentence span:', existingSpan.id);
-        await client.spans.delete(existingSpan.id);
-        
-        // Delete any relations that now cross sentence boundaries after removing this boundary
-        // Create updated sentence spans array that excludes the deleted span
-        const updatedSentenceSpans = sentenceSpans.filter(span => span.id !== existingSpan.id);
-        const deletedRelationIds = await deleteInvalidRelations(updatedSentenceSpans);
-        
-        // Update client state
-        setDocument(prevDocument => {
-          const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-          const info = getUdLayerInfo(updatedDocument);
-          const sentenceLayerDoc = info.sentenceLayer;
-          
-          if (sentenceLayerDoc && sentenceLayerDoc.spans) {
-            const spanIndex = sentenceLayerDoc.spans.findIndex(span => span.id === existingSpan.id);
-            if (spanIndex !== -1) {
-              sentenceLayerDoc.spans.splice(spanIndex, 1);
-            }
-          }
-          
-          // Remove deleted relations from the client state
-          if (deletedRelationIds.length > 0) {
-            const lemmaLayerDoc = info.lemmaLayer;
-            const relationLayerDoc = lemmaLayerDoc?.relationLayers?.[0];
-            if (relationLayerDoc && relationLayerDoc.relations) {
-              relationLayerDoc.relations = relationLayerDoc.relations.filter(
-                relation => !deletedRelationIds.includes(relation.id)
-              );
-            }
-          }
-          
-          return updatedDocument;
-        });
-      }
-    } catch (error) {
-      console.error('Sentence toggle failed, refreshing:', error);
-      await fetchData();
-      throw error;
-    }
-  };
-
-  const handleMwtCreate = async (tokenIds, surfaceForm) => {
-    try {
-      const client = getClient();
-      const { tokenLayer } = getLayerData();
-      
-      if (!tokenLayer?.id) {
-        throw new Error('No token layer found');
-      }
-
-      // Check for overlapping MWTs
-      const { mwtSpans } = getLayerData();
-      const overlappingTokens = [];
-      
-      for (const tokenId of tokenIds) {
-        const existingMwt = mwtSpans.find(span => 
-          span.tokens && span.tokens.includes(tokenId)
-        );
-        if (existingMwt) {
-          overlappingTokens.push(tokenId);
-        }
-      }
-      
-      if (overlappingTokens.length > 0) {
-        // Silently fail - don't create overlapping MWTs
         return;
       }
 
-      // Find or create the MWT span layer
-      let mwtLayer = layerInfo.mwtLayer;
+      // Add a boundary: split the containing sentence at charPos.
+      const containing = sentenceTokens.find(s => s.begin < charPos && charPos < s.end);
+      if (!containing) return;
 
-      if (!mwtLayer) {
-        console.log('Creating Multi-word Tokens span layer');
-        mwtLayer = await client.spanLayers.create(
-          tokenLayer.id,
-          'Multi-word Tokens',
-          { description: 'Multi-word token spans for CoNLL-U format' }
-        );
-        try {
-          await client.spanLayers.setConfig(mwtLayer.id, UD_NAMESPACE, UD_SPAN_CONFIG_KEYS.mwt, true);
-        } catch (configError) {
-          console.warn('Failed to set UD config on new MWT layer:', configError);
-        }
-      }
-
-      console.log('Creating MWT span with tokens:', tokenIds, 'surface form:', surfaceForm);
-      const newMwtSpan = await client.spans.create(
-        mwtLayer.id,
-        tokenIds,
-        surfaceForm  // This will be null, which is what we want
-      );
-      
-      console.log('MWT span created successfully:', newMwtSpan);
-      
-      // Update client state
-      setDocument(prevDocument => {
-        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const info = getUdLayerInfo(updatedDocument);
-        const tokenLayerDoc = info.tokenLayer;
-
-        if (tokenLayerDoc) {
-          if (!tokenLayerDoc.spanLayers) {
-            tokenLayerDoc.spanLayers = [];
-          }
-
-          let mwtLayerDoc = info.mwtLayer;
-          if (!mwtLayerDoc) {
-            mwtLayerDoc = {
-              ...mwtLayer,
-              spans: []
-            };
-            tokenLayerDoc.spanLayers.push(mwtLayerDoc);
-          }
-
-          if (!Array.isArray(mwtLayerDoc.spans)) {
-            mwtLayerDoc.spans = [];
-          }
-          mwtLayerDoc.spans.push({
-            ...newMwtSpan,
-            tokens: tokenIds,
-            value: surfaceForm
-          });
-        }
-
-        return updatedDocument;
+      // Any dependency relation whose endpoints land on opposite sides of charPos
+      // would cross the new sentence boundary; delete those in the same atomic
+      // batch as the split so a relation never spans two sentences. (UD relations
+      // are sentence-internal — an app-level invariant the server doesn't model,
+      // so the client maintains it here.)
+      const beginByMorpheme = new Map(morphemeTokens.map(t => [t.id, t.begin]));
+      const beginByLemmaSpan = new Map();
+      (lemmaLayer?.spans || []).forEach(span => {
+        const tid = Array.isArray(span.tokens) && span.tokens.length > 0 ? span.tokens[0] : span.begin;
+        if (tid != null && beginByMorpheme.has(tid)) beginByLemmaSpan.set(span.id, beginByMorpheme.get(tid));
       });
-      
+      const crossing = (relationLayer?.relations || []).filter(rel => {
+        if (rel.source === rel.target) return false; // root self-loop never crosses
+        const s = beginByLemmaSpan.get(rel.source);
+        const t = beginByLemmaSpan.get(rel.target);
+        if (s == null || t == null) return false;
+        return (s < charPos) !== (t < charPos);
+      });
+
+      client.beginBatch();
+      client.tokens.split(containing.id, charPos);
+      crossing.forEach(rel => client.relations.delete(rel.id));
+      const res = await client.submitBatch();
+      const newRightSentId = res[0]?.body?.id;
+      const removedRelIds = new Set(crossing.map(r => r.id));
+      setDocument(prev => {
+        const next = JSON.parse(JSON.stringify(prev));
+        const info = getUdLayerInfo(next);
+        if (info.sentenceTokenLayer?.tokens) {
+          const s = info.sentenceTokenLayer.tokens.find(t => t.id === containing.id);
+          const oldEnd = containing.end;
+          if (s) s.end = charPos;
+          if (newRightSentId) {
+            info.sentenceTokenLayer.tokens.push({ id: newRightSentId, begin: charPos, end: oldEnd });
+          }
+        }
+        if (info.relationLayer?.relations && removedRelIds.size) {
+          info.relationLayer.relations = info.relationLayer.relations.filter(r => !removedRelIds.has(r.id));
+        }
+        return next;
+      });
     } catch (error) {
-      console.error('MWT creation failed, refreshing:', error);
+      console.error('Sentence boundary toggle failed:', error);
+      setError('Failed to update sentence boundary: ' + (error.message || 'Unknown error'));
       await fetchData();
-      throw error;
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleMwtDelete = async (spanId) => {
+  // Set a word's morphemes from a list of forms. One form = an ordinary word;
+  // multiple forms = a multiword token. Every morpheme spans the FULL word extent
+  // (overlap allowed); a Form span carries each morpheme's surface form.
+  //
+  // Two-batch atomicity: (1) delete-old + create-new morphemes run as ONE atomic
+  // batch — the word is never left half-updated. (2) Form and Lemma spans for
+  // the new morphemes run as a SECOND atomic batch, because batch ops cannot
+  // reference ids produced earlier in the same batch (the new morpheme ids
+  // come back from batch #1, so the spans must follow).
+  const handleSetWordMorphemes = async (word, forms) => {
+    if (saving) return;
+    try {
+      setSaving(true);
+      const client = getClient();
+      const { text, morphemeTokenLayer, lemmaLayer, formLayer, morphemeTokens } = getLayerData();
+      if (!morphemeTokenLayer?.id || !text?.id) {
+        throw new Error('Morpheme layer not configured');
+      }
+
+      const cleanForms = forms.map(f => (f || '').trim()).filter(f => f.length > 0);
+      if (cleanForms.length === 0) return;
+
+      // Batch 1 — atomic morpheme replacement.
+      const existing = morphemeTokens.filter(m => contains(word, m));
+      client.beginBatch();
+      if (existing.length) client.tokens.bulkDelete(existing.map(m => m.id));
+      client.tokens.bulkCreate(cleanForms.map((_, i) => ({
+        tokenLayerId: morphemeTokenLayer.id,
+        text: text.id,
+        begin: word.begin,
+        end: word.end,
+        precedence: i
+      })));
+      const setResults = await client.submitBatch();
+      const ids = setResults[setResults.length - 1]?.body?.ids || [];
+
+      // Batch 2 — atomic Form + Lemma spans for the new morphemes (single
+      // beginBatch/submitBatch so they cannot half-apply against each other).
+      const wordSubstring = textContent.substring(word.begin, word.end);
+      const formOps = [];
+      const lemmaOps = [];
+      ids.forEach((tokenId, i) => {
+        const form = cleanForms[i];
+        // A Form span is only needed when the form differs from the substring
+        // (i.e. real MWT components); 1:1 words fall back to the substring.
+        if (formLayer?.id && (cleanForms.length > 1 || form !== wordSubstring)) {
+          formOps.push({ spanLayerId: formLayer.id, tokens: [tokenId], value: form });
+        }
+        if (lemmaLayer?.id) {
+          lemmaOps.push({ spanLayerId: lemmaLayer.id, tokens: [tokenId], value: form });
+        }
+      });
+      if (formOps.length || lemmaOps.length) {
+        client.beginBatch();
+        if (formOps.length) client.spans.bulkCreate(formOps);
+        if (lemmaOps.length) client.spans.bulkCreate(lemmaOps);
+        await client.submitBatch();
+      }
+
+      await refreshData();
+    } catch (error) {
+      console.error('Failed to set word morphemes:', error);
+      setError('Failed to set morphemes: ' + (error.message || 'Unknown error'));
+      await fetchData();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete a word token (cascades its morphemes and their spans).
+  const handleWordDelete = async (wordId) => {
+    if (saving) return;
+    try {
+      setSaving(true);
+      const client = getClient();
+      const { wordTokens, morphemeTokens, lemmaLayer } = getLayerData();
+      const word = wordTokens.find(w => w.id === wordId);
+      const removedMorphIds = new Set(word ? morphemeTokens.filter(m => contains(word, m)).map(m => m.id) : []);
+      const removedLemmaSpanIds = new Set(
+        (lemmaLayer?.spans || [])
+          .filter(s => Array.isArray(s.tokens) && s.tokens.some(t => removedMorphIds.has(t)))
+          .map(s => s.id)
+      );
+      await client.tokens.delete(wordId);
+      // Optimistic local cascade (mirrors server cascade); no refetch on success.
+      setDocument(prev => {
+        const next = JSON.parse(JSON.stringify(prev));
+        const info = getUdLayerInfo(next);
+        if (info.wordTokenLayer?.tokens) {
+          info.wordTokenLayer.tokens = info.wordTokenLayer.tokens.filter(t => t.id !== wordId);
+        }
+        if (info.morphemeTokenLayer?.tokens) {
+          info.morphemeTokenLayer.tokens = info.morphemeTokenLayer.tokens.filter(t => !removedMorphIds.has(t.id));
+        }
+        (info.morphemeTokenLayer?.spanLayers || []).forEach(sl => {
+          if (Array.isArray(sl.spans)) {
+            sl.spans = sl.spans.filter(s => !(Array.isArray(s.tokens) && s.tokens.some(t => removedMorphIds.has(t))));
+          }
+        });
+        if (info.relationLayer?.relations) {
+          info.relationLayer.relations = info.relationLayer.relations.filter(r => !removedLemmaSpanIds.has(r.source) && !removedLemmaSpanIds.has(r.target));
+        }
+        return next;
+      });
+    } catch (error) {
+      console.error('Word deletion failed:', error);
+      setError('Failed to delete word: ' + (error.message || 'Unknown error'));
+      await fetchData();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Manually create a word (e.g. from a text selection) plus its 1:1 morpheme
+  // and a default lemma. Word + morpheme go in one atomic batch (the morpheme
+  // nests in the just-created word); the lemma span follows since it needs the
+  // morpheme id.
+  const handleWordCreate = async (begin, end) => {
+    if (saving) return;
     try {
       const client = getClient();
-      console.log('Deleting MWT span:', spanId);
-      
-      await client.spans.delete(spanId);
-      console.log('MWT span deleted successfully');
-      
-      // Update client state
-      setDocument(prevDocument => {
-        const updatedDocument = JSON.parse(JSON.stringify(prevDocument));
-        const info = getUdLayerInfo(updatedDocument);
-        const mwtLayerDoc = info.mwtLayer;
-
-        if (mwtLayerDoc && Array.isArray(mwtLayerDoc.spans)) {
-          mwtLayerDoc.spans = mwtLayerDoc.spans.filter(span => span.id !== spanId);
+      const { text, sentenceTokenLayer, wordTokenLayer, morphemeTokenLayer, lemmaLayer, sentenceTokens } = getLayerData();
+      if (!text?.id || !sentenceTokenLayer?.id || !wordTokenLayer?.id || !morphemeTokenLayer?.id) {
+        throw new Error('Token layers are not fully configured');
+      }
+      // Fix #3: a word must land inside some sentence (Sentences is a
+      // partitioning layer). If sentences already tile the doc but the
+      // selection falls outside every one, refuse — adding a new sentence into
+      // an already-tiled doc would break partitioning. Only when no sentences
+      // exist yet do we transparently create one covering the whole text.
+      const selRange = { begin, end };
+      if (sentenceTokens.length > 0 && !sentenceTokens.some(s => contains(s, selRange))) {
+        setError('Selection must be inside an existing sentence');
+        return;
+      }
+      setSaving(true);
+      client.beginBatch();
+      if (sentenceTokens.length === 0) {
+        client.tokens.bulkCreate([{ tokenLayerId: sentenceTokenLayer.id, text: text.id, begin: 0, end: textContent.length }]);
+      }
+      client.tokens.bulkCreate([{ tokenLayerId: wordTokenLayer.id, text: text.id, begin, end }]);
+      client.tokens.bulkCreate([{ tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end }]);
+      const res = await client.submitBatch();
+      const sentenceId = sentenceTokens.length === 0 ? res[0]?.body?.ids?.[0] : null;
+      const wordId = res[res.length - 2]?.body?.ids?.[0];
+      const morphemeId = res[res.length - 1]?.body?.ids?.[0];
+      let lemmaSpanId = null;
+      if (lemmaLayer?.id && morphemeId) {
+        try {
+          const lr = await client.spans.bulkCreate([{ spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: textContent.substring(begin, end) }]);
+          lemmaSpanId = lr?.ids?.[0] || null;
+        } catch (lemmaError) {
+          console.error('Failed to create lemma span:', lemmaError);
         }
-
-        return updatedDocument;
+      }
+      // Optimistic local update — no refetch on success.
+      setDocument(prev => {
+        const next = JSON.parse(JSON.stringify(prev));
+        const info = getUdLayerInfo(next);
+        if (sentenceId && info.sentenceTokenLayer) {
+          if (!Array.isArray(info.sentenceTokenLayer.tokens)) info.sentenceTokenLayer.tokens = [];
+          info.sentenceTokenLayer.tokens.push({ id: sentenceId, begin: 0, end: textContent.length });
+        }
+        if (wordId && info.wordTokenLayer) {
+          if (!Array.isArray(info.wordTokenLayer.tokens)) info.wordTokenLayer.tokens = [];
+          info.wordTokenLayer.tokens.push({ id: wordId, begin, end });
+        }
+        if (morphemeId && info.morphemeTokenLayer) {
+          if (!Array.isArray(info.morphemeTokenLayer.tokens)) info.morphemeTokenLayer.tokens = [];
+          info.morphemeTokenLayer.tokens.push({ id: morphemeId, begin, end });
+        }
+        if (lemmaSpanId && morphemeId && info.lemmaLayer) {
+          if (!Array.isArray(info.lemmaLayer.spans)) info.lemmaLayer.spans = [];
+          info.lemmaLayer.spans.push({ id: lemmaSpanId, tokens: [morphemeId], value: textContent.substring(begin, end) });
+        }
+        return next;
       });
-      
+      // After the very first manual creation, treat the current text as the
+      // tokenized baseline (mirrors what tokenize does), so the dirty banner
+      // doesn't fire just because tokens now exist.
+      if (!originalTokenizedText) setOriginalTokenizedText(textContent);
     } catch (error) {
-      console.error('MWT deletion failed, refreshing:', error);
+      console.error('Word creation failed:', error);
+      setError('Failed to create word: ' + (error.message || 'Unknown error'));
       await fetchData();
-      throw error;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Adjust a word's character extent (boundary editing). Keep its morphemes in
+  // lockstep by resizing them to the new extent too — all in one atomic batch so
+  // the word and its morphemes never disagree. On success we mutate local state
+  // directly (no refetch) so keyboard nudges stay snappy.
+  const handleWordUpdate = async (wordId, begin, end) => {
+    if (saving) return;
+    try {
+      setSaving(true);
+      const client = getClient();
+      const { wordTokens, morphemeTokens } = getLayerData();
+      const word = wordTokens.find(w => w.id === wordId);
+      const morphIds = word ? morphemeTokens.filter(m => contains(word, m)).map(m => m.id) : [];
+      client.beginBatch();
+      client.tokens.update(wordId, begin, end);
+      morphIds.forEach(mid => client.tokens.update(mid, begin, end));
+      await client.submitBatch();
+      // Optimistic local update — no refetch on success.
+      setDocument(prev => {
+        const next = JSON.parse(JSON.stringify(prev));
+        const info = getUdLayerInfo(next);
+        const w = info.wordTokenLayer?.tokens?.find(t => t.id === wordId);
+        if (w) { w.begin = begin; w.end = end; }
+        morphIds.forEach(mid => {
+          const m = info.morphemeTokenLayer?.tokens?.find(t => t.id === mid);
+          if (m) { m.begin = begin; m.end = end; }
+        });
+        return next;
+      });
+    } catch (error) {
+      console.error('Word update failed:', error);
+      setError('Failed to update word: ' + (error.message || 'Unknown error'));
+      await fetchData();
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -816,21 +629,81 @@ export const TextEditor = () => {
     );
   }
 
-  const { tokens, sentenceSpans, mwtSpans } = getLayerData();
-  
+  const { sentenceTokens, wordTokens, morphemeTokens, morphemeForms } = getLayerData();
+
   // Check if text is dirty (different from what was tokenized or saved)
   const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
+  // Any tokens at all — including orphan morphemes — block re-tokenizing and
+  // surface the Clear button, matching the handler's guard.
+  const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
+
+  // Detect projects whose token layers exist but were created without the
+  // expected overlap-mode + parent chain (e.g. via an older plaid-client bundle
+  // that silently dropped those args). The data model is recoverable but server
+  // enforcement of nesting/partitioning won't kick in.
+  //
+  // Field names: the server stores `:token-layer/overlap-mode` and
+  // `:token-layer/parent-token-layer`; plaid-client transforms them to
+  // `overlapMode` and `parentTokenLayer` (namespace stripped, kebab→camel).
+  // If neither field is even present we warn — the layer is structurally
+  // unexpected and the misconfig check would silently false-positive.
+  const layerHasShape = (l) =>
+    !l || (Object.prototype.hasOwnProperty.call(l, 'overlapMode')
+      && Object.prototype.hasOwnProperty.call(l, 'parentTokenLayer'));
+  if (layerInfo.isConfigured
+      && (!layerHasShape(layerInfo.sentenceTokenLayer)
+          || !layerHasShape(layerInfo.wordTokenLayer)
+          || !layerHasShape(layerInfo.morphemeTokenLayer))) {
+    console.warn('UD token layer missing expected fields (overlapMode / parentTokenLayer). plaid-client field names may have changed.', {
+      sentence: layerInfo.sentenceTokenLayer,
+      word: layerInfo.wordTokenLayer,
+      morpheme: layerInfo.morphemeTokenLayer
+    });
+  }
+  const layersMisconfigured = Boolean(
+    layerInfo.isConfigured &&
+    layerInfo.sentenceTokenLayer && layerInfo.wordTokenLayer && layerInfo.morphemeTokenLayer &&
+    (layerInfo.sentenceTokenLayer.overlapMode !== 'partitioning' ||
+     layerInfo.wordTokenLayer.overlapMode !== 'non-overlapping' ||
+     layerInfo.wordTokenLayer.parentTokenLayer !== layerInfo.sentenceTokenLayer.id ||
+     layerInfo.morphemeTokenLayer.parentTokenLayer !== layerInfo.wordTokenLayer.id)
+  );
+
+  // Fix #8: render the project-misconfig banner directly from layerInfo
+  // instead of routing it through `setError`, which clobbered op-level errors.
+  const missingLayerLabels = !layerInfo.isConfigured
+    ? missingUdLayerLabels(layerInfo.missingLayers)
+    : [];
 
   return (
     <div>
-      <DocumentTabs 
+      <DocumentTabs
         projectId={projectId}
         documentId={documentId}
         project={project}
         document={document}
       />
 
+      {error && (
+        <div className="mb-3 mx-6 rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-800">
+          {error}
+        </div>
+      )}
 
+      {missingLayerLabels.length > 0 && (
+        <div className="mb-3 mx-6 rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+          Project configuration incomplete: {missingLayerLabels.join(', ')}.
+        </div>
+      )}
+
+      {layersMisconfigured && (
+        <div className="mb-3 mx-6 rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+          This project's token layers are missing their overlap-mode / parent
+          configuration (likely created with an older client bundle). Tokenization
+          will still work, but server-enforced nesting and partitioning won't.
+          Consider recreating the project.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         <div>
@@ -839,34 +712,34 @@ export const TextEditor = () => {
             className="w-full min-h-[300px] p-4 border-2 border-gray-300 rounded-md font-mono text-sm leading-relaxed resize-y focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             value={textContent}
             onChange={handleTextChange}
-            placeholder="Enter your text here. Use multiple newlines to separate sentences.
+            placeholder="Enter your text here. Use newlines to separate sentences.
 
 Example:
 The quick brown fox jumps over the lazy dog.
 This is a second sentence for testing."
             rows={12}
           />
-          
+
           <div className="flex items-center gap-3 mt-4">
-            <button 
+            <button
               onClick={saveText}
               disabled={saving || !textContent.trim()}
               className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
               {saving ? 'Saving...' : 'Save Text'}
             </button>
-            
-            <button 
+
+            <button
               onClick={handleTokenize}
-              disabled={saving || !textContent.trim() || isTextDirty}
+              disabled={saving || !textContent.trim() || isTextDirty || hasTokens}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              title={isTextDirty ? "Please save text changes before tokenizing" : ""}
+              title={isTextDirty ? 'Please save text changes before tokenizing' : (hasTokens ? 'Clear tokens before re-tokenizing' : '')}
             >
               {saving ? 'Processing...' : 'Whitespace Tokenize'}
             </button>
-            
-            {tokens.length > 0 && (
-              <button 
+
+            {hasTokens && (
+              <button
                 onClick={handleClearTokens}
                 disabled={saving}
                 className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
@@ -874,12 +747,12 @@ This is a second sentence for testing."
                 Clear Tokens
               </button>
             )}
-            
+
             <div className="ml-auto text-sm font-medium text-gray-600">
-              {tokens.length} token{tokens.length !== 1 ? 's' : ''}
+              {wordTokens.length} word{wordTokens.length !== 1 ? 's' : ''}, {sentenceTokens.length} sentence{sentenceTokens.length !== 1 ? 's' : ''}
             </div>
           </div>
-          
+
           <div className="mt-2 text-sm">
             {saving && <span className="text-blue-600 italic">Processing...</span>}
             {!saving && lastSaved && (
@@ -895,24 +768,22 @@ This is a second sentence for testing."
 
         <div className="border border-gray-200 rounded-md p-4 bg-gray-50">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Token Visualization</h3>
-          <TokenVisualizer 
+          <TokenVisualizer
             text={textContent}
             originalText={originalTokenizedText}
-            tokens={tokens}
-            sentenceSpans={sentenceSpans}
-            mwtSpans={mwtSpans}
-            onTokenUpdate={handleTokenUpdate}
-            onTokenDelete={handleTokenDelete}
-            onTokenCreate={handleTokenCreate}
-            onSentenceToggle={handleSentenceToggle}
-            onMwtCreate={handleMwtCreate}
-            onMwtDelete={handleMwtDelete}
+            sentenceTokens={sentenceTokens}
+            wordTokens={wordTokens}
+            morphemeTokens={morphemeTokens}
+            morphemeForms={morphemeForms}
+            onWordCreate={handleWordCreate}
+            onWordUpdate={handleWordUpdate}
+            onWordDelete={handleWordDelete}
+            onSentenceToggle={handleSentenceBoundaryToggle}
+            onSetWordMorphemes={handleSetWordMorphemes}
+            setError={setError}
           />
         </div>
       </div>
-
-
-      
     </div>
   );
 };

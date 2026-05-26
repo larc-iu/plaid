@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import {
   UD_NAMESPACE,
   UD_TEXT_CONFIG_KEY,
-  UD_TOKEN_CONFIG_KEY,
+  UD_TOKEN_CONFIG_KEYS,
   UD_SPAN_CONFIG_KEYS,
   UD_RELATION_CONFIG_KEY,
   UD_LAYER_LABELS,
@@ -12,14 +12,14 @@ import {
 } from '../../utils/udLayerUtils.js';
 import { Button, FormField, ErrorMessage } from '../ui';
 
-const SPAN_KEYS_IN_ORDER = ['lemma', 'upos', 'xpos', 'features', 'sentence', 'mwt'];
-const DEFAULT_NAMES = {
+// Span layers, in creation order, all attached to the morpheme token layer.
+const SPAN_KEYS_IN_ORDER = ['form', 'lemma', 'upos', 'xpos', 'features'];
+const SPAN_LAYER_NAMES = {
+  form: 'Form',
   lemma: 'Lemma',
   upos: 'UPOS',
   xpos: 'XPOS',
-  features: 'Features',
-  sentence: 'Sentence',
-  mwt: 'Multi-word Tokens'
+  features: 'Features'
 };
 
 export const ProjectConfiguration = () => {
@@ -36,18 +36,7 @@ export const ProjectConfiguration = () => {
   const [formData, setFormData] = useState({
     textLayerType: 'existing',
     selectedTextLayerId: '',
-    newTextLayerName: 'Text',
-    tokenLayerType: 'existing',
-    selectedTokenLayerId: '',
-    newTokenLayerName: 'Token',
-    spans: SPAN_KEYS_IN_ORDER.reduce((acc, key) => {
-      acc[key] = {
-        mode: 'existing',
-        selectedId: '',
-        newName: DEFAULT_NAMES[key]
-      };
-      return acc;
-    }, {})
+    newTextLayerName: 'Text'
   });
 
   const fetchProject = async () => {
@@ -86,158 +75,17 @@ export const ProjectConfiguration = () => {
 
   const availableTextLayers = project?.textLayers || [];
 
-  const tokenLayersByTextLayer = useMemo(() => {
-    if (!project?.textLayers) return {};
-    return project.textLayers.reduce((acc, textLayer) => {
-      acc[textLayer.id] = textLayer.tokenLayers || [];
-      return acc;
-    }, {});
-  }, [project]);
-
-  const availableTokenLayers = tokenLayersByTextLayer[formData.selectedTextLayerId] || [];
-
-  const spanLayersByTokenLayer = useMemo(() => {
-    const map = {};
-    Object.values(tokenLayersByTextLayer).forEach(tokenLayers => {
-      tokenLayers.forEach(tokenLayer => {
-        map[tokenLayer.id] = tokenLayer.spanLayers || [];
-      });
-    });
-    return map;
-  }, [tokenLayersByTextLayer]);
-
-  const availableSpanLayers = spanLayersByTokenLayer[formData.selectedTokenLayerId] || [];
-
-  // Initialize form defaults when project data becomes available
+  // Initialize the text-layer choice once project data is available.
   useEffect(() => {
     if (!project) return;
-
     const info = getUdLayerInfo(project);
-    const missingSet = new Set(info.missingLayers || []);
-
-    const hasExistingTextConfig = info.textLayer && !missingSet.has('textLayer');
-    const selectedTextLayerId = hasExistingTextConfig
-      ? info.textLayer.id
-      : (availableTextLayers[0]?.id || '');
-
-    const tokenLayersForText = tokenLayersByTextLayer[selectedTextLayerId] || [];
-    const hasExistingTokenConfig = info.tokenLayer && !missingSet.has('tokenLayer');
-
-    const initialData = {
-      textLayerType: hasExistingTextConfig ? 'existing' : (availableTextLayers.length === 0 ? 'new' : 'existing'),
-      selectedTextLayerId: hasExistingTextConfig ? info.textLayer.id : selectedTextLayerId,
-      newTextLayerName: 'Text',
-      tokenLayerType: hasExistingTokenConfig ? 'existing' : (tokenLayersForText.length === 0 ? 'new' : 'existing'),
-      selectedTokenLayerId: hasExistingTokenConfig ? info.tokenLayer.id : (tokenLayersForText[0]?.id || ''),
-      newTokenLayerName: 'Token',
-      spans: {}
-    };
-
-    if (initialData.textLayerType === 'new') {
-      initialData.selectedTextLayerId = '';
-    }
-    if (initialData.tokenLayerType === 'new') {
-      initialData.selectedTokenLayerId = '';
-    }
-
-    SPAN_KEYS_IN_ORDER.forEach(key => {
-      const layerProperty = `${key}Layer`;
-      const existingLayer = info[layerProperty];
-      const hasConfig = existingLayer && !missingSet.has(key);
-      initialData.spans[key] = {
-        mode: hasConfig ? 'existing' : 'existing',
-        selectedId: hasConfig ? existingLayer.id : '',
-        newName: DEFAULT_NAMES[key]
-      };
+    const existingTextLayerId = info.textLayer?.id || availableTextLayers[0]?.id || '';
+    setFormData({
+      textLayerType: availableTextLayers.length === 0 ? 'new' : 'existing',
+      selectedTextLayerId: existingTextLayerId,
+      newTextLayerName: 'Text'
     });
-
-    setFormData(initialData);
-  }, [project, availableTextLayers, tokenLayersByTextLayer]);
-
-  const handleTextLayerTypeChange = (mode) => {
-    setFormData(prev => ({
-      ...prev,
-      textLayerType: mode,
-      selectedTextLayerId: mode === 'existing' ? prev.selectedTextLayerId : '',
-      newTextLayerName: mode === 'new' ? (prev.newTextLayerName || 'Text') : prev.newTextLayerName,
-      // Reset token selection when text layer changes
-      tokenLayerType: mode === 'existing' ? prev.tokenLayerType : 'new',
-      selectedTokenLayerId: mode === 'existing' ? prev.selectedTokenLayerId : '',
-      spans: SPAN_KEYS_IN_ORDER.reduce((acc, key) => {
-        const previous = prev.spans[key];
-        acc[key] = {
-          mode: mode === 'existing' ? previous.mode : 'new',
-          selectedId: mode === 'existing' ? previous.selectedId : '',
-          newName: previous.newName || DEFAULT_NAMES[key]
-        };
-        return acc;
-      }, {})
-    }));
-  };
-
-  const handleTokenLayerTypeChange = (mode) => {
-    setFormData(prev => ({
-      ...prev,
-      tokenLayerType: mode,
-      selectedTokenLayerId: mode === 'existing' ? prev.selectedTokenLayerId : '',
-      newTokenLayerName: mode === 'new' ? (prev.newTokenLayerName || 'Token') : prev.newTokenLayerName,
-      spans: SPAN_KEYS_IN_ORDER.reduce((acc, key) => {
-        const previous = prev.spans[key];
-        acc[key] = {
-          mode: mode === 'existing' ? previous.mode : 'new',
-          selectedId: mode === 'existing' ? previous.selectedId : '',
-          newName: previous.newName || DEFAULT_NAMES[key]
-        };
-        return acc;
-      }, {})
-    }));
-  };
-
-  const updateSpanConfig = (key, updates) => {
-    setFormData(prev => ({
-      ...prev,
-      spans: {
-        ...prev.spans,
-        [key]: {
-          ...prev.spans[key],
-          ...updates
-        }
-      }
-    }));
-  };
-
-  const handleTextLayerSelection = (layerId) => {
-    const tokenLayers = tokenLayersByTextLayer[layerId] || [];
-    setFormData(prev => ({
-      ...prev,
-      selectedTextLayerId: layerId,
-      tokenLayerType: tokenLayers.length === 0 ? 'new' : prev.tokenLayerType,
-      selectedTokenLayerId: tokenLayers.length > 0 ? tokenLayers[0].id : '',
-      spans: SPAN_KEYS_IN_ORDER.reduce((acc, key) => {
-        const current = prev.spans[key];
-        acc[key] = {
-          ...current,
-          selectedId: current.mode === 'existing' ? '' : current.selectedId
-        };
-        return acc;
-      }, {})
-    }));
-  };
-
-  const handleTokenLayerSelection = (layerId) => {
-    setFormData(prev => ({
-      ...prev,
-      selectedTokenLayerId: layerId,
-      spans: SPAN_KEYS_IN_ORDER.reduce((acc, key) => {
-        const current = prev.spans[key];
-        acc[key] = {
-          ...current,
-          selectedId: current.mode === 'existing' ? '' : current.selectedId
-        };
-        return acc;
-      }, {})
-    }));
-  };
+  }, [project]);
 
   const validateForm = () => {
     if (formData.textLayerType === 'existing' && !formData.selectedTextLayerId) {
@@ -246,42 +94,27 @@ export const ProjectConfiguration = () => {
     if (formData.textLayerType === 'new' && !formData.newTextLayerName.trim()) {
       return 'Provide a name for the new text layer.';
     }
-    if (formData.tokenLayerType === 'existing' && !formData.selectedTokenLayerId) {
-      return 'Select a token layer or choose to create a new one.';
-    }
-    if (formData.tokenLayerType === 'new' && !formData.newTokenLayerName.trim()) {
-      return 'Provide a name for the new token layer.';
-    }
-
-    for (const key of SPAN_KEYS_IN_ORDER) {
-      const config = formData.spans[key];
-      const canUseExisting = formData.tokenLayerType === 'existing' && availableSpanLayers.length > 0;
-      if (config.mode === 'existing') {
-        if (!canUseExisting) {
-          continue;
-        }
-        if (!config.selectedId) {
-          return `Select an existing layer for ${UD_LAYER_LABELS[key]} or choose to create a new one.`;
-        }
-      }
-      if (config.mode === 'new' && !config.newName.trim()) {
-        return `Provide a name for the new ${UD_LAYER_LABELS[key].toLowerCase()}.`;
-      }
-    }
-
     return '';
   };
 
-  const createOrSelectSpanLayer = async (client, tokenLayerId, key, config) => {
-    if (config.mode === 'existing') {
-      await client.spanLayers.setConfig(config.selectedId, UD_NAMESPACE, UD_SPAN_CONFIG_KEYS[key], true);
-      return config.selectedId;
-    }
+  // Find an existing UD-flagged child layer (idempotent re-configuration), else null.
+  const findFlagged = (layers, namespace, key) =>
+    (layers || []).find(layer => layer.config?.[namespace]?.[key] === true) || null;
 
-    const name = config.newName?.trim() || DEFAULT_NAMES[key];
-    const spanLayer = await client.spanLayers.create(tokenLayerId, name);
-    await client.spanLayers.setConfig(spanLayer.id, UD_NAMESPACE, UD_SPAN_CONFIG_KEYS[key], true);
-    return spanLayer.id;
+  const ensureTokenLayer = async (client, textLayerId, existingTextLayer, configKey, name, overlapMode, parentId) => {
+    const existing = findFlagged(existingTextLayer?.tokenLayers, UD_NAMESPACE, configKey);
+    if (existing) return existing;
+    const created = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
+    await client.tokenLayers.setConfig(created.id, UD_NAMESPACE, configKey, true);
+    return created;
+  };
+
+  const ensureSpanLayer = async (client, morphemeLayerId, existingMorphemeLayer, configKey, name) => {
+    const existing = findFlagged(existingMorphemeLayer?.spanLayers, UD_NAMESPACE, configKey);
+    if (existing) return existing;
+    const created = await client.spanLayers.create(morphemeLayerId, name);
+    await client.spanLayers.setConfig(created.id, UD_NAMESPACE, configKey, true);
+    return created;
   };
 
   const handleSubmit = async (event) => {
@@ -302,49 +135,54 @@ export const ProjectConfiguration = () => {
         throw new Error('Not authenticated');
       }
 
+      // Sequential awaits (not batched) are deliberate here: the
+      // `ensureTokenLayer`/`ensureSpanLayer` helpers below short-circuit when a
+      // UD-flagged layer already exists, which makes a partial-failure re-run
+      // safe (idempotent). Wrapping these in a batch would defeat that — we
+      // need the in-memory result of each ensure-check to decide the next op.
+      // The trade-off (no per-step atomicity) is acceptable because re-running
+      // this form picks up where it left off.
+      //
       // 1. Text layer
       let textLayerId = formData.selectedTextLayerId;
+      let existingTextLayer = availableTextLayers.find(l => l.id === textLayerId) || null;
       if (formData.textLayerType === 'new') {
         const name = formData.newTextLayerName.trim() || 'Text';
         const textLayer = await client.textLayers.create(projectId, name);
         textLayerId = textLayer.id;
+        existingTextLayer = null;
       }
       await client.textLayers.setConfig(textLayerId, UD_NAMESPACE, UD_TEXT_CONFIG_KEY, true);
 
-      // 2. Token layer
-      let tokenLayerId = formData.selectedTokenLayerId;
-      if (formData.tokenLayerType === 'new') {
-        const name = formData.newTokenLayerName.trim() || 'Token';
-        const tokenLayer = await client.tokenLayers.create(textLayerId, name);
-        tokenLayerId = tokenLayer.id;
-      }
-      await client.tokenLayers.setConfig(tokenLayerId, UD_NAMESPACE, UD_TOKEN_CONFIG_KEY, true);
+      // 2. Token-layer hierarchy: sentences (partitioning) > words (non-overlapping) > morphemes (any)
+      const sentenceLayer = await ensureTokenLayer(
+        client, textLayerId, existingTextLayer,
+        UD_TOKEN_CONFIG_KEYS.sentence, 'Sentences', 'partitioning', undefined
+      );
+      const wordLayer = await ensureTokenLayer(
+        client, textLayerId, existingTextLayer,
+        UD_TOKEN_CONFIG_KEYS.word, 'Words', 'non-overlapping', sentenceLayer.id
+      );
+      const morphemeLayer = await ensureTokenLayer(
+        client, textLayerId, existingTextLayer,
+        UD_TOKEN_CONFIG_KEYS.morpheme, 'Morphemes', 'any', wordLayer.id
+      );
 
-      // 3. Span layers
-      const spanLayerIds = {};
+      // 3. Annotation span layers, all under the morpheme layer
+      const existingMorphemeLayer = findFlagged(existingTextLayer?.tokenLayers, UD_NAMESPACE, UD_TOKEN_CONFIG_KEYS.morpheme);
+      const spanLayers = {};
       for (const key of SPAN_KEYS_IN_ORDER) {
-        const config = formData.spans[key];
-        const spanLayerId = await createOrSelectSpanLayer(client, tokenLayerId, key, config);
-        spanLayerIds[key] = spanLayerId;
+        spanLayers[key] = await ensureSpanLayer(
+          client, morphemeLayer.id, existingMorphemeLayer, UD_SPAN_CONFIG_KEYS[key], SPAN_LAYER_NAMES[key]
+        );
       }
 
-      // 4. Relation layer for lemma
-      const lemmaLayerId = spanLayerIds.lemma;
-      let relationLayerId = null;
-      const selectedTokenLayer = availableTokenLayers.find(layer => layer.id === tokenLayerId) || null;
-      const existingLemmaLayer = selectedTokenLayer?.spanLayers?.find(layer => layer.id === lemmaLayerId);
-
-      const relationCandidates = existingLemmaLayer?.relationLayers || [];
-      relationLayerId = relationCandidates.find(layer => layer.config?.ud?.[UD_RELATION_CONFIG_KEY] === true)?.id
-        || relationCandidates[0]?.id
-        || null;
-
-      if (!relationLayerId) {
-        const relationLayer = await client.relationLayers.create(lemmaLayerId, 'Dependency Relations');
-        relationLayerId = relationLayer.id;
+      // 4. Dependency relation layer under the lemma span layer
+      const existingRelationLayer = findFlagged(spanLayers.lemma?.relationLayers, UD_NAMESPACE, UD_RELATION_CONFIG_KEY);
+      if (!existingRelationLayer) {
+        const relationLayer = await client.relationLayers.create(spanLayers.lemma.id, 'Dependency Relations');
+        await client.relationLayers.setConfig(relationLayer.id, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
       }
-
-      await client.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
 
       await fetchProject();
       setSuccessMessage('UD layer configuration saved successfully.');
@@ -365,7 +203,9 @@ export const ProjectConfiguration = () => {
   }
 
   const info = getUdLayerInfo(project);
-  const missingLabels = info.missingLayers?.length ? info.missingLayers.map(key => UD_LAYER_LABELS[key] || key).join(', ') : '';
+  const missingLabels = info.missingLayers?.length
+    ? info.missingLayers.map(key => UD_LAYER_LABELS[key] || key).join(', ')
+    : '';
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -373,8 +213,12 @@ export const ProjectConfiguration = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Configure UD Layers</h1>
           <p className="text-gray-600 mt-1">Project: {project.name}</p>
-          {missingLabels && (
-            <p className="text-sm text-amber-600 mt-2">Missing configuration detected for: {missingLabels}</p>
+          {info.isConfigured ? (
+            <p className="text-sm text-green-600 mt-2">All Universal Dependencies layers are configured.</p>
+          ) : (
+            missingLabels && (
+              <p className="text-sm text-amber-600 mt-2">Missing configuration detected for: {missingLabels}</p>
+            )
           )}
         </div>
         <Link
@@ -402,7 +246,8 @@ export const ProjectConfiguration = () => {
                   type="radio"
                   className="text-blue-600 focus:ring-blue-500"
                   checked={formData.textLayerType === 'existing'}
-                  onChange={() => handleTextLayerTypeChange('existing')}
+                  onChange={() => setFormData(prev => ({ ...prev, textLayerType: 'existing' }))}
+                  disabled={availableTextLayers.length === 0}
                 />
                 Use existing
               </label>
@@ -411,7 +256,7 @@ export const ProjectConfiguration = () => {
                   type="radio"
                   className="text-blue-600 focus:ring-blue-500"
                   checked={formData.textLayerType === 'new'}
-                  onChange={() => handleTextLayerTypeChange('new')}
+                  onChange={() => setFormData(prev => ({ ...prev, textLayerType: 'new' }))}
                 />
                 Create new
               </label>
@@ -422,7 +267,7 @@ export const ProjectConfiguration = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Select text layer</label>
                 <select
                   value={formData.selectedTextLayerId}
-                  onChange={(e) => handleTextLayerSelection(e.target.value)}
+                  onChange={(e) => setFormData(prev => ({ ...prev, selectedTextLayerId: e.target.value }))}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
                 >
                   <option value="">Select a text layer</option>
@@ -444,126 +289,18 @@ export const ProjectConfiguration = () => {
         </section>
 
         <section className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Token Layer</h2>
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="radio"
-                  className="text-blue-600 focus:ring-blue-500"
-                  checked={formData.tokenLayerType === 'existing'}
-                  onChange={() => handleTokenLayerTypeChange('existing')}
-                  disabled={formData.textLayerType === 'new'}
-                />
-                Use existing
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="radio"
-                  className="text-blue-600 focus:ring-blue-500"
-                  checked={formData.tokenLayerType === 'new'}
-                  onChange={() => handleTokenLayerTypeChange('new')}
-                />
-                Create new
-              </label>
-            </div>
-
-            {formData.tokenLayerType === 'existing' ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select token layer</label>
-                <select
-                  value={formData.selectedTokenLayerId}
-                  onChange={(e) => handleTokenLayerSelection(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                >
-                  <option value="">Select a token layer</option>
-                  {availableTokenLayers.map(layer => (
-                    <option key={layer.id} value={layer.id}>{layer.name} ({layer.id})</option>
-                  ))}
-                </select>
-                {availableTokenLayers.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-1">No token layers found for the selected text layer.</p>
-                )}
-              </div>
-            ) : (
-              <FormField
-                label="New token layer name"
-                name="newTokenLayerName"
-                value={formData.newTokenLayerName}
-                onChange={(e) => setFormData(prev => ({ ...prev, newTokenLayerName: e.target.value }))}
-                placeholder="e.g. Tokens"
-              />
-            )}
-          </div>
-        </section>
-
-        <section className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Annotation Layers</h2>
-          <p className="text-sm text-gray-600 mb-4">Select or create span layers for each Universal Dependencies annotation.</p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {SPAN_KEYS_IN_ORDER.map(key => {
-              const config = formData.spans[key];
-              const disableExisting = formData.tokenLayerType === 'new' || availableSpanLayers.length === 0;
-
-              return (
-                <div key={key} className="border border-gray-200 rounded-md p-4 bg-gray-50">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-3">{UD_LAYER_LABELS[key]}</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-4">
-                      <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="radio"
-                          className="text-blue-600 focus:ring-blue-500"
-                          checked={config.mode === 'existing'}
-                          onChange={() => updateSpanConfig(key, { mode: 'existing' })}
-                          disabled={disableExisting}
-                        />
-                        Use existing
-                      </label>
-                      <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="radio"
-                          className="text-blue-600 focus:ring-blue-500"
-                          checked={config.mode === 'new'}
-                          onChange={() => updateSpanConfig(key, { mode: 'new' })}
-                        />
-                        Create new
-                      </label>
-                    </div>
-
-                    {config.mode === 'existing' ? (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Select span layer</label>
-                        <select
-                          value={config.selectedId}
-                          onChange={(e) => updateSpanConfig(key, { selectedId: e.target.value })}
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                          disabled={disableExisting}
-                        >
-                          <option value="">Select a span layer</option>
-                          {availableSpanLayers.map(layer => (
-                            <option key={layer.id} value={layer.id}>{layer.name} ({layer.id})</option>
-                          ))}
-                        </select>
-                        {disableExisting && (
-                          <p className="text-xs text-gray-500 mt-1">Existing layers unavailable until token layer is selected.</p>
-                        )}
-                      </div>
-                    ) : (
-                      <FormField
-                        label="New layer name"
-                        name={`${key}-new-name`}
-                        value={config.newName}
-                        onChange={(e) => updateSpanConfig(key, { newName: e.target.value })}
-                        placeholder={DEFAULT_NAMES[key]}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Token Hierarchy &amp; Annotations</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Saving creates (or completes) the three-layer token hierarchy and the annotation layers below.
+            Existing UD-flagged layers are reused, so this is safe to re-run.
+          </p>
+          <ul className="text-sm text-gray-700 space-y-1 ml-4 list-disc">
+            <li><span className="font-medium">Sentences</span> token layer (partitioning)</li>
+            <li><span className="font-medium">Words</span> token layer (non-overlapping, nested in sentences)</li>
+            <li><span className="font-medium">Morphemes</span> token layer (overlap allowed, nested in words)</li>
+            <li>Span layers on morphemes: Form, Lemma, UPOS, XPOS, Features</li>
+            <li>Dependency relation layer on the Lemma layer</li>
+          </ul>
         </section>
 
         <div className="flex justify-end gap-3">

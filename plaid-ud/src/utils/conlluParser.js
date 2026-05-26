@@ -66,8 +66,11 @@ export function parseCoNLLU(text) {
       };
     }
     
-    // Skip ellipsis tokens (e.g., "4.1")
+    // Skip ellipsis tokens (e.g., "4.1"). The UD format uses decimal IDs for
+    // empty nodes (enhanced dependencies) which we don't currently model — warn
+    // so round-trip data loss is visible to the user.
     if (id.includes('.')) {
+      console.warn(`Dropping CoNLL-U ellipsis token (decimal ID): ${id} — empty nodes are not preserved on round-trip`);
       continue;
     }
     
@@ -142,77 +145,123 @@ export function parseCoNLLU(text) {
 }
 
 /**
- * Reconstruct text from parsed CoNLL-U data
- * Each sentence on a new line, tokens space-separated
+ * Build the sentence > word > morpheme hierarchy with global character offsets
+ * from parsed CoNLL-U data, for import into the three-layer token model.
+ *
+ * - Sentences tile the reconstructed text [0, len) gap-free; the newline that
+ *   separates two sentences belongs to the preceding sentence.
+ * - Each surface token becomes a WORD: a multiword token (range id) spans its
+ *   member rows; an ordinary integer row is a 1:1 word.
+ * - Each integer-id row becomes a MORPHEME that inhabits the FULL width of its
+ *   word (MWT components all share the word's extent, ordered by precedence).
+ *
+ * Returns:
+ *   {
+ *     text,                       // reconstructed document body
+ *     sentences: [{
+ *       begin, end, metadata,
+ *       words: [{
+ *         begin, end, isMwt, surfaceForm,
+ *         morphemes: [{ begin, end, precedence, row }]   // row = the parsed integer-id token
+ *       }]
+ *     }]
+ *   }
  */
-export function reconstructText(parsedData) {
-  return parsedData.sentences
-    .map(sentence => {
-      // Prefer # text metadata if available
-      if (sentence.metadata && sentence.metadata.text) {
-        return sentence.metadata.text;
-      }
-      // Fallback to concatenating token forms
-      return sentence.tokens.map(token => token.form).join(' ');
-    })
-    .join('\n');
-}
+export function buildConlluHierarchy(parsedData) {
+  // Group a sentence's integer-id rows into surface units (words). A multiword
+  // token covers its member rows; every other row is its own 1:1 unit.
+  const surfaceUnitsForSentence = (sentence) => {
+    const mwtByStart = new Map();
+    (sentence.multiWordTokens || []).forEach(m => mwtByStart.set(m.start, m));
 
-/**
- * Calculate token positions in reconstructed text
- * Returns array of { begin, end } for each token
- */
-export function calculateTokenPositions(parsedData, reconstructedText) {
-  const positions = [];
-  const sentences = reconstructedText.split('\n');
-  let globalPos = 0;
-  
-  for (let sentIdx = 0; sentIdx < parsedData.sentences.length; sentIdx++) {
-    const sentence = parsedData.sentences[sentIdx];
-    const sentenceText = sentences[sentIdx] || '';
-    const sentencePositions = [];
-    
-    let searchPos = 0;
-    
-    for (let i = 0; i < sentence.tokens.length; i++) {
-      const token = sentence.tokens[i];
-      const tokenForm = token.form;
-      
-      // Find the token in the sentence text starting from searchPos
-      const tokenStart = sentenceText.indexOf(tokenForm, searchPos);
-      
-      if (tokenStart === -1) {
-        // Fallback: if token not found, use simple space-separated positioning
-        const beforeTokens = sentence.tokens.slice(0, i).map(t => t.form).join(' ');
-        const tokenBegin = globalPos + (beforeTokens ? beforeTokens.length + 1 : 0);
-        const tokenEnd = tokenBegin + tokenForm.length;
-        
-        sentencePositions.push({
-          begin: tokenBegin,
-          end: tokenEnd
+    const units = [];
+    const rows = sentence.tokens;
+    let i = 0;
+    while (i < rows.length) {
+      const mwt = mwtByStart.get(rows[i].id);
+      if (mwt && mwt.end > mwt.start) {
+        const startIdx = mwt.start - 1;
+        const endIdx = mwt.end - 1;
+        const members = rows.slice(startIdx, endIdx + 1);
+        units.push({
+          surfaceForm: mwt.form || members.map(r => r.form).join(''),
+          isMwt: true,
+          members,
+          misc: mwt.misc || null
         });
+        i = endIdx + 1;
       } else {
-        // Token found: use actual position
-        sentencePositions.push({
-          begin: globalPos + tokenStart,
-          end: globalPos + tokenStart + tokenForm.length
-        });
-        
-        // Update search position for next token
-        searchPos = tokenStart + tokenForm.length;
+        units.push({ surfaceForm: rows[i].form, isMwt: false, members: [rows[i]], misc: null });
+        i += 1;
       }
     }
-    
-    positions.push(sentencePositions);
-    
-    // Update global position for next sentence
-    globalPos += sentenceText.length;
-    
-    // Add newline after sentence (except last sentence)
-    if (sentIdx < parsedData.sentences.length - 1) {
-      globalPos += 1;
+    return units;
+  };
+
+  // Locate each surface unit's [begin, end] within its sentence text.
+  // When a unit's form can't be located (e.g. CJK / no-space scripts where
+  // `# text = ...` doesn't contain the literal form, or when the metadata text
+  // is missing), fall back to a deterministic, gap-free synthetic placement:
+  // begin = previous.end, end = begin + form.length. This preserves the
+  // Words-in-Sentence tiling invariant even though offsets won't match the
+  // original text. We warn so the user knows the offsets are synthetic.
+  const locateUnits = (sentenceText, units) => {
+    const positions = [];
+    let searchPos = 0;
+    let warnedSyntheticOffsets = false;
+    for (const unit of units) {
+      const form = unit.surfaceForm || '';
+      const idx = form ? sentenceText.indexOf(form, searchPos) : -1;
+      if (idx === -1) {
+        if (!warnedSyntheticOffsets) {
+          console.warn(
+            `CoNLL-U import: could not locate form "${form}" in sentence text; ` +
+            `using synthetic gap-free offsets for this sentence (positions will not match the original text).`
+          );
+          warnedSyntheticOffsets = true;
+        }
+        const begin = positions.length === 0 ? 0 : positions[positions.length - 1].end;
+        positions.push({ begin, end: begin + form.length });
+        searchPos = begin + form.length;
+      } else {
+        positions.push({ begin: idx, end: idx + form.length });
+        searchPos = idx + form.length;
+      }
     }
-  }
-  
-  return positions;
+    return positions;
+  };
+
+  let text = '';
+  const sentences = [];
+
+  parsedData.sentences.forEach((sentence, sentIdx) => {
+    const units = surfaceUnitsForSentence(sentence);
+    const sentenceText = (sentence.metadata && sentence.metadata.text)
+      ? sentence.metadata.text
+      : units.map(u => u.surfaceForm).join(' ');
+
+    const sentenceStart = text.length;
+    text += sentenceText;
+    const isLast = sentIdx === parsedData.sentences.length - 1;
+    if (!isLast) text += '\n';
+    const sentenceEnd = text.length; // includes the trailing newline for non-last sentences
+
+    const unitPositions = locateUnits(sentenceText, units);
+
+    const words = units.map((unit, unitIdx) => {
+      const begin = sentenceStart + unitPositions[unitIdx].begin;
+      const end = sentenceStart + unitPositions[unitIdx].end;
+      const morphemes = unit.members.map((row, mi) => ({ begin, end, precedence: mi, row }));
+      return { begin, end, isMwt: unit.isMwt, surfaceForm: unit.surfaceForm, morphemes, misc: unit.misc };
+    });
+
+    sentences.push({
+      begin: sentenceStart,
+      end: sentenceEnd,
+      metadata: sentence.metadata || {},
+      words
+    });
+  });
+
+  return { text, sentences };
 }

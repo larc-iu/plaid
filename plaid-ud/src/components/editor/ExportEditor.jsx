@@ -1,329 +1,160 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDocumentData } from './hooks/useDocumentData.js';
+import { useSentenceData } from './hooks/useSentenceData.js';
 import { getUdLayerInfo, missingUdLayerLabels } from '../../utils/udLayerUtils.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
+
+const UNDERSCORE = '_';
 
 export const ExportEditor = () => {
   const { projectId, documentId } = useParams();
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
-  
-  const { 
-    document, 
-    project, 
-    loading, 
-    error 
+
+  const {
+    document: doc,
+    project,
+    loading,
+    error
   } = useDocumentData(projectId, documentId);
+
+  // Reuse the annotation read model: each sentence row's `tokens` are morphemes
+  // (the numbered CoNLL-U rows), grouped under words (multiword tokens).
+  const sentenceData = useSentenceData(doc);
 
   // Generate CoNLL-U format from document data
   const conlluContent = useMemo(() => {
-    if (!document) return '';
+    if (!doc) return '';
 
-    const layerInfo = getUdLayerInfo(document);
-
+    const layerInfo = getUdLayerInfo(doc);
     if (!layerInfo.isConfigured) {
       const missing = missingUdLayerLabels(layerInfo.missingLayers);
       const missingList = missing.length > 0 ? missing.join(', ') : 'required UD layers';
       return `# Project configuration incomplete: ${missingList}`;
     }
 
-    const {
-      textLayer,
-      tokenLayer,
-      lemmaLayer,
-      uposLayer,
-      xposLayer,
-      featuresLayer,
-      sentenceLayer,
-      mwtLayer,
-      relationLayer
-    } = layerInfo;
-
-    const text = textLayer?.text;
-    const tokens = tokenLayer?.tokens || [];
-    
-    if (!text?.body || tokens.length === 0) {
+    if (!sentenceData || sentenceData.length === 0) {
       return '# No tokenized content available';
     }
 
-    const relations = relationLayer?.relations || [];
-    
-    // Sort tokens by position, then by precedence if available
-    const sortedTokens = [...tokens].sort((a, b) => {
-      if (a.begin !== b.begin) return a.begin - b.begin;
-      // Use precedence if available, otherwise maintain order
-      const aPrecedence = a.precedence ?? 0;
-      const bPrecedence = b.precedence ?? 0;
-      return aPrecedence - bPrecedence;
-    });
-    
-    // Find sentence boundaries
-    const sentenceSpans = sentenceLayer?.spans || [];
-    const sentenceStartTokenIds = new Set(
-      sentenceSpans.map(span => {
-        if (span.tokens && span.tokens.length > 0) {
-          return span.tokens[0];
-        }
-        return span.begin;
-      }).filter(id => id != null)
-    );
-
-    // Group tokens into sentences
-    const tokenSentences = [];
-    let currentSentence = [];
-    
-    for (const token of sortedTokens) {
-      if (sentenceStartTokenIds.has(token.id) && currentSentence.length > 0) {
-        tokenSentences.push(currentSentence);
-        currentSentence = [];
-      }
-      currentSentence.push(token);
-    }
-    
-    if (currentSentence.length > 0) {
-      tokenSentences.push(currentSentence);
-    }
-
-    // If no sentence boundaries, treat all tokens as one sentence
-    if (tokenSentences.length === 0 && sortedTokens.length > 0) {
-      tokenSentences.push(sortedTokens);
-    }
-
-    // Helper function to get span value for a token
-    const getSpanValue = (tokenId, layer) => {
-      if (!layer?.spans) return null;
-      
-      const span = layer.spans.find(span => {
-        const spanTokens = span.tokens || [span.begin];
-        return spanTokens.includes(tokenId);
-      });
-      
-      return span?.value || null;
+    const esc = (v) => (v == null || v === '') ? UNDERSCORE : String(v);
+    const serializeFeats = (feats) => {
+      if (!feats || feats.length === 0) return UNDERSCORE;
+      const values = feats.map(f => f.value).filter(Boolean).sort();
+      return values.length > 0 ? values.join('|') : UNDERSCORE;
     };
 
-    // Helper function to get feature spans for a token
-    const getFeatureSpans = (tokenId) => {
-      if (!featuresLayer?.spans) return [];
-      
-      return featuresLayer.spans.filter(span => {
-        const spanTokens = span.tokens || [span.begin];
-        return spanTokens.includes(tokenId) && span.value;
-      });
-    };
-
-    // Helper function to serialize features
-    const serializeFeatures = (featureSpans) => {
-      if (featureSpans.length === 0) return '_';
-      
-      // Sort features alphabetically by value for consistency
-      const sortedFeatures = featureSpans
-        .map(span => span.value)
-        .sort();
-      
-      return sortedFeatures.join('|');
-    };
-
-    // Helper function to get MWT spans for sentence tokens
-    const getMwtSpansForSentence = (sentenceTokens) => {
-      if (!mwtLayer?.spans) return [];
-      
-      const sentenceTokenIds = sentenceTokens.map(t => t.id);
-      return mwtLayer.spans.filter(span => {
-        const spanTokens = span.tokens || [];
-        // Check if any of the span's tokens are in this sentence
-        return spanTokens.some(tokenId => sentenceTokenIds.includes(tokenId));
-      }).map(span => {
-        const spanTokens = span.tokens || [];
-        // Find start and end positions within this sentence
-        const startIndex = Math.min(...spanTokens.map(tokenId => sentenceTokenIds.indexOf(tokenId)).filter(idx => idx !== -1));
-        const endIndex = Math.max(...spanTokens.map(tokenId => sentenceTokenIds.indexOf(tokenId)).filter(idx => idx !== -1));
-        
-        // Compute form from constituent tokens
-        const mwtTokens = spanTokens
-          .map(tokenId => sentenceTokens.find(t => t.id === tokenId))
-          .filter(Boolean)
-          .sort((a, b) => a.begin - b.begin);
-        const form = mwtTokens.map(token => text.body.slice(token.begin, token.end)).join('');
-        
-        return {
-          start: startIndex + 1, // Convert to 1-based
-          end: endIndex + 1,     // Convert to 1-based
-          form: form,
-          misc: span.metadata?.misc || '_'
-        };
-      }).sort((a, b) => a.start - b.start); // Sort by start position
-    };
-
-    // Helper function to find incoming relation for a token
-    const findIncomingRelation = (tokenId) => {
-      if (!lemmaLayer?.spans || !relations.length) return { head: '_', deprel: '_' };
-      
-      // Find lemma span for this token
-      const lemmaSpan = lemmaLayer.spans.find(span => {
-        const spanTokens = span.tokens || [span.begin];
-        return spanTokens.includes(tokenId);
-      });
-      
-      if (!lemmaSpan) return { head: '_', deprel: '_' };
-      
-      // Find relation where this lemma span is the target
-      const incomingRelation = relations.find(rel => rel.target === lemmaSpan.id);
-      
-      if (!incomingRelation) return { head: '_', deprel: '_' };
-      
-      // Check if this is a root edge (self-referencing relation)
-      if (incomingRelation.source === incomingRelation.target) {
-        return { head: 0, deprel: incomingRelation.value || '_' };
-      }
-      
-      // Find source lemma span
-      const sourceSpan = lemmaLayer.spans.find(span => span.id === incomingRelation.source);
-      if (!sourceSpan) return { head: '_', deprel: '_' };
-      
-      // Find first token of source span
-      const sourceTokenId = sourceSpan.tokens?.[0] || sourceSpan.begin;
-      if (!sourceTokenId) return { head: '_', deprel: '_' };
-      
-      // Find the position of source token in the current sentence
-      const sentenceTokenIds = tokenSentences.flat().map(t => t.id);
-      const sourceIndex = sentenceTokenIds.indexOf(sourceTokenId);
-      const targetIndex = sentenceTokenIds.indexOf(tokenId);
-      
-      // Both tokens must be in the same sentence
-      let currentSentenceStartIndex = 0;
-      for (const sentence of tokenSentences) {
-        const sentenceTokenIds = sentence.map(t => t.id);
-        const sentenceSourceIndex = sentenceTokenIds.indexOf(sourceTokenId);
-        const sentenceTargetIndex = sentenceTokenIds.indexOf(tokenId);
-        
-        if (sentenceTargetIndex !== -1 && sentenceSourceIndex !== -1) {
-          // Both tokens are in this sentence
-          return {
-            head: sentenceSourceIndex + 1, // 1-based index
-            deprel: incomingRelation.value || '_'
-          };
-        }
-        
-        currentSentenceStartIndex += sentence.length;
-      }
-      
-      // Tokens are in different sentences or not found
-      return { head: '_', deprel: '_' };
-    };
-
-    // Generate CoNLL-U output
     const output = [];
-    
-    // Add document metadata
-    output.push(`# newdoc id = ${document.name || 'unknown'}`);
-    
-    // Process each sentence
-    tokenSentences.forEach((sentenceTokens, sentenceIndex) => {
-      // Add blank line before sentence (except for first sentence)
-      if (sentenceIndex > 0) {
-        output.push('');
-      }
-      
-      // Add sentence metadata
-      output.push(`# sent_id = ${document.name || 'unknown'}-${sentenceIndex + 1}`);
-      
-      // Find the sentence span for this sentence to get metadata
-      let hasTextMetadata = false;
-      if (sentenceSpans.length > 0 && sentenceTokens.length > 0) {
-        const firstTokenId = sentenceTokens[0].id;
-        const sentenceSpan = sentenceSpans.find(span => {
-          const spanTokens = span.tokens || [span.begin];
-          return spanTokens.includes(firstTokenId);
-        });
-        
-        // Add sentence metadata if found
-        if (sentenceSpan && sentenceSpan.metadata) {
-          const metadata = sentenceSpan.metadata;
-          
-          // Sort metadata keys alphabetically (excluding special keys that go at top)
-          const sortedKeys = Object.keys(metadata).sort();
-          
-          sortedKeys.forEach(key => {
-            const value = metadata[key];
-            if (key === 'text') {
-              hasTextMetadata = true;
-            }
-            if (value === true) {
-              // Handle boolean metadata (just the key)
-              output.push(`# ${key}`);
-            } else {
-              // Handle key-value metadata
-              output.push(`# ${key} = ${value}`);
-            }
-          });
-        }
-      }
-      
-      // Add sentence text only if not already provided in metadata
-      if (!hasTextMetadata) {
-        const sentenceText = sentenceTokens.map(token => 
-          text.body.substring(token.begin, token.end)
-        ).join(' ');
-        output.push(`# text = ${sentenceText}`);
-      }
-      
-      // Get MWT spans for this sentence
-      const mwtSpans = getMwtSpansForSentence(sentenceTokens);
-      
-      // Process each token with MWT line insertion
-      sentenceTokens.forEach((token, tokenIndex) => {
-        const id = tokenIndex + 1;
-        
-        // Check if we need to output MWT lines before this token
-        const mwtStartingHere = mwtSpans.filter(mwt => mwt.start === id);
-        for (const mwt of mwtStartingHere) {
-          // Output MWT line: "start-end\tform\t_\t_\t_\t_\t_\t_\t_\tmisc"
-          const mwtRow = [
-            `${mwt.start}-${mwt.end}`,
-            mwt.form,
-            '_',
-            '_',
-            '_',
-            '_',
-            '_',
-            '_',
-            '_',
-            mwt.misc
-          ].join('\t');
-          output.push(mwtRow);
-        }
-        
-        // Output regular token line
-        const form = text.body.substring(token.begin, token.end);
-        const lemma = getSpanValue(token.id, lemmaLayer) || '_';
-        const upos = getSpanValue(token.id, uposLayer) || '_';
-        const xpos = getSpanValue(token.id, xposLayer) || '_';
-        const feats = serializeFeatures(getFeatureSpans(token.id));
-        
-        const { head, deprel } = findIncomingRelation(token.id);
-        const deps = (head === 0 || deprel === '_') ? '_' : `${head}:${deprel}`;
-        const misc = '_';
-        
-        // Format as tab-separated values
-        const row = [
-          id,
-          form,
-          lemma,
-          upos,
-          xpos,
-          feats,
-          head,
-          deprel,
-          deps,
-          misc
-        ].join('\t');
-        
-        output.push(row);
+    output.push(`# newdoc id = ${doc.name || 'unknown'}`);
+
+    sentenceData.forEach((sentence, sentIdx) => {
+      if (sentIdx > 0) output.push('');
+
+      const morphemes = sentence.tokens; // ordered; one per CoNLL-U numbered row
+
+      // lemma span id -> 1-based row id (for head resolution)
+      const idByLemmaSpanId = new Map();
+      morphemes.forEach((m, i) => {
+        if (m.spanIds?.lemma) idByLemmaSpanId.set(m.spanIds.lemma, i + 1);
       });
+
+      // incoming dependency relation per target lemma span id
+      const incomingByTarget = new Map();
+      (sentence.relations || []).forEach(rel => incomingByTarget.set(rel.target, rel));
+
+      // Prefer a `sent_id` carried on the sentence token's metadata (round-tripped
+      // from import); otherwise synthesize one from the doc name + index.
+      const sentMeta = sentence.sentenceToken?.metadata || {};
+      const sentIdFromMeta = sentMeta.sent_id;
+      if (sentIdFromMeta) {
+        output.push(`# sent_id = ${sentIdFromMeta}`);
+      } else {
+        output.push(`# sent_id = ${doc.name || 'unknown'}-${sentIdx + 1}`);
+      }
+      // Emit any arbitrary `# k = v` metadata carried on the sentence token,
+      // sorted alphabetically (matches the original exporter's behavior). If
+      // the metadata supplies `text`, the loop emits it; otherwise we fall back
+      // to the sentence's substring of the document body. Don't join morpheme
+      // forms — MWT morphemes share a span and would yield wrong text
+      // (e.g. "de les" instead of "des"). Skip `sent_id` (already emitted above).
+      let hasTextMetadata = false;
+      Object.keys(sentMeta).sort().forEach(key => {
+        if (key === 'sent_id') return;
+        const value = sentMeta[key];
+        if (key === 'text') hasTextMetadata = true;
+        if (value === true) output.push(`# ${key}`);
+        else output.push(`# ${key} = ${value}`);
+      });
+      if (!hasTextMetadata) {
+        output.push(`# text = ${(sentence.text || '').trim()}`);
+      }
+
+      let i = 0;
+      while (i < morphemes.length) {
+        const word = morphemes[i].word;
+
+        // Gather consecutive morphemes belonging to the same word (a multiword
+        // token has more than one).
+        let groupLen = 1;
+        if (word) {
+          while (i + groupLen < morphemes.length && morphemes[i + groupLen].word?.id === word.id) {
+            groupLen += 1;
+          }
+        }
+
+        // Multiword-token line spanning the group. The surface form for an MWT
+        // must come from the word token's persisted metadata (`form`), set by
+        // the importer — slicing the body can be wrong (e.g. "del" vs "de el"
+        // when the morphemes share the word's full extent). Fall back to the
+        // body substring only if the metadata is missing. Also carry the
+        // original MISC (e.g. SpaceAfter=No, Typo=Yes) from word metadata.
+        if (groupLen > 1) {
+          const wordMeta = morphemes[i].word?.metadata || {};
+          const fallbackForm = morphemes[i].wordForm || UNDERSCORE;
+          const surfaceForm = wordMeta.form || fallbackForm;
+          const mwtMisc = wordMeta.misc || UNDERSCORE;
+          output.push([
+            `${i + 1}-${i + groupLen}`, surfaceForm,
+            UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, mwtMisc
+          ].join('\t'));
+        }
+
+        // One line per morpheme.
+        for (let k = 0; k < groupLen; k++) {
+          const m = morphemes[i + k];
+          const id = i + k + 1;
+          const form = m.tokenForm || UNDERSCORE;
+          const lemma = esc(m.lemma?.value);
+          const upos = esc(m.upos?.value);
+          const xpos = esc(m.xpos?.value);
+          const feats = serializeFeats(m.feats);
+
+          let head = UNDERSCORE;
+          let deprel = UNDERSCORE;
+          const rel = m.spanIds?.lemma ? incomingByTarget.get(m.spanIds.lemma) : null;
+          if (rel) {
+            if (rel.source === rel.target) {
+              head = 0;
+              deprel = rel.value || UNDERSCORE;
+            } else {
+              const h = idByLemmaSpanId.get(rel.source);
+              if (h != null) {
+                head = h;
+                deprel = rel.value || UNDERSCORE;
+              }
+            }
+          }
+          const deps = (head === UNDERSCORE || deprel === UNDERSCORE) ? UNDERSCORE : `${head}:${deprel}`;
+
+          output.push([id, form, lemma, upos, xpos, feats, head, deprel, deps, UNDERSCORE].join('\t'));
+        }
+
+        i += groupLen;
+      }
     });
-    
+
     return output.join('\n');
-  }, [document]);
+  }, [doc, sentenceData]);
 
   const handleCopyToClipboard = async () => {
     try {
@@ -338,12 +169,12 @@ export const ExportEditor = () => {
   const handleDownload = () => {
     const blob = new Blob([conlluContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = window.document.createElement('a');
     a.href = url;
-    a.download = `${document?.name || 'document'}.conllu`;
-    document.body.appendChild(a);
+    a.download = `${doc?.name || 'document'}.conllu`;
+    window.document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+    window.document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
@@ -351,7 +182,7 @@ export const ExportEditor = () => {
     return <div className="text-center text-gray-600 py-8">Loading document...</div>;
   }
 
-  if (!document || !project) {
+  if (!doc || !project) {
     return (
       <div className="rounded-md bg-red-50 p-4">
         <p className="text-sm text-red-800">Document or project not found</p>
@@ -361,16 +192,16 @@ export const ExportEditor = () => {
 
   return (
     <div>
-      <DocumentTabs 
+      <DocumentTabs
         projectId={projectId}
         documentId={documentId}
         project={project}
-        document={document}
+        document={doc}
       />
 
       <div className="mb-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">CoNLL-U Export</h3>
-        
+
         {error && (
           <div className="rounded-md bg-red-50 p-4 mb-4">
             <p className="text-sm text-red-800">{error}</p>
@@ -387,7 +218,7 @@ export const ExportEditor = () => {
             </svg>
             {copiedToClipboard ? 'Copied!' : 'Copy to Clipboard'}
           </button>
-          
+
           <button
             onClick={handleDownload}
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center gap-2"
