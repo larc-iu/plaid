@@ -20,7 +20,6 @@
   (when-let [e (pxc/entity node-or-map :token-layers id)]
     (when (:token-layer/id e)
       (-> (select-keys e attr-keys)
-          (update :token-layer/overlap-mode #(or % :any))
           (pxc/deserialize-config)))))
 
 (defn- parent-id [node tokl-id]

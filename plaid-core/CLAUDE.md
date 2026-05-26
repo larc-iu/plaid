@@ -119,6 +119,8 @@ Write operations go through `plaid.xtdb2.operation-coordinator`, which serialize
 ### Batch Operations
 Batch requests bind `op/*current-batch-id*` to group multiple operations atomically. When set, individual operations skip the coordinator and are submitted together. Failed batches can be rolled back using stored `:op/tx-ops`.
 
+Operations in a batch run sequentially, so a later op sees entities created by an earlier op in the same batch (e.g. you can create a parent token and a child token nested in it in one batch). `submitBatch`/`submit_batch` returns each op's full response (`status`/`headers`/`body`) in order, so created entity IDs come back too — but only after submit, so an op cannot reference an ID produced by an earlier op in the *same* batch (build those bodies before submitting; if op B needs op A's id, A must be in an earlier batch).
+
 ### Audit Log
 We maintain an audit log which records each op, which we use to refer to a conceptually atomic operation from the perspective of our data model, e.g. "change a text record's `:text/body`" or "delete a token".
 For each op, we record (cf. `plaid.xtdb2.audit`):
@@ -298,6 +300,29 @@ For SQL `IN` queries with dynamic ID lists:
 
 ## Namespace Shadowing in `plaid.xtdb2.*`
 Most namespaces in `src/main/plaid/xtdb2/` use `(:refer-clojure :exclude [get merge])` (some also exclude `format`) and define their own `get`, `merge`, etc. for entity operations. When writing code **inside** these namespaces, use `clojure.core/get`, `clojure.core/merge`, etc. whenever you need the standard library versions, or you will get errors or silently call the wrong function.
+
+## Ideas / TODOs
+
+- **Idempotent "replace partition" op for partitioning token layers.** Re-tokenizing a partitioning
+  layer today means `bulk-delete` the whole partition, then `bulk-create` the new one — two ops, and
+  the consumer must branch on empty-vs-established state. A single `PUT`-style "set this layer's
+  partition for this document" that clears + establishes atomically would remove that branching and
+  the clear-then-recreate dance. Consider a variant that accepts internal **cut points** (boundary
+  offsets) and tiles `[0, text-length)` server-side — hand-computing the full, whitespace-inclusive
+  tiling was the most error-prone part of consuming the partitioning API. Open scope question:
+  partitioning-only, or a more general "replace all tokens in this layer for this doc" (which carries
+  cascade implications for nested layers). Source: plaid-ud three-layer migration, 2026-05.
+- **Token-layer creation guardrail: detect under-configured nested layers.** A consumer with a stale
+  client bundle whose `token-layers/create` signature predates `overlap-mode`/`parent-token-layer-id`
+  silently produces projects with all-`any`, parent-less layers — immutable, so unrecoverable. The
+  server happily accepts the malformed shape today. A modest server-side check could reject (or
+  warn) on creates where the schema clearly expects nesting (e.g. a project that has multiple
+  same-text-layer token layers without parent pointers, or a layer named to suggest nesting). Even
+  surfacing the actual `overlap-mode` / `parent-token-layer` on `GET /token-layers/{id}` as
+  explicit, non-defaulted fields (vs. omitting them) would help frontends warn about this. Source:
+  plaid-ud, 2026-05 — at least one user project hit this on a doc with 237 orphan morphemes and
+  three `any`-mode parentless token layers; plaid-ud now detects the shape and shows an amber
+  banner, but can't recover such a project.
 
 ## XTDB Reference
 See

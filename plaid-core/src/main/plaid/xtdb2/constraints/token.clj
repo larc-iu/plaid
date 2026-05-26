@@ -17,7 +17,7 @@
 ;; ---------------------------------------------------------------------------
 
 (defn layer-overlap-mode [node layer-id]
-  (or (:token-layer/overlap-mode (pxc/entity node :token-layers layer-id)) :any))
+  (:token-layer/overlap-mode (pxc/entity node :token-layers layer-id)))
 
 (defn- layer-parent
   "The parent token-layer id of layer-id, or nil for a root (flat) layer."

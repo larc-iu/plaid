@@ -121,10 +121,6 @@
                     (filterv #(some? (first %))))]
     (-> (select-keys token-layer [:token-layer/id :token-layer/name :config
                                   :token-layer/overlap-mode :token-layer/parent-token-layer])
-        ;; Default overlap-mode the same way token-layer/get does, so the field
-        ;; is never absent. parent-token-layer is left off entirely for roots
-        ;; (select-keys drops it when nil), matching single-entity GET.
-        (update :token-layer/overlap-mode #(or % :any))
         (pxc/deserialize-config)
         (assoc :token-layer/tokens all-tokens)
         (assoc :token-layer/span-layers (mapv #(get-doc-info node doc-id id [:span-layer/id %]) sl-ids))
