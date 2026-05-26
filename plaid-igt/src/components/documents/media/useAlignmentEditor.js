@@ -19,6 +19,26 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
     );
   }, [selection, projectId, documentId]);
 
+  // Find an existing alignment that overlaps [begin, end) (excluding excludeId).
+  // The alignment layer is :non-overlapping, so any overlap will be rejected by
+  // the server with 409. Check up-front so we can show a clean error.
+  // Two ranges overlap iff a.begin < b.end && a.end > b.begin.
+  //
+  // TODO: callers in createAlignment/editAlignment compare against PRE-edit
+  // offsets, but the server checks POST-cascade offsets. This can produce
+  // false UX rejections when the cascade would shift existing alignments out
+  // of the way. Server still enforces correctly; only the pre-check is
+  // optimistic. Fix: reindex existing alignments to post-cascade positions
+  // before comparing, or drop the pre-check and rely on the server 409.
+  const findOverlappingAlignment = useCallback((begin, end, excludeId = null) => {
+    const tokens = parsedDocument?.alignmentTokens || [];
+    return tokens.find(t =>
+        t.id !== excludeId &&
+        t.begin < end &&
+        t.end > begin
+    ) || null;
+  }, [parsedDocument]);
+
   // Find available text boundaries for alignment
   const getAvailableTextBoundaries = useCallback(() => {
     const alignmentTokens = parsedDocument?.alignmentTokens || [];
@@ -105,6 +125,11 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
         }
       }
 
+      // Track whether we end up in the temporal-inversion fallback (set in the
+      // ordering-violation branch below) so we can show a more informative
+      // error if the resulting position collides with an existing alignment.
+      let temporalInversion = false;
+
       // Determine insertion position
       if (!insertAfterToken && !insertBeforeToken) {
         // No existing tokens, insert at end
@@ -122,6 +147,7 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
           // Tokens are out of order positionally - insert before the "before" token
           console.warn('Detected temporal ordering violation, inserting before conflicting token');
           insertPosition = insertBeforeToken.begin;
+          temporalInversion = true;
         } else {
           // Normal case - insert after the "after" token
           insertPosition = insertAfterToken.end;
@@ -130,11 +156,9 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
 
       // Insert text with proper spacing
       let insertedText;
-      let insertBegin, insertEnd;
+      let insertBegin;
       let tokenBegin, tokenEnd;
-      let sentenceTokenEnd; // Track sentence token end including trailing space
-      let sentenceTokenBegin; // Track sentence token start to ensure complete partitioning
-      
+
       // Insert at the front
       if (insertPosition === 0) {
         const spaceAfter = (existingText ? ' ' : '')
@@ -143,9 +167,6 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
         tokenBegin = 0;
         insertBegin = 0;
         tokenEnd = text.trim().length
-        insertEnd = tokenEnd + (existingText ? 1 : 0);
-        sentenceTokenEnd = tokenEnd + (existingText ? 1 : 0); // Include trailing space
-        sentenceTokenBegin = 0; // Start from beginning
       }
       // Insert at end
       else if (insertPosition >= existingText.length) {
@@ -154,12 +175,7 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
 
         insertBegin = existingText.length;
         tokenBegin = existingText.length + (spaceBefore ? 1 : 0);
-        insertEnd = insertBegin + (spaceBefore ? 1 : 0) + text.trim().length;
         tokenEnd = tokenBegin + text.trim().length
-        sentenceTokenEnd = tokenEnd; // No trailing space at end
-        // For proper partitioning, sentence token should start where the previous sentence token ended
-        // If no previous token, start from the insertion point
-        sentenceTokenBegin = insertBegin; // Start from insertion point, let server handle partitioning
       }
       // Insert in middle
       else {
@@ -170,16 +186,40 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
 
         insertedText = spaceBefore + text.trim() + spaceAfter;
         insertBegin = insertPosition;
-        insertEnd = insertBegin + spaceBefore.length + text.trim().length + spaceAfter.length;
         tokenBegin = insertPosition + (spaceBefore ? 1 : 0);
         tokenEnd = tokenBegin + text.trim().length
-        sentenceTokenEnd = tokenEnd + (spaceAfter ? spaceAfter.length : 0); // Include trailing space
-        // For proper partitioning, sentence token should start where the previous sentence token ended
-        // If no previous token, start from the insertion point
-        sentenceTokenBegin = insertBegin; // Start from insertion point, let server handle partitioning
       }
 
+      // Pre-check: the alignment layer is :non-overlapping, so reject up-front if
+      // the new alignment's range would overlap an existing alignment. (The server
+      // would 409 anyway; this gives a clean error message.)
+      const overlap = findOverlappingAlignment(tokenBegin, tokenEnd);
+      if (overlap) {
+        notifications.show({
+          title: 'Cannot create alignment',
+          message: temporalInversion
+            ? 'Cannot insert alignment: temporal and positional ordering conflict. Delete the conflicting alignment first.'
+            : 'The new alignment range overlaps an existing alignment.',
+          color: 'red'
+        });
+        return;
+      }
+
+      const newTextLength = existingText.length + insertedText.length;
+      const hasExistingSentences = (parsedDocument?.sentences || []).length > 0;
+
       // Submit to API
+      //
+      // Sentence layer is now :partitioning. We do NOT create a sentence here in
+      // the normal case: the server's text-edit cascade reindexes surviving
+      // partitioning tokens and `compensate-after-cascade` extends them to close
+      // any gap the insert opens (a boundary-aligned insert leaves a gap; an
+      // interior insert grows the containing sentence directly). Either way the
+      // partition over [0, newTextLength) ends up covering the inserted text.
+      //
+      // The one case the cascade can't handle is an empty partitioning layer
+      // (no existing sentences) — compensate skips empty layers, so we must
+      // bulk-create to establish the partition over the new text.
       client.beginBatch();
       client.texts.update(textId, [{type: "insert", index: insertBegin, value: insertedText}]);
       client.tokens.create(
@@ -193,12 +233,14 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
             timeEnd: selection.end
           }
       );
-      client.tokens.create(
-          sentenceTokenLayer.id,
-          textId,
-          sentenceTokenBegin,
-          sentenceTokenEnd
-      );
+      if (!hasExistingSentences && newTextLength > 0) {
+        client.tokens.bulkCreate([{
+          tokenLayerId: sentenceTokenLayer.id,
+          text: textId,
+          begin: 0,
+          end: newTextLength,
+        }]);
+      }
       await client.submitBatch();
       
       // Reload to get updated token positions from server
@@ -212,12 +254,12 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
     } finally {
       setIsProcessing(false);
     }
-  }, [parsedDocument, selection, client, isProcessing, onAlignmentCreated, handleStrictModeError]);
+  }, [parsedDocument, selection, client, isProcessing, onAlignmentCreated, handleStrictModeError, findOverlappingAlignment]);
 
   // Edit existing alignment
   const editAlignment = useCallback(async (text, existingAlignment) => {
     if (!text.trim() || isProcessing || !existingAlignment) return;
-    
+
     setIsProcessing(true);
     try {
       // Get the text layer ID from parsed document
@@ -226,71 +268,97 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
         throw new Error('Text layer not found');
       }
 
+      const alignmentTokenLayer = parsedDocument?.layers?.alignmentTokenLayer;
+      const sentenceTokenLayer = parsedDocument?.layers?.sentenceTokenLayer;
+      if (!alignmentTokenLayer || !sentenceTokenLayer) {
+        throw new Error('Required layers not found');
+      }
+
       // Get current text
       const currentText = parsedDocument?.document?.text?.body || '';
-      
+
       // Replace the portion of text that corresponds to this alignment
       const tokenBegin = existingAlignment.begin;
       const tokenEnd = existingAlignment.end;
-      
-      const beforeText = currentText.substring(0, tokenBegin);
-      const afterText = currentText.substring(tokenEnd);
-      const newText = beforeText + text.trim() + afterText;
 
-      // Update the text
-      try {
-        // Editing text might have caused the token to shrink--new content at the end will not automatically cause the
-        // token to grow, and more dramatically, if the entirety of the content was changed, it may have been deleted.
-        // Assume that it did not change at first, and use the `_tokenizationDirty` flag to trigger any necessary sentence
-        // expansion during parsing.
-        client.beginBatch();
-        client.texts.update(textId, newText);
-        client.tokens.update(existingAlignment.id, tokenBegin, tokenBegin + text.trim().length);
-        client.texts.setMetadata(textId, {...parsedDocument.document.text.metadata, _tokenizationDirty: true})
-        await client.submitBatch();
-        
-        // Reload to get updated token positions from server
-        if (onAlignmentCreated) {
-          onAlignmentCreated();
-        }
-      } catch (e) {
-        // We failed--404 means the entirety of the contents was replaced.
-        if (e.status === 404) {
-          client.beginBatch();
-          client.texts.update(textId, newText);
-          client.tokens.create(
-              parsedDocument?.layers?.alignmentTokenLayer.id,
-              textId,
-              tokenBegin,
-              tokenBegin + text.trim().length,
-              undefined,
-              {timeBegin: selection.start, timeEnd: selection.end}
-          );
-          // We know we're replacing the entirety of the content if we got here, so just make a new sentence token
-          client.tokens.create(
-              parsedDocument?.layers?.sentenceTokenLayer.id,
-              textId,
-              tokenBegin,
-              tokenBegin + text.trim().length,
-          );
-          await client.submitBatch();
-          
-          // Reload to get updated token positions from server
-          if (onAlignmentCreated) {
-            onAlignmentCreated();
-          }
-        } else {
-          throw e;
-        }
+      const replacement = text.trim();
+      const newAlignmentEnd = tokenBegin + replacement.length;
+      const newTextLength = currentText.length - (tokenEnd - tokenBegin) + replacement.length;
+
+      // Pre-check: the alignment layer is :non-overlapping. The new alignment
+      // extent must not collide with any OTHER alignment (the one being edited
+      // is excluded since it's about to be deleted by the text-edit cascade).
+      // The server would 409 anyway; this gives a clean error.
+      const overlap = findOverlappingAlignment(tokenBegin, newAlignmentEnd, existingAlignment.id);
+      if (overlap) {
+        notifications.show({
+          title: 'Cannot edit alignment',
+          message: 'The updated alignment range would overlap an existing alignment.',
+          color: 'red'
+        });
+        return;
       }
-      
+
+      // We use an explicit ops array (one delete + one insert) for texts.update
+      // rather than passing the full new text. The string form makes the server
+      // compute an editscript diff whose deletion range can be narrower than
+      // [tokenBegin, tokenEnd), which causes the cascade to keep the existing
+      // alignment token and trips an ASSERT against tokens.create. With an
+      // explicit delete over exactly [tokenBegin, tokenEnd), the alignment
+      // token at that range is fully contained and the cascade deletes it,
+      // so we always re-create it alongside the text update.
+      const textOps = [
+        { type: 'delete', index: tokenBegin, value: tokenEnd - tokenBegin },
+        { type: 'insert', index: tokenBegin, value: replacement }
+      ];
+
+      // Predict whether the text-edit cascade will leave the sentence partition
+      // empty. The cascade deletes any token fully contained in the deletion
+      // range [tokenBegin, tokenEnd). A sentence at [sb, se) where sb >=
+      // tokenBegin && se <= tokenEnd is contained and will be wiped.
+      //
+      // Conservative predictor: if every existing sentence sits inside the
+      // alignment's old range (or there are none), the cascade wipes them all
+      // and we must re-establish the partition with a bulkCreate. Otherwise
+      // some sentence survives and compensate-after-cascade will cover the new
+      // text — adding a bulkCreate on top of that would conflict with the
+      // partition-establish ASSERT.
+      const sentences = parsedDocument?.sentences || [];
+      const cascadeWipesAllSentences = sentences.length === 0
+          || sentences.every(s => s.begin >= tokenBegin && s.end <= tokenEnd);
+
+      client.beginBatch();
+      client.texts.update(textId, textOps);
+      client.tokens.create(
+          alignmentTokenLayer.id,
+          textId,
+          tokenBegin,
+          newAlignmentEnd,
+          undefined,
+          {timeBegin: selection.start, timeEnd: selection.end}
+      );
+      if (cascadeWipesAllSentences && newTextLength > 0) {
+        client.tokens.bulkCreate([{
+          tokenLayerId: sentenceTokenLayer.id,
+          text: textId,
+          begin: 0,
+          end: newTextLength,
+        }]);
+      }
+      await client.submitBatch();
+
+      // Reload to get updated token positions from server
+      if (onAlignmentCreated) {
+        onAlignmentCreated();
+      }
+
     } catch (error) {
       handleStrictModeError(error, 'edit alignment');
       throw error;
     } finally {
       setIsProcessing(false);
     }
-  }, [parsedDocument, selection, client, isProcessing, onAlignmentCreated, handleStrictModeError]);
+  }, [parsedDocument, selection, client, isProcessing, onAlignmentCreated, handleStrictModeError, findOverlappingAlignment]);
 
   // Align existing baseline text
   const alignBaseline = useCallback(async (text) => {
@@ -324,10 +392,24 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
       // Calculate absolute positions
       const actualBegin = leftBoundary + startInAvailable;
       const actualEnd = actualBegin + trimmedText.length;
-      
+
+      // Pre-check: the alignment layer is :non-overlapping, so reject if the
+      // new alignment would overlap an existing one. getAvailableTextBoundaries
+      // already constrains the range against neighbors, but only relative to the
+      // CURRENT selection — defensively confirm before submitting.
+      const overlap = findOverlappingAlignment(actualBegin, actualEnd);
+      if (overlap) {
+        notifications.show({
+          title: 'Cannot align text',
+          message: 'The selected text range overlaps an existing alignment.',
+          color: 'red'
+        });
+        return;
+      }
+
       // Don't modify the text, just create alignment token for existing text
       const textId = parsedDocument?.layers?.primaryTextLayer?.text?.id;
-      
+
       client.beginBatch();
       
       // Create alignment token
@@ -377,7 +459,7 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
     } finally {
       setIsProcessing(false);
     }
-  }, [parsedDocument, selection, client, isProcessing, getAvailableTextBoundaries, onAlignmentCreated, handleStrictModeError, getDocProxy]);
+  }, [parsedDocument, selection, client, isProcessing, getAvailableTextBoundaries, onAlignmentCreated, handleStrictModeError, getDocProxy, findOverlappingAlignment]);
 
   // Delete alignment
   const deleteAlignment = useCallback(async (existingAlignment) => {
@@ -401,24 +483,10 @@ export const useAlignmentEditor = (selection, parsedDocument, project, projectId
       let beforeText = currentText.substring(0, tokenBegin);
       let afterText = currentText.substring(tokenEnd);
 
-      let trimIndex = beforeText.length;
-      for (let i = beforeText.length - 1; i >= 0; i--) {
-        if (/\s/.test(beforeText[i])) {
-          trimIndex = i;
-        } else {
-          break;
-        }
-      }
-      beforeText = beforeText.substring(0, trimIndex);
-      trimIndex = 0;
-      for (let i = 0; i < afterText.length; i++) {
-        if (/\s/.test(afterText[i])) {
-          trimIndex = i;
-        } else {
-          break;
-        }
-      }
-      afterText = afterText.substring(trimIndex);
+      // Strip trailing whitespace from beforeText and leading whitespace from
+      // afterText so the deletion swallows the surrounding inter-token spaces.
+      beforeText = beforeText.replace(/\s+$/, '');
+      afterText = afterText.replace(/^\s+/, '');
       
       const numDeleted = currentText.length - (afterText.length + beforeText.length);
       const index = beforeText.length

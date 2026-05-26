@@ -262,8 +262,6 @@ morpheme: {
 ```
 
 ### Operations Supported:
-- `createMorpheme(wordToken, precedence, form)` - Create new morpheme
-- `splitMorpheme(morpheme, leftForm, rightForm)` - Split at cursor position
 - `deleteMorpheme(morpheme)` - Delete morpheme (except first one)
 - `mergeMorphemes(currentIndex, currentText)` - Merge with previous morpheme
 - `updateMorphemeForm(morpheme, form)` - Update morpheme form
@@ -280,8 +278,6 @@ The system provides comprehensive operations for managing multi-level linguistic
 - **Bulk Operations**: Supports batch creation/deletion with morpheme cleanup
 
 ### Morpheme Operations
-- **Create Morpheme**: Add new morpheme to existing word token with specified precedence
-- **Split Morpheme**: Divide morpheme at cursor position using "-" key, creating new morpheme
 - **Merge Morphemes**: Backspace at morpheme start merges with previous morpheme
 - **Delete Morpheme**: Remove morpheme (except first one) and adjust precedences
 - **Update Form**: Modify morpheme form with optimistic UI updates

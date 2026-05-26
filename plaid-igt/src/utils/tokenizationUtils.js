@@ -239,19 +239,9 @@ export function getIgnoredTokensConfig(project) {
  */
 export function validateTokenization(tokens, text) {
   const errors = [];
-  
-  // Check for overlapping tokens
-  const sortedTokens = [...tokens].sort((a, b) => a.begin - b.begin);
-  for (let i = 0; i < sortedTokens.length - 1; i++) {
-    const current = sortedTokens[i];
-    const next = sortedTokens[i + 1];
-    
-    if (current.end > next.begin) {
-      errors.push(`Overlapping tokens: "${current.text}" and "${next.text}"`);
-    }
-  }
-  
-  // Check for out-of-bounds tokens
+
+  // Overlap is enforced server-side by the word token layer's :non-overlapping mode.
+  // We only check out-of-bounds and text-mismatch here.
   tokens.forEach((token, index) => {
     if (token.begin < 0 || token.end > text.length) {
       errors.push(`Token ${index} out of bounds: ${token.begin}-${token.end}`);

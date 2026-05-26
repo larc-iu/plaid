@@ -35,9 +35,8 @@ export function parseDocument(rawDocument, client, project) {
 
     // Process alignment tokens
     const alignmentTokens = processAlignmentTokens(layers.alignmentTokenLayer);
-    
-    // Validate sentence token partitioning
-    validateSentencePartitioning(sentences, documentData.text.body);
+
+    // Sentence partitioning is enforced server-side by the :partitioning sentence layer.
 
     // Pre-compute optimizations for rendering performance
     const sortedSentences = [...enrichedSentences].sort((a, b) => a.begin - b.begin);
@@ -459,44 +458,12 @@ function collectAnnotations(item, spanLayers, scope) {
 
   // Fill in actual annotation values where they exist
   spanLayers.forEach(spanLayer => {
-    // Find spans that match this item
     const matchingSpans = (spanLayer.spans || []).filter(span => {
-      if (scope === 'Word' || scope === 'Morpheme') {
-        // For tokens/morphemes, find spans that contain this token
-        return span.tokens && span.tokens.some(tokenId => tokenId === item.id);
-      } else {
-        // For sentences, find spans that contain this sentence's token ID
-        const isMatch = span.tokens && span.tokens.includes(item.id);
-
-        // Debug sentence span matching
-        if (scope === 'Sentence') {
-          console.log(`[DEBUG] Sentence span matching:`, {
-            sentenceId: item.id,
-            spanId: span.id,
-            spanTokens: span.tokens,
-            isMatch: isMatch,
-            spanValue: span.value,
-            layerName: spanLayer.name
-          });
-        }
-
-        return isMatch;
-      }
+      return span.tokens && span.tokens.some(tokenId => tokenId === item.id);
     });
 
-    // Store the entire span record if found
     if (matchingSpans.length > 0) {
       annotations[spanLayer.name] = matchingSpans[0];
-
-      // Debug sentence annotation assignment
-      if (scope === 'Sentence') {
-        console.log(`[DEBUG] Assigned sentence annotation:`, {
-          sentenceId: item.id,
-          layerName: spanLayer.name,
-          spanValue: matchingSpans[0].value,
-          spanId: matchingSpans[0].id
-        });
-      }
     }
   });
 
@@ -632,48 +599,3 @@ function createSentenceLookup(sortedSentences) {
   };
 }
 
-/**
- * Validate that sentence tokens properly partition the text
- * @param {Array} sentences - Array of sentence boundaries
- * @param {string} text - Full text content
- * @throws {Error} If partitioning is invalid
- */
-function validateSentencePartitioning(sentences, text) {
-  if (!text || typeof text !== 'string') {
-    console.warn('No text content to validate sentence partitioning against');
-    return;
-  }
-  
-  if (!sentences || sentences.length === 0) {
-    console.warn('No sentences to validate partitioning for');
-    return;
-  }
-  
-  // Sort sentences by begin position
-  const sortedSentences = [...sentences].sort((a, b) => a.begin - b.begin);
-  
-  // Check that sentences start at 0
-  if (sortedSentences[0].begin !== 0) {
-    console.warn(`🚨 SENTENCE PARTITIONING VIOLATION: First sentence does not start at position 0! Expected: 0, Actual: ${sortedSentences[0].begin}`);
-  }
-  
-  // Check that sentences end at text length
-  const lastSentence = sortedSentences[sortedSentences.length - 1];
-  if (lastSentence.end !== text.length) {
-    console.warn(`🚨 SENTENCE PARTITIONING VIOLATION: Last sentence does not end at text length! Expected: ${text.length}, Actual: ${lastSentence.end}`);
-  }
-  
-  // Check for gaps and overlaps
-  for (let i = 0; i < sortedSentences.length - 1; i++) {
-    const currentSentence = sortedSentences[i];
-    const nextSentence = sortedSentences[i + 1];
-    
-    if (currentSentence.end !== nextSentence.begin) {
-      console.warn(`🚨 SENTENCE PARTITIONING VIOLATION: Gap or overlap detected between sentences ${i + 1} and ${i + 2}! Sentence ${i + 1} ends at ${currentSentence.end}, but sentence ${i + 2} starts at ${nextSentence.begin}`);
-      console.warn('Current sentence:', currentSentence);
-      console.warn('Next sentence:', nextSentence);
-    }
-  }
-  
-  console.log('✅ Sentence token partitioning validation passed');
-}

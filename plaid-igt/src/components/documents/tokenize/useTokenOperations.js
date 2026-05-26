@@ -1,5 +1,4 @@
 import { useSnapshot } from 'valtio';
-import { useStrictClient } from '../contexts/StrictModeContext.jsx';
 import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { notifications } from '@mantine/notifications';
@@ -154,40 +153,30 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
         isToken: true,
       });
 
-      // Submit to backend
+      // Wipe coincident morphemes before the word split (their analysis is invalidated
+      // by the new word boundary; server-cascade-split would produce nonsense form pairs).
+      // Wrap the morpheme delete + split in a single batch so a server-side failure on
+      // split rolls back the morpheme delete (otherwise the morphemes would be silently
+      // lost while the word remained unchanged).
       client.beginBatch();
-      
-      // Delete any coincident morpheme tokens before splitting the word token
       const morphemeIds = findCoincidentMorphemes([token], layers);
       if (morphemeIds.length > 0) {
         client.tokens.bulkDelete(morphemeIds);
       }
-      
-      client.tokens.update(tokenId, token.begin, leftEnd);
-      client.tokens.create(layers.primaryTokenLayer.id, text.id, rightStart, token.end);
-      const result = await client.submitBatch();
+      // Server enforces partition/nesting; split returns the new right-half token.
+      client.tokens.split(tokenId, leftEnd);
+      const results = await client.submitBatch();
 
-      // Replace temp ID with real ID from API response
-      sentProxy.pieces[pieceIndex + 1].id = result[result.length - 1].body.id;
+      // The split op is the last queued op; its body is `{id: <new right token id>}`.
+      const newRightToken = results[results.length - 1].body;
+      sentProxy.pieces[pieceIndex + 1].id = newRightToken.id;
     } catch (error) {
-      handleError(error, 'Split token');
+      handleError(error, 'Split token', { rollback: true });
     }
   };
 
   const deleteToken = async (sentProxy, sentIndex, piece, pieceIndex) => {
     try {
-      // Start batch operation
-      client.beginBatch();
-      
-      // Delete any coincident morpheme tokens first
-      const morphemeIds = findCoincidentMorphemes([piece], layers);
-      if (morphemeIds.length > 0) {
-        client.tokens.bulkDelete(morphemeIds);
-      }
-      
-      // Delete the word token
-      client.tokens.delete(piece.id);
-      
       // Remove the token from the local store optimistically and replace with gap
       sentProxy.pieces.splice(pieceIndex, 1, {
         type: "gap",
@@ -198,10 +187,10 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
       });
       mergeGaps(sentProxy);
 
-      // Submit to backend
-      await client.submitBatch();
+      // Server cascades word deletion → morpheme deletion (morpheme layer's parent is word).
+      await client.tokens.delete(piece.id);
     } catch (error) {
-      handleError(error, 'Delete token');
+      handleError(error, 'Delete token', { rollback: true });
     }
   };
 
@@ -274,7 +263,7 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
       // Update with real ID
       sentProxy.pieces[newPieceIndex].id = result.id;
     } catch (error) {
-      handleError(error, 'Create token from selection');
+      handleError(error, 'Create token from selection', { rollback: true });
     }
   };
 
@@ -317,7 +306,7 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
     try {
       let firstIndex = sentProxy.pieces.length, lastIndex = -1;
       const tokensToMerge = [];
-      
+
       sentProxy.pieces.forEach((piece, index) => {
         if (piece.isToken && tokenIds.has(piece.id)) {
           firstIndex = index < firstIndex ? index : firstIndex;
@@ -326,37 +315,34 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
         }
       })
 
+      // Sort merge targets by begin so we merge adjacent pairs into the first token in order.
+      tokensToMerge.sort((a, b) => a.begin - b.begin);
+
       const firstToken = sentProxy.pieces[firstIndex];
       const lastToken = sentProxy.pieces[lastIndex];
       const mergedContent = text.body.slice(firstToken.begin, lastToken.end);
-      Object.assign(sentProxy.pieces[firstIndex], {end: lastToken.end, content: mergedContent});
-      sentProxy.pieces.splice(firstIndex + 1, lastIndex - firstIndex)
+      Object.assign(sentProxy.pieces[firstIndex], { end: lastToken.end, content: mergedContent });
+      sentProxy.pieces.splice(firstIndex + 1, lastIndex - firstIndex);
 
-      // Submit to backend
+      // Wipe coincident morphemes — same rationale as splitToken.
+      // Wrap the morpheme delete + sequential merges in one batch so that if any merge
+      // fails the morpheme delete (and any earlier successful merges) roll back, leaving
+      // the word + morpheme state consistent rather than silently mutilated.
       client.beginBatch();
-      
-      // Delete any coincident morpheme tokens from all tokens being merged
       const morphemeIds = findCoincidentMorphemes(tokensToMerge, layers);
       if (morphemeIds.length > 0) {
         client.tokens.bulkDelete(morphemeIds);
       }
-      
-      // Collect all non-first word tokens to delete
-      const wordTokensToDelete = [];
-      for (const tokenId of tokenIds) {
-        if (tokenId !== firstToken.id) {
-          wordTokensToDelete.push(tokenId);
-        }
+      // Sequential merges into firstToken. The merge endpoint requires that the resulting
+      // extent not engulf a third token, so we merge into firstToken in begin-order.
+      // The server processes batch ops sequentially, so each merge sees firstToken's
+      // widened extent from the prior op.
+      for (let i = 1; i < tokensToMerge.length; i++) {
+        client.tokens.merge(firstToken.id, tokensToMerge[i].id);
       }
-      
-      client.tokens.update(firstToken.id, firstToken.begin, lastToken.end);
-      if (wordTokensToDelete.length > 0) {
-        client.tokens.bulkDelete(wordTokensToDelete);
-      }
-      
       await client.submitBatch();
     } catch (error) {
-      handleError(error, 'Merge tokens');
+      handleError(error, 'Merge tokens', { rollback: true });
     }
   };
 
@@ -366,30 +352,20 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
       const previousSentenceSnap = docSnap.sentences[sentIndex - 1];
       const newEnd = sentSnap.end;
 
-      client.beginBatch();
-      client.tokens.update(
-          previousSentenceProxy.id,
-          previousSentenceProxy.begin,
-          newEnd
-      );
-      client.tokens.delete(sentSnap.id);
-      const result = client.submitBatch();
-      
       // Optimistically update the previous sentence to cover both ranges
-      Object.assign(previousSentenceProxy, {
-        end: newEnd
-      });
+      Object.assign(previousSentenceProxy, { end: newEnd });
       if (sentSnap.pieces.length > 0) {
-        previousSentenceProxy.pieces.splice(previousSentenceSnap.pieces.length, 0, ...sentSnap.pieces)
+        previousSentenceProxy.pieces.splice(previousSentenceSnap.pieces.length, 0, ...sentSnap.pieces);
       }
       mergeGaps(previousSentenceProxy);
 
       // Remove the current sentence from the document
       docProxy.sentences.splice(sentIndex, 1);
 
-      await result;
+      // Partition-preserving merge: server requires this for :partitioning sentence layer.
+      await client.tokens.merge(previousSentenceProxy.id, sentSnap.id);
     } catch (error) {
-      handleError(error, 'Merge sentence');
+      handleError(error, 'Merge sentence', { rollback: true });
     }
   };
 
@@ -420,10 +396,9 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
       if (pieceIndex !== -1) {
         const beforePieces = sentProxy.pieces.slice(0, pieceIndex);
         const afterPieces = sentProxy.pieces.slice(pieceIndex);
-        
+
         sentProxy.pieces = beforePieces;
 
-        // Create a new sentence proxy with temporary ID
         const tempId = crypto.randomUUID();
         const newSentenceProxy = {
           id: tempId,
@@ -437,33 +412,19 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
           }
         };
 
-        // Insert the new sentence after the current one
         docProxy.sentences.splice(sentenceIndex + 1, 0, newSentenceProxy);
       }
 
-      // Submit to backend
-      client.beginBatch();
-      client.tokens.update(
-        sentProxy.id,
-        sentProxy.begin,
-        splitPoint
-      );
-      client.tokens.create(
-        layers.sentenceTokenLayer.id,
-        text.id,
-        splitPoint,
-        originalEnd
-      );
-      const result = await client.submitBatch();
+      // Partition-preserving split. Server splits straddling descendants (none expected,
+      // since splitPoint is at a word boundary), preserving nesting.
+      const newRightSentence = await client.tokens.split(sentProxy.id, splitPoint);
 
-      // Update the new sentence with the real ID from the API
       const newSentenceProxy = docProxy.sentences[sentenceIndex + 1];
       if (newSentenceProxy) {
-        newSentenceProxy.id = result[result.length - 1].body.id;
+        newSentenceProxy.id = newRightSentence.id;
       }
-
     } catch (error) {
-      handleError(error, 'Split sentence');
+      handleError(error, 'Split sentence', { rollback: true });
     }
   };
 
@@ -572,25 +533,18 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
 
     try {
       uiProxy.isTokenizing = true;
-      updateProgress(25, 'Deleting tokens and morphemes...');
+      updateProgress(25, 'Deleting tokens...');
 
       const tokenIds = existingTokens.map(token => token.id);
-      
-      // Also find and delete coincident morpheme tokens
-      const morphemeIds = findCoincidentMorphemes(existingTokens, layers);
-      const allTokensToDelete = [...tokenIds, ...morphemeIds];
-      
-      await client.tokens.bulkDelete(allTokensToDelete);
+
+      // Server cascades word deletion → morpheme deletion (morphemes nested under words).
+      await client.tokens.bulkDelete(tokenIds);
 
       updateProgress(100, 'Tokens cleared!');
 
-      const message = morphemeIds.length > 0 
-        ? `Deleted ${tokenIds.length} tokens and ${morphemeIds.length} morphemes`
-        : `Deleted ${tokenIds.length} tokens`;
-
       notifications.show({
         title: 'Success',
-        message,
+        message: `Deleted ${tokenIds.length} tokens`,
         color: 'green'
       });
 
@@ -616,24 +570,20 @@ export const useTokenOperations = (projectId, documentId, reload, client) => {
       uiProxy.isTokenizing = true;
       updateProgress(25, 'Resetting sentences...');
 
-      client.beginBatch();
-
-      // Delete all existing sentence tokens
+      // :partitioning layer rejects single create/delete; use bulkDelete + bulkCreate in a batch.
+      // Server cascades sentence deletes → word + morpheme deletes (full hierarchy reset).
       const sentenceIds = existingSentenceTokens.map(sentence => sentence.id);
-      for (const sentenceId of sentenceIds) {
-        client.tokens.delete(sentenceId);
+
+      client.beginBatch();
+      client.tokens.bulkDelete(sentenceIds);
+      if (text.body.length > 0) {
+        client.tokens.bulkCreate([{
+          tokenLayerId: layers.sentenceTokenLayer.id,
+          text: text.id,
+          begin: 0,
+          end: text.body.length,
+        }]);
       }
-
-      updateProgress(50, 'Creating single sentence...');
-
-      // Create a single sentence token covering the entire text
-      await client.tokens.create(
-        layers.sentenceTokenLayer.id,
-        text.id,
-        0,
-        text.body.length
-      );
-
       await client.submitBatch();
 
       updateProgress(100, 'Sentence tokens reset!');

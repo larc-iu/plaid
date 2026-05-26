@@ -26,11 +26,6 @@ export function DocumentBaseline({ projectId, documentId, reload, client, readOn
   // Local state for text input to prevent cursor jumping
   const [localText, setLocalText] = useState('');
 
-  // Check for dirty tokenization on component mount
-  useEffect(() => {
-    ops.checkDirtyTokenization();
-  }, []);
-
   // Sync local text with valtio state when editing starts
   useEffect(() => {
     if (ops.isEditing) {

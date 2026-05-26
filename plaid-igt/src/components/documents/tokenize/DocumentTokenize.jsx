@@ -45,6 +45,10 @@ export function DocumentTokenize({ projectId, documentId, reload, client, readOn
   const project = docSnap.project;
   const existingTokens = docSnap.sentences?.flatMap(s => s.tokens) || [];
   const existingSentenceTokens = docSnap.sentences || [];
+  // Word layer is :non-overlapping nested under sentence — every word token must be contained
+  // in a sentence partition. If no partition exists, word create/tokenize/etc. will fail with
+  // a confusing 400 from the server. Gate the UI so the user saves baseline text first.
+  const hasSentencePartition = existingSentenceTokens.length > 0;
 
   // Create stable callbacks for UI mutations
   const toggleHelp = () => {
@@ -153,6 +157,17 @@ export function DocumentTokenize({ projectId, documentId, reload, client, readOn
 
           {/* Sentence rendering */}
           <Box className="sentence-container">
+            {!hasSentencePartition && !readOnly && (
+              <Alert
+                icon={<IconInfoCircle size={16} />}
+                color="yellow"
+                m="md"
+                title="No sentence partition"
+              >
+                Save baseline text first to enable tokenization. Word-level tokens must live
+                inside a sentence partition, which is created when you save baseline text.
+              </Alert>
+            )}
             {docProxy.sentences.map((sentProxy, index) => {
               return (
                   <SentenceComponent
@@ -188,7 +203,7 @@ export function DocumentTokenize({ projectId, documentId, reload, client, readOn
                 leftSection={<IconPlayerPlay size={16} />}
                 onClick={ops.handleTokenize}
                 loading={uiSnap.isTokenizing || ops.isProcessing}
-                disabled={!text?.body || !layers?.primaryTokenLayer || ops.isProcessing || readOnly}
+                disabled={!text?.body || !layers?.primaryTokenLayer || !hasSentencePartition || ops.isProcessing || readOnly}
               >
                 Tokenize
               </Button>

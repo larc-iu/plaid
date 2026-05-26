@@ -29,6 +29,10 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
   const [progress, setProgress] = useState(0);
   const [errors, setErrors] = useState([]);
   const [createdResources, setCreatedResources] = useState({});
+  // Tracks the project id created during a NEW-project flow that may have
+  // partially failed. On retry, we resume against this id instead of creating
+  // another project. Reset only on component unmount/remount (fresh wizard).
+  const [createdProjectId, setCreatedProjectId] = useState(null);
 
   // Helper function to update progress
   const updateProgress = (percent, operation) => {
@@ -48,15 +52,48 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         throw new Error('Authentication required');
       }
 
-      let currentProjectId = projectId;
+      // Determine the project id we're operating against. If a previous attempt
+      // in this wizard session already created the project (NEW flow that failed
+      // partway), resume against that id rather than creating a duplicate.
+      const resumeProjectId = isNewProject ? createdProjectId : projectId;
+
+      // Refuse to re-run setup on an already-initialized project.
+      // Re-running would create a second set of plaid-tagged layers and break
+      // findPrimaryLayers (which returns the first match). Token-layer overlap
+      // modes and parent-token-layer ids are immutable, so we cannot adopt the
+      // existing layers either — user must create a new project instead.
+      // This guard applies to existing-project flows AND to new-project retries
+      // (the just-created project won't be initialized, so it falls through).
+      if (resumeProjectId) {
+        try {
+          const existingProject = await client.projects.get(resumeProjectId);
+          if (existingProject?.config?.plaid?.initialized === true) {
+            notifications.show({
+              title: 'Project Already Initialized',
+              message: 'This project is already initialized with Plaid Base. Re-running setup is not supported — create a new project instead.',
+              color: 'red'
+            });
+            setIsExecuting(false);
+            return;
+          }
+        } catch (checkError) {
+          console.warn('Could not check project initialization status:', checkError);
+          // Fall through — if we can't check, attempt setup and let it surface other errors.
+        }
+      }
+
+      let currentProjectId = resumeProjectId || projectId;
       const resources = {};
 
-      // Step 1: Create project if new project
-      if (isNewProject && setupData.basicInfo?.projectName) {
+      // Step 1: Create project if new project (skip if we already created one
+      // in a prior attempt — see createdProjectId).
+      if (isNewProject && !createdProjectId && setupData.basicInfo?.projectName) {
         updateProgress(10, 'Creating new project...');
         const newProject = await client.projects.create(setupData.basicInfo.projectName);
         currentProjectId = newProject.id;
         resources.project = newProject;
+        // Persist immediately so a subsequent failure + retry won't recreate.
+        setCreatedProjectId(newProject.id);
       }
 
       // Step 2: Create/configure text layer
@@ -83,77 +120,49 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         await client.textLayers.setConfig(textLayerId, "plaid", "primary", true);
       }
 
-      // Step 3: Create/configure token layer
-      let tokenLayerId = null;
-      if (isNewProject && textLayerId) {
-        // For new projects, always create a default token layer
-        updateProgress(30, 'Creating token layer...');
-        const tokenLayer = await client.tokenLayers.create(textLayerId, 'Main Tokens');
-        tokenLayerId = tokenLayer.id;
-        resources.tokenLayer = tokenLayer;
-        // Mark as plaid-managed
-        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "primary", true);
-      } else if (setupData.layerSelection?.tokenLayerType === 'new' && setupData.layerSelection?.newTokenLayerName && textLayerId) {
-        updateProgress(30, 'Creating token layer...');
-        const tokenLayer = await client.tokenLayers.create(textLayerId, setupData.layerSelection.newTokenLayerName);
-        tokenLayerId = tokenLayer.id;
-        resources.tokenLayer = tokenLayer;
-        // Mark as plaid-managed
-        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "primary", true);
-      } else if (setupData.layerSelection?.tokenLayerType === 'existing' && setupData.layerSelection?.selectedTokenLayerId) {
-        tokenLayerId = setupData.layerSelection.selectedTokenLayerId;
-        updateProgress(30, 'Using existing token layer...');
-        // Mark as plaid-managed
-        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "primary", true);
-      }
-
-      // Step 3.5: Create/configure morpheme layer
-      let morphemeLayerId = null;
-      if (textLayerId) {
-        if (isNewProject) {
-          // For new projects, always create a default morpheme layer
-          updateProgress(33, 'Creating morpheme layer...');
-          const morphemeLayer = await client.tokenLayers.create(textLayerId, 'Main Morphemes');
-          morphemeLayerId = morphemeLayer.id;
-          resources.morphemeLayer = morphemeLayer;
-          // Mark as morpheme layer
-          await client.tokenLayers.setConfig(morphemeLayerId, "plaid", "morpheme", true);
-        } else if (setupData.layerSelection?.morphemeLayerType) {
-          if (setupData.layerSelection.morphemeLayerType === 'new' && setupData.layerSelection.newMorphemeLayerName) {
-            updateProgress(33, 'Creating morpheme layer...');
-            const morphemeLayer = await client.tokenLayers.create(textLayerId, setupData.layerSelection.newMorphemeLayerName);
-            morphemeLayerId = morphemeLayer.id;
-            resources.morphemeLayer = morphemeLayer;
-            // Mark as morpheme layer
-            await client.tokenLayers.setConfig(morphemeLayerId, "plaid", "morpheme", true);
-          } else if (setupData.layerSelection.morphemeLayerType === 'existing' && setupData.layerSelection.selectedMorphemeLayerId) {
-            morphemeLayerId = setupData.layerSelection.selectedMorphemeLayerId;
-            updateProgress(33, 'Using existing morpheme layer...');
-            // Mark as morpheme layer
-            await client.tokenLayers.setConfig(morphemeLayerId, "plaid", "morpheme", true);
-          }
-        }
-      }
-
-      // Step 4: Create sentence token layer
+      // Token layers are created in hierarchy order: sentence → word → morpheme.
+      // Sentence is a :partitioning root layer covering the entire text.
+      // Word is :non-overlapping, nested under sentence (server enforces words don't cross sentence boundaries).
+      // Morpheme is :any, nested under word (server cascades word delete → morpheme delete).
+      // Alignment is a separate :non-overlapping root layer (time-aligned, independent of text hierarchy).
       let sentenceTokenLayerId = null;
+      let tokenLayerId = null;
+      let morphemeLayerId = null;
+      let alignmentTokenLayerId = null;
+
       if (textLayerId) {
-        updateProgress(35, 'Creating sentence layer...');
-        const sentenceTokenLayer = await client.tokenLayers.create(textLayerId, 'Sentences');
+        // Step 3: Create sentence token layer (partitioning root)
+        updateProgress(28, 'Creating sentence layer...');
+        const sentenceTokenLayer = await client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
         sentenceTokenLayerId = sentenceTokenLayer.id;
         resources.sentenceTokenLayer = sentenceTokenLayer;
-        // Mark as sentence layer
         await client.tokenLayers.setConfig(sentenceTokenLayerId, "plaid", "sentence", true);
-      }
 
-      // Step 4.5: Create alignment token layer for time-aligned tokens
-      let alignmentTokenLayerId = null;
-      if (textLayerId) {
-        updateProgress(37, 'Creating alignment token layer...');
-        const alignmentTokenLayer = await client.tokenLayers.create(textLayerId, 'Time Alignment');
+        // Step 4: Create word/primary token layer (non-overlapping, nested in sentence)
+        const tokenLayerName = (!isNewProject && setupData.layerSelection?.newTokenLayerName)
+          ? setupData.layerSelection.newTokenLayerName
+          : 'Main Tokens';
+        updateProgress(32, 'Creating token layer...');
+        const tokenLayer = await client.tokenLayers.create(textLayerId, tokenLayerName, 'non-overlapping', sentenceTokenLayerId);
+        tokenLayerId = tokenLayer.id;
+        resources.tokenLayer = tokenLayer;
+        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "primary", true);
+
+        // Step 5: Create morpheme token layer (any, nested in word)
+        const morphemeLayerName = (!isNewProject && setupData.layerSelection?.newMorphemeLayerName)
+          ? setupData.layerSelection.newMorphemeLayerName
+          : 'Main Morphemes';
+        updateProgress(35, 'Creating morpheme layer...');
+        const morphemeLayer = await client.tokenLayers.create(textLayerId, morphemeLayerName, 'any', tokenLayerId);
+        morphemeLayerId = morphemeLayer.id;
+        resources.morphemeLayer = morphemeLayer;
+        await client.tokenLayers.setConfig(morphemeLayerId, "plaid", "morpheme", true);
+
+        // Step 6: Create alignment token layer (non-overlapping, root, time-aligned)
+        updateProgress(38, 'Creating alignment token layer...');
+        const alignmentTokenLayer = await client.tokenLayers.create(textLayerId, 'Time Alignment', 'non-overlapping');
         alignmentTokenLayerId = alignmentTokenLayer.id;
         resources.alignmentTokenLayer = alignmentTokenLayer;
-        // Mark as alignment layer
         await client.tokenLayers.setConfig(alignmentTokenLayerId, "plaid", "alignment", true);
       }
 
@@ -331,7 +340,30 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
 
   const LayerSelectionReview = () => {
     const layerData = setupData.layerSelection;
-    if (!layerData || isNewProject) return null; // Suppress for new projects
+
+    // For new projects there's no layerSelection step, but we still want to
+    // show the user the token/morpheme layer names they're about to create.
+    // Text layer is fixed to "Main Text" for new projects, so we hide that
+    // row to keep the review concise.
+    if (isNewProject) {
+      return (
+        <Paper p="md" withBorder>
+          <Text fw={500} mb="sm">Layer Configuration</Text>
+          <Stack spacing="xs">
+            <Group>
+              <Text size="sm" fw={500}>Token Layer:</Text>
+              <Badge color="green">New: Main Tokens</Badge>
+            </Group>
+            <Group>
+              <Text size="sm" fw={500}>Morpheme Layer:</Text>
+              <Badge color="green">New: Main Morphemes</Badge>
+            </Group>
+          </Stack>
+        </Paper>
+      );
+    }
+
+    if (!layerData) return null;
 
     return (
       <Paper p="md" withBorder>
@@ -349,28 +381,12 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
           </Group>
           <Group>
             <Text size="sm" fw={500}>Token Layer:</Text>
-            {layerData.tokenLayerType === 'existing' ? (
-              <Badge color="blue">Existing: {layerData.selectedTokenLayerId}</Badge>
-            ) : layerData.tokenLayerType === 'new' ? (
-              <Badge color="green">New: {layerData.newTokenLayerName}</Badge>
-            ) : (
-              <Badge color="gray">Not configured</Badge>
-            )}
+            <Badge color="green">New: {layerData.newTokenLayerName || 'Main Tokens'}</Badge>
           </Group>
-          {(layerData.morphemeLayerType || isNewProject) && (
-            <Group>
-              <Text size="sm" fw={500}>Morpheme Layer:</Text>
-              {isNewProject ? (
-                <Badge color="green">New: Main Morphemes</Badge>
-              ) : layerData.morphemeLayerType === 'existing' ? (
-                <Badge color="blue">Existing: {layerData.selectedMorphemeLayerId}</Badge>
-              ) : layerData.morphemeLayerType === 'new' ? (
-                <Badge color="green">New: {layerData.newMorphemeLayerName}</Badge>
-              ) : (
-                <Badge color="gray">Not configured</Badge>
-              )}
-            </Group>
-          )}
+          <Group>
+            <Text size="sm" fw={500}>Morpheme Layer:</Text>
+            <Badge color="green">New: {layerData.newMorphemeLayerName || 'Main Morphemes'}</Badge>
+          </Group>
         </Stack>
       </Paper>
     );

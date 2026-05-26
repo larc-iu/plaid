@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
-import { 
-  Stack, 
-  Text, 
-  Radio, 
-  Group, 
-  Select, 
+import { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Stack,
+  Text,
+  Radio,
+  Group,
+  Select,
   TextInput,
   Paper,
   Alert,
@@ -17,18 +17,10 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Extract text layers and token layers from project data
-  const { textLayers, tokenLayersByTextLayer } = useMemo(() => {
-    if (!project) return { textLayers: [], tokenLayersByTextLayer: {} };
-    
-    const textLayers = project.textLayers || [];
-    const tokenLayersByTextLayer = {};
-    
-    textLayers.forEach(textLayer => {
-      tokenLayersByTextLayer[textLayer.id] = textLayer.tokenLayers || [];
-    });
-    
-    return { textLayers, tokenLayersByTextLayer };
+  // Extract text layers from project data
+  const textLayers = useMemo(() => {
+    if (!project) return [];
+    return project.textLayers || [];
   }, [project]);
 
   // Fetch project data on mount
@@ -37,7 +29,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
       try {
         setLoading(true);
         if (!client) throw new Error('Not authenticated');
-        
+
         const projectData = await client.projects.get(projectId);
         setProject(projectData);
         setError('');
@@ -54,30 +46,40 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
     }
   }, [projectId, client]);
 
-  // Auto-select single text layer and single token layer when data loads
+  // Ensure token/morpheme layer types are always 'new' (the only supported option,
+  // since overlap-mode and parent-token-layer-id are immutable after creation).
+  // Also auto-select text layer when there's exactly one.
+  //
+  // Runs exactly once per project load (guarded by a ref) so we don't re-fire
+  // every time the parent re-renders with a fresh onDataChange identity.
+  const didInitDefaultsRef = useRef(false);
   useEffect(() => {
     if (!project || !textLayers) return;
+    if (didInitDefaultsRef.current) return;
+
+    const updates = {};
+    let needsUpdate = false;
+
+    if (data?.tokenLayerType !== 'new') {
+      updates.tokenLayerType = 'new';
+      needsUpdate = true;
+    }
+    if (data?.morphemeLayerType !== 'new') {
+      updates.morphemeLayerType = 'new';
+      needsUpdate = true;
+    }
 
     // Auto-select text layer if there's exactly one
     if (textLayers.length === 1 && !data?.textLayerType) {
-      const textLayer = textLayers[0];
-      const newData = {
-        ...data,
-        textLayerType: 'existing',
-        selectedTextLayerId: textLayer.id,
-        tokenLayerType: null,
-        selectedTokenLayerId: null,
-        newTokenLayerName: ''
-      };
-      
-      // Auto-select token layer if there's exactly one for this text layer
-      const availableTokens = textLayer.tokenLayers || [];
-      if (availableTokens.length === 1) {
-        newData.tokenLayerType = 'existing';
-        newData.selectedTokenLayerId = availableTokens[0].id;
-      }
-      
-      onDataChange(newData);
+      updates.textLayerType = 'existing';
+      updates.selectedTextLayerId = textLayers[0].id;
+      needsUpdate = true;
+    }
+
+    didInitDefaultsRef.current = true;
+
+    if (needsUpdate) {
+      onDataChange({ ...data, ...updates });
     }
   }, [project, textLayers, data, onDataChange]);
 
@@ -86,10 +88,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
       ...data,
       textLayerType: value,
       selectedTextLayerId: null,
-      newTextLayerName: '',
-      tokenLayerType: null,
-      selectedTokenLayerId: null,
-      newTokenLayerName: ''
+      newTextLayerName: ''
     };
     onDataChange(newData);
   };
@@ -97,10 +96,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
   const handleTextLayerSelectionChange = (value) => {
     const newData = {
       ...data,
-      selectedTextLayerId: value,
-      tokenLayerType: null,
-      selectedTokenLayerId: null,
-      newTokenLayerName: ''
+      selectedTextLayerId: value
     };
     onDataChange(newData);
   };
@@ -112,47 +108,10 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
     });
   };
 
-  const handleTokenLayerTypeChange = (value) => {
-    const newData = {
-      ...data,
-      tokenLayerType: value,
-      selectedTokenLayerId: null,
-      newTokenLayerName: ''
-    };
-    onDataChange(newData);
-  };
-
-  const handleTokenLayerSelectionChange = (value) => {
-    onDataChange({
-      ...data,
-      selectedTokenLayerId: value,
-      morphemeLayerType: null,
-      selectedMorphemeLayerId: null,
-      newMorphemeLayerName: ''
-    });
-  };
-
   const handleNewTokenLayerNameChange = (event) => {
     onDataChange({
       ...data,
       newTokenLayerName: event.currentTarget.value
-    });
-  };
-
-  const handleMorphemeLayerTypeChange = (value) => {
-    const newData = {
-      ...data,
-      morphemeLayerType: value,
-      selectedMorphemeLayerId: null,
-      newMorphemeLayerName: ''
-    };
-    onDataChange(newData);
-  };
-
-  const handleMorphemeLayerSelectionChange = (value) => {
-    onDataChange({
-      ...data,
-      selectedMorphemeLayerId: value
     });
   };
 
@@ -162,12 +121,6 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
       newMorphemeLayerName: event.currentTarget.value
     });
   };
-
-  // Get available token layers for the selected text layer
-  const availableTokenLayers = useMemo(() => {
-    if (!data?.selectedTextLayerId) return [];
-    return tokenLayersByTextLayer[data.selectedTextLayerId] || [];
-  }, [tokenLayersByTextLayer, data?.selectedTextLayerId]);
 
   // Check if we have a valid text layer selection
   const hasValidTextLayerSelection = () => {
@@ -202,17 +155,20 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
       {/* Explanatory header */}
       <div>
         <Text>
-          Choose a text layer and a token layer for Plaid Base to use.
+          Choose a text layer for Plaid Base to use, then provide names for the new
+          token and morpheme layers that will be created.
           <strong> Text layers</strong> contain the baseline text content of your documents.
-          <strong> Token layers</strong> define the units for analysis (typically morphemes, words, or other linguistic units)
-          and serve as the foundation for further annotation layers.
+          <strong> Token layers</strong> define the units for analysis (words and morphemes)
+          and serve as the foundation for further annotation layers. Token and morpheme
+          layers are always created fresh because their overlap mode and hierarchy are
+          fixed at creation time.
         </Text>
       </div>
 
       {/* Text Layer Selection */}
       <Paper p="md" withBorder>
         <Text size="md" fw={500} mb="md">Text Layer</Text>
-        
+
         <Radio.Group
           value={data?.textLayerType || ''}
           onChange={handleTextLayerTypeChange}
@@ -240,7 +196,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
             {data?.textLayerType === 'existing' && textLayers.filter(layer => layer.id).length === 0 && (
               <Text size="sm" c="dimmed" ml="xl">No existing text layers found</Text>
             )}
-            
+
             <Radio
               value="new"
               label="Create new text layer"
@@ -257,111 +213,43 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
         </Radio.Group>
       </Paper>
 
-      {/* Token Layer Selection */}
+      {/* Token Layer (always new) */}
       <Paper p="md" withBorder>
-        <Text size="md" fw={500} mb="md">Token Layer</Text>
-        
+        <Text size="md" fw={500} mb="md">Primary Token Layer</Text>
+
         {!hasValidTextLayerSelection() ? (
           <Text size="sm" c="dimmed">Please select a text layer first</Text>
         ) : (
-          <Radio.Group
-            value={data?.tokenLayerType || ''}
-            onChange={handleTokenLayerTypeChange}
-          >
-            <Stack spacing="md">
-              <Radio
-                value="existing"
-                label="Use existing token layer"
-                disabled={availableTokenLayers.filter(layer => layer.id).length === 0}
-              />
-              {data?.tokenLayerType === 'existing' && availableTokenLayers.filter(layer => layer.id).length > 0 && (
-                <Select
-                  placeholder="Select a token layer"
-                  data={availableTokenLayers
-                    .filter(layer => layer.id) // Filter out layers without valid IDs
-                    .map(layer => ({
-                      value: layer.id,
-                      label: layer.name || layer.id
-                    }))}
-                  value={data?.selectedTokenLayerId || null}
-                  onChange={handleTokenLayerSelectionChange}
-                  ml="xl"
-                />
-              )}
-              {data?.tokenLayerType === 'existing' && availableTokenLayers.filter(layer => layer.id).length === 0 && (
-                <Text size="sm" c="dimmed" ml="xl">
-                  No existing token layers found for the selected text layer
-                </Text>
-              )}
-              
-              <Radio
-                value="new"
-                label="Create new token layer"
-              />
-              {data?.tokenLayerType === 'new' && (
-                <TextInput
-                  placeholder="Enter token layer name"
-                  value={data?.newTokenLayerName || ''}
-                  onChange={handleNewTokenLayerNameChange}
-                  ml="xl"
-                />
-              )}
-            </Stack>
-          </Radio.Group>
+          <Stack spacing="xs">
+            <Text size="sm" c="dimmed">
+              A new primary (word-level) token layer will be created. Name it:
+            </Text>
+            <TextInput
+              placeholder="e.g. Main Tokens"
+              value={data?.newTokenLayerName || ''}
+              onChange={handleNewTokenLayerNameChange}
+            />
+          </Stack>
         )}
       </Paper>
 
-      {/* Morpheme Layer Selection */}
+      {/* Morpheme Layer (always new) */}
       <Paper p="md" withBorder>
-        <Text size="md" fw={500} mb="md">Morpheme Layer</Text>
-        
-        {!hasValidTextLayerSelection() || !data?.tokenLayerType ? (
-          <Text size="sm" c="dimmed">Please select a token layer first</Text>
+        <Text size="md" fw={500} mb="md">Morpheme Token Layer</Text>
+
+        {!hasValidTextLayerSelection() ? (
+          <Text size="sm" c="dimmed">Please select a text layer first</Text>
         ) : (
-          <Radio.Group
-            value={data?.morphemeLayerType || 'new'}
-            onChange={handleMorphemeLayerTypeChange}
-          >
-            <Stack spacing="md">
-              <Radio
-                value="existing"
-                label="Use existing token layer as morpheme layer"
-                disabled={availableTokenLayers.filter(layer => layer.id && layer.id !== data?.selectedTokenLayerId).length === 0}
-              />
-              {data?.morphemeLayerType === 'existing' && availableTokenLayers.filter(layer => layer.id && layer.id !== data?.selectedTokenLayerId).length > 0 && (
-                <Select
-                  placeholder="Select a token layer"
-                  data={availableTokenLayers
-                    .filter(layer => layer.id && layer.id !== data?.selectedTokenLayerId) // Exclude the selected token layer
-                    .map(layer => ({
-                      value: layer.id,
-                      label: layer.name || layer.id
-                    }))}
-                  value={data?.selectedMorphemeLayerId || null}
-                  onChange={handleMorphemeLayerSelectionChange}
-                  ml="xl"
-                />
-              )}
-              {data?.morphemeLayerType === 'existing' && availableTokenLayers.filter(layer => layer.id && layer.id !== data?.selectedTokenLayerId).length === 0 && (
-                <Text size="sm" c="dimmed" ml="xl">
-                  No other token layers available
-                </Text>
-              )}
-              
-              <Radio
-                value="new"
-                label="Create new morpheme layer"
-              />
-              {data?.morphemeLayerType === 'new' && (
-                <TextInput
-                  placeholder="Enter morpheme layer name"
-                  value={data?.newMorphemeLayerName || ''}
-                  onChange={handleNewMorphemeLayerNameChange}
-                  ml="xl"
-                />
-              )}
-            </Stack>
-          </Radio.Group>
+          <Stack spacing="xs">
+            <Text size="sm" c="dimmed">
+              A new morpheme token layer will be created under the primary token layer. Name it:
+            </Text>
+            <TextInput
+              placeholder="e.g. Main Morphemes"
+              value={data?.newMorphemeLayerName || ''}
+              onChange={handleNewMorphemeLayerNameChange}
+            />
+          </Stack>
         )}
       </Paper>
     </Stack>
@@ -371,19 +259,13 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
 // Validation function for this step
 LayerSelectionStep.isValid = (data) => {
   // Must have valid text layer selection
-  const hasValidTextLayer = 
+  const hasValidTextLayer =
     (data?.textLayerType === 'existing' && data?.selectedTextLayerId) ||
     (data?.textLayerType === 'new' && data?.newTextLayerName?.trim());
-  
-  // Must have valid token layer selection
-  const hasValidTokenLayer = 
-    (data?.tokenLayerType === 'existing' && data?.selectedTokenLayerId) ||
-    (data?.tokenLayerType === 'new' && data?.newTokenLayerName?.trim());
-  
-  // Morpheme layer is mandatory and must be valid
-  const hasValidMorphemeLayer = 
-    (data?.morphemeLayerType === 'existing' && data?.selectedMorphemeLayerId) ||
-    (data?.morphemeLayerType === 'new' && data?.newMorphemeLayerName?.trim());
-  
+
+  // Token and morpheme layers are always created new; require non-empty names.
+  const hasValidTokenLayer = !!(data?.newTokenLayerName?.trim());
+  const hasValidMorphemeLayer = !!(data?.newMorphemeLayerName?.trim());
+
   return hasValidTextLayer && hasValidTokenLayer && hasValidMorphemeLayer;
 };

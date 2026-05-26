@@ -256,20 +256,47 @@ class AlignmentProcessor:
                 # Begin atomic batch operation
                 response_helper.progress(88, "Committing changes...")
                 client.begin_batch()
-                
-                # Update the text
-                client.texts.update(text_id, new_text)
+
+                # Build explicit insert ops rather than passing the full new_text
+                # string. Passing a string would make the server run an editscript
+                # diff that CAN synthesize replacement (:r) ops covering deletions;
+                # if such a synthesized delete fully covered an existing sentence,
+                # that sentence row would be gone by the time bulk_delete(sentence_ids)
+                # ran (partitioning layers require deleting ALL or none), causing a
+                # 400 and full batch rollback. ASR is insert-only by construction,
+                # so emit explicit :insert directives — they cannot synthesize deletes.
+                #
+                # Edit ops MUST be applied left-to-right against the ORIGINAL text
+                # (the server's apply-text-edits applies them in sequence and each
+                # op's index is into the text as of that point). Our text_modifications
+                # are sorted by 'position' (= insertion index in the original text),
+                # and we tracked cumulative_offset against the previous original
+                # positions, so by emitting them in order with an index that reflects
+                # the already-applied earlier inserts we exactly reproduce the
+                # new_text we built locally.
+                edit_ops = []
+                running_offset = 0
+                for mod in text_modifications:
+                    edit_ops.append({
+                        "type": "insert",
+                        "index": mod['position'] + running_offset,
+                        "value": mod['new_text'],
+                    })
+                    running_offset += len(mod['new_text'])
+                client.texts.update(text_id, edit_ops)
                 
                 # Create alignment tokens
                 if new_alignment_tokens:
                     response_helper.progress(90, f"Creating {len(new_alignment_tokens)} alignment tokens...")
                     client.tokens.bulk_create(new_alignment_tokens)
-                
-                # Update positions of existing alignment tokens affected by text insertion
-                response_helper.progress(91, "Updating existing token positions...")
-                self._update_existing_token_positions(client, existing_alignment_tokens, text_modifications)
-                
-                # Update sentence partitioning 
+
+                # NOTE: Do NOT update existing alignment-token positions here. The
+                # server-side text-edit cascade (apply-text-edit + compensate-after-cascade)
+                # already shifts/reindexes those tokens when texts.update runs. Applying
+                # our own shifts in the same batch would double-shift them
+                # (original + 2 * delta). The text-edit cascade is sufficient.
+
+                # Update sentence partitioning
                 if sentence_token_layer_id:
                     response_helper.progress(92, "Updating sentence partitioning...")
                     self._update_sentence_partitioning(
@@ -337,52 +364,6 @@ class AlignmentProcessor:
         # If we get here, insert after the last token (temporally)
         last_token = tokens_by_time[-1]
         return last_token["end"]
-    
-    def _update_existing_token_positions(self, client, existing_alignment_tokens: List[Dict], text_modifications: List[Dict]):
-        """
-        Update the positions of existing alignment tokens after text insertions.
-        
-        When text is inserted, existing tokens that come after the insertion points
-        need their begin/end positions adjusted to account for the inserted text.
-        """
-        if not existing_alignment_tokens or not text_modifications:
-            return
-        
-        tokens_to_update = []
-        
-        for token in existing_alignment_tokens:
-            token_begin = token.get("begin", 0)
-            token_end = token.get("end", 0)
-            
-            # Calculate adjustment by looking at all modifications that happened before this token's ORIGINAL position
-            adjustment = 0
-            
-            for mod in text_modifications:
-                # mod['position'] is the position where text was inserted in the ORIGINAL text
-                original_insertion_pos = mod['position']
-                insertion_length = len(mod['new_text'])
-                
-                # If the insertion happened before this token's original position, adjust this token
-                if original_insertion_pos <= token_begin:
-                    adjustment += insertion_length
-            
-            # If this token needs adjustment, prepare the update
-            if adjustment > 0:
-                new_begin = token_begin + adjustment
-                new_end = token_end + adjustment
-                
-                # Prepare token update
-                tokens_to_update.append({
-                    "id": token["id"],
-                    "begin": new_begin,
-                    "end": new_end
-                })
-        
-        # Update tokens in batch
-        if tokens_to_update:
-            for token_update in tokens_to_update:
-                # Update individual token positions
-                client.tokens.update(token_update["id"], begin=token_update["begin"], end=token_update["end"])
     
     def _validate_temporal_ordering(self, alignment_tokens: List[Dict]):
         """
@@ -463,19 +444,26 @@ class AlignmentProcessor:
                                      original_text: str, updated_text: str, text_modifications: List[Dict]):
         """
         Update sentence partitioning after ASR text insertion.
-        
-        When new ASR text is inserted, existing sentence boundaries may be broken.
-        This function:
-        1. Identifies sentences that overlap with the insertion range
-        2. Deletes affected sentences 
-        3. Re-tokenizes the combined text into proper sentences
-        4. Creates new sentence tokens
+
+        The sentence token layer is :partitioning, so the server rejects single
+        token create/delete and rejects bulk_create against a non-empty layer or
+        bulk_delete that doesn't clear the layer entirely. ASR insertion can also
+        invalidate partial-replacement bookkeeping (existing sentence positions
+        relative to inserted text), so we take a "full reset" approach:
+
+        1. Gather ALL existing sentence IDs in this layer for this text.
+        2. Build a NEW complete partition of [0, len(updated_text)) using the
+           combined alignment tokens (existing positions reindexed for the inserted
+           text + the new alignment tokens) as anchors.
+        3. In the current batch: bulk_delete all existing + bulk_create the new
+           partition. Both must run inside the SAME batch so the layer is empty
+           in-tx when bulk_create runs (it rejects against a non-empty layer).
         """
         if not sentence_token_layer_id:
             print("No sentence token layer provided, skipping sentence partitioning")
             return
-        
-        # Find sentence token layer (document already fetched)  
+
+        # Find sentence token layer (document already fetched)
         sentence_token_layer = None
         for tl in document["text_layers"]:
             # Find the text layer that contains our text_id
@@ -485,120 +473,178 @@ class AlignmentProcessor:
                         sentence_token_layer = token_layer
                         break
                 break
-        
+
         if not sentence_token_layer:
             return
-        
-        # Get existing sentence tokens
-        existing_sentence_tokens = sentence_token_layer.get("tokens", [])
-        
-        # Find insertion range based on new alignment tokens
+
+        # Nothing to anchor sentences against
         if not new_alignment_tokens:
             return
-        
-        # Find the range of text affected by new insertions
-        new_token_starts = [t["begin"] for t in new_alignment_tokens]
-        new_token_ends = [t["end"] for t in new_alignment_tokens] 
-        insertion_start = min(new_token_starts)
-        insertion_end = max(new_token_ends)
-        
-        # Find sentences that overlap with the insertion range
-        affected_sentences = []
-        for sentence in existing_sentence_tokens:
-            sentence_start = sentence.get("begin", 0)
-            sentence_end = sentence.get("end", 0)
-            
-            # Check for overlap: not (sentence_end <= insertion_start or sentence_start >= insertion_end)
-            if not (sentence_end <= insertion_start or sentence_start >= insertion_end):
-                affected_sentences.append(sentence)
-        
-        # If no sentences are affected, we need to handle edge cases
-        if not affected_sentences:
-            # Handle different edge cases:
-            if not existing_sentence_tokens:
-                # Case 1: No existing sentences at all - create sentences from alignment tokens
-                new_sentences = self._create_sentences_from_alignment_tokens(
-                    new_alignment_tokens, text_id, sentence_token_layer_id, 
-                    full_text=updated_text, text_start=0, text_end=len(updated_text)
-                )
-            else:
-                # Case 2: Insertion doesn't overlap with existing sentences
-                # This could happen at document edges or in gaps between sentences
-                new_sentences = self._create_sentences_from_alignment_tokens(
-                    new_alignment_tokens, text_id, sentence_token_layer_id,
-                    full_text=updated_text, text_start=insertion_start, text_end=insertion_end
-                )
-            
-            if new_sentences:
-                client.tokens.bulk_create(new_sentences)
-            return
-        
-        # Find the full range that needs to be re-tokenized
-        # This should extend from the earliest affected sentence to the latest
-        affected_start = min(s.get("begin", 0) for s in affected_sentences)
-        affected_end = max(s.get("end", 0) for s in affected_sentences)
-        
-        # Since text insertion has happened, we need to adjust the end position
-        # The insertion added (insertion_end - insertion_start) characters
-        insertion_length = insertion_end - insertion_start
-        
-        # Calculate the adjusted end position in the updated text
-        if affected_end > insertion_start:
-            # Sentences extended beyond the insertion point
-            adjusted_end = affected_end + insertion_length
-        else:
-            # All affected sentences were before the insertion point (shouldn't happen due to overlap detection)
-            adjusted_end = affected_end
-        
-        # Extract the text that needs to be re-tokenized from the UPDATED text
-        # Handle edge cases where range might be invalid
+
+        existing_sentence_tokens = sentence_token_layer.get("tokens", [])
         text_length = len(updated_text)
-        
-        # Ensure we don't go beyond text boundaries
-        safe_start = max(0, affected_start)
-        safe_end = min(text_length, adjusted_end)
-        
-        if safe_start >= safe_end:
-            print("Warning: Invalid text range for sentence re-tokenization, skipping")
+
+        if text_length <= 0:
+            # Empty text — partition must be empty too. Clear if anything exists.
+            if existing_sentence_tokens:
+                client.tokens.bulk_delete([s["id"] for s in existing_sentence_tokens if "id" in s])
             return
-        
-        # Delete affected sentences
-        if affected_sentences:
-            sentence_ids_to_delete = [s["id"] for s in affected_sentences if "id" in s]
-            if sentence_ids_to_delete:
-                for sentence_id in sentence_ids_to_delete:
-                    client.tokens.delete(sentence_id)
-        
-        # Re-tokenize: we need to be more careful about existing vs new alignment tokens
-        # Get all alignment tokens with updated positions for the affected range
+
+        # Reindex existing alignment tokens to their post-insertion positions
         updated_existing_tokens = []
         for token in existing_alignment_tokens:
-            # Calculate the updated position for existing tokens
             token_begin = token.get("begin", 0)
-            adjustment = sum(len(mod['new_text']) for mod in text_modifications 
-                            if mod['position'] <= token_begin)
+            adjustment = sum(len(mod['new_text']) for mod in text_modifications
+                             if mod['position'] <= token_begin)
             updated_token = dict(token)
             updated_token["begin"] = token_begin + adjustment
             updated_token["end"] = token.get("end", 0) + adjustment
             updated_existing_tokens.append(updated_token)
-        
-        # Combine updated existing tokens with new tokens
-        all_alignment_tokens = updated_existing_tokens + new_alignment_tokens
-        
-        # Filter to affected range
-        affected_alignment_tokens = [
-            token for token in all_alignment_tokens
-            if token.get("begin", 0) >= safe_start and token.get("end", 0) <= safe_end
-        ]
-        
+
+        all_alignment_tokens = updated_existing_tokens + list(new_alignment_tokens)
+
+        # Build a complete partition of [0, text_length) anchored on the alignment tokens
         new_sentences = self._create_sentences_from_alignment_tokens(
-            affected_alignment_tokens, text_id, sentence_token_layer_id,
-            full_text=updated_text, text_start=safe_start, text_end=safe_end
+            all_alignment_tokens, text_id, sentence_token_layer_id,
+            full_text=updated_text, text_start=0, text_end=text_length
         )
-        
-        # Create new sentence tokens
-        if new_sentences:
-            client.tokens.bulk_create(new_sentences)
+
+        new_sentences = self._normalize_partition(new_sentences, text_id, sentence_token_layer_id, text_length)
+
+        if not new_sentences:
+            print("Warning: Could not build a sentence partition; skipping sentence update")
+            return
+
+        if not self._is_complete_partition(new_sentences, text_length):
+            # Fail closed (consistent with token_processor's pre-check). If
+            # _normalize_partition can't produce a valid partition, that is a
+            # bug we want to surface, not paper over with a half-cooked
+            # bulk_create that the server will reject anyway (rolling back the
+            # whole ASR batch — text update included). Raising here aborts
+            # this batch BEFORE submit, so no destructive state changes.
+            raise ValueError(
+                f"Computed sentence partition does not cleanly cover "
+                f"[0, {text_length}); aborting sentence partition update"
+            )
+
+        # TODO(annotation-preservation): ASR runs incrementally, and this full-reset
+        # bulk_delete + bulk_create wipes every sentence-level annotation (spans,
+        # vocab-links, relations grounded on sentence spans) on EACH ASR pass. That
+        # is the right thing to do only if the new partition were unrelated to the
+        # old one.
+        #
+        # We investigated whether the new partition is always a strict REFINEMENT of
+        # the old (i.e. every existing boundary survives, the new partition only adds
+        # cut points). It is NOT, in general:
+        #   * `_create_sentences_from_alignment_tokens` anchors each sentence's END
+        #     on an alignment token's `end` and each sentence's START on the
+        #     preceding token's `end`. Inserting a new alignment token BETWEEN two
+        #     existing ones therefore moves the boundary that used to sit at
+        #     `prev.end` to the new inserted token's `end` — a DIFFERENT offset.
+        #     So old boundaries don't survive byte-exactly.
+        #   * Even if they did, ASR can insert tokens before the very first existing
+        #     token, shifting the leading sentence's start (which the normalizer
+        #     then pushes back to 0).
+        #
+        # A correct incremental approach would be:
+        #   1. Walk old sentence boundaries vs. new sentence boundaries.
+        #   2. For each old boundary that has a corresponding new boundary at the
+        #      same (post-cascade) offset, leave that sentence's identity alone.
+        #   3. For each new boundary inside an existing sentence, call
+        #      `client.tokens.split(sentence_id, position)` — this preserves the
+        #      original sentence's annotations on the LEFT half.
+        #   4. For any remaining mismatches, fall back to full reset on only the
+        #      affected sub-range.
+        # This is complex enough that we're deferring it. If sentence-level
+        # annotation loss becomes a real problem for ASR users, implement the
+        # refinement-detection path above.
+        #
+        # Full reset: clear the whole layer first (partitioning rejects partial bulk_delete),
+        # then establish the new partition. Must be in the same batch (the layer must be
+        # empty in-tx when bulk_create runs).
+        existing_ids = [s["id"] for s in existing_sentence_tokens if "id" in s]
+        if existing_ids:
+            client.tokens.bulk_delete(existing_ids)
+        client.tokens.bulk_create(new_sentences)
+
+    def _normalize_partition(self, sentences: List[Dict], text_id: str, sentence_token_layer_id: str,
+                              text_length: int) -> List[Dict]:
+        """Normalize a list of sentence dicts to a complete partition of [0, text_length).
+
+        Drops zero/negative widths, clamps overlaps by extending the previous end, and
+        fills leading/interior/trailing gaps. The result either tiles [0, text_length)
+        exactly or is empty (when text_length <= 0).
+        """
+        if text_length <= 0:
+            return []
+
+        cleaned = []
+        for s in sorted(sentences, key=lambda x: (x.get('begin', 0), x.get('end', 0))):
+            b = max(0, min(s.get('begin', 0), text_length))
+            e = max(0, min(s.get('end', 0), text_length))
+            if e > b:
+                cleaned.append({
+                    "token_layer_id": sentence_token_layer_id,
+                    "text": text_id,
+                    "begin": b,
+                    "end": e,
+                })
+
+        resolved = []
+        cursor = 0
+        for s in cleaned:
+            b = max(s['begin'], cursor)
+            e = max(s['end'], b)
+            if e > b:
+                resolved.append({
+                    "token_layer_id": sentence_token_layer_id,
+                    "text": text_id,
+                    "begin": b,
+                    "end": e,
+                })
+                cursor = e
+
+        if not resolved:
+            return [{
+                "token_layer_id": sentence_token_layer_id,
+                "text": text_id,
+                "begin": 0,
+                "end": text_length,
+            }]
+
+        # Fill leading gap by EXTENDING the first sentence's begin to 0, mirroring
+        # the trailing-gap behavior below. Keeps the partition symmetric and
+        # minimizes the sentence count.
+        partition = [dict(resolved[0])]
+        if partition[0]['begin'] > 0:
+            partition[0]['begin'] = 0
+
+        for i in range(1, len(resolved)):
+            s = resolved[i]
+            partition.append(dict(s))
+            if partition[-2]['end'] < s['begin']:
+                partition[-2]['end'] = s['begin']
+
+        if partition[-1]['end'] < text_length:
+            partition[-1]['end'] = text_length
+
+        return partition
+
+    def _is_complete_partition(self, sentences: List[Dict], text_length: int) -> bool:
+        """Check that sentences tile [0, text_length) exactly with no gaps/overlaps/zero-widths."""
+        if text_length <= 0:
+            return len(sentences) == 0
+        if not sentences:
+            return False
+        sorted_s = sorted(sentences, key=lambda x: x['begin'])
+        if sorted_s[0]['begin'] != 0 or sorted_s[-1]['end'] != text_length:
+            return False
+        for i, s in enumerate(sorted_s):
+            if s['end'] <= s['begin']:
+                return False
+            if i + 1 < len(sorted_s) and s['end'] != sorted_s[i + 1]['begin']:
+                return False
+        return True
     
     def _create_sentences_from_alignment_tokens(self, alignment_tokens: List[Dict], text_id: str, 
                                                sentence_token_layer_id: str, full_text: str = "",
