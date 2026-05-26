@@ -1,0 +1,324 @@
+import { getIgtLayerInfo } from './layerInfo.js';
+import {
+  deriveDocumentData,
+  deriveSentences,
+  deriveAlignmentTokens
+} from './derive.js';
+
+import { spanMutations } from './mutations/spans.js';
+import { tokenMutations } from './mutations/tokens.js';
+import { sentenceMutations } from './mutations/sentences.js';
+import { morphemeMutations } from './mutations/morphemes.js';
+import { vocabMutations } from './mutations/vocab.js';
+import { documentMutations } from './mutations/document.js';
+import { alignmentMutations } from './mutations/alignment.js';
+
+const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
+const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
+
+// Single source of truth for a loaded plaid-igt document. Wraps a raw
+// plaid-client document, knows the IGT layer model (sentences > words >
+// morphemes, plus alignment + span layers), owns the optimistic-update
+// mutations that used to live in the editor's useXxxOperations hooks, and
+// exposes a version-counted subscription so React (or any other UI layer)
+// can re-render on change.
+//
+// Framework-agnostic — no React imports here. The React bridge lives in
+// useIgtDocument.js.
+//
+// Vocab links are scoped on the vocab layer, not the document, so the doc
+// also holds the project's loaded vocabularies (`_vocabularies`) and applies
+// link/unlink patches to that table in `_applyRawPatch`.
+export class IgtDocument {
+  constructor({ raw, project = null, vocabularies = {}, client = null, projectId = null }) {
+    this._raw = raw;
+    this._project = project;
+    this._vocabularies = vocabularies;
+    this._client = client;
+    this._projectId = projectId;
+    this._version = 0;
+    this._listeners = new Set();
+    this._isSaving = false;
+    this._error = '';
+
+    // Per-version caches. Each is gated on `*CacheVersion === this._version`.
+    this._layerInfoCache = null;
+    this._layerInfoCacheVersion = -1;
+    this._documentDataCache = null;
+    this._documentDataCacheVersion = -1;
+    this._sentencesBundleCache = null;
+    this._sentencesBundleCacheVersion = -1;
+    this._alignmentTokensCache = null;
+    this._alignmentTokensCacheVersion = -1;
+  }
+
+  // Convenience factory: fetch document + project + project vocabularies and
+  // wrap them in an IgtDocument. Mirror of plaid-ud's ConlluDocument.load.
+  static async load(client, projectId, documentId) {
+    const [raw, project] = await Promise.all([
+      client.documents.get(documentId, true),
+      client.projects.get(projectId)
+    ]);
+    const vocabularies = await loadProjectVocabularies(client, project);
+    return new IgtDocument({ raw, project, vocabularies, client, projectId });
+  }
+
+  // ----- read API -----
+  get version() { return this._version; }
+  get raw() { return this._raw; }
+  get id() { return this._raw?.id; }
+  get name() { return this._raw?.name; }
+  get client() { return this._client; }
+  get projectId() { return this._projectId; }
+  get project() { return this._project; }
+  get vocabularies() { return this._vocabularies; }
+  get isSaving() { return this._isSaving; }
+  get error() { return this._error; }
+
+  get layerInfo() {
+    if (this._layerInfoCacheVersion !== this._version) {
+      this._layerInfoCache = getIgtLayerInfo(this._raw);
+      this._layerInfoCacheVersion = this._version;
+    }
+    return this._layerInfoCache;
+  }
+
+  get document() {
+    if (this._documentDataCacheVersion !== this._version) {
+      this._documentDataCache = deriveDocumentData(this._raw, this.layerInfo, this._project);
+      this._documentDataCacheVersion = this._version;
+    }
+    return this._documentDataCache;
+  }
+
+  get body() {
+    return this.layerInfo.primaryTextLayer?.text?.body ?? '';
+  }
+
+  get alignmentTokens() {
+    if (this._alignmentTokensCacheVersion !== this._version) {
+      this._alignmentTokensCache = deriveAlignmentTokens(this.layerInfo);
+      this._alignmentTokensCacheVersion = this._version;
+    }
+    return this._alignmentTokensCache;
+  }
+
+  // Sentences + lookup maps share one derivation; expose individually for
+  // ergonomic consumer access.
+  _sentencesBundle() {
+    if (this._sentencesBundleCacheVersion !== this._version) {
+      this._sentencesBundleCache = deriveSentences(this._raw, this.layerInfo, this._vocabularies);
+      this._sentencesBundleCacheVersion = this._version;
+    }
+    return this._sentencesBundleCache;
+  }
+  get sentences() { return this._sentencesBundle().sentences; }
+  get sortedSentences() { return this._sentencesBundle().sortedSentences; }
+  get tokenLookup() { return this._sentencesBundle().tokenLookup; }
+  get sentenceLookup() { return this._sentencesBundle().sentenceLookup; }
+  get tokenPositionMaps() { return this._sentencesBundle().tokenPositionMaps; }
+  get sentenceIndexLookup() { return this._sentencesBundle().sentenceIndexLookup; }
+  get findSentenceForToken() { return this._sentencesBundle().findSentenceForToken; }
+
+  // ----- subscription bridge (useSyncExternalStore-compatible) -----
+  // Arrow-field properties so identities stay stable across renders of the
+  // same doc instance.
+  subscribe = (listener) => {
+    this._listeners.add(listener);
+    return () => { this._listeners.delete(listener); };
+  };
+
+  getSnapshot = () => this._version;
+
+  _emit() {
+    this._version++;
+    this._listeners.forEach(fn => fn());
+  }
+
+  setError(msg) {
+    if (this._error === msg) return;
+    this._error = msg;
+    this._emit();
+  }
+
+  clearError() {
+    if (!this._error) return;
+    this._error = '';
+    this._emit();
+  }
+
+  // ============================================================
+  // Mutation infrastructure
+  // ============================================================
+
+  // Single-flight gate around a mutation: skip if already saving, clear the
+  // error at the start, capture and surface errors, refetch the document on
+  // failure. Returns true on success / false otherwise so callers can branch.
+  async _withSaving(label, fn) {
+    if (this._isSaving) return false;
+    this._isSaving = true;
+    this._error = '';
+    this._emit();
+    try {
+      await fn();
+      return true;
+    } catch (err) {
+      console.error(`${label}:`, err);
+      this._error = `${label}: ${err.message || 'Unknown error'}`;
+      try { await this._reload(); } catch (reloadErr) {
+        console.error('Reload after failure also failed:', reloadErr);
+      }
+      return false;
+    } finally {
+      this._isSaving = false;
+      this._emit();
+    }
+  }
+
+  // Apply an optimistic local-state patch. The producer receives a deep clone
+  // of `_raw` plus a freshly-computed layerInfo for that clone (mutating
+  // through `info.primaryTokenLayer.tokens.push(...)` mutates the clone, since
+  // layerInfo references are live into raw). The producer's third arg is a
+  // mutable shallow clone of `_vocabularies` for link/unlink patches. Emits.
+  _applyRawPatch(producer) {
+    const next = cloneRaw(this._raw);
+    const nextVocabs = cloneVocabs(this._vocabularies);
+    producer(next, getIgtLayerInfo(next), nextVocabs);
+    this._raw = next;
+    this._vocabularies = nextVocabs;
+    this._emit();
+  }
+
+  // Re-fetch the raw document and project vocabularies from the server. Used
+  // in `_withSaving` catch-paths and as the "give up and resync" hook for
+  // big-bang multi-batch ops where local replay would be too complex.
+  async _reload() {
+    if (!this._client || !this.id) return;
+    const updated = await this._client.documents.get(this.id, true);
+    this._raw = updated;
+    if (this._project) {
+      try {
+        this._vocabularies = await loadProjectVocabularies(this._client, this._project);
+      } catch (err) {
+        console.warn('Vocab reload failed:', err);
+      }
+    }
+    this._emit();
+  }
+
+  // ============================================================
+  // Template mutations
+  // ============================================================
+  // These two methods serve as the canonical template for the mutation
+  // mixins. Conventions to follow:
+  //
+  // - Validate inputs (id lookups, layer presence) OUTSIDE `_withSaving`.
+  //   Guard failures use `setError + return false` so an invalid id doesn't
+  //   trigger a needless `_reload` via the catch path.
+  // - Wrap the server call + optimistic patch in `_withSaving(label, fn)`.
+  // - Inside `_applyRawPatch((next, info, vocabs) => ...)`, re-resolve
+  //   layers/tokens via `info` — captured outer references point into the
+  //   OLD raw doc and mutating through them is a real bug.
+  // - For batched ops, the order matters: `submitBatch` runs ops sequentially
+  //   server-side, so an op that depends on a prior shift must come AFTER it.
+  //
+  // updateOrthography — simplest case: single field update with metadata merge.
+  // splitToken — complex case: pre-cleanup of dependent tokens, atomic batch
+  //              with returned id, multi-step optimistic patch.
+
+  // Set or update a per-orthography metadata key (`orthog:<name>`) on a word
+  // token. No optimistic patch is needed beyond writing the metadata entry —
+  // orthographies derive from the token's metadata at render time.
+  async updateOrthography(tokenId, orthographyName, value) {
+    const info = this.layerInfo;
+    const token = (info.primaryTokenLayer?.tokens || []).find(t => t.id === tokenId);
+    if (!token) {
+      this.setError(`Token ${tokenId} not found`);
+      return false;
+    }
+    const nextMetadata = { ...(token.metadata || {}), [`orthog:${orthographyName}`]: value };
+    return this._withSaving(`Failed to update ${orthographyName}`, async () => {
+      await this._client.tokens.setMetadata(tokenId, nextMetadata);
+      this._applyRawPatch((next, infoNext) => {
+        const t = (infoNext.primaryTokenLayer?.tokens || []).find(x => x.id === tokenId);
+        if (t) t.metadata = nextMetadata;
+      });
+    });
+  }
+
+  // Split a word token at `splitOffset` (relative to token.begin). Wipes any
+  // coincident morpheme (same begin/end) in the same atomic batch — the
+  // morpheme's analysis is invalidated by the new boundary and the server-
+  // side cascade-split would otherwise produce two nonsense morphemes.
+  // Returns true on success / false on guard failure or server error.
+  async splitToken(tokenId, splitOffset) {
+    const info = this.layerInfo;
+    const token = (info.primaryTokenLayer?.tokens || []).find(t => t.id === tokenId);
+    if (!token) {
+      this.setError(`Token ${tokenId} not found`);
+      return false;
+    }
+    return this._withSaving('Failed to split token', async () => {
+      const leftEnd = token.begin + splitOffset + 1;
+      const coincident = (info.morphemeTokenLayer?.tokens || [])
+        .filter(m => m.begin === token.begin && m.end === token.end)
+        .map(m => m.id);
+
+      this._client.beginBatch();
+      if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
+      this._client.tokens.split(tokenId, leftEnd);
+      const results = await this._client.submitBatch();
+      // `tokens.split` is the last queued op; its body is `{ id: <new right id> }`.
+      const newRightTokenId = results[results.length - 1]?.body?.id;
+
+      this._applyRawPatch((next, infoNext) => {
+        const t = (infoNext.primaryTokenLayer?.tokens || []).find(x => x.id === tokenId);
+        const originalEnd = token.end;
+        if (t) t.end = leftEnd;
+        if (newRightTokenId && infoNext.primaryTokenLayer) {
+          if (!Array.isArray(infoNext.primaryTokenLayer.tokens)) infoNext.primaryTokenLayer.tokens = [];
+          infoNext.primaryTokenLayer.tokens.push({
+            id: newRightTokenId,
+            text: token.text,
+            begin: leftEnd,
+            end: originalEnd,
+            metadata: {}
+          });
+        }
+        if (coincident.length > 0 && infoNext.morphemeTokenLayer?.tokens) {
+          const removed = new Set(coincident);
+          infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(m => !removed.has(m.id));
+        }
+      });
+    });
+  }
+}
+
+// ----- helper: load project vocabularies -----
+async function loadProjectVocabularies(client, project) {
+  const vocabIds = (project?.vocabs || []).map(v => v.id);
+  if (vocabIds.length === 0) return {};
+  const results = await Promise.all(vocabIds.map(async id => {
+    try { return await client.vocabLayers.get(id, true); }
+    catch (err) { console.warn(`Error fetching vocab ${id}:`, err); return null; }
+  }));
+  const out = {};
+  results.forEach(v => { if (v) out[v.id] = v; });
+  return out;
+}
+
+// ----- compose mixins onto the prototype -----
+// Each mutation family lives in its own file under ./mutations/. Mixins are
+// plain objects of methods; Object.assign-ing them onto the prototype lets
+// every method see `this` as the IgtDocument instance and call the shared
+// helpers (_withSaving, _applyRawPatch, _reload, layerInfo, etc.).
+Object.assign(
+  IgtDocument.prototype,
+  spanMutations,
+  tokenMutations,
+  sentenceMutations,
+  morphemeMutations,
+  vocabMutations,
+  documentMutations,
+  alignmentMutations
+);
