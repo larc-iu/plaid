@@ -1,40 +1,36 @@
 {:paths ["src/main" "resources"]
- :deps {org.clojure/clojure {:mvn/version "1.12.0"}
-        org.clojure/spec.alpha {:mvn/version "0.5.238"}
-        org.clojure/core.async {:mvn/version "1.8.741"}
-        org.clojure/tools.reader {:mvn/version "1.5.2"}
+ :deps {org.clojure/clojure {:mvn/version "1.12.5"}
+        org.clojure/spec.alpha {:mvn/version "0.6.249"}
+        org.clojure/core.async {:mvn/version "1.9.865"}
+        org.clojure/tools.reader {:mvn/version "1.6.0"}
 
         ;; common ---------------------------------------------------------------------------------
         ;; logging
+        ;; NOTE: held at 6.7.1 — 6.8.0 pulls org.clj-commons/pretty 3.6.3, whose io.aviso.repl ns
+        ;; dropped pretty-print-stack-trace and breaks eftest 0.6.0 (latest, no fix upstream).
         com.taoensso/timbre {:mvn/version "6.7.1"}
-        org.slf4j/slf4j-api {:mvn/version "2.0.17"}
-        org.slf4j/slf4j-simple {:mvn/version "2.0.17"}
+        org.slf4j/slf4j-api {:mvn/version "2.0.18"}
+        org.slf4j/slf4j-simple {:mvn/version "2.0.18"}
 
         ;; profiler, haven't used so far
-        com.taoensso/tufte {:mvn/version "2.7.0"}
-
-        ;; fulcro and fulcro-related deps
-        com.fulcrologic/fulcro {:mvn/version "3.8.6"
-                                :exclusions [com.cognitect/transit-cljs
-                                             com.cognitect/transit-js
-                                             org.clojure/clojurescript]}
+        com.taoensso/tufte {:mvn/version "3.0.2"}
 
         ;; routing
-        metosin/reitit {:mvn/version "0.8.0"}
+        metosin/reitit {:mvn/version "0.10.1"}
 
         ;; state management
         mount/mount {:mvn/version "0.1.23"}
 
         ;; http
-        http-kit/http-kit {:mvn/version "2.9.0-beta1"}
-        ring/ring-core {:mvn/version "1.14.1"}
-        ring/ring-defaults {:mvn/version "0.6.0"}
+        http-kit/http-kit {:mvn/version "2.9.0-beta3"}
+        ring/ring-core {:mvn/version "1.15.4"}
+        ring/ring-defaults {:mvn/version "0.7.0"}
         ring-cors/ring-cors {:mvn/version "0.1.13"}
         metosin/ring-http-response {:mvn/version "0.9.5"}
 
         ;; xtdb
-        com.xtdb/xtdb-core {:mvn/version "2.1.0"}
-        com.xtdb/xtdb-api {:mvn/version "2.1.0"}
+        com.xtdb/xtdb-core {:mvn/version "2.2.0-beta1"}
+        com.xtdb/xtdb-api {:mvn/version "2.2.0-beta1"}
 
         ;; security
         buddy/buddy-core {:mvn/version "1.12.0-430"}
@@ -44,11 +40,11 @@
 
         ;; misc
         camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
-        juji/editscript {:mvn/version "0.6.6"}
-        org.clojure/data.json {:mvn/version "2.5.0"}
+        juji/editscript {:mvn/version "0.7.0"}
+        org.clojure/data.json {:mvn/version "2.5.2"}
 
         ;; file type detection
-        org.apache.tika/tika-core {:mvn/version "2.9.2"}}
+        org.apache.tika/tika-core {:mvn/version "3.3.1"}}
 
  :aliases {:outdated {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
                       :main-opts ["-m" "antq.core"]}
@@ -65,7 +61,7 @@
                   :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"]
                   :main-opts ["-m" "plaid.test-runner"]
                   :extra-deps {eftest/eftest {:mvn/version "0.6.0"}
-                               ring/ring-mock {:mvn/version "0.6.1"}}}
+                               ring/ring-mock {:mvn/version "0.6.2"}}}
            :dev {:extra-paths ["src/dev" "src/test"]
                  :jvm-opts ["-XX:-OmitStackTraceInFastThrow"
                             "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"
@@ -73,18 +69,16 @@
                  :exec-fn user/start
                  :exec-args {}
 
-                 :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
-                              ring/ring-mock {:mvn/version "0.6.1"}
-                              org.clojure/tools.namespace {:mvn/version "1.5.0"}
+                 :extra-deps {org.clojure/test.check {:mvn/version "1.1.3"}
+                              ring/ring-mock {:mvn/version "0.6.2"}
+                              org.clojure/tools.namespace {:mvn/version "1.5.1"}
                               expound/expound {:mvn/version "0.9.0"}
-                              fulcrologic/fulcro-spec {:mvn/version "3.1.12"}
-                              binaryage/devtools {:mvn/version "1.0.7"}
-                              com.github.awkay/workspaces {:mvn/version "1.0.3"}}}
+                              binaryage/devtools {:mvn/version "1.0.7"}}}
            :nrepl {:extra-paths ["src/dev" "src/test"]
-                   :extra-deps {nrepl/nrepl {:mvn/version "1.3.1"}
-                                org.clojure/test.check {:mvn/version "1.1.1"}
-                                ring/ring-mock {:mvn/version "0.6.1"}
-                                org.clojure/tools.namespace {:mvn/version "1.5.0"}}
+                   :extra-deps {nrepl/nrepl {:mvn/version "1.7.0"}
+                                org.clojure/test.check {:mvn/version "1.1.3"}
+                                ring/ring-mock {:mvn/version "0.6.2"}
+                                org.clojure/tools.namespace {:mvn/version "1.5.1"}}
                    :jvm-opts ["-Djdk.attach.allowAttachSelf"
                               "--add-opens" "java.base/java.nio=ALL-UNNAMED"]
                    :main-opts ["-m" "nrepl.cmdline" "--port" "7888"]}}}
