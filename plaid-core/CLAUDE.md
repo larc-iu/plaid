@@ -336,15 +336,19 @@ in-process tailer. Lives under `plaid.olap.*`:
 
 * `plaid.olap.core` — mount/defstate for the XTDB node, cursor accessors
 * `plaid.olap.replayer` — translates audit rows → XTDB tx-ops
-* `plaid.olap.tailer` — poll loop with stall-on-malformed-row semantics
+* `plaid.olap.tailer` — poll loop. A malformed/structural audit row stalls
+  the tailer (operator recovers via `resume!`); a transient `SQLITE_BUSY` on
+  the read does NOT stall — it retries next poll, so it self-heals under
+  write contention.
 * `plaid.olap.document` — `get-at`, `get-with-layer-data-at`, `list-versions`
 
 Exists to support one read shape: "doc X at time T," exposed via
 `?as-of=<ISO-8601>` on document GET endpoints. Anti-features: no
 arbitrary queries, no analytics, no historical-ACL, no writes.
 
-Disabled by default. Operators opt in via `:plaid.olap/config :enabled? true`
-in env config. See `OPERATIONS.md` §12 for the full ops guide and
+Disabled by default (shipped + prod); **on in dev** (`config/dev.edn`).
+Operators opt in elsewhere via `:plaid.olap/config :enabled? true` in env
+config. See `OPERATIONS.md` §12 for the full ops guide and
 `docs/olap-design.md` for the design rationale + open questions.
 
 ## See Also
