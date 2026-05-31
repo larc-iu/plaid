@@ -1,13 +1,16 @@
 (ns plaid.rest-api.v1.vocab-test
   (:require [clojure.test :refer :all]
             [clojure.string]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request
-                                    with-admin with-test-users user1-request user2-request]]
+                                    with-admin with-test-users user1-request user2-request with-clean-db]]
+            [plaid.fixtures :as fix]
+            [plaid.sql.vocab-layer :as vl]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 (deftest vocab-layer-functionality
   (testing "Vocab layer basic CRUD operations"
@@ -124,8 +127,10 @@
       (assert-not-found (get-vocab-layer admin-request fake-id))
       (assert-not-found (update-vocab-layer admin-request fake-id {:name "Test"}))
       (assert-not-found (delete-vocab-layer admin-request fake-id))
-      (assert-not-found (add-vocab-maintainer admin-request fake-id "user1@example.com"))
-      (assert-not-found (remove-vocab-maintainer admin-request fake-id "user1@example.com")))))
+      ;; assert-user-and-vocab! treats both missing user and missing
+      ;; vocab as 400 (symmetric with v2's project-counterpart check).
+      (assert-bad-request (add-vocab-maintainer admin-request fake-id "user1@example.com"))
+      (assert-bad-request (remove-vocab-maintainer admin-request fake-id "user1@example.com")))))
 
 (deftest vocab-item-functionality
   (let [vocab-res (create-vocab-layer admin-request "Test Vocab for Items")
@@ -483,6 +488,77 @@
         (assert-not-found (update-vocab-link-metadata admin-request fake-link-id {"test" true}))
         (assert-not-found (delete-vocab-link-metadata admin-request fake-link-id))
         (assert-not-found (delete-vocab-link admin-request fake-link-id))))
+
+    (testing "Vocab link cross-text + cross-token-layer invariants"
+      ;; Build a second token-layer ON THE SAME text-layer/text, plus a
+      ;; second text-layer (with its own text + token-layer + token) in
+      ;; the SAME document. This lets us exercise both cross-layer and
+      ;; cross-text rejection paths inside one document.
+      (let [tkl2-res (api-call admin-request {:method :post
+                                              :path "/api/v1/token-layers"
+                                              :body {:text-layer-id tl-id
+                                                     :name "VocabLinkTokenLayer2"}})
+            tkl2-id (-> tkl2-res :body :id)
+            ;; Token on the second token-layer, same text — spans "hello"
+            other-layer-token-res (api-call admin-request
+                                            {:method :post
+                                             :path "/api/v1/tokens"
+                                             :body {:token-layer-id tkl2-id
+                                                    :text text-id
+                                                    :begin 0 :end 5}})
+            other-layer-token-id (-> other-layer-token-res :body :id)
+            ;; A second text-layer + text + token-layer + token in the
+            ;; same document.
+            tl2-res (api-call admin-request {:method :post
+                                             :path "/api/v1/text-layers"
+                                             :body {:project-id proj-id
+                                                    :name "VocabLinkTextLayer2"}})
+            tl2-id (-> tl2-res :body :id)
+            text2-res (api-call admin-request {:method :post
+                                               :path "/api/v1/texts"
+                                               :body {:text-layer-id tl2-id
+                                                      :document-id doc-id
+                                                      :body "second text"}})
+            text2-id (-> text2-res :body :id)
+            tkl3-res (api-call admin-request {:method :post
+                                              :path "/api/v1/token-layers"
+                                              :body {:text-layer-id tl2-id
+                                                     :name "VocabLinkTokenLayer3"}})
+            tkl3-id (-> tkl3-res :body :id)
+            other-text-token-res (api-call admin-request
+                                           {:method :post
+                                            :path "/api/v1/tokens"
+                                            :body {:token-layer-id tkl3-id
+                                                   :text text2-id
+                                                   :begin 0 :end 6}})
+            other-text-token-id (-> other-text-token-res :body :id)]
+        (assert-created tkl2-res)
+        (assert-created other-layer-token-res)
+        (assert-created tl2-res)
+        (assert-created text2-res)
+        (assert-created tkl3-res)
+        (assert-created other-text-token-res)
+
+        ;; Same text, two different token-layers — must reject.
+        (let [res (create-vocab-link admin-request item-id
+                                     [token1-id other-layer-token-id])]
+          (assert-bad-request res)
+          (is (clojure.string/includes? (-> res :body :error) "token layer")
+              "Error should call out the cross-token-layer violation"))
+
+        ;; Same document, two different text-layers — must reject.
+        (let [res (create-vocab-link admin-request item-id
+                                     [token1-id other-text-token-id])]
+          (assert-bad-request res)
+          (is (or (clojure.string/includes? (-> res :body :error) "text")
+                  (clojure.string/includes? (-> res :body :error) "document"))
+              "Error should call out the cross-text (or cross-document) violation"))
+
+        ;; Positive control: a vocab-link confined to a single
+        ;; (text, token-layer) still works.
+        (let [ok-res (create-vocab-link admin-request item-id [token1-id])]
+          (assert-created ok-res)
+          (assert-no-content (delete-vocab-link admin-request (-> ok-res :body :id))))))
 
     (testing "Multiple vocab links per token"
       ;; Create multiple vocab items
@@ -956,10 +1032,13 @@
                                                                                :body {:form "test"}}))) ; Missing vocab-layer-id
 
       (let [fake-vocab-id (java.util.UUID/randomUUID)]
-        (assert-not-found (api-call admin-request {:method :post
-                                                   :path "/api/v1/vocab-items"
-                                                   :body {:vocab-layer-id fake-vocab-id
-                                                          :form "test"}}))) ; Non-existent vocab
+        ;; Missing parent vocab-layer on create returns 400 (per the
+        ;; review's consensus across relation/token/vocab-item parent
+        ;; checks). Was 404 in pre-cleanup, made symmetric in cleanup.
+        (assert-bad-request (api-call admin-request {:method :post
+                                                     :path "/api/v1/vocab-items"
+                                                     :body {:vocab-layer-id fake-vocab-id
+                                                            :form "test"}}))) ; Non-existent vocab
 
       ;; Invalid vocab link operations
       (let [item-res (create-vocab-item admin-request vocab-id "test-item")
@@ -1249,3 +1328,42 @@
       (assert-no-content (delete-vocab-layer admin-request vocab-id))
       (assert-no-content (delete-test-project admin-request proj-a))
       (assert-no-content (delete-test-project admin-request proj-b)))))
+
+(deftest vocab-get-accessible-shape-matches-get
+  ;; Regression guard for Task #67: `get-accessible` was rewritten from
+  ;; an N+1 `(mapv #(get db %) ids)` into a batched hydrator. The REST
+  ;; consumer iterates the hydrated records and serializes them, so any
+  ;; shape drift breaks `GET /vocab-layers`. Mirrors
+  ;; `project-test/get-accessible-shape-matches-get`.
+  (testing "batched batch-hydrate-vocab-layers entry equals (get db id)"
+    (let [vocab-res (create-vocab-layer admin-request "Shape Parity Vocab")
+          vocab-id (-> vocab-res :body :id)
+          _ (assert-created vocab-res)
+          ;; Give the vocab a maintainer so the :vocab/maintainers
+          ;; vector is non-empty (otherwise the test would pass
+          ;; trivially even if batch-hydrate dropped the key).
+          _ (assert-no-content
+             (add-vocab-maintainer admin-request vocab-id "user1@example.com"))
+          db fix/db
+          single (vl/get db vocab-id)
+          batched-list (vl/batch-hydrate-vocab-layers db [vocab-id])
+          batched (first batched-list)]
+      (is (some? single)
+          "single-id get should return a vocab map")
+      (is (some? batched)
+          "batch-hydrate-vocab-layers should include the vocab")
+      (is (= (set (keys single)) (set (keys batched)))
+          "key sets must match")
+      (is (= (:vocab/id single) (:vocab/id batched)))
+      (is (= (:vocab/name single) (:vocab/name batched)))
+      (is (= (:config single) (:config batched)))
+      (is (= (set (:vocab/maintainers single))
+             (set (:vocab/maintainers batched))))
+      ;; Clean up
+      (assert-no-content (delete-vocab-layer admin-request vocab-id))))
+
+  (testing "batch-hydrate-vocab-layers returns a vector on empty input"
+    (let [db fix/db
+          result (vl/batch-hydrate-vocab-layers db [])]
+      (is (vector? result)
+          "must return a vector (not a lazy seq)"))))

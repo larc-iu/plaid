@@ -3,23 +3,23 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.xtdb2.text-layer :as txtl]
-            [plaid.xtdb2.text :as txt]))
+            [plaid.sql.text-layer :as txtl]
+            [plaid.sql.text :as txt]))
 
-(defn get-project-id [{xt-map :xt-map params :parameters}]
+(defn get-project-id [{db :db params :parameters}]
   (let [txtl-id (-> params :body :text-layer-id)
         text-id (-> params :path :text-id)]
     (cond
-      txtl-id (txtl/project-id xt-map txtl-id)
-      text-id (txt/project-id xt-map text-id)
+      txtl-id (txtl/project-id db txtl-id)
+      text-id (txt/project-id db text-id)
       :else nil)))
 
-(defn get-document-id [{xt-map :xt-map params :parameters}]
+(defn get-document-id [{db :db params :parameters}]
   (let [document-id (-> params :body :document-id)
         text-id (-> params :path :text-id)]
     (cond
       document-id document-id
-      text-id (:text/document (txt/get xt-map text-id))
+      text-id (:text/document (txt/get db text-id))
       :else nil)))
 
 (def text-routes
@@ -32,23 +32,24 @@
                              "\n<body>document-id</body>: the text's associated document."
                              "\n<body>body</body>: the string which is the content of this text.")
                :middleware [[pra/wrap-writer-required get-project-id]
-                            [prm/wrap-document-version get-document-id]]
-               :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                            [prm/wrap-document-version get-document-id]
+                            metadata/wrap-inline-metadata-shape-guard]
+               :parameters {:query [:map [:document-version {:optional true} :int]]
                             :body [:map
                                    [:text-layer-id :uuid]
                                    [:document-id :uuid]
                                    [:body string?]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [text-layer-id document-id body metadata]} :body} :parameters xtdb :xtdb user-id :user/id}]
+               :handler (fn [{{{:keys [text-layer-id document-id body metadata]} :body} :parameters db :db user-id :user/id}]
                           (let [attrs {:text/layer text-layer-id
                                        :text/document document-id
                                        :text/body body}
-                                result (txt/create {:node xtdb} attrs user-id metadata)]
+                                result (txt/create db attrs user-id metadata)]
                             (if (:success result)
-                              (prm/assoc-document-versions-in-header
+                              (prm/assoc-document-version-in-header
                                {:status 201
                                 :body {:id (:extra result)}}
-                               result)
+                               db document-id)
                               {:status (or (:code result) 500)
                                :body {:error (:error result)}})))}}]
 
@@ -57,8 +58,8 @@
 
     ["" {:get {:summary "Get a text."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [text-id]} :path} :parameters xt-map :xt-map}]
-                          (let [text (txt/get xt-map text-id)]
+               :handler (fn [{{{:keys [text-id]} :path} :parameters db :db}]
+                          (let [text (txt/get db text-id)]
                             (if (some? text)
                               {:status 200
                                :body text}
@@ -75,7 +76,7 @@
                                "  {type: \"insert\", index: 0, value: \"abc\"} (insert \"abc\" at the front)")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
-                 :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                 :parameters {:query [:map [:document-version {:optional true} :int]]
                               ;; TODO figure out how to make malli happy with something like this
                               ;; [:map [:body {:optional true} string?]
                               ;;  [:ops {:optional true} [:sequential [:map
@@ -83,25 +84,27 @@
                               ;;                                       [:index int?]
                               ;;                                      [:value [:or string? int?]]]]]]
                               :body any?}
-                 :handler (fn [{{{:keys [text-id]} :path {:keys [body]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                            (let [{:keys [success code error] :as result} (txt/update-body {:node xtdb} text-id body user-id)]
+                 :handler (fn [{{{:keys [text-id]} :path {:keys [body]} :body} :parameters db :db user-id :user/id}]
+                            (let [doc-id (:text/document (txt/get db text-id))
+                                  {:keys [success code error]} (txt/update-body db text-id body user-id)]
                               (if success
-                                (prm/assoc-document-versions-in-header
+                                (prm/assoc-document-version-in-header
                                  {:status 200
-                                  :body (txt/get xtdb text-id)}
-                                 result)
+                                  :body (txt/get db text-id)}
+                                 db doc-id)
                                 {:status (or code 500)
                                  :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a text and all dependent data."
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
-                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
-                  :handler (fn [{{{:keys [text-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error] :as result} (txt/delete {:node xtdb} text-id user-id)]
+                  :parameters {:query [:map [:document-version {:optional true} :int]]}
+                  :handler (fn [{{{:keys [text-id]} :path} :parameters db :db user-id :user/id}]
+                             (let [doc-id (:text/document (txt/get db text-id))
+                                   {:keys [success code error]} (txt/delete db text-id user-id)]
                                (if success
-                                 (prm/assoc-document-versions-in-header
+                                 (prm/assoc-document-version-in-header
                                   {:status 204}
-                                  result)
+                                  db doc-id)
                                  {:status (or code 500)
                                   :body {:error (or error "Internal server error")}})))}}]
 

@@ -1,13 +1,42 @@
 (ns plaid.rest-api.v1.batch
   (:require [clojure.string :as str]
             [clojure.edn :as edn]
-            [ring.util.io :as ring-io]
+            [clojure.data.json :as json]
             [muuntaja.core :as m]
-            [xtdb.api :as xt]
-            [plaid.xtdb2.common :as pxc]
-            [plaid.xtdb2.operation :as op]
-            [plaid.xtdb2.operation-coordinator :as op-coord]
-            [taoensso.timbre :as log]))
+            [next.jdbc :as jdbc]
+            [plaid.sql.operation :as op]
+            [plaid.sql.relation :as relation]
+            [plaid.sql.span :as span]
+            [plaid.sql.text :as text]
+            [plaid.sql.token :as token]
+            [plaid.sql.vocab-link :as vocab-link]
+            [taoensso.timbre :as log])
+  (:import [java.sql SQLException]))
+
+(def ^:private max-batch-ops
+  "Hard cap on operations per atomic batch. Picked so an honest client
+  has plenty of headroom while a runaway/buggy/malicious client can't
+  serialize the whole DB on a single transaction or hold a write lock
+  for an unbounded amount of time."
+  1000)
+
+(defn- sqlite-busy?
+  "Inspect a SQLException to decide whether it's a SQLITE_BUSY /
+  SQLITE_LOCKED contention failure. Mirrors the detection idiom in
+  `plaid.sql.operation/submit-operation*` — we check the extended
+  result code (5/6) when available, then fall back to substring
+  matches on the message (the driver subclass sometimes shadows
+  getResultCode)."
+  [^SQLException e]
+  (let [msg (or (.getMessage e) "")
+        result-code (when (instance? org.sqlite.SQLiteException e)
+                      (try (.code (.getResultCode ^org.sqlite.SQLiteException e))
+                           (catch Throwable _ nil)))]
+    (or (= 5 result-code)
+        (= 6 result-code)
+        (str/includes? msg "SQLITE_BUSY")
+        (str/includes? msg "SQLITE_LOCKED")
+        (str/includes? msg "database is locked"))))
 
 (defn parse-path-and-query
   "Parse a path like '/api/v1/projects?foo=bar' into uri and query-string"
@@ -35,34 +64,117 @@
       (when (seq filtered-params)
         (str/join "&" filtered-params)))))
 
+(def ^:private uuid-regex
+  ;; canonical 8-4-4-4-12 hex UUID (matches v1 path segments)
+  #"(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+(defn- parse-uuid-safe [s]
+  (try (java.util.UUID/fromString s) (catch Exception _ nil)))
+
+(defn- extract-entity-id
+  "Pull the trailing entity UUID out of a sub-op URI like
+  '/api/v1/spans/<UUID>' or '/api/v1/spans/<UUID>/tokens'. Returns nil if
+  no UUID segment is present (e.g. a bare /api/v1/spans POST whose body
+  carries the layer id but no entity id yet exists)."
+  [uri]
+  (let [segments (str/split uri #"/")
+        uuid-segments (keep parse-uuid-safe segments)]
+    (first uuid-segments)))
+
+(defn resolve-doc-id
+  "Best-effort: given a sub-op URI, return the document-id it operates on,
+  or nil if it can't be resolved (e.g. POST /api/v1/spans whose body
+  references a layer rather than an existing entity, or a path with no
+  UUID segment at all). Used by `preprocess-batch-operations` to key
+  the OCC dedupe map by [doc-id, version] rather than by bare version.
+
+  Routes by URI prefix to the appropriate SQL lookup. Returns nil
+  silently — callers must fall back to the original bare-version key in
+  that case, since we'd rather over-dedupe (and let the in-tx OCC check
+  catch it) than blow up the batch."
+  [db uri]
+  (when (and db uri)
+    (try
+      (let [eid (extract-entity-id uri)]
+        (cond
+          (nil? eid) nil
+
+          (str/includes? uri "/documents/")
+          eid
+
+          (str/includes? uri "/texts/")
+          (:text/document (text/get db eid))
+
+          (str/includes? uri "/tokens/")
+          (when-let [tok (token/get db eid)]
+            (token/get-doc-id-of-text db (:token/text tok)))
+
+          (str/includes? uri "/spans/")
+          (when-let [sp (span/get db eid)]
+            (span/get-doc-id-of-token db (first (:span/tokens sp))))
+
+          (str/includes? uri "/relations/")
+          (when-let [rel (relation/get db eid)]
+            (relation/get-doc-id-of-span db (:relation/source rel)))
+
+          (str/includes? uri "/vocab-links/")
+          (when-let [vl (vocab-link/get db eid)]
+            (when-let [tok-id (first (:vocab-link/tokens vl))]
+              (vocab-link/document-id-from-token db tok-id)))
+
+          :else nil))
+      (catch Exception e
+        (log/debug e "resolve-doc-id failed for" uri)
+        nil))))
+
 (defn preprocess-batch-operations
-  "Remove duplicate document-version query parameters across all operations in the batch.
-   Keeps only the first occurrence of each unique document-version value."
-  [operations]
-  (loop [remaining-ops operations
-         seen-versions #{}
-         result []]
-    (if (empty? remaining-ops)
-      result
-      (let [operation (first remaining-ops)
-            {:keys [uri query-string]} (parse-path-and-query (:path operation))
-            doc-version (extract-document-version query-string)]
-        (if (and doc-version (contains? seen-versions doc-version))
-          ;; Remove document-version from this operation since we've seen it before
-          (let [clean-query (remove-document-version-from-query query-string)
-                new-path (if clean-query
-                           (str uri "?" clean-query)
-                           uri)
-                updated-operation (assoc operation :path new-path)]
-            (recur (rest remaining-ops)
-                   seen-versions
-                   (conj result updated-operation)))
-          ;; Keep operation as-is and track the version if present
-          (recur (rest remaining-ops)
-                 (if doc-version
-                   (conj seen-versions doc-version)
-                   seen-versions)
-                 (conj result operation)))))))
+  "Remove duplicate (document-id, document-version) query parameters across
+  all operations in the batch. Keeps only the first occurrence of each
+  unique [doc-id, version] pair.
+
+  Prior to task #109 the dedupe key was the bare version string, which
+  silently stripped `?document-version=` from ops touching DIFFERENT
+  documents that happened to share the same numeric version (the values
+  collide trivially since every doc starts at version 1). That dropped
+  OCC enforcement entirely for the second-and-later sub-op per
+  collision. We now resolve a doc-id per op via `resolve-doc-id` and
+  key the dedupe map on [doc-id, version].
+
+  If a sub-op's doc-id can't be resolved (an unsynthesizable path, or
+  a create whose entity-id doesn't exist yet), we keep its
+  document-version intact and don't suppress any sibling — better to
+  let the in-tx OCC check fire twice than to silently skip it."
+  ([operations] (preprocess-batch-operations operations nil))
+  ([operations db]
+   (loop [remaining-ops operations
+          seen-keys #{}
+          result []]
+     (if (empty? remaining-ops)
+       result
+       (let [operation (first remaining-ops)
+             {:keys [uri query-string]} (parse-path-and-query (:path operation))
+             doc-version (extract-document-version query-string)
+             doc-id (when doc-version (resolve-doc-id db uri))
+             ;; Only dedupe ops whose doc-id we could actually resolve.
+             ;; Unresolved → keep as-is so the in-tx OCC check still fires.
+             dedupe-key (when (and doc-version doc-id) [doc-id doc-version])]
+         (if (and dedupe-key (contains? seen-keys dedupe-key))
+           ;; Remove document-version from this operation since we've already
+           ;; seen this exact (doc-id, version) pair earlier in the batch.
+           (let [clean-query (remove-document-version-from-query query-string)
+                 new-path (if clean-query
+                            (str uri "?" clean-query)
+                            uri)
+                 updated-operation (assoc operation :path new-path)]
+             (recur (rest remaining-ops)
+                    seen-keys
+                    (conj result updated-operation)))
+           ;; Keep operation as-is and track its key if we have one.
+           (recur (rest remaining-ops)
+                  (if dedupe-key
+                    (conj seen-keys dedupe-key)
+                    seen-keys)
+                  (conj result operation))))))))
 
 (defn decode-response-body
   "Decode response body based on content type"
@@ -78,112 +190,125 @@
       :else body-str)))
 
 (defn construct-request
-  "Build a Ring request map from a batch operation spec and the original request"
-  [original-request operation]
+  "Build a Ring request map from a batch operation spec. Note that :db is
+  swapped from the original DataSource to the active tx Connection so that
+  sub-handlers' submit-operation! calls savepoint inside this batch's tx."
+  [original-request operation tx]
   (let [{:keys [uri query-string]} (parse-path-and-query (:path operation))
-        method (keyword (.toLowerCase (:method operation)))
-        headers (merge (select-keys (:headers original-request)
-                                    ["authorization" "accept"])
-                       (when (:body operation)
-                         {"content-type" "application/json"}))]
-    (merge
-     {:request-method method
-      :uri uri
-      :scheme (:scheme original-request)
-      :server-name (:server-name original-request)
-      :server-port (:server-port original-request)
-      :headers headers
-       ;; Preserve important context from original request
-      :rest-handler (:rest-handler original-request)
-      :xtdb (:xtdb original-request)
-      :jwt-data (:jwt-data original-request)
-      :secret-key (:secret-key original-request)}
-     (when query-string
-       {:query-string query-string})
-     (when-let [body (:body operation)]
-       {:body-params body}))))
+        method (keyword (str/lower-case (:method operation)))
+        headers (merge (select-keys (:headers original-request) ["authorization" "accept"])
+                       (when (:body operation) {"content-type" "application/json"}))]
+    (cond-> {:request-method method
+             :uri uri
+             :scheme (:scheme original-request)
+             :server-name (:server-name original-request)
+             :server-port (:server-port original-request)
+             :headers headers
+             :rest-handler (:rest-handler original-request)
+             :db tx                                  ; CRITICAL: the tx connection, not the DS
+             :jwt-data (:jwt-data original-request)
+             :secret-key (:secret-key original-request)}
+      query-string (assoc :query-string query-string)
+      (:body operation) (assoc :body-params (:body operation)))))
 
 (defn process-batch-operation
-  "Process a single batch operation through the rest handler"
-  [rest-handler original-request operation]
+  "Process a single batch operation through the rest handler, using the
+  given tx connection as the :db."
+  [rest-handler original-request operation tx]
   (try
-    (let [request (construct-request original-request operation)
+    (let [request (construct-request original-request operation tx)
           response (rest-handler request)
           content-type (get-in response [:headers "Content-Type"] "")]
       (update response :body #(decode-response-body % content-type)))
     (catch Exception e
-      {:status 500
-       :headers {}
-       :body {:error (.getMessage e)}})))
+      ;; Don't leak raw exception text (might include SQL, internal
+      ;; paths, etc.) to API clients. Log it server-side so we can
+      ;; still diagnose.
+      (log/error e "Sub-op threw")
+      {:status 500 :headers {} :body {:error "Internal error"}})))
+
+(defn- merge-document-versions
+  "Merge X-Document-Versions headers across a sequence of sub-responses.
+   Each header is a JSON object `{doc-id integer}`; produce a single map
+   keyed by doc-id with the LATEST version (last-write-wins) since
+   sub-responses are processed in order and the final committed version
+   reflects all sub-writes."
+  [responses]
+  (reduce (fn [acc response]
+            (if-let [h (get-in response [:headers "X-Document-Versions"])]
+              (try
+                (merge acc (json/read-str h))
+                (catch Exception e
+                  (log/warn e "Failed to parse X-Document-Versions header in sub-response")
+                  acc))
+              acc))
+          {}
+          responses))
 
 (defn atomic-batch-handler
-  "Execute multiple API operations atomically - if any operation fails with status >= 300,
-   all changes are rolled back and no audit entries are created."
-  [{:keys [rest-handler parameters xtdb] :as request}]
+  "Execute multiple API operations atomically. All sub-requests run inside a
+  single JDBC transaction; any sub-request returning status >= 300 causes
+  the transaction to roll back and the failing response is returned to the
+  caller."
+  [{:keys [rest-handler parameters db] :as request}]
   (let [batch-id (random-uuid)
-        operations (preprocess-batch-operations (:body parameters))
-        start-instant (java.time.Instant/now)
-        node (pxc/->node xtdb)]
-    (try
-      ;; 1. Request permission to start batch using async coordination
-      (log/debug "Requesting batch start for batch" batch-id)
-      (let [response (op-coord/request-batch-start! batch-id)]
-        (case (:status response)
-          :proceed (log/debug "Batch" batch-id "permission granted")
-          :error (throw (ex-info (:message response) {:code 423 :batch-id batch-id}))
-          :timeout (throw (ex-info "Timeout waiting for operations to complete"
-                                   {:code 408 :batch-id batch-id}))))
-
-      ;; 2. Write crash-recovery marker
-      (xt/execute-tx node [[:put-docs :batch-markers
-                            {:xt/id batch-id
-                             :batch/id batch-id
-                             :batch/start-instant start-instant}]])
-
-      ;; 3. Process operations with batch-id bound
-      (binding [op/*current-batch-id* batch-id]
-        (loop [remaining-ops operations
-               responses []]
-          (if (empty? remaining-ops)
-            (do
-              (log/info "Batch" batch-id "completed successfully with" (count responses) "operations")
-              {:status 200 :body responses})
-            (let [operation (first remaining-ops)
-                  response (process-batch-operation rest-handler request operation)
-                  status (:status response)]
-              (log/debug "Batch" batch-id "operation" (:method operation) (:path operation)
-                         "returned status" status)
-              (if (>= status 300)
-                (do
-                  (log/warn "Batch" batch-id "failed on operation" (:method operation) (:path operation)
-                            "with status" status ". Rolling back...")
-                  (op-coord/rollback-batch! xtdb batch-id start-instant)
-                  (log/info "Batch" batch-id "rollback completed")
-                  {:status status :body (:body response)})
-                (recur (rest remaining-ops)
-                       (conj responses response)))))))
-
-      (catch Exception e
-        (log/error e "Unexpected error in batch" batch-id)
-        (op-coord/rollback-batch! xtdb batch-id start-instant)
-        {:status 500
-         :body {:error (.getMessage e)}})
-
-      (finally
-        ;; Signal coordinator first so other ops aren't blocked while we do XTDB I/O
-        (op-coord/signal-batch-complete!)
-        (log/debug "Deleting batch marker for batch" batch-id)
+        raw-ops (:body parameters)]
+    (if (> (count raw-ops) max-batch-ops)
+      {:status 400
+       :body {:error (str "Batch exceeds max of " max-batch-ops
+                          " operations (received " (count raw-ops) ")")}}
+      (let [operations (preprocess-batch-operations raw-ops db)]
         (try
-          (xt/execute-tx node [[:delete-docs :batch-markers batch-id]])
+          (jdbc/with-transaction [tx db]
+            (binding [op/*current-batch-id* batch-id]
+              (loop [remaining operations responses []]
+                (if (empty? remaining)
+                  (do (log/info "Batch" batch-id "ok with" (count responses) "ops")
+                      ;; Collect the union of all sub-responses' X-Document-Versions
+                      ;; headers (last-write-wins per doc-id) and surface them on
+                      ;; the outer batch response so OCC state isn't silently lost
+                      ;; for batch writes.
+                      (let [merged (merge-document-versions responses)
+                            outer {:status 200 :body responses}]
+                        (if (seq merged)
+                          (assoc outer :headers {"X-Document-Versions" (json/write-str merged)})
+                          outer)))
+                  (let [op-spec (first remaining)
+                        response (process-batch-operation rest-handler request op-spec tx)
+                        status (:status response)]
+                    (if (>= status 300)
+                      (do (log/warn "Batch" batch-id "failed; rolling back via throw")
+                          ;; throwing rolls back the tx; we catch outside and return the failure
+                          (throw (ex-info "batch-failed"
+                                          {:plaid.batch/failure {:status status :body (:body response)}})))
+                      (recur (rest remaining) (conj responses response))))))))
+          (catch clojure.lang.ExceptionInfo e
+            (if-let [f (:plaid.batch/failure (ex-data e))]
+              {:status (:status f) :body (:body f)}
+              (do (log/error e "Unexpected batch error" batch-id)
+                  {:status 500 :body {:error "Internal error"}})))
+          ;; Outer SQLException catch — BEGIN IMMEDIATE can fail at tx
+          ;; acquisition before any sub-op runs (SQLITE_BUSY after the
+          ;; configured busy_timeout). Surface that as 503 so clients
+          ;; can retry, instead of a generic 500 that looks like a bug.
+          ;; MUST precede the generic Exception catch.
+          (catch SQLException e
+            (if (sqlite-busy? e)
+              (do (log/warn e "Batch" batch-id "could not acquire write lock (busy/locked)")
+                  {:status 503 :body {:error "Database busy, please retry"}})
+              (do (log/error e "Unexpected batch SQL error" batch-id)
+                  {:status 500 :body {:error "Internal error"}})))
           (catch Exception e
-            (log/error e "Failed to delete batch marker for batch" batch-id
-                       "- will be cleaned up on next startup")))))))
+            (log/error e "Unexpected batch error" batch-id)
+            {:status 500 :body {:error "Internal error"}}))))))
 
 (defn batch-handler
-  "Legacy non-atomic batch handler - processes operations sequentially but without rollback"
-  [{:keys [rest-handler parameters] :as request}]
-  (let [operations (preprocess-batch-operations (:body parameters))
-        responses (mapv #(process-batch-operation rest-handler request %) operations)]
+  "Legacy non-atomic batch handler - processes operations sequentially but without rollback.
+  Sub-requests share the original (non-tx) :db, so each sub-handler opens
+  and commits its own transaction independently."
+  [{:keys [rest-handler parameters db] :as request}]
+  (let [operations (preprocess-batch-operations (:body parameters) db)
+        responses (mapv #(process-batch-operation rest-handler request % db) operations)]
     {:status 200
      :body responses}))
 

@@ -2,16 +2,16 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
-            [plaid.xtdb2.text-layer :as txtl]))
+            [plaid.sql.text-layer :as txtl]))
 
-(defn get-project-id [{xt-map :xt-map params :parameters}]
+(defn get-project-id [{db :db params :parameters}]
   (let [prj-id (-> params :body :project-id)
         txtl-id (-> params :path :text-layer-id)]
     (cond prj-id
           prj-id
 
           txtl-id
-          (txtl/project-id xt-map txtl-id)
+          (txtl/project-id db txtl-id)
 
           :else
           nil)))
@@ -25,9 +25,9 @@
             :parameters {:body [:map
                                 [:project-id :uuid]
                                 [:name :string]]}
-            :handler    (fn [{{{:keys [project-id name]} :body} :parameters xtdb :xtdb user-id :user/id}]
+            :handler    (fn [{{{:keys [project-id name]} :body} :parameters db :db user-id :user/id}]
                           (let [attrs {:text-layer/name name}]
-                            (let [result (txtl/create {:node xtdb} attrs project-id user-id)]
+                            (let [result (txtl/create db attrs project-id user-id)]
                               (if (:success result)
                                 {:status 201
                                  :body   {:id (:extra result)}}
@@ -40,8 +40,8 @@
     [""
      {:get    {:summary "Get a text layer by ID."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xt-map :xt-map :as r}]
-                          (let [text-layer (txtl/get xt-map text-layer-id)]
+               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters db :db :as r}]
+                          (let [text-layer (txtl/get db text-layer-id)]
                             (if (some? text-layer)
                               {:status 200
                                :body   text-layer}
@@ -50,17 +50,17 @@
       :patch  {:summary    "Update a text layer's name."
                :middleware [[pra/wrap-maintainer-required get-project-id]]
                :parameters {:body [:map [:name :string]]}
-               :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error]} (txtl/merge {:node xtdb} text-layer-id {:text-layer/name name} user-id)]
+               :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [name]} :body} :parameters db :db user-id :user/id}]
+                             (let [{:keys [success code error]} (txtl/merge db text-layer-id {:text-layer/name name} user-id)]
                                (if success
                                  {:status 200
-                                  :body   (txtl/get xtdb text-layer-id)}
+                                  :body   (txtl/get db text-layer-id)}
                                  {:status (or code 500)
                                   :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a text layer."
                :middleware [[pra/wrap-maintainer-required get-project-id]]
-               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                          (let [{:keys [success code error]} (txtl/delete {:node xtdb} text-layer-id user-id)]
+               :handler (fn [{{{:keys [text-layer-id]} :path} :parameters db :db user-id :user/id}]
+                          (let [{:keys [success code error]} (txtl/delete db text-layer-id user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500)
@@ -70,9 +70,9 @@
      {:post {:summary    "Shift a text layer's order within the project."
              :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
-             :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
+             :handler    (fn [{{{:keys [text-layer-id]} :path {:keys [direction]} :body} :parameters db :db user-id :user/id}]
                            (let [up? (= direction "up")
-                                 {:keys [success code error]} (txtl/shift-text-layer {:node xtdb} text-layer-id up? user-id)]
+                                 {:keys [success code error]} (txtl/shift-text-layer db text-layer-id up? user-id)]
                              (if success
                                {:status 204}
                                {:status (or code 400)

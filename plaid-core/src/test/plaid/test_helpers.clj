@@ -313,25 +313,42 @@
                              :path (str "/api/v1/documents/" document-id "/lock")}))
 
 ;; Audit helpers
+(defn- audit-query-string [{:keys [start-time end-time limit cursor]}]
+  (let [params (cond-> []
+                 start-time (conj (str "start-time=" start-time))
+                 end-time   (conj (str "end-time=" end-time))
+                 limit      (conj (str "limit=" limit))
+                 cursor     (conj (str "cursor=" cursor)))]
+    (when (seq params) (str "?" (clojure.string/join "&" params)))))
+
 (defn get-project-audit
   ([user-request-fn project-id]
-   (api-call user-request-fn {:method :get
-                              :path (str "/api/v1/projects/" project-id "/audit")}))
+   (get-project-audit user-request-fn project-id {}))
   ([user-request-fn project-id start-time end-time]
-   (let [params (cond-> []
-                  start-time (conj (str "start-time=" start-time))
-                  end-time (conj (str "end-time=" end-time)))
-         query-string (when (seq params) (str "?" (clojure.string/join "&" params)))]
-     (api-call user-request-fn {:method :get
-                                :path (str "/api/v1/projects/" project-id "/audit" query-string)}))))
+   (get-project-audit user-request-fn project-id {:start-time start-time :end-time end-time}))
+  ([user-request-fn project-id query-params]
+   (api-call user-request-fn
+             {:method :get
+              :path (str "/api/v1/projects/" project-id "/audit"
+                         (audit-query-string query-params))})))
 
-(defn get-document-audit [user-request-fn document-id]
-  (api-call user-request-fn {:method :get
-                             :path (str "/api/v1/documents/" document-id "/audit")}))
+(defn get-document-audit
+  ([user-request-fn document-id]
+   (get-document-audit user-request-fn document-id {}))
+  ([user-request-fn document-id query-params]
+   (api-call user-request-fn
+             {:method :get
+              :path (str "/api/v1/documents/" document-id "/audit"
+                         (audit-query-string query-params))})))
 
-(defn get-user-audit [user-request-fn user-id]
-  (api-call user-request-fn {:method :get
-                             :path (str "/api/v1/users/" user-id "/audit")}))
+(defn get-user-audit
+  ([user-request-fn user-id]
+   (get-user-audit user-request-fn user-id {}))
+  ([user-request-fn user-id query-params]
+   (api-call user-request-fn
+             {:method :get
+              :path (str "/api/v1/users/" user-id "/audit"
+                         (audit-query-string query-params))})))
 
 ;; Vocab layer helpers
 (defn create-vocab-layer

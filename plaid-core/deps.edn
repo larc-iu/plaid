@@ -28,9 +28,17 @@
         ring-cors/ring-cors {:mvn/version "0.1.13"}
         metosin/ring-http-response {:mvn/version "0.9.5"}
 
-        ;; xtdb
-        com.xtdb/xtdb-core {:mvn/version "2.2.0-beta1"}
+        ;; sql — OLTP backend
+        com.github.seancorfield/next.jdbc {:mvn/version "1.3.1048"}
+        com.github.seancorfield/honeysql {:mvn/version "2.7.1310"}
+        org.xerial/sqlite-jdbc {:mvn/version "3.50.3.0"}
+        com.zaxxer/HikariCP {:mvn/version "6.3.0"}
+        migratus/migratus {:mvn/version "1.6.4"}
+
+        ;; OLAP — XTDB v2 read-only time-travel replica fed from audit_writes
+        ;; (see docs/olap-design.md, or /home/luke/.claude/plans/sigh-makes-me-sad-drifting-island.md)
         com.xtdb/xtdb-api {:mvn/version "2.2.0-beta1"}
+        com.xtdb/xtdb-core {:mvn/version "2.2.0-beta1"}
 
         ;; security
         buddy/buddy-core {:mvn/version "1.12.0-430"}
@@ -55,17 +63,21 @@
                                  :main-class "plaid.server.main"
                                  :jar "target/plaid.jar"
                                  :verbose true}
-                     :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"]
+                     :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"
+                                "--enable-native-access=ALL-UNNAMED"]
                      :extra-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}}
            :test {:extra-paths ["src/test" "src/test-runner"]
-                  :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"]
+                  :jvm-opts ["--add-opens" "java.base/java.nio=ALL-UNNAMED"
+                             "--enable-native-access=ALL-UNNAMED"]
                   :main-opts ["-m" "plaid.test-runner"]
                   :extra-deps {eftest/eftest {:mvn/version "0.6.0"}
                                ring/ring-mock {:mvn/version "0.6.2"}}}
            :dev {:extra-paths ["src/dev" "src/test"]
                  :jvm-opts ["-XX:-OmitStackTraceInFastThrow"
                             "-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"
-                            "--add-opens" "java.base/java.nio=ALL-UNNAMED"]
+                            "-Djdk.attach.allowAttachSelf"
+                            "--add-opens" "java.base/java.nio=ALL-UNNAMED"
+                            "--enable-native-access=ALL-UNNAMED"]
                  :exec-fn user/start
                  :exec-args {}
 
@@ -73,12 +85,14 @@
                               ring/ring-mock {:mvn/version "0.6.2"}
                               org.clojure/tools.namespace {:mvn/version "1.5.1"}
                               expound/expound {:mvn/version "0.9.0"}
-                              binaryage/devtools {:mvn/version "1.0.7"}}}
+                              binaryage/devtools {:mvn/version "1.0.7"}
+                              nrepl/nrepl {:mvn/version "1.7.0"}}}
            :nrepl {:extra-paths ["src/dev" "src/test"]
                    :extra-deps {nrepl/nrepl {:mvn/version "1.7.0"}
                                 org.clojure/test.check {:mvn/version "1.1.3"}
                                 ring/ring-mock {:mvn/version "0.6.2"}
                                 org.clojure/tools.namespace {:mvn/version "1.5.1"}}
                    :jvm-opts ["-Djdk.attach.allowAttachSelf"
-                              "--add-opens" "java.base/java.nio=ALL-UNNAMED"]
+                              "--add-opens" "java.base/java.nio=ALL-UNNAMED"
+                              "--enable-native-access=ALL-UNNAMED"]
                    :main-opts ["-m" "nrepl.cmdline" "--port" "7888"]}}}

@@ -2,15 +2,16 @@
   (:require [clojure.test :refer :all]
             [clojure.string]
             [ring.mock.request :as mock]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states
                                     with-rest-handler
                                     rest-handler
                                     with-admin
                                     admin-token
-                                    admin-request]]))
+                                    admin-request with-clean-db]]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
+(use-fixtures :each with-clean-db)
 
 (defn parse-response-body [response]
   (read-string (slurp (:body response))))
@@ -42,12 +43,16 @@
         (is (= body {:error "User not found"}))))
 
     (testing "List all users"
+      ;; Response shape changed (task #99): GET /users is now paginated
+      ;; and returns `{:entries [...] :next-cursor ...}` instead of a
+      ;; bare seq. Admin-only (task #95).
       (let [req (admin-request :get "/api/v1/users")
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 200))
-        (is (seq? body))
-        (is (some #(= (:user/username %) "a@b.com") body))))
+        (is (contains? body :entries))
+        (is (sequential? (:entries body)))
+        (is (some #(= (:user/username %) "a@b.com") (:entries body)))))
 
     #_(testing "Patch on password works"
         (let [req (-> (admin-request :patch "/api/v1/users/a@b.com")
@@ -87,7 +92,8 @@
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 401))
-        (is (= body {:error "Invalid password"}))))
+        ;; Generic message in both branches to avoid user-enumeration.
+        (is (= body {:error "Invalid credentials"}))))
 
     (testing "Login fails with non-existent user"
       (let [req (-> (admin-request :post "/api/v1/login")
@@ -95,4 +101,5 @@
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 401))
-        (is (= body {:error "User not found"}))))))
+        ;; Same generic message — must not leak that the user doesn't exist.
+        (is (= body {:error "Invalid credentials"}))))))

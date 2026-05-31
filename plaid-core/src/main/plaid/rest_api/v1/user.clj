@@ -1,7 +1,16 @@
 (ns plaid.rest-api.v1.user
   (:require [plaid.rest-api.v1.auth :as pra]
             [reitit.coercion.malli]
-            [plaid.xtdb2.user :as user]))
+            [plaid.sql.user :as user]))
+
+;; Pagination query schema for GET /users — mirrors the audit pagination
+;; pattern in plaid.rest-api.v1.audit. `:limit` is bounded by
+;; `user/max-limit` (defense-in-depth: the SQL layer clamps too).
+;; `:cursor` is the `:username` of the last row from the previous page.
+(def ^:private pagination-query
+  [:map
+   [:limit {:optional true} [:int {:min 1 :max user/max-limit}]]
+   [:cursor {:optional true} string?]])
 
 (def user-routes
   ["/users"
@@ -9,15 +18,26 @@
     :middleware [pra/wrap-login-required]}
 
    [""
-    {:get {:summary "List all users"
-           :handler (fn [{xt-map :xt-map}]
+    {:get {:summary "List all users (admin-only, paginated)"
+           ;; Task #95: previously returned the full user roster to any
+           ;; authenticated caller — a needless enumeration surface for
+           ;; account-spraying / password-spray attacks. Locked down to
+           ;; admins; non-admins get 403 (no special-case "your own
+           ;; record" payload — they already know who they are via /me).
+           ;; Task #99: paginated. Default 100 / max 1000, ordered by
+           ;; :username, keyset cursor = last username of previous page.
+           :middleware [pra/wrap-admin-required]
+           :parameters {:query pagination-query}
+           :handler (fn [{db :db {{:keys [limit cursor] :as query} :query} :parameters}]
                       {:status 200
-                       :body (user/get-all xt-map)})}
+                       :body (user/get-all db (cond-> {}
+                                                limit  (assoc :limit limit)
+                                                cursor (assoc :cursor cursor)))})}
      :post {:summary "Create a new user"
             :middleware [pra/wrap-admin-required]
             :parameters {:body {:username string? :password string? :is-admin boolean?}}
-            :handler (fn [{{{:keys [username password is-admin]} :body} :parameters xtdb :xtdb}]
-                       (let [result (user/create {:node xtdb} username is-admin password)]
+            :handler (fn [{{{:keys [username password is-admin]} :body} :parameters db :db}]
+                       (let [result (user/create db username is-admin password)]
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
@@ -28,8 +48,8 @@
     {:parameters {:path [:map [:id string?]]}}
     [""
      {:get {:summary "Get a user by ID"
-            :handler (fn [{{{:keys [id]} :path} :parameters xt-map :xt-map}]
-                       (let [user (user/get xt-map id)]
+            :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
+                       (let [user (user/get db id)]
                          (if (some? user)
                            {:status 200
                             :body user}
@@ -42,33 +62,33 @@
                                   [:username {:optional true} string?]
                                   [:is-admin {:optional true} boolean?]]}
               :handler (fn [{{{:keys [id]} :path {:keys [username password is-admin]} :body} :parameters
-                             xtdb :xtdb
+                             db :db
                              :as request}]
                          (let [current-user-id (pra/->user-id request)
-                               current-user (user/get xtdb current-user-id)
+                               current-user (user/get db current-user-id)
                                is-self? (= id current-user-id)
                                is-admin? (user/admin? current-user)]
                            (cond
                              is-admin?
-                             (let [{:keys [success code error]} (user/merge {:node xtdb}
+                             (let [{:keys [success code error]} (user/merge db
                                                                             id
                                                                             {:password password
                                                                              :user/username username
                                                                              :user/is-admin is-admin})]
                                (if success
                                  {:status 200
-                                  :body (user/get xtdb id)}
+                                  :body (user/get db id)}
                                  {:status (or code 500)
                                   :body {:error error}}))
 
                              (and is-self? (not is-admin))
-                             (let [{:keys [success code error]} (user/merge {:node xtdb}
+                             (let [{:keys [success code error]} (user/merge db
                                                                             id
                                                                             {:password password
                                                                              :user/username username})]
                                (if success
                                  {:status 200
-                                  :body (user/get xtdb id)}
+                                  :body (user/get db id)}
                                  {:status (or code 500)
                                   :body {:error error}}))
 
@@ -78,8 +98,8 @@
 
       :delete {:summary "Delete a user"
                :middleware [pra/wrap-admin-required]
-               :handler (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb}]
-                          (let [{:keys [success code error]} (user/delete {:node xtdb} id)]
+               :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
+                          (let [{:keys [success code error]} (user/delete db id)]
                             (if success
                               {:status 204}
                               {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]]])

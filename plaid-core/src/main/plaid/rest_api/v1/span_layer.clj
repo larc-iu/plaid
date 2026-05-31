@@ -2,17 +2,17 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
-            [plaid.xtdb2.token-layer :as tokl]
-            [plaid.xtdb2.span-layer :as sl]))
+            [plaid.sql.token-layer :as tokl]
+            [plaid.sql.span-layer :as sl]))
 
-(defn get-project-id [{xt-map :xt-map params :parameters}]
+(defn get-project-id [{db :db params :parameters}]
   (let [tokl-id (-> params :body :token-layer-id)
         sl-id (-> params :path :span-layer-id)]
     (cond tokl-id
-          (tokl/project-id xt-map tokl-id)
+          (tokl/project-id db tokl-id)
 
           sl-id
-          (sl/project-id xt-map sl-id)
+          (sl/project-id db sl-id)
 
           :else
           nil)))
@@ -26,9 +26,9 @@
             :parameters {:body [:map
                                 [:token-layer-id :uuid]
                                 [:name :string]]}
-            :handler    (fn [{{{:keys [name token-layer-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
+            :handler    (fn [{{{:keys [name token-layer-id]} :body} :parameters db :db user-id :user/id}]
                           (let [attrs {:span-layer/name name}
-                                result (sl/create {:node xtdb} attrs token-layer-id user-id)]
+                                result (sl/create db attrs token-layer-id user-id)]
                             (if (:success result)
                               {:status 201
                                :body   {:id (:extra result)}}
@@ -41,8 +41,8 @@
     [""
      {:get    {:summary "Get a span layer by ID."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters xt-map :xt-map}]
-                          (let [span-layer (sl/get xt-map span-layer-id)]
+               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters db :db}]
+                          (let [span-layer (sl/get db span-layer-id)]
                             (if (some? span-layer)
                               {:status 200
                                :body   span-layer}
@@ -51,17 +51,17 @@
       :patch  {:summary    "Update a span layer's name."
                :middleware [[pra/wrap-maintainer-required get-project-id]]
                :parameters {:body [:map [:name :string]]}
-               :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error]} (sl/merge {:node xtdb} span-layer-id {:span-layer/name name} user-id)]
+               :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [name]} :body} :parameters db :db user-id :user/id}]
+                             (let [{:keys [success code error]} (sl/merge db span-layer-id {:span-layer/name name} user-id)]
                                (if success
                                  {:status 200
-                                  :body   (sl/get xtdb span-layer-id)}
+                                  :body   (sl/get db span-layer-id)}
                                  {:status (or code 500)
                                   :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a span layer."
                :middleware [[pra/wrap-maintainer-required get-project-id]]
-               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                          (let [{:keys [success code error]} (sl/delete {:node xtdb} span-layer-id user-id)]
+               :handler (fn [{{{:keys [span-layer-id]} :path} :parameters db :db user-id :user/id}]
+                          (let [{:keys [success code error]} (sl/delete db span-layer-id user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500)
@@ -71,9 +71,9 @@
      {:post {:summary    "Shift a span layer's order."
              :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
-             :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
+             :handler    (fn [{{{:keys [span-layer-id]} :path {:keys [direction]} :body} :parameters db :db user-id :user/id}]
                            (let [up? (= direction "up")
-                                 {:keys [success code error]} (sl/shift-span-layer {:node xtdb} span-layer-id up? user-id)]
+                                 {:keys [success code error]} (sl/shift-span-layer db span-layer-id up? user-id)]
                              (if success
                                {:status 204}
                                {:status (or code 400)

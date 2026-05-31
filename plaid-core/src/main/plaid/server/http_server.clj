@@ -5,6 +5,12 @@
             [plaid.server.config :refer [config]]
             [plaid.server.middleware :refer [middleware]]
             [plaid.server.events] ; Start the events system
+            ;; Side-effect require: registers the plaid.olap.tailer mount
+            ;; defstate. Without it, `mount/start` brings up plaid.olap.core/node
+            ;; (required transitively via middleware) but NEVER the tailer, so
+            ;; the OLAP node exists yet replicates nothing — every ?as-of= read
+            ;; would 425 forever. (Re-added: a prior round lost this require.)
+            [plaid.olap.tailer]
             [taoensso.timbre :as log]))
 
 ;; https://github.com/ptaoussanis/sente/blob/master/src/taoensso/sente/server_adapters/jetty9.clj
@@ -17,11 +23,16 @@
   (let [http-kit-config (::http-kit/config config)
         media-config (:plaid.media/config config)
         max-file-size-mb (:max-file-size-mb media-config)
+        ;; http-kit's `:max-body` is a per-CONNECTION cap (one number
+        ;; for every inbound request), so we sit it at the LARGER of
+        ;; the two limits (multipart uploads) and rely on the
+        ;; `wrap-json-body-cap` middleware in plaid.server.middleware
+        ;; to enforce the smaller JSON-only cap. See task #118.
         max-body-bytes (* max-file-size-mb 1024 1024)
         http-kit-config-with-max-body (assoc http-kit-config :max-body max-body-bytes)
         port (:port http-kit-config-with-max-body)]
     (when (nil? port)
-      (throw (Exception. "You must set a port as the environment variable PORT.")))
+      (throw (Exception. "http-server cannot start: no :port configured. Set :org.httpkit.server/config :port in your config (defaults.edn already provides 8085).")))
     (log/info "Starting server on port" port "with max body size" max-body-bytes "bytes")
     (let [stop-server (http-kit/run-server middleware http-kit-config-with-max-body)]
       (fn []

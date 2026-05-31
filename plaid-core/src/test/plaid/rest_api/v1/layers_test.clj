@@ -1,13 +1,14 @@
 (ns plaid.rest-api.v1.layers-test
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request
-                                    with-admin with-test-users]]
+                                    with-admin with-test-users with-clean-db]]
             [plaid.test-helpers :refer [create-test-project delete-test-project
                                         create-text-layer create-token-layer create-span-layer create-relation-layer]]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 ;; Layer-specific helpers (get, update, delete, shift) not shared with other test files
 (defn- get-text-layer [user-request-fn text-layer-id]
@@ -203,5 +204,42 @@
           (delete-span-layer admin-request parent-span-layer-id) ; Cleanup parents
           (delete-token-layer admin-request parent-token-layer-id)
           (delete-text-layer admin-request parent-text-layer-id)))
+      (finally
+        (delete-test-project admin-request project-id)))))
+
+(defn- set-layer-config [layer-type layer-id ns key value]
+  (api-call admin-request {:method :put
+                           :path (str "/api/v1/" layer-type "/" layer-id "/config/" ns "/" key)
+                           :body value}))
+
+(defn- delete-layer-config [layer-type layer-id ns key]
+  (api-call admin-request {:method :delete
+                           :path (str "/api/v1/" layer-type "/" layer-id "/config/" ns "/" key)}))
+
+(deftest layer-config-set-and-delete
+  ;; Regression for the play-house F2 bug: the shared `config-handlers`
+  ;; DELETE branch hard-coded its path param as `[:id :uuid]` instead of
+  ;; `[id-keyword :uuid]`. So config DELETE 400'd on every layer whose
+  ;; id-keyword isn't `:id` — i.e. text/token/span/relation layers (the
+  ;; `/{layer}-layers/{...-layer-id}/config/...` routes). Projects and
+  ;; vocab layers use id-keyword `:id`, so their existing config tests
+  ;; passed and masked the bug. This exercises set THEN delete on each of
+  ;; the four affected layer types; the delete is the load-bearing assert.
+  (let [project-id (create-test-project admin-request "Layer Config Test")]
+    (try
+      (let [tl (-> (create-text-layer admin-request project-id "TL") :body :id)
+            kl (-> (create-token-layer admin-request tl "KL") :body :id)
+            sl (-> (create-span-layer admin-request kl "SL") :body :id)
+            rl (-> (create-relation-layer admin-request sl "RL") :body :id)]
+        (doseq [[layer-type id] [["text-layers" tl]
+                                 ["token-layers" kl]
+                                 ["span-layers" sl]
+                                 ["relation-layers" rl]]]
+          (testing (str layer-type " config set+delete")
+            (assert-no-content (set-layer-config layer-type id "MyEditor" "color" "blue"))
+            ;; the regression assertion: DELETE must 204, not 400
+            (assert-no-content (delete-layer-config layer-type id "MyEditor" "color"))
+            ;; deleting an already-absent key is still a clean 204 (idempotent)
+            (assert-no-content (delete-layer-config layer-type id "MyEditor" "color")))))
       (finally
         (delete-test-project admin-request project-id)))))

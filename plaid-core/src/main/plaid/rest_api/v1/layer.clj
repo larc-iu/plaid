@@ -1,6 +1,6 @@
 (ns plaid.rest-api.v1.layer
   (:require [plaid.rest-api.v1.auth :as pra]
-            [plaid.xtdb2.project :as prj]))
+            [plaid.sql.project :as prj]))
 
 (defn- config-handlers [id-keyword]
   {:put    {:summary    (str "Set a configuration value for a layer in an editor namespace. Intended for storing "
@@ -8,17 +8,17 @@
                              "or sentence boundary marking.")
             :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]
                          :body any?}
-            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path config-value :body} :parameters xtdb :xtdb}]
-                          (let [{:keys [success code error]} (prj/assoc-editor-config-pair {:node xtdb} id namespace config-key config-value)]
+            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path config-value :body} :parameters db :db}]
+                          (let [{:keys [success code error]} (prj/assoc-editor-config-pair db id namespace config-key config-value)]
                             (if success
                               {:status 204}
                               {:status (or code 500)
                                :body   {:error (or error "Internal server error")}})))}
 
    :delete {:summary    "Remove a configuration value for a layer."
-            :parameters {:path [:map [:id :uuid] [:namespace string?] [:config-key string?]]}
-            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path} :parameters xtdb :xtdb}]
-                          (let [{:keys [success code error]} (prj/dissoc-editor-config-pair {:node xtdb} id namespace config-key)]
+            :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]}
+            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path} :parameters db :db}]
+                          (let [{:keys [success code error]} (prj/dissoc-editor-config-pair db id namespace config-key)]
                             (if success
                               {:status 204}
                               {:status (or code 500)

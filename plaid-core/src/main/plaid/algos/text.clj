@@ -202,11 +202,28 @@
 
         :delete
         (let [end-index (+ index value)
-              unaffected? #(and (< (:token/begin %) index)
-                                (<= (:token/end %) index))
-              contained? (fn [token]
-                           (and (>= (:token/begin token) index)
-                                (<= (:token/end token) end-index)))
+              zero-width? (fn [{:token/keys [begin end]}] (= begin end))
+              unaffected? (fn [{:token/keys [begin end] :as token}]
+                            (if (zero-width? token)
+                              ;; Zero-width tokens are pinned at position p:
+                              ;; they're unaffected iff the deletion range
+                              ;; starts at or after p (so no characters
+                              ;; before p are touched). Mirrors the insert
+                              ;; side which keeps a zero-width token at p
+                              ;; pinned when inserting at p.
+                              (<= end index)
+                              (and (< begin index)
+                                   (<= end index))))
+              contained? (fn [{:token/keys [begin end] :as token}]
+                           (if (zero-width? token)
+                             ;; Zero-width tokens: STRICT containment on
+                             ;; both sides. A delete range that begins or
+                             ;; ends at p does NOT delete the zero-width
+                             ;; token at p (insert-symmetry).
+                             (and (< index begin)
+                                  (> end-index end))
+                             (and (>= begin index)
+                                  (<= end end-index))))
               ;; token opens and closes within deletion range--delete it
               deleted-tokens (filterv contained? tokens)
               ;; token opens and closes before index (no changes)

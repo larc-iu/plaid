@@ -1,12 +1,13 @@
 (ns plaid.rest-api.v1.text-test
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request assert-forbidden
-                                    with-admin with-test-users user1-request user2-request]]
+                                    with-admin with-test-users user1-request user2-request with-clean-db]]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 (deftest text-crud-and-uniqueness
   (let [proj (create-test-project admin-request "DataProj")
@@ -109,12 +110,18 @@
             tok3-id (-> tok3-res :body :id)
             _ (assert-created tok3-res)]
 
-        ;; Delete "brown " (positions 10-16) - should delete tok2
+        ;; Delete "brown " (positions 10-16) - boundary-touches tok2 at 10.
+        ;; Zero-width tokens use strict containment on delete, mirroring the
+        ;; insert side which pins them at p: a delete range whose endpoint
+        ;; equals p does NOT delete the zero-width token at p.
         (assert-ok (update-text admin-request text-id "The quick fox jumped over the lazy dog and then some more"))
 
         ;; Check tokens
         (assert-ok (get-token admin-request tok1-id)) ; still exists at position 0
-        (assert-not-found (get-token admin-request tok2-id)) ; deleted
+        (let [tok2-get (get-token admin-request tok2-id)]
+          (assert-ok tok2-get)
+          (is (= 10 (-> tok2-get :body :token/begin))) ; survives at p (delete starts at p)
+          (is (= 10 (-> tok2-get :body :token/end))))
         (let [tok3-get (get-token admin-request tok3-id)]
           (assert-ok tok3-get)
           (is (= 57 (-> tok3-get :body :token/begin))) ; shifted left by 6

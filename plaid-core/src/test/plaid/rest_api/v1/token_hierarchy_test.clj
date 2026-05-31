@@ -1,12 +1,14 @@
 (ns plaid.rest-api.v1.token-hierarchy-test
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-xtdb
-                                    with-mount-states with-rest-handler admin-request api-call
-                                    assert-status assert-created assert-ok assert-no-content assert-bad-request
-                                    with-admin with-test-users]]
+            [plaid.fixtures :as fixtures :refer [with-db
+                                                 with-mount-states with-rest-handler admin-request api-call
+                                                 assert-status assert-created assert-ok assert-no-content assert-bad-request
+                                                 with-admin with-test-users with-clean-db]]
+            [plaid.sql.constraints.token :as tc]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 ;; ---------------------------------------------------------------------------
 ;; Helpers
@@ -261,6 +263,132 @@
       (assert-created w)
       (testing "A word with no morphemes can be deleted"
         (assert-no-content (delete-token admin-request word-id))))))
+
+(deftest bulk-delete-orphan-guard-fires
+  ;; Regression for a bug where bulk-delete's post-cascade orphan guard
+  ;; was silently skipped because the same ctx key (:tokens-by-layer-doc)
+  ;; gated both the partitioning all-or-nothing check (a pre-cascade
+  ;; rule) and the orphan-descendant guard (a post-cascade rule);
+  ;; passing nil to silence the former also silenced the latter.
+  ;;
+  ;; We probe the guard directly with `tc/enforce!`: build a hierarchy
+  ;; with morphemes inside a word, then ask the guard to evaluate a
+  ;; bulk-delete of the word AS IF the cascade had not deleted the
+  ;; morphemes. The guard must throw 409.
+  (let [{:keys [doc text-id sentence word morpheme]} (setup-hierarchy "dogs run")]
+    (assert-created (bulk-create-tokens admin-request (toks sentence text-id [[0 8]])))
+    (let [w (bulk-create-tokens admin-request (toks word text-id [[0 4] [5 8]]))
+          [word-id _] (-> w :body :ids)
+          _ (assert-created w)
+          m (bulk-create-tokens admin-request (toks morpheme text-id [[0 3] [3 4]]))
+          _ (assert-created m)
+          dlids (tc/descendant-layer-ids fixtures/db word)
+          ;; tokens-by-layer-doc carries the WORD we're "deleting"; the
+          ;; morphemes still exist in the DB (the simulated cascade
+          ;; was incomplete), so the orphan guard must reject this.
+          tokens-by-layer-doc {[word doc] [{:token/id word-id
+                                            :token/layer word
+                                            :token/document doc
+                                            :token/begin 0
+                                            :token/end 4}]}
+          ctx {:tokens-by-layer-doc tokens-by-layer-doc
+               :dlids-by-layer {word dlids}
+               :phase :post}]
+      (testing "orphan guard rejects bulk-delete when descendants survive"
+        (let [thrown? (try
+                        (tc/enforce! fixtures/db :bulk-delete ctx)
+                        false
+                        (catch clojure.lang.ExceptionInfo e
+                          (= 409 (:code (ex-data e)))))]
+          (is thrown? "enforce! :bulk-delete must throw 409 when child morphemes survive in the word's extent"))))))
+
+(deftest bulk-delete-partitioning-cross-document
+  ;; Regression for the [layer, doc] grouping fix (sql-port-review §2.12,
+  ;; Task #46). Before the fix, enforce-overlap-bulk-delete grouped by
+  ;; :token/layer and passed (:token/document (first tokens)) as the
+  ;; doc context. With a partitioning layer that spans two documents,
+  ;; the all-or-nothing check would compare doc-A's count against the
+  ;; full cross-doc eid set, causing both misfires:
+  ;;
+  ;;   1. Deleting the FULL partition of doc-A but leaving doc-B alone
+  ;;      passed (because the eid set covers doc-A entirely) but the
+  ;;      grouping silently included doc-B's tokens too, and if the
+  ;;      sort order put doc-B first the check would COMPARE doc-B's
+  ;;      count against eids that mostly target doc-A — failing
+  ;;      spuriously, OR
+  ;;   2. A partial delete against one doc could SUCCEED because the
+  ;;      other doc's tokens accidentally made the count match.
+  ;;
+  ;; We probe both directions directly via tc/enforce!.
+  ;; Build a shared project with two docs on the SAME partitioning
+  ;; layer — layers belong to projects, so the cross-doc bug only
+  ;; manifests when two documents share a single token layer.
+  (let [proj (create-test-project admin-request "CrossDocProj")
+        doc1 (create-test-document admin-request proj "Doc1")
+        doc2 (create-test-document admin-request proj "Doc2")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        text1 (-> (create-text admin-request tl doc1 "abc") :body :id)
+        text2 (-> (create-text admin-request tl doc2 "xyz") :body :id)
+        sent (-> (create-token-layer-opts admin-request tl "Sents"
+                                          {:overlap-mode "partitioning"}) :body :id)
+        ;; doc1 partition: one token [0,3]
+        _ (assert-created (bulk-create-tokens admin-request (toks sent text1 [[0 3]])))
+        ;; doc2 partition: two tokens [0,2] [2,3]
+        _ (assert-created (bulk-create-tokens admin-request (toks sent text2 [[0 2] [2 3]])))
+        doc1-ids (mapv :token/id (:token-layer/tokens
+                                  (first (filter #(= sent (:token-layer/id %))
+                                                 (mapcat :text-layer/token-layers
+                                                         (-> (api-call admin-request
+                                                                       {:method :get
+                                                                        :path (str "/api/v1/documents/" doc1 "?include-body=true")})
+                                                             :body :document/text-layers))))))
+        doc2-ids (mapv :token/id (:token-layer/tokens
+                                  (first (filter #(= sent (:token-layer/id %))
+                                                 (mapcat :text-layer/token-layers
+                                                         (-> (api-call admin-request
+                                                                       {:method :get
+                                                                        :path (str "/api/v1/documents/" doc2 "?include-body=true")})
+                                                             :body :document/text-layers))))))]
+    ;; Sanity
+    (is (= 1 (count doc1-ids)) "doc1 has one partitioning token")
+    (is (= 2 (count doc2-ids)) "doc2 has two partitioning tokens")
+
+    (testing "deleting the full partition of each doc independently passes"
+      ;; Build tokens-by-layer-doc covering ALL of doc1 AND a subset of doc2.
+      ;; In the old shape (group-by layer alone), the count comparison
+      ;; would pick one doc's count and combine all 3 ids — masking the
+      ;; partial-deletion violation. In the new shape we have two
+      ;; separate keys so doc2's partial-delete must throw.
+      (let [doc1-tokens [{:token/id (first doc1-ids) :token/layer sent
+                          :token/document doc1 :token/begin 0 :token/end 3}]
+            doc2-subset [{:token/id (first doc2-ids) :token/layer sent
+                          :token/document doc2 :token/begin 0 :token/end 2}]
+            tokens-by-layer-doc {[sent doc1] doc1-tokens
+                                 [sent doc2] doc2-subset}
+            thrown? (try
+                      (tc/enforce! fixtures/db :bulk-delete
+                                   {:tokens-by-layer-doc tokens-by-layer-doc
+                                    :dlids-by-layer {}
+                                    :phase :pre})
+                      false
+                      (catch clojure.lang.ExceptionInfo e
+                        (= 400 (:code (ex-data e)))))]
+        (is thrown? "Partial deletion of doc2's partition must throw 400 even when bundled with full deletion of doc1")))
+
+    (testing "deleting the full partition of BOTH docs passes"
+      (let [doc1-tokens [{:token/id (first doc1-ids) :token/layer sent
+                          :token/document doc1 :token/begin 0 :token/end 3}]
+            doc2-tokens (mapv (fn [id [b e]]
+                                {:token/id id :token/layer sent
+                                 :token/document doc2 :token/begin b :token/end e})
+                              doc2-ids [[0 2] [2 3]])
+            tokens-by-layer-doc {[sent doc1] doc1-tokens
+                                 [sent doc2] doc2-tokens}]
+        (is (nil? (tc/enforce! fixtures/db :bulk-delete
+                               {:tokens-by-layer-doc tokens-by-layer-doc
+                                :dlids-by-layer {}
+                                :phase :pre}))
+            "Full deletion of both doc partitions on the same layer must pass")))))
 
 ;; ---------------------------------------------------------------------------
 ;; Precise parent-side guard (boundary-aligned ops allowed; orphaning rejected)

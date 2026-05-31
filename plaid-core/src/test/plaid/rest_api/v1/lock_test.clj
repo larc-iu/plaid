@@ -1,12 +1,13 @@
 (ns plaid.rest-api.v1.lock-test
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-created assert-ok assert-no-content assert-forbidden
-                                    with-admin with-test-users user1-request user2-request]]
+                                    with-admin with-test-users user1-request user2-request with-clean-db]]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 (deftest lock-acquire-and-check
   (let [proj (create-test-project admin-request "LockAcquireProj")

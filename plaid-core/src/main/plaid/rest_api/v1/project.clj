@@ -2,7 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
-            [plaid.xtdb2.project :as prj]))
+            [plaid.sql.project :as prj]))
 
 (defn get-project-id [{params :parameters}]
   (-> params :path :id))
@@ -12,14 +12,14 @@
 
    [""
     {:get {:summary "List all projects accessible to user"
-           :handler (fn [{xt-map :xt-map user-id :user/id :as req}]
+           :handler (fn [{db :db user-id :user/id :as req}]
                       {:status 200
-                       :body (prj/get-accessible xt-map user-id)})}
+                       :body (prj/get-accessible db user-id)})}
      :post {:summary "Create a new project. Note: this also registers the user as a maintainer."
             :parameters {:body {:name string?}}
-            :handler (fn [{{{:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id :as req}]
-                       (let [result (prj/create {:node xtdb} {:project/name name
-                                                              :project/maintainers [user-id]} user-id)]
+            :handler (fn [{{{:keys [name]} :body} :parameters db :db user-id :user/id :as req}]
+                       (let [result (prj/create db {:project/name name
+                                                    :project/maintainers [user-id]} user-id)]
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
@@ -33,8 +33,8 @@
            :parameters {:query [:map [:include-documents {:optional true} boolean?]]}
            :handler (fn [{{{:keys [id]} :path
                            {:keys [include-documents]} :query} :parameters
-                          xt-map :xt-map}]
-                      (let [project (prj/get xt-map id include-documents)]
+                          db :db}]
+                      (let [project (prj/get db id include-documents)]
                         (if (some? project)
                           {:status 200
                            :body project}
@@ -44,18 +44,18 @@
      :patch {:summary "Update a project's name."
              :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:name string?]]}
-             :handler (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/merge {:node xtdb} id {:project/name name} user-id)]
+             :handler (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters db :db user-id :user/id :as req}]
+                        (let [{:keys [success code error]} (prj/merge db id {:project/name name} user-id)]
                           (if success
                             {:status 200
-                             :body (prj/get xtdb id)}
+                             :body (prj/get db id)}
                             {:status (or code 500)
                              :body {:error error}})))}
 
      :delete {:summary "Delete a project."
               :middleware [[pra/wrap-maintainer-required get-project-id]]
-              :handler (fn [{{{:keys [id]} :path} :parameters xtdb :xtdb user-id :user/id :as req}]
-                         (let [{:keys [success code error]} (prj/delete {:node xtdb} id user-id)]
+              :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id :as req}]
+                         (let [{:keys [success code error]} (prj/delete db id user-id)]
                            (if success
                              {:status 204}
                              {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
@@ -66,48 +66,48 @@
     ["/readers/:user-id"
      {:post {:summary "Set a user's access level to read-only for this project."
              :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-             :handler (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/add-reader {:node xtdb} id user-id actor-user-id)]
+             :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
+                        (let [{:keys [success code error]} (prj/add-reader db id user-id actor-user-id)]
                           (if success
                             {:status 204}
                             {:status (or code 500) :body {:error error}})))}
 
       :delete {:summary "Remove a user's reader privileges for this project."
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-               :handler (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (prj/remove-reader {:node xtdb} id user-id actor-user-id)]
+               :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
+                          (let [{:keys [success code error]} (prj/remove-reader db id user-id actor-user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500) :body {:error error}})))}}]
     ["/writers/:user-id"
      {:post {:summary "Set a user's access level to read and write for this project."
              :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-             :handler (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/add-writer {:node xtdb} id user-id actor-user-id)]
+             :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
+                        (let [{:keys [success code error]} (prj/add-writer db id user-id actor-user-id)]
                           (if success
                             {:status 204}
                             {:status (or code 500) :body {:error error}})))}
 
       :delete {:summary "Remove a user's writer privileges for this project."
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-               :handler (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (prj/remove-writer {:node xtdb} id user-id actor-user-id)]
+               :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
+                          (let [{:keys [success code error]} (prj/remove-writer db id user-id actor-user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500) :body {:error error}})))}}]
     ["/maintainers/:user-id"
      {:post {:summary "Assign a user as a maintainer for this project."
              :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-             :handler (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/add-maintainer {:node xtdb} id user-id actor-user-id)]
+             :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
+                        (let [{:keys [success code error]} (prj/add-maintainer db id user-id actor-user-id)]
                           (if success
                             {:status 204}
                             {:status (or code 500) :body {:error error}})))}
 
       :delete {:summary "Remove a user's maintainer privileges for this project."
                :parameters {:path [:map [:id :uuid] [:user-id string?]]}
-               :handler (fn [{{{:keys [id user-id]} :path} :parameters xtdb :xtdb actor-user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (prj/remove-maintainer {:node xtdb} id user-id actor-user-id)]
+               :handler (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id :as req}]
+                          (let [{:keys [success code error]} (prj/remove-maintainer db id user-id actor-user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500) :body {:error error}})))}}]]
@@ -119,8 +119,8 @@
      {:post {:summary "Link a vocabulary to a project."
              :openapi {:x-client-method "link-vocab"}
              :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
-             :handler (fn [{{{:keys [id vocab-id]} :path} :parameters xtdb :xtdb user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/add-vocab {:node xtdb} id vocab-id user-id)]
+             :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
+                        (let [{:keys [success code error]} (prj/add-vocab db id vocab-id user-id)]
                           (if success
                             {:status 204}
                             {:status (or code 500) :body {:error error}})))}
@@ -128,8 +128,8 @@
       :delete {:summary "Unlink a vocabulary to a project."
                :openapi {:x-client-method "unlink-vocab"}
                :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
-               :handler (fn [{{{:keys [id vocab-id]} :path} :parameters xtdb :xtdb user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (prj/remove-vocab {:node xtdb} id vocab-id user-id)]
+               :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
+                          (let [{:keys [success code error]} (prj/remove-vocab db id vocab-id user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500) :body {:error error}})))}}]]

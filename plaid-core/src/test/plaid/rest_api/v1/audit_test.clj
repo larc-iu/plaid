@@ -1,12 +1,13 @@
 (ns plaid.rest-api.v1.audit-test
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-created assert-ok assert-no-content assert-forbidden
-                                    with-admin with-test-users user1-request user2-request]]
+                                    with-admin with-test-users user1-request user2-request with-clean-db]]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 (deftest project-audit-log-basic
   (let [proj (create-test-project admin-request "AuditProj")
@@ -19,7 +20,7 @@
 
     (testing "Project audit log returns entries"
       (let [r (get-project-audit admin-request proj)
-            entries (:body r)]
+            entries (:entries (:body r))]
         (assert-ok r)
         (is (sequential? entries))
         (is (pos? (count entries)))
@@ -49,7 +50,7 @@
         (assert-ok all-entries)
         (assert-ok filtered)
         ;; Filtered should have fewer entries than all
-        (is (< (count (:body filtered)) (count (:body all-entries))))))))
+        (is (< (count (:entries (:body filtered))) (count (:entries (:body all-entries)))))))))
 
 (deftest project-audit-log-access-control
   (let [proj (create-test-project admin-request "AuditACProj")]
@@ -72,7 +73,7 @@
 
     (testing "Document audit log returns entries"
       (let [r (get-document-audit admin-request doc)
-            entries (:body r)]
+            entries (:entries (:body r))]
         (assert-ok r)
         (is (sequential? entries))
         ;; Should have at least the text creation entry
@@ -96,7 +97,7 @@
   (testing "Admin can access any user's audit log"
     (let [r (get-user-audit admin-request "admin@example.com")]
       (assert-ok r)
-      (is (sequential? (:body r))))))
+      (is (sequential? (:entries (:body r)))))))
 
 (deftest user-audit-log-shows-user-actions
   (let [;; user1 performs actions as writer
@@ -107,8 +108,8 @@
     (testing "Admin can query user1's audit log and see their actions"
       (let [r (get-user-audit admin-request "user1@example.com")]
         (assert-ok r)
-        (is (sequential? (:body r)))
-        (is (pos? (count (:body r))))))))
+        (is (sequential? (:entries (:body r))))
+        (is (pos? (count (:entries (:body r)))))))))
 
 (deftest audit-log-enrichment
   (let [proj (create-test-project admin-request "EnrichAuditProj")
@@ -116,7 +117,7 @@
 
     (testing "Audit entries include enriched data"
       (let [r (get-project-audit admin-request proj)
-            entries (:body r)]
+            entries (:entries (:body r))]
         (assert-ok r)
         (is (pos? (count entries)))
 

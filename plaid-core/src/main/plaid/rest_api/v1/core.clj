@@ -11,8 +11,9 @@
             [reitit.ring.coercion :as rrc]
             [muuntaja.core :as m]
             [malli.util :as mu]
+            [plaid.server.config :refer [config]]
             [plaid.rest-api.v1.middleware :as prm]
-            [plaid.rest-api.v1.auth :as pra :refer [authentication-routes]]
+            [plaid.rest-api.v1.auth :as pra :refer [authentication-routes logout-routes]]
             [plaid.rest-api.v1.user :refer [user-routes]]
             [plaid.rest-api.v1.project :refer [project-routes]]
             [plaid.rest-api.v1.message :refer [message-routes]]
@@ -56,57 +57,76 @@
     :options nil}))
 
 (defn routes []
-  ["/api/v1"
-   {:responses {200 {:description "Response"}}}
+  ;; #119 — OpenAPI / Swagger UI exposure is gated by config. Default is
+  ;; true (preserves current behavior). Operators running a hardened
+  ;; production deployment can flip `:plaid.api :expose-openapi?` to
+  ;; false to omit the spec and the docs UI entirely, both of which
+  ;; would otherwise leak API surface area to unauthenticated callers
+  ;; (or to authenticated ones who shouldn't see internal routes).
+  (let [expose-openapi? (get-in config [:plaid.api :expose-openapi?] true)]
+    (into ["/api/v1"
+           {:responses {200 {:description "Response"}}}
 
-   health-routes
-   authentication-routes
+           health-routes
+           authentication-routes
 
-   ;; Login required
-   [""
-    {:openapi {:security [{:auth []}]}
-     :middleware [pra/wrap-login-required]}
+           ;; Login required
+           [""
+            {:openapi {:security [{:auth []}]}
+             :middleware [pra/wrap-login-required]}
 
-    [""
-     {:parameters {:query [:map [:as-of {:optional true} inst?]]}}
-     user-routes
-     project-routes
-     message-routes
-     document-routes
-     text-routes
-     text-layer-routes
-     token-layer-routes
-     token-routes
-     span-routes
-     span-layer-routes
-     relation-routes
-     relation-layer-routes
-     audit-routes
-     batch-routes
-     vocab-layer-routes
-     vocab-item-routes
-     vocab-link-routes]]
+            ;; `?as-of=` is only meaningful on document-scoped GETs (the
+            ;; OLAP replica only mirrors document state). Everything else
+            ;; rejects it with 400 via `wrap-reject-as-of`; document
+            ;; routes route through OLAP via `wrap-route-as-of`. These
+            ;; can't live in the global middleware stack — reitit applies
+            ;; global middleware outermost, which means a global reject
+            ;; would fire before a per-route router could intercept.
+            [""
+             {:middleware [prm/wrap-reject-as-of]}
+             logout-routes
+             user-routes
+             project-routes
+             message-routes
+             text-routes
+             text-layer-routes
+             token-layer-routes
+             token-routes
+             span-routes
+             span-layer-routes
+             relation-routes
+             relation-layer-routes
+             audit-routes
+             batch-routes
+             vocab-layer-routes
+             vocab-item-routes
+             vocab-link-routes]
 
-   ;; swagger documentation
-   [""
-    {:no-doc true}
-    ["/openapi.json"
-     {:get {:openapi {:info {:title "plaid-api-v1"
-                             :description "Plaid's REST API"
-                             :version "v1.0"}
-                      :components {:securitySchemes {:auth {:type "http"
-                                                            :scheme "bearer"
-                                                            :bearerFormat "JWT"}}}}
-            :handler (openapi/create-openapi-handler)}}]
-    ["/docs/*"
-     {:middleware []
-      :get (swagger-ui/create-swagger-ui-handler
-            {:url "/api/v1/openapi.json"
-             :config {:validatorUrl nil
-                      :tryItOutEnabled true
-                      :persistAuthorization true}})}]]])
+            [""
+             {:middleware [prm/wrap-route-as-of]}
+             document-routes]]]
 
-(defn rest-handler [xtdb secret-key]
+          (when expose-openapi?
+            [;; swagger documentation
+             [""
+              {:no-doc true}
+              ["/openapi.json"
+               {:get {:openapi {:info {:title "plaid-api-v1"
+                                       :description "Plaid's REST API"
+                                       :version "v1.0"}
+                                :components {:securitySchemes {:auth {:type "http"
+                                                                      :scheme "bearer"
+                                                                      :bearerFormat "JWT"}}}}
+                      :handler (openapi/create-openapi-handler)}}]
+              ["/docs/*"
+               {:middleware []
+                :get (swagger-ui/create-swagger-ui-handler
+                      {:url "/api/v1/openapi.json"
+                       :config {:validatorUrl nil
+                                :tryItOutEnabled true
+                                :persistAuthorization true}})}]]]))))
+
+(defn rest-handler [db secret-key]
   (let [;; Create custom muuntaja instance that preserves fractional seconds
         muuntaja-instance (m/create
                            (-> m/default-options
@@ -122,14 +142,24 @@
                                        parameters/parameters-middleware
                                        muuntaja/format-negotiate-middleware
                                        muuntaja/format-response-middleware
+                                       ;; Between response-encode (outer) and
+                                       ;; request-decode (inner): catches a
+                                       ;; :muuntaja/decode throw and returns a
+                                       ;; 400 that the outer response middleware
+                                       ;; still JSON-encodes. See its docstring.
+                                       prm/wrap-malformed-json-400
                                        muuntaja/format-request-middleware
                                        coercion/coerce-response-middleware
+                                       ;; Run BEFORE coerce-request-middleware so v2-format UUID
+                                       ;; values for ?document-version= return a clear 400 rather
+                                       ;; than malli's generic coercion error (or worse, the v2-
+                                       ;; era silent OCC bypass).
+                                       prm/wrap-reject-uuid-document-version
                                        coercion/coerce-request-middleware
                                        multipart/multipart-middleware
-                                       [prm/wrap-request-extras xtdb secret-key]
+                                       [prm/wrap-request-extras db secret-key]
                                        pra/wrap-read-jwt
                                        prm/wrap-logging
-                                       prm/wrap-as-of-db
                                        prm/wrap-user-agent
                                        openapi/openapi-feature]}})
                  (ring/create-default-handler))]

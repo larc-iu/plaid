@@ -22,16 +22,35 @@
                                   :ns-whitelist []
                                   :ns-blacklist []}
 
- :plaid.server.xtdb/config {:main-db-dir "data"
-                            :pgwire-port 5433}
+ :plaid.server.sql/config {:main-db-path "data/plaid.db"}
 
- :plaid.xtdb2.common/config {:min-name-length 1
-                             :max-name-length 500}
+ :plaid.sql.common/config {:min-name-length 1
+                           :max-name-length 500}
+
+ ;; HikariCP pool + SQLite PRAGMA tuning. Uncomment (strip the ';;'
+ ;; prefix from each line) & adjust to override the defaults in
+ ;; plaid.sql.common/default-pool-config. Recognized keys:
+ ;;   :max-pool-size          — HikariCP maximumPoolSize (default 10)
+ ;;   :connection-timeout-ms  — HikariCP connectionTimeout (default 30000)
+ ;;   :busy-timeout-ms        — SQLite busy_timeout PRAGMA (default 5000)
+ ;;   :journal-mode           — SQLite journal_mode PRAGMA (default "WAL")
+ ;;   :synchronous            — SQLite synchronous PRAGMA (default "NORMAL")
+ ;; :plaid.sql.common/pool {:max-pool-size 10
+ ;;                         :connection-timeout-ms 30000
+ ;;                         :busy-timeout-ms 5000
+ ;;                         :journal-mode "WAL"
+ ;;                         :synchronous "NORMAL"}
 
  :plaid.server.events/heartbeat {:interval-ms 30000
                                  :max-consecutive-misses 2}
 
- :plaid.server.middleware/cors-config {:access-control-allow-origin [".*"]
+ ;; CORS: by default no cross-origin requests are allowed (frontends must be
+ ;; served from the same origin as the API). To allow specific frontend
+ ;; origins, add the EXACT origin strings (not regexes) to
+ ;; :access-control-allow-origin, e.g. ["https://app.example.com"
+ ;; "https://staging.example.com"]. The middleware Pattern/quote-escapes
+ ;; and anchors each entry so the listed values match exactly.
+ :plaid.server.middleware/cors-config {:access-control-allow-origin []
                                        :access-control-allow-methods [:get :put :post :patch :delete :options]
                                        :access-control-allow-headers ["Authorization" "Content-Type"]}
 
@@ -39,4 +58,38 @@
 
  :plaid.server.locks/config {:expiration-ms 60000}
 
- :plaid.media/config {:max-file-size-mb 200}}
+ :plaid.media/config {:max-file-size-mb 200}
+
+ ;; HTTP server body-size caps. JSON bodies are capped separately from
+ ;; multipart media uploads so a generous media limit (intended for large
+ ;; binary uploads) can't be exploited by sending a 200MB JSON document
+ ;; that the request-body parser will fully materialize in memory.
+ ;; `:max-json-body-mb` applies to non-multipart `Content-Type` requests
+ ;; (typical for REST JSON/EDN handlers); the multipart cap stays under
+ ;; `:plaid.media/config :max-file-size-mb`.
+ :plaid.server.http-server {:max-json-body-mb 10}
+
+ ;; JWT session token TTL. Auth uses this when minting tokens so an
+ ;; operator can shorten the session lifetime (e.g. tighter security
+ ;; deployments) without a code change.
+ :plaid.auth {:jwt-ttl-seconds 2592000}
+
+ ;; Whether to expose the auto-generated OpenAPI spec on /api/v1/openapi.
+ ;; Defaults to true so the public REST docs stay live; set to false to
+ ;; restrict surface area on hardened deployments.
+ :plaid.api {:expose-openapi? true}
+
+ ;; OLAP — XTDB v2 read-only time-travel replica fed from audit_writes.
+ ;; Defaults to disabled; operators opt in once they want time travel.
+ ;; When enabled, an in-process tailer polls audit_writes and replays
+ ;; into the XTDB node at :storage-path / :log-path. REST clients reach
+ ;; the replica via ?as-of=<ISO-8601> on document GET endpoints.
+ ;; See docs/olap-design.md for the full design.
+ :plaid.olap/config {:enabled? false
+                     :storage-path "data/olap-storage"
+                     :log-path "data/olap-log"
+                     :cold-replay-on-empty? true
+                     :tailer {:poll-interval-ms 5000
+                              :batch-size 500
+                              :max-lag-warn-ms 60000
+                              :max-disk-warn-mb 5000}}}

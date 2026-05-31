@@ -1,12 +1,13 @@
 (ns plaid.rest-api.v1.misc-test
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request
                                     assert-ok
-                                    with-admin]]
+                                    with-admin with-clean-db]]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
+(use-fixtures :each with-clean-db)
 
 (deftest health-endpoint
   (testing "GET /health returns 200 with status"

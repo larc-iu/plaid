@@ -1,13 +1,14 @@
 (ns plaid.rest-api.v1.middleware-test
   (:require [clojure.test :refer :all]
             [clojure.data.json :as json]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-created assert-ok assert-no-content
-                                    with-admin with-test-users]]
+                                    with-admin with-test-users with-clean-db]]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 (deftest document-version-conflict-detection
   (let [proj (create-test-project admin-request "VersionConflictProj")
@@ -51,11 +52,13 @@
         (is (some? (get-in res [:headers "X-Document-Versions"])))))))
 
 (defn- parse-version-header
-  "Parse X-Document-Versions header from a response, returning {doc-id version-uuid}."
+  "Parse X-Document-Versions header from a response, returning {doc-id version}.
+  v2 used audit-id UUIDs as the version; the SQL port uses integer document
+  versions, so we keep the value as a Long without further coercion."
   [response]
   (when-let [h (get-in response [:headers "X-Document-Versions"])]
     (let [m (json/read-str h)]
-      (into {} (map (fn [[k v]] [(java.util.UUID/fromString k) (java.util.UUID/fromString v)])) m))))
+      (into {} (map (fn [[k v]] [(java.util.UUID/fromString k) v])) m))))
 
 (deftest document-version-header-on-write-responses
   (let [proj (create-test-project admin-request "VersionWriteProj")
@@ -213,3 +216,103 @@
                                           :path (str "/api/v1/relations?document-version=" v0)
                                           :body {:layer-id rl :source-id s2 :target-id s1 :value "dep2"}})]
           (assert-status 409 r2))))))
+
+(deftest document-version-rejects-v2-format-uuid
+  ;; Old v2 clients used audit-id UUIDs for ?document-version=. The SQL
+  ;; port uses integers; a UUID-shaped value must be rejected with a clear
+  ;; 400 rather than silently bypassing OCC (the original v2-port bug).
+  (let [proj (create-test-project admin-request "UuidVersionProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl-res (create-text-layer admin-request proj "TL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)
+        text-res (create-text admin-request tl doc "hello")
+        text-id (-> text-res :body :id)
+        _ (assert-created text-res)
+        bad-version "550e8400-e29b-41d4-a716-446655440000"]
+
+    (testing "PATCH with UUID document-version returns 400 (not silently allowed)"
+      (let [res (api-call admin-request {:method :patch
+                                         :path (str "/api/v1/texts/" text-id
+                                                    "?document-version=" bad-version)
+                                         :body {:body "updated"}})]
+        (assert-status 400 res)
+        (let [err (-> res :body :error)]
+          (is (some? err) "Response body must include an :error message")
+          (is (string? err))
+          (is (re-find #"(?i)v2|uuid|integer" (str err))
+              "Error message must signal deprecation (mention v2/UUID/integer)"))))
+
+    (testing "Uppercased-hex UUID is also rejected (regex is case-insensitive)"
+      (let [res (api-call admin-request {:method :patch
+                                         :path (str "/api/v1/texts/" text-id
+                                                    "?document-version=550E8400-E29B-41D4-A716-446655440000")
+                                         :body {:body "updated"}})]
+        (assert-status 400 res)))))
+
+(deftest atomic-batch-surfaces-merged-document-versions-header
+  ;; Each sub-response sets X-Document-Versions on itself; previously those
+  ;; headers were buried inside body[*].headers and clients never read them.
+  ;; The atomic batch handler must now surface the merged map on the outer
+  ;; response so clients can advance their OCC state.
+  (let [proj (create-test-project admin-request "BatchVersionProj")
+        doc1 (create-test-document admin-request proj "Doc1")
+        doc2 (create-test-document admin-request proj "Doc2")
+        tl-res (create-text-layer admin-request proj "TL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)
+        text1-res (create-text admin-request tl doc1 "doc1 text")
+        text1-id (-> text1-res :body :id)
+        _ (assert-created text1-res)
+        text2-res (create-text admin-request tl doc2 "doc2 text")
+        text2-id (-> text2-res :body :id)
+        _ (assert-created text2-res)
+        ;; Run two writes against two different documents in one batch.
+        batch-res (api-call admin-request
+                            {:method :post
+                             :path "/api/v1/batch"
+                             :body [{:path (str "/api/v1/texts/" text1-id)
+                                     :method "patch"
+                                     :body {:body "doc1 updated"}}
+                                    {:path (str "/api/v1/texts/" text2-id)
+                                     :method "patch"
+                                     :body {:body "doc2 updated"}}]})]
+    (assert-ok batch-res)
+    (testing "Batch response carries merged X-Document-Versions header"
+      (let [versions (parse-version-header batch-res)]
+        (is (some? versions)
+            "Outer batch response must include X-Document-Versions header")
+        (is (contains? versions doc1) "Header must include doc1's id")
+        (is (contains? versions doc2) "Header must include doc2's id")
+        (is (every? integer? (vals versions))
+            "Versions must be integer document.version values")))))
+
+(deftest atomic-batch-document-versions-header-last-write-wins
+  ;; When two sub-requests touch the same document, the merged outer
+  ;; header should reflect the LATEST committed version (last-write-wins).
+  (let [proj (create-test-project admin-request "BatchVersionLwwProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl-res (create-text-layer admin-request proj "TL")
+        tl (-> tl-res :body :id)
+        _ (assert-created tl-res)
+        text-res (create-text admin-request tl doc "original")
+        text-id (-> text-res :body :id)
+        _ (assert-created text-res)
+        ;; Two writes against the same doc — final outer version must
+        ;; match the second sub-response (not the first).
+        batch-res (api-call admin-request
+                            {:method :post
+                             :path "/api/v1/batch"
+                             :body [{:path (str "/api/v1/texts/" text-id)
+                                     :method "patch"
+                                     :body {:body "first edit"}}
+                                    {:path (str "/api/v1/texts/" text-id)
+                                     :method "patch"
+                                     :body {:body "second edit"}}]})]
+    (assert-ok batch-res)
+    (let [outer-versions (parse-version-header batch-res)
+          ;; Fetch the current doc version directly so we know the truth.
+          doc-res (get-document admin-request doc)
+          live-version (-> doc-res :body :document/version)]
+      (is (= live-version (get outer-versions doc))
+          "Merged header must reflect the latest committed doc version"))))

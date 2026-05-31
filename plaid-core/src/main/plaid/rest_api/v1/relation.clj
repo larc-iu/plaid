@@ -3,57 +3,57 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.xtdb2.relation :as r]
-            [plaid.xtdb2.relation-layer :as rl]))
+            [plaid.sql.relation :as r]
+            [plaid.sql.relation-layer :as rl]))
 
 (defn get-project-id
   "Derive the project ID from a relation-layer or existing relation."
-  [{xt-map :xt-map params :parameters}]
+  [{db :db params :parameters}]
   (let [rl-id (-> params :body :layer-id)
         relation-id (-> params :path :relation-id)]
     (cond
-      rl-id (rl/project-id xt-map rl-id)
-      relation-id (r/project-id xt-map relation-id)
+      rl-id (rl/project-id db rl-id)
+      relation-id (r/project-id db relation-id)
       :else nil)))
 
-(defn bulk-get-project-id [{xt-map :xt-map params :parameters}]
+(defn bulk-get-project-id [{db :db params :parameters}]
   (let [rl-id (or (-> params :body first :relation-layer-id))
         relation-id (-> params :body first)]
     (cond
-      rl-id (rl/project-id xt-map rl-id)
-      relation-id (r/project-id xt-map relation-id)
+      rl-id (rl/project-id db rl-id)
+      relation-id (r/project-id db relation-id)
       :else nil)))
 
 (defn get-document-id
   "Get document ID from relation's source span."
-  [{xt-map :xt-map params :parameters}]
+  [{db :db params :parameters}]
   (let [source-id (-> params :body :source-id)
         span-id (-> params :body :span-id)
         relation-id (-> params :path :relation-id)]
     (cond
       source-id
-      (r/get-doc-id-of-span xt-map source-id)
+      (r/get-doc-id-of-span db source-id)
 
       span-id
-      (r/get-doc-id-of-span xt-map span-id)
+      (r/get-doc-id-of-span db span-id)
 
       relation-id
-      (when-let [relation (r/get xt-map relation-id)]
-        (r/get-doc-id-of-span xt-map (:relation/source relation)))
+      (when-let [relation (r/get db relation-id)]
+        (r/get-doc-id-of-span db (:relation/source relation)))
 
       :else nil)))
 
 (defn bulk-get-document-id
   "Get document ID from first relation's source span."
-  [{xt-map :xt-map params :parameters}]
+  [{db :db params :parameters}]
   (when-let [first-relation (first (:body params))]
     (cond
       (:source first-relation)
-      (r/get-doc-id-of-span xt-map (:source first-relation))
+      (r/get-doc-id-of-span db (:source first-relation))
 
       (uuid? first-relation)
-      (when-let [relation (r/get xt-map first-relation)]
-        (r/get-doc-id-of-span xt-map (:relation/source relation)))
+      (when-let [relation (r/get db first-relation)]
+        (r/get-doc-id-of-span db (:relation/source relation)))
 
       :else nil)))
 
@@ -71,24 +71,26 @@
                              "\n<body>target-id</body>: the target span this relation goes to"
                              "\n<body>value</body>: the label for the relation")
                :middleware [[pra/wrap-writer-required get-project-id]
-                            [prm/wrap-document-version get-document-id]]
-               :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                            [prm/wrap-document-version get-document-id]
+                            metadata/wrap-inline-metadata-shape-guard]
+               :parameters {:query [:map [:document-version {:optional true} :int]]
                             :body [:map
                                    [:layer-id :uuid]
                                    [:source-id :uuid]
                                    [:target-id :uuid]
                                    [:value any?]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [layer-id source-id target-id value metadata]} :body} :parameters xtdb :xtdb user-id :user/id :as request}]
+               :handler (fn [{{{:keys [layer-id source-id target-id value metadata]} :body} :parameters db :db user-id :user/id :as request}]
                           (let [attrs {:relation/layer layer-id
                                        :relation/source source-id
                                        :relation/target target-id
                                        :relation/value value}
-                                result (r/create {:node xtdb} attrs user-id metadata)]
+                                doc-id (get-document-id request)
+                                result (r/create db attrs user-id metadata)]
                             (if (:success result)
-                              (prm/assoc-document-versions-in-header
+                              (prm/assoc-document-version-in-header
                                {:status 201 :body {:id (:extra result)}}
-                               result)
+                               db doc-id)
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
@@ -101,8 +103,9 @@
                                   "<body>metadata</body>, an optional map of metadata")
                     :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
-                                 [prm/wrap-document-version bulk-get-document-id]]
-                    :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                 [prm/wrap-document-version bulk-get-document-id]
+                                 metadata/wrap-inline-metadata-shape-guard]
+                    :parameters {:query [:map [:document-version {:optional true} :int]]
                                  :body [:sequential
                                         [:map
                                          [:relation-layer-id :uuid]
@@ -110,7 +113,7 @@
                                          [:target :uuid]
                                          [:value any?]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
-                    :handler (fn [{{relations :body} :parameters xtdb :xtdb user-id :user/id}]
+                    :handler (fn [{{relations :body} :parameters db :db user-id :user/id :as request}]
                                (let [relations-attrs (mapv (fn [relation-data]
                                                              (let [{:keys [relation-layer-id source target value metadata]} relation-data
                                                                    attrs {:relation/layer relation-layer-id
@@ -121,25 +124,27 @@
                                                                  (assoc attrs :metadata metadata)
                                                                  attrs)))
                                                            relations)
-                                     result (r/bulk-create {:node xtdb} relations-attrs user-id)]
+                                     doc-id (bulk-get-document-id request)
+                                     result (r/bulk-create db relations-attrs user-id)]
                                  (if (:success result)
-                                   (prm/assoc-document-versions-in-header
+                                   (prm/assoc-document-version-in-header
                                     {:status 201 :body {:ids (:extra result)}}
-                                    result)
+                                    db doc-id)
                                    {:status (or (:code result) 500)
                                     :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple relations in a single operation. Provide an array of IDs."
                       :openapi {:x-client-method "bulk-delete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
-                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                      :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:sequential :uuid]}
-                      :handler (fn [{{relation-ids :body} :parameters xtdb :xtdb user-id :user/id}]
-                                 (let [{:keys [success code error] :as result} (r/bulk-delete {:node xtdb} relation-ids user-id)]
+                      :handler (fn [{{relation-ids :body} :parameters db :db user-id :user/id :as request}]
+                                 (let [doc-id (bulk-get-document-id request)
+                                       {:keys [success code error]} (r/bulk-delete db relation-ids user-id)]
                                    (if success
-                                     (prm/assoc-document-versions-in-header
+                                     (prm/assoc-document-version-in-header
                                       {:status 204}
-                                      result)
+                                      db doc-id)
                                      {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
    ;; Get, update, delete by ID
@@ -148,60 +153,64 @@
      :parameters {:path [:map [:relation-id :uuid]]}}
     ["" {:get {:summary "Get a relation by ID."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [relation-id]} :path} :parameters xt-map :xt-map}]
-                          (let [relation (r/get xt-map relation-id)]
+               :handler (fn [{{{:keys [relation-id]} :path} :parameters db :db}]
+                          (let [relation (r/get db relation-id)]
                             (if (some? relation)
                               {:status 200 :body relation}
                               {:status 404 :body {:error "Relation not found"}})))}
          :patch {:summary "Update a relation's value."
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
-                 :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                 :parameters {:query [:map [:document-version {:optional true} :int]]
                               :body [:map [:value any?]]}
-                 :handler (fn [{{{:keys [relation-id]} :path {:keys [value]} :body} :parameters xtdb :xtdb user-id :user/id :as request}]
-                            (let [{:keys [success code error] :as result} (r/merge {:node xtdb} relation-id {:relation/value value} user-id)]
+                 :handler (fn [{{{:keys [relation-id]} :path {:keys [value]} :body} :parameters db :db user-id :user/id :as request}]
+                            (let [doc-id (get-document-id request)
+                                  {:keys [success code error]} (r/merge db relation-id {:relation/value value} user-id)]
                               (if success
-                                (prm/assoc-document-versions-in-header
-                                 {:status 200 :body (r/get xtdb relation-id)}
-                                 result)
+                                (prm/assoc-document-version-in-header
+                                 {:status 200 :body (r/get db relation-id)}
+                                 db doc-id)
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a relation."
-                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
+                  :parameters {:query [:map [:document-version {:optional true} :int]]}
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
-                  :handler (fn [{{{:keys [relation-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error] :as result} (r/delete {:node xtdb} relation-id user-id)]
+                  :handler (fn [{{{:keys [relation-id]} :path} :parameters db :db user-id :user/id :as request}]
+                             (let [doc-id (get-document-id request)
+                                   {:keys [success code error]} (r/delete db relation-id user-id)]
                                (if success
-                                 (prm/assoc-document-versions-in-header
+                                 (prm/assoc-document-version-in-header
                                   {:status 204}
-                                  result)
+                                  db doc-id)
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
     ["/source" {:put {:summary "Update the source span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
                       :openapi {:x-client-method "set-source"}
-                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                      :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:map [:span-id :uuid]]}
-                      :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                                 (let [{:keys [success code error] :as result} (r/set-end {:node xtdb} relation-id :relation/source span-id user-id)]
+                      :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters db :db user-id :user/id :as request}]
+                                 (let [doc-id (get-document-id request)
+                                       {:keys [success code error]} (r/set-end db relation-id :relation/source span-id user-id)]
                                    (if success
-                                     (prm/assoc-document-versions-in-header
-                                      {:status 200 :body (r/get xtdb relation-id)}
-                                      result)
+                                     (prm/assoc-document-version-in-header
+                                      {:status 200 :body (r/get db relation-id)}
+                                      db doc-id)
                                      {:status (or code 400) :body {:error (or error "Failed to update relation source")}})))}}]
     ["/target" {:put {:summary "Update the target span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
                       :openapi {:x-client-method "set-target"}
-                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                      :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:map [:span-id :uuid]]}
-                      :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                                 (let [{:keys [success code error] :as result} (r/set-end {:node xtdb} relation-id :relation/target span-id user-id)]
+                      :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters db :db user-id :user/id :as request}]
+                                 (let [doc-id (get-document-id request)
+                                       {:keys [success code error]} (r/set-end db relation-id :relation/target span-id user-id)]
                                    (if success
-                                     (prm/assoc-document-versions-in-header
-                                      {:status 200 :body (r/get xtdb relation-id)}
-                                      result)
+                                     (prm/assoc-document-version-in-header
+                                      {:status 200 :body (r/get db relation-id)}
+                                      db doc-id)
                                      {:status (or code 400) :body {:error (or error "Failed to update relation target")}})))}}]
 
-    ;; Metadata operations  
+    ;; Metadata operations
     (metadata/metadata-routes "relation" :relation-id get-project-id get-document-id r/get r/set-metadata r/delete-metadata)]])

@@ -1,12 +1,13 @@
 (ns plaid.rest-api.v1.token-constraint-test
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-created assert-ok assert-no-content assert-bad-request
-                                    with-admin with-test-users]]
+                                    with-admin with-test-users with-clean-db]]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 ;; ---------------------------------------------------------------------------
 ;; Helpers
@@ -491,3 +492,60 @@
                                     [{:token-layer-id token-layer :text text-id :begin 0 :end 3}
                                      {:token-layer-id token-layer :text text-id :begin 8 :end 12}])]
         (assert-status 409 res)))))
+
+;; ---------------------------------------------------------------------------
+;; Token merge — negative cases (task #102.1)
+;; ---------------------------------------------------------------------------
+;; Cite: src/main/plaid/sql/token.clj:880-887. The merge-tokens body
+;; throws ex-info {:code 404} when t1/t2 is missing and {:code 400}
+;; when they straddle layers or documents. Without these tests, a
+;; regression that silently no-ops or 5xxs on these inputs would go
+;; unnoticed.
+
+(deftest merge-tokens-t1-missing-returns-404
+  (let [{:keys [token-layer text-id]} (setup-layer "any" "hello world!")
+        ;; Create only one real token so we have a valid :other-token-id;
+        ;; the path-param :token-id is a freshly-minted UUID that doesn't
+        ;; exist in the DB.
+        t2 (-> (create-token admin-request token-layer text-id 0 5) :body :id)
+        bogus-id (java.util.UUID/randomUUID)
+        res (merge-tokens admin-request bogus-id t2)]
+    (testing "Missing left token surfaces as 404"
+      (assert-status 404 res))))
+
+(deftest merge-tokens-t2-missing-returns-404
+  (let [{:keys [token-layer text-id]} (setup-layer "any" "hello world!")
+        t1 (-> (create-token admin-request token-layer text-id 0 5) :body :id)
+        bogus-id (java.util.UUID/randomUUID)
+        res (merge-tokens admin-request t1 bogus-id)]
+    (testing "Missing right token surfaces as 404"
+      (assert-status 404 res))))
+
+(deftest merge-tokens-different-layers-returns-400
+  ;; Two token-layers on the SAME text-layer + text so both tokens
+  ;; reference the same document but belong to different layers —
+  ;; isolates the "different layers" branch from "different documents".
+  (let [{:keys [text-layer text-id token-layer]} (setup-layer "any" "hello world!")
+        tkl2-res (create-token-layer admin-request text-layer "TKL2" "any")
+        tkl2 (-> tkl2-res :body :id)
+        _ (assert-created tkl2-res)
+        t1 (-> (create-token admin-request token-layer text-id 0 5) :body :id)
+        t2 (-> (create-token admin-request tkl2 text-id 6 12) :body :id)
+        res (merge-tokens admin-request t1 t2)]
+    (testing "Tokens in different layers surface as 400"
+      (assert-status 400 res))))
+
+(deftest merge-tokens-different-documents-returns-400
+  (let [{:keys [project text-layer token-layer text-id]} (setup-layer "any" "hello world!")
+        ;; Second document with its own text in the SAME token-layer +
+        ;; text-layer; tokens then live in the same layer but different
+        ;; documents.
+        doc2 (create-test-document admin-request project "Doc2")
+        text2-res (create-text admin-request text-layer doc2 "another text")
+        text2-id (-> text2-res :body :id)
+        _ (assert-created text2-res)
+        t1 (-> (create-token admin-request token-layer text-id 0 5) :body :id)
+        t2 (-> (create-token admin-request token-layer text2-id 0 5) :body :id)
+        res (merge-tokens admin-request t1 t2)]
+    (testing "Tokens in different documents surface as 400"
+      (assert-status 400 res))))

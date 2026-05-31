@@ -3,53 +3,53 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.xtdb2.span :as s]
-            [plaid.xtdb2.span-layer :as sl]))
+            [plaid.sql.span :as s]
+            [plaid.sql.span-layer :as sl]))
 
 (defn get-project-id
   "Get the project ID from span-layer or existing span."
-  [{xt-map :xt-map params :parameters}]
+  [{db :db params :parameters}]
   (let [sl-id (-> params :body :span-layer-id)
         span-id (-> params :path :span-id)]
     (cond
-      sl-id (sl/project-id xt-map sl-id)
-      span-id (s/project-id xt-map span-id)
+      sl-id (sl/project-id db sl-id)
+      span-id (s/project-id db span-id)
       :else nil)))
 
-(defn bulk-get-project-id [{xt-map :xt-map params :parameters}]
+(defn bulk-get-project-id [{db :db params :parameters}]
   (let [sl-id (or (-> params :body first :span-layer-id))
         span-id (-> params :body first)]
     (cond
-      sl-id (sl/project-id xt-map sl-id)
-      span-id (s/project-id xt-map span-id)
+      sl-id (sl/project-id db sl-id)
+      span-id (s/project-id db span-id)
       :else nil)))
 
 (defn get-document-id
   "Get document ID from span tokens."
-  [{xt-map :xt-map params :parameters}]
+  [{db :db params :parameters}]
   (let [tokens (-> params :body :tokens)
         span-id (-> params :path :span-id)]
     (cond
       (and tokens (seq tokens))
-      (s/get-doc-id-of-token xt-map (first tokens))
+      (s/get-doc-id-of-token db (first tokens))
 
       span-id
-      (s/get-doc-id-of-token xt-map (first (:span/tokens (s/get xt-map span-id))))
+      (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-id))))
 
       :else nil)))
 
 (defn bulk-get-document-id
   "Get document ID from first span's first token."
-  [{xt-map :xt-map params :parameters}]
+  [{db :db params :parameters}]
   (when-let [span-or-id (first (:body params))]
     (cond
       ;; For bulk create
       (:tokens span-or-id)
-      (s/get-doc-id-of-token xt-map (first (:span/tokens span-or-id)))
+      (s/get-doc-id-of-token db (first (:span/tokens span-or-id)))
 
       ;; For bulk delete (array of IDs)
       (uuid? span-or-id)
-      (s/get-doc-id-of-token xt-map (first (:span/tokens (s/get xt-map span-or-id))))
+      (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-or-id))))
 
       :else nil)))
 
@@ -67,22 +67,24 @@
                              "\n<body>value</body>: the primary value of the span (must be string, number, boolean, or null)."
                              "\n<body>metadata</body>: optional key-value pairs for additional annotation data.")
                :middleware [[pra/wrap-writer-required get-project-id]
-                            [prm/wrap-document-version get-document-id]]
-               :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                            [prm/wrap-document-version get-document-id]
+                            metadata/wrap-inline-metadata-shape-guard]
+               :parameters {:query [:map [:document-version {:optional true} :int]]
                             :body [:map
                                    [:span-layer-id :uuid]
                                    [:tokens [:vector uuid?]]
                                    [:value [:or string? number? boolean? nil?]]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [span-layer-id tokens value metadata]} :body} :parameters xtdb :xtdb user-id :user/id}]
+               :handler (fn [{{{:keys [span-layer-id tokens value metadata]} :body} :parameters db :db user-id :user/id :as request}]
                           (let [attrs {:span/layer span-layer-id
                                        :span/tokens tokens
                                        :span/value value}
-                                result (s/create {:node xtdb} attrs user-id metadata)]
+                                doc-id (get-document-id request)
+                                result (s/create db attrs user-id metadata)]
                             (if (:success result)
-                              (prm/assoc-document-versions-in-header
+                              (prm/assoc-document-version-in-header
                                {:status 201 :body {:id (:extra result)}}
-                               result)
+                               db doc-id)
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
@@ -94,15 +96,16 @@
                                   "<body>metadata</body>, an optional map of metadata")
                     :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
-                                 [prm/wrap-document-version bulk-get-document-id]]
-                    :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                 [prm/wrap-document-version bulk-get-document-id]
+                                 metadata/wrap-inline-metadata-shape-guard]
+                    :parameters {:query [:map [:document-version {:optional true} :int]]
                                  :body [:sequential
                                         [:map
                                          [:span-layer-id :uuid]
                                          [:tokens [:vector uuid?]]
                                          [:value [:or string? number? boolean? nil?]]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
-                    :handler (fn [{{spans :body} :parameters xtdb :xtdb user-id :user/id}]
+                    :handler (fn [{{spans :body} :parameters db :db user-id :user/id :as request}]
                                (let [spans-attrs (mapv (fn [span-data]
                                                          (let [{:keys [span-layer-id tokens value metadata]} span-data
                                                                attrs {:span/layer span-layer-id
@@ -112,25 +115,26 @@
                                                              (assoc attrs :metadata metadata)
                                                              attrs)))
                                                        spans)
-                                     result (s/bulk-create {:node xtdb} spans-attrs user-id)]
+                                     doc-id (bulk-get-document-id request)
+                                     result (s/bulk-create db spans-attrs user-id)]
                                  (if (:success result)
-                                   (prm/assoc-document-versions-in-header
+                                   (prm/assoc-document-version-in-header
                                     {:status 201 :body {:ids (:extra result)}}
-                                    result)
-                                   {:status (or (:code result) 500)
-                                    :body {:error (:error result)}})))}
+                                    db doc-id)
+                                   {:status (or (:code result) 500) :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple spans in a single operation. Provide an array of IDs."
                       :openapi {:x-client-method "bulk-delete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
-                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                      :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:sequential :uuid]}
-                      :handler (fn [{{span-ids :body} :parameters xtdb :xtdb user-id :user/id}]
-                                 (let [{:keys [success code error] :as result} (s/bulk-delete {:node xtdb} span-ids user-id)]
+                      :handler (fn [{{span-ids :body} :parameters db :db user-id :user/id :as request}]
+                                 (let [doc-id (bulk-get-document-id request)
+                                       {:keys [success code error]} (s/bulk-delete db span-ids user-id)]
                                    (if success
-                                     (prm/assoc-document-versions-in-header
+                                     (prm/assoc-document-version-in-header
                                       {:status 204}
-                                      result)
+                                      db doc-id)
                                      {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
    ;; Operations on a single span
@@ -139,33 +143,35 @@
 
     ["" {:get {:summary "Get a span by ID."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [span-id]} :path} :parameters xt-map :xt-map}]
-                          (if-let [s (s/get xt-map span-id)]
-                            {:status 200 :body s}
+               :handler (fn [{{{:keys [span-id]} :path} :parameters db :db}]
+                          (if-let [sp (s/get db span-id)]
+                            {:status 200 :body sp}
                             {:status 404 :body {:error "Span not found"}}))}
          :patch {:summary "Update a span's <body>value</body>."
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
-                 :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                 :parameters {:query [:map [:document-version {:optional true} :int]]
                               :body [:map
                                      [:value [:or string? number? boolean? nil?]]]}
-                 :handler (fn [{{{:keys [span-id]} :path {:keys [value]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                            (let [{:keys [success code error] :as result} (s/merge {:node xtdb} span-id {:span/value value} user-id)]
+                 :handler (fn [{{{:keys [span-id]} :path {:keys [value]} :body} :parameters db :db user-id :user/id :as request}]
+                            (let [doc-id (get-document-id request)
+                                  {:keys [success code error]} (s/merge db span-id {:span/value value} user-id)]
                               (if success
-                                (prm/assoc-document-versions-in-header
-                                 {:status 200 :body (s/get xtdb span-id)}
-                                 result)
+                                (prm/assoc-document-version-in-header
+                                 {:status 200 :body (s/get db span-id)}
+                                 db doc-id)
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a span."
-                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
+                  :parameters {:query [:map [:document-version {:optional true} :int]]}
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
-                  :handler (fn [{{{:keys [span-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error] :as result} (s/delete {:node xtdb} span-id user-id)]
+                  :handler (fn [{{{:keys [span-id]} :path} :parameters db :db user-id :user/id :as request}]
+                             (let [doc-id (get-document-id request)
+                                   {:keys [success code error]} (s/delete db span-id user-id)]
                                (if success
-                                 (prm/assoc-document-versions-in-header
+                                 (prm/assoc-document-version-in-header
                                   {:status 204}
-                                  result)
+                                  db doc-id)
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ;; Replace tokens on a span
@@ -174,13 +180,14 @@
                                    [prm/wrap-document-version get-document-id]]
                       :openapi {:x-client-method "set-tokens"}
                       :parameters {:body [:map [:tokens [:vector uuid?]]]
-                                   :query [:map [:document-version {:optional true} :uuid]]}
-                      :handler (fn [{{{:keys [span-id]} :path {:keys [tokens]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                                 (let [{:keys [success code error] :as result} (s/set-tokens {:node xtdb} span-id tokens user-id)]
+                                   :query [:map [:document-version {:optional true} :int]]}
+                      :handler (fn [{{{:keys [span-id]} :path {:keys [tokens]} :body} :parameters db :db user-id :user/id :as request}]
+                                 (let [doc-id (get-document-id request)
+                                       {:keys [success code error]} (s/set-tokens db span-id tokens user-id)]
                                    (if success
-                                     (prm/assoc-document-versions-in-header
-                                      {:status 200 :body (s/get xtdb span-id)}
-                                      result)
+                                     (prm/assoc-document-version-in-header
+                                      {:status 200 :body (s/get db span-id)}
+                                      db doc-id)
                                      {:status (or code 400) :body {:error (or error "Failed to set span tokens")}})))}}]
 
     ;; Metadata operations

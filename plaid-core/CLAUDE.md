@@ -1,328 +1,357 @@
 # Plaid Technical Overview
-Plaid is a Clojure-based platform for building linguistic annotation applications.
-It provides a REST API for managing hierarchical linguistic data structures.
-It features a data model that is configurable on a per-project basis using "layers", which are composable.
-Thanks to its immutable database, XTDB (v2), it is also able to offer a full history of all data and audit logging.
+
+Plaid is a Clojure platform for building linguistic annotation applications. It
+serves a REST API over a hierarchical, layer-based data model that is
+configurable per project. Persistent state lives in a single SQLite database;
+every row-level mutation is captured in an append-only audit log, which is the
+intended change-data-capture source for a downstream OLAP replica (see
+`docs/sql-port-review-2026-05-27.md` §8).
 
 ## Core Technologies
+
 * **Language**: Clojure
-* **Database**: XTDB v2 (immutable & bitemporal; storage persisted under `data/`)
-* **Web Server**: HTTP-kit with Ring middleware
+* **Database**: SQLite (file-backed; WAL + `BEGIN IMMEDIATE`) via HikariCP
+* **Migrations**: Migratus (`resources/migrations/`, applied on startup)
+* **Query builder**: HoneySQL — composed into SQL strings via
+  `plaid.sql.common/format-sql`
+* **Web server**: HTTP-kit with Ring middleware
 * **Routing**: Reitit
-* **Authentication**: JWT tokens
+* **Authentication**: JWT tokens (TTL configurable; see OPERATIONS.md §3)
 * **API Documentation**: OpenAPI 3.0
 
 ## Code Organization
+
 ```
-src/
-├── main/plaid/
-│   ├── server/          # HTTP server setup, middleware, XTDB configuration
-│   ├── rest_api/v1/     # REST API endpoint handlers
-│   ├── xtdb2/           # Database layer (entity-specific namespaces)
-│   ├── algos/           # Text processing algorithms
-│   └── config/          # Environment-specific configuration
-└── dev/                 # Development utilities and user namespace
+src/main/plaid/
+├── server/          # HTTP server, datasource startup, locks, events
+├── rest_api/v1/     # REST handlers, middleware, batch
+├── sql/             # Database layer — entity-specific namespaces
+│   └── constraints/ # Token-layer overlap + hierarchy invariants
+├── algos/           # Text processing algorithms
+└── config/          # Environment-specific configuration
 ```
 
 ## Data Model
 
 ### Entity Hierarchy
+
 ```
 User
 Project
 ├── Document
 ├── TextLayer
-│   └── TokenLayer
+│   └── TokenLayer (may declare :parent-token-layer)
 │       └── SpanLayer
 │           └── RelationLayer
 └── VocabLayer
 ```
 
-Each Layer type also holds corresponding annotations.
-While a given layer type always must have the same kind of parent (e.g. a TokenLayer must always depend on a TextLayer), a Project may be configured to have multiple layers of any given type.
-For instance, you might use one SpanLayer for marking sentence boundaries and another for holding part-of-speech tags.
-
-### Layer Configuration
-Each layer has a `:config` field for storing arbitrary data. This enables UI customization without code changes:
-- Token layers can specify if they represent words, morphemes, etc.
-- Span layers can specify cardinality constraints
-- Relation layers can specify allowed relation types
-
-### Core Entities
-
-1. **User**: Authentication entity with bcrypt-hashed passwords
-2. **Project**: Container with access control lists (readers, writers, maintainers)
-3. **Document**: Content holder within projects, can have media attachments
-4. **Text**: Primary text content (one per TextLayer per Document)
-5. **Token**: Substring reference with begin/end indices into Text
-6. **Span**: Annotation over one or more Tokens with arbitrary value
-7. **Relation**: Directed edge between two Spans with arbitrary value
-8. **VocabLayer**: Vocabulary management layer across projects
-9. **VocabItem**: Individual vocabulary entries with metadata
-10. **VocabLink**: Links VocabItems with Tokens
+Layers are immutable in their parent: once created, a layer's project (and a
+token layer's text-layer / parent-token-layer) cannot be changed. Project IDs
+are denormalized onto every layer row (`text_layers.project_id`, etc.) so a
+single-row read suffices to resolve a layer's project — no joins.
 
 ### Access Control
 
-Three permission levels per project:
-- **Reader**: Read-only access
-- **Writer**: Read and write access
-- **Maintainer**: Full control including user management
+Three project-level roles: **Reader** (GET), **Writer** (CRUD on annotations),
+**Maintainer** (project config + user management). Plus a global **admin**.
 
-## Database Patterns
-XTDB v2 is an immutable, bitemporal database. See `docs/xtdb2_reference.md` for detailed API reference.
+### Core Entities
 
-Entities are stored in **tables** (e.g. `:projects`, `:tokens`, `:span-layers`). Each entity has an `:xt/id` uniquely identifying it within its table. The mapping from entity type to table name is defined in `plaid.xtdb2.common/entity-table`.
+User, Project, Document, Text, Token, Span, Relation, VocabLayer, VocabItem,
+VocabLink. See `docs/manual.adoc` for the conceptual data model.
 
-Queries use **XTQL** (Clojure-native) or **SQL**:
+## Database Layer
+
+### Read vs Write
+
+**Reads** go directly through `plaid.sql.common` primitives (`q`, `q1`,
+`fetch-by-id`, `fetch-where`, `fetch-ids-as-map`). The first arg is a `db`
+value — either a Hikari `DataSource` or an open `Connection` (inside a
+transaction). Returned rows are plain column-keyed maps; each `plaid.sql.<entity>`
+namespace defines a `row->entity` mapper that converts column names
+(`begin`, `end_`, `text_layer_id`, ...) to the public `:token/begin` shape.
+
+**Writes** go through `plaid.sql.operation/submit-operation!`:
+
 ```clojure
-;; XTQL
-(xt/q node '(from :projects [{:xt/id id} :project/name]))
-;; SQL
-(xt/q node "SELECT _id, project$name FROM projects")
+(submit-operation! [tx db {:type :token/create
+                           :description "Create token"
+                           :project project-id
+                           :document doc-id
+                           :user user-id}]
+  (psc/insert! tx :tokens row))
 ```
 
-Past states can be viewed using `:snapshot-time` in query opts.
+The macro opens a `BEGIN IMMEDIATE` transaction (serializes writers — see
+`common.clj` `build-datasource`), inserts the `operations` row, binds
+`psc/*op*` for the body, runs body-fn, and bumps the parent
+`documents.version` post-body. Failures project to
+`{:success false :code <int> :error <msg>}`; ExceptionInfo with a `:code` key
+is preserved, busy/locked is mapped to 503, everything else becomes 500. See
+`operation.clj` for the full catch contract.
 
-### Transaction Operations
-Writes are submitted via `xt/execute-tx`:
+### Audit machinery
 
-* `[:put-docs :table doc]` — upsert a document into a table
-* `[:delete-docs :table id]` — delete a document (retained in history)
-* `[:sql "ASSERT ..." [params]]` — assertion that aborts the tx on failure (used for optimistic concurrency)
-* Custom `match*` in `plaid.xtdb2.common` — compares `:xt/system-from` to detect concurrent modifications
+Every row touched inside `submit-operation!` produces an `audit_writes` row via
+`psc/insert!` / `psc/update-by-id!` / `psc/delete-by-id!` / `psc/merge*` /
+`psc/insert-many!` / `psc/bulk-update-by-id!` / `psc/delete-where!`. These
+helpers capture pre/post images automatically. The raw entry point
+`record-audit-write!` exists for writes whose meaningful change doesn't live in
+a single parent-row write — see "synthetic-parent-row pattern" below.
 
-### Maintaining Integrity
-Database writes (in `plaid.xtdb2`) are prepared with `match*` assertions to ensure invariants hold. For example, when updating a token's extent, we verify the text hasn't changed concurrently by matching on `:xt/system-from`.
+Each audit row carries `(op_id, seq)` where `seq` is the per-op ordinal — load-
+bearing for ETL replay, since all rows in one op share a single `ts`.
 
-### Read vs Write Functions
+### Synthetic-parent-row audit pattern
 
-**Read functions** accept a node or xt-map:
-```clojure
-(defn get [node-or-map id] ...)  ; Can be node or {:node node}
-```
+For mutations that conceptually belong to a parent entity but live in a
+junction table (`span_tokens`, `vocab_link_tokens`, `project_users`,
+`project_vocabs`, `vocab_maintainers`) or a wide-narrow KV table
+(`entity_metadata`), the writer emits **one synthetic audit_writes row against
+the parent table**. The pre/post images carry the parent row plus the junction
+state folded under a well-known key (`:tokens`, `:metadata`, `:readers`,
+`:writers`, `:maintainers`, ...).
 
-**Write functions** require `xt-map` parameter:
-```clojure
-(defn create [xt-map ...] ...)  ; Must be {:node node} (may also contain :snapshot-time)
-```
+**Asymmetry**: `:insert` and `:update` audit rows fold junction state into
+pre/post. `:delete` audit rows carry only the bare parent-row columns — the
+junction state at delete time is implied by the parent's deletion and is NOT
+re-folded (parent-owned-delete contract). Replayers track running junction
+state from `:update` rows. See the comment block above `record-audit-write!`
+in `common.clj`.
 
-### Transaction Patterns
-Functions ending with `*` prepare transactions without submitting:
-```clojure
-(defn create* [...] ...)   ; Returns transaction ops vector
-(defn create [...] ...)    ; Calls create* and submits via operation coordinator
-```
+### Optimistic concurrency control (OCC)
 
-### Operation Coordinator
-Write operations go through `plaid.xtdb2.operation-coordinator`, which serializes writes and handles the `submit → await → verify` cycle. The `submit-operations!` macro in `plaid.xtdb2.operation` is the standard entry point for all writes.
+Clients pass `?document-version=<int>` on mutating requests. The middleware
+`wrap-document-version` (`rest_api/v1/middleware.clj`) reads the current
+version, binds `psc/*expected-document-version*`, and submit-operation*
+re-checks it INSIDE the write tx against `documents.version` (under
+`BEGIN IMMEDIATE`, so the read and write share isolation). Mismatch throws
+`{:code 409}` and rolls back. Skipped when no version supplied, no
+`:document` on the op, or the row doesn't exist yet (covers
+`:document/create`).
 
-### Batch Operations
-Batch requests bind `op/*current-batch-id*` to group multiple operations atomically. When set, individual operations skip the coordinator and are submitted together. Failed batches can be rolled back using stored `:op/tx-ops`.
+The post-body bump increments `documents.version` and `modified_at` so future
+clients see the change. Callers whose body manages the version column itself
+must pass `:skip-doc-version-bump? true`.
 
-Operations in a batch run sequentially, so a later op sees entities created by an earlier op in the same batch (e.g. you can create a parent token and a child token nested in it in one batch). `submitBatch`/`submit_batch` returns each op's full response (`status`/`headers`/`body`) in order, so created entity IDs come back too — but only after submit, so an op cannot reference an ID produced by an earlier op in the *same* batch (build those bodies before submitting; if op B needs op A's id, A must be in an earlier batch).
+## Key Namespaces
 
-### Audit Log
-We maintain an audit log which records each op, which we use to refer to a conceptually atomic operation from the perspective of our data model, e.g. "change a text record's `:text/body`" or "delete a token".
-For each op, we record (cf. `plaid.xtdb2.audit`):
+* **`plaid.sql.common`** (`psc`) — datasource, write helpers, audit
+  machinery, `with-tx` / `BEGIN IMMEDIATE`, slow-query logging, JSON
+  serialization for `config`.
+* **`plaid.sql.operation`** — `submit-operation*` (fn), `submit-operation!`
+  (macro), `bump-document-version!`, `*current-batch-id*`,
+  `*expected-document-version*` (re-exported from `psc`).
+* **`plaid.sql.metadata`** — `insert-metadata!` / `replace-metadata!` /
+  `delete-metadata!`. Folds `:metadata` into a synthetic parent-row audit row.
+* **`plaid.sql.constraints.token`** — token-layer overlap modes
+  (`:any` / `:non-overlapping` / `:partitioning`), nesting via
+  `:token-layer/parent-token-layer` (containment derived purely from offsets,
+  no per-token parent FK), cascade splitters for shift/split/text-edit.
 
-* `:op/type`: the kind of write
-* `:op/project`: the affected project (`nil` if not applicable)
-* `:op/document`: the affected document (`nil` if not applicable)
-* `:op/description`: a human-readable summary of the change
+## Token-layer Hierarchy + Overlap Modes
 
-While most REST API endpoints result in exactly one op, some may result in multiple ops.
-The audit log therefore consists of records with `:audit/id` which includes the following:
+A token layer may declare an immutable `:token-layer/parent-token-layer`
+sharing the same text layer (e.g. sentence → word → morpheme).
 
-* `:audit/ops`: a vector of `:op/id`, i.e. references to the constituent ops of this audit log entry
-* `:audit/user`: the user who is responsible for the ops
-* `:audit/projects`: the union of all `:op/project`s
-* `:audit/documents`: the union of all `:op/document`s
+* **Overlap modes**: `:any` (default), `:non-overlapping`, `:partitioning`.
+  `:partitioning` is root-only (rejected on nested layers).
+* **Containment** for nested layers: every child token must sit inside some
+  parent-layer token; enforced on create/update/bulk-create/merge/shift.
+  Cross-parent merges/shifts are rejected geometrically (the escaping extent
+  has no containing parent).
+* **Delete cascades**: deleting a parent deletes every nested descendant
+  (and their spans/relations/vocab-links).
+* **Split / shift cascades**: descendants straddling the moved boundary are
+  split (partitioning parent) or trimmed/deleted (non-overlapping / `:any`
+  parent).
+* **Single enforcement entry point**: `constraints/token/enforce` runs the
+  pre-flight checks for the right op kind (`:create :update :delete
+  :bulk-create :bulk-delete :merge :shift :split`). Constraint logic does NOT
+  live in `token.clj`'s `*` builders.
 
-There is exactly one such audit record for all audited non-GET endpoints.
+Under `BEGIN IMMEDIATE` there's only one writer at a time, so the v2
+`match*` / `ASSERT NOT EXISTS` machinery is gone — pre-flight + commit in
+one tx is sufficient.
 
-### Constraint System
+## Read Paths
 
-Constraints enforce invariants on token operations (e.g. overlap modes: `:any`, `:non-overlapping`, `:partitioning`). The architecture follows these principles:
+Token reads ORDER BY `begin ASC, end_ ASC, precedence ASC NULLS LAST, id ASC`
+(`document.clj:213-219`). `:token/precedence` is load-bearing for
+same-extent tokens (e.g. fused morphemes in non-concatenative morphology).
+The post-group sort in `sort-token-records` preserves this since its keys are
+a prefix of the SQL key.
 
-1. **Constraints must be part of the atomic transaction.** The DB must never be in an invalid state. Pre-flight checks are a UX optimization (fail fast with a good error message), not the safety mechanism.
+`get-with-layer-data` (document.clj) batches the layer tree + tokens + spans
+(with `json_group_array(token_id ORDER BY order_idx)`) + relations + vocab
+links into a handful of queries — never N+1.
 
-2. **`match*` on read entities provides TOCTOU safety for complex invariants.** Read all relevant entities, validate in Clojure, include `match*` ops for everything read → either the tx succeeds or a `match*` fails (concurrent modification, tx rolls back). SQL ASSERTs are an optimization for simple cases (overlap checks).
+## Test Infrastructure
 
-3. **`*` functions are constraint-unaware.** They build tx-ops for what was asked, period. No constraint checks, no ASSERT ops, no compensation, no skip flags.
+`src/test/plaid/fixtures.clj`:
 
-4. **`-operation` functions call `tc/enforce` once.** They build base tx-ops via the `*` fn, then call `(tc/enforce op-kw node ctx base-ops)` which runs pre-flight checks (throwing on violation) and returns base-ops augmented with ASSERTs/neighbor-adjustments. No overlap-mode interpretation lives in `token.clj`.
+* **Shared datasource via `defonce`**: one in-memory SQLite DB
+  (`file::memory:?cache=shared&mode=memory`) reused across all deftests. URI
+  form survives Hikari idle eviction; bare `:memory:` would not.
+* **`with-clean-db` as `:each` fixture**: TRUNCATE-equivalent
+  (`DELETE FROM <table>` in FK-safe order) between deftests, preserving
+  the standing test users so JWT tokens stay valid. Also resets in-process
+  state atoms (locks, rate-limit buckets, event registries).
+* **Concurrent-writer tests** exercise `BEGIN IMMEDIATE` serialization (see
+  `occ_race_test.clj`, `set_tokens_audit_smoke_test.clj`).
 
-5. **Cascade paths call `*` functions directly** then do their own compensation. No flags needed.
+Run: `clojure -M:test` (full suite). Single ns:
+`clojure -M:test --namespace plaid.sql.token-test`. Single var:
+`clojure -M:test --var plaid.sql.token-test/test-foo`. Pipe to a `/tmp` file
+and grep for failures rather than scrolling the full output.
 
-The three-layer pattern:
-```
-*            → pure tx-op builders (token.clj)
--operation   → call * for base ops, then tc/enforce once (token.clj)
-public API   → submit-operations! wrapper (token.clj)
-```
+## Common Gotchas
 
-Cascade pattern (e.g. text body edits deleting tokens):
-```
-tok/multi-delete*           → called directly, no constraint checks
-tc/compensate-after-cascade → separate compensation step
-```
-
-`tc/enforce` composes three independent concerns (each a no-op when not applicable), so it is the single place all token-layer constraints are interpreted:
-- **`enforce-overlap`** — within-layer overlap mode (`:any`/`:non-overlapping`/`:partitioning`), incl. merge adjacency and shift neighbor-adjustment.
-- **`enforce-nesting`** — containment for a *nested* layer (one with `:token-layer/parent-token-layer`): every new/changed child token must sit inside some parent-layer token (the containing parent is `match*`ed). See "Token-layer hierarchy" below.
-- **`enforce-parent-guard`** — the reverse: structural ops on a token that has nested children must not orphan them.
-
-**Partitioning invariant:** a `:partitioning` layer is, for any document, always **empty or a complete cover** of the text — never partial. Single create/delete/extent-update are rejected; bulk-create establishes (validated), bulk-delete removes the whole partition at once, split/merge/shift are partition-preserving. `enforce-shift` bounds-checks the moved boundary against the neighbor (it must land strictly inside the neighbor's extent) so a shift can't zero-width, invert, or overshoot a token; the layer is otherwise not re-validated after a shift.
-
-Public surface of `tc`:
-- `enforce` — single entry point keyed on op (`:create :update :delete :bulk-create :bulk-delete :merge :shift :split`); takes `[op node ctx base-ops]`, runs pre-flight checks + appends safety ops, returns augmented tx-ops.
-- `compensate-after-cascade` / `text-edit-partition-asserts` — the text-body-edit cascade's partitioning guards (root partitioning layers only; nested layers resize with the text). compensate runs after EVERY edit (insert/append/prepend/delete), extending tokens to close gaps then fail-closed `validate-partition!`; the asserts handle concurrency (see Concurrency note).
-- `straddling-descendant-token-ids-at` / `-in` — used by the resize and split cascades respectively (see below).
-- `find-overlapping-tokens` / `validate-partition!` remain public utilities; `check-*`, `validate-partition-range!`, `guard-dlids`, the ASSERT builders, and the per-axis `enforce-*` fns are private.
-
-**Concurrency note:** the operation coordinator serializes *batches* against regular ops but does NOT serialize regular ops against each other. Per-row `match*`/overlap-`ASSERT`s make `:non-overlapping` and the partition-preserving ops (split/merge/shift each `match*` both sides of every boundary they touch) safe. Partitioning *establishment* (`bulk-create`) has no row to `match*`, so `enforce` adds `partition-establish-assert-sql` — an `ASSERT NOT EXISTS` for any token in the layer+doc other than the ones being inserted — to block a concurrent establishment.
-
-Text-body edits (`text/update-body*`) are the one extent-changing path outside `enforce`, so they carry their own two TOCTOU `ASSERT`s for concurrency (a concurrently-created token has no row for the edit to `match*`): (1) **`oob-assert`** — no token of the text may end past the new length, so a token created concurrently with a *shrink* can't survive out-of-bounds; (2) **`text-edit-partition-asserts`** — each root partitioning layer that is empty at the edit's read must stay empty, so a concurrent establishment can't leave a partition covering only the old extent after a *grow*. A concurrent token write on a text being edited therefore conflicts and one side rolls back (retry).
-
-### Token-layer hierarchy (nesting)
-
-A token layer may declare an immutable `:token-layer/parent-token-layer` (must share the same text layer). This models e.g. sentence > word > morpheme. Parentage is **derived by offset containment** — there is no per-token parent ref — so spans/vocab-links/merge keep working unchanged and migration is a no-op (existing flat layers have no parent).
-
-- **Containment** (`enforce-nesting`): every token in a nested layer must be contained in some parent-layer token (same doc), enforced on create/update/bulk-create/merge/shift; the containing parent is `match*`ed for TOCTOU. Cross-parent merges/shifts are impossible (the escaping extent has no containing parent).
-- **Partitioning is root-only**: `:partitioning` is rejected on a nested layer (one with a parent) — `create*` in token_layer.clj throws. On a nested layer it could only mean "tile each parent token," a leaky invariant (a freshly created parent has no children yet, and merging non-adjacent parents gaps the tiling), so it was dropped. Nested layers are `:any` or `:non-overlapping`. Natural IGT mapping now: sentence = `:partitioning` (root), word = `:non-overlapping` + parent=sentence, morpheme = `:any` + parent=word (`:any`, not `:non-overlapping`, so fused/non-concatenative morphemes can share a span — see manual.adoc; containment is still enforced regardless of overlap-mode).
-- **Delete cascades** (`-operation` expands the delete set with descendants): deleting a parent token deletes every token nested in it — and, via `multi-delete*`, those tokens' spans/relations/vocab-links. This is the same "delete dependents that can no longer validly exist" pattern as token→span deletion. `enforce-parent-guard` adds a TOCTOU assert that no descendant remains. Applies to both single delete and bulk-delete.
-- **Split cascades**: splitting a token at `p` also splits every straddling descendant at `p` (via `straddling-descendant-token-ids-in` + `split-straddlers*`), so a split never orphans a child; descendants re-home into the two halves by offset.
-- **Resize cascades** (shift/update extent, via `resize-child-cascade*` in token.clj): mode-dependent, and symmetric for shrink/grow. A **`:partitioning` parent** grows/shrinks its neighbor, so straddling descendants are *split* at the moved boundary and the outside half re-homes to the neighbor by offset — works whether the boundary moved into this token (the straddler is its own child) or into the neighbor (the straddler is the neighbor's child), because the partitioning scan is doc-wide and a disjoint partition puts the moved boundary inside exactly one parent. A **non-overlapping/`:any` parent** has no neighbor, so descendants straddling the new extent are *trimmed* to it and descendants left fully outside are *deleted* (with dependents). `enforce-parent-guard` adds the matching TOCTOU assert (no-straddler for partitioning, no-out-of-bounds for the rest).
-
-- **Read API**: `GET /documents/:id?include-body=true` surfaces each token layer's `overlap-mode` (defaulted to `:any`) and `parent-token-layer` (omitted for roots) in the projection (`document.clj` `get-doc-info`), so a client can render the hierarchy without a per-layer `GET /token-layers/:id`.
-
-**Deferred**: a general cross-entity constraint protocol (the only thing left — every parent op now cascades correctly).
-
-**CORS**: `:access-control-allow-methods` includes `:patch` (config/defaults.edn + middleware.clj fallback) — PATCH endpoints (token/text/layer/project/document updates) were otherwise blocked for cross-origin browser clients.
-
-**Adding a new token constraint:** add its logic to the relevant `enforce-*` axis (and helpers) in `constraints/token.clj`. No changes to `*` functions or `-operation` call sites beyond passing any new ctx keys.
-
-## API Structure
-Base path: `/api/v1/`.
-Default port for development: `8085`.
-
-### Endpoints
-- `POST /login` - Returns JWT token
-- `GET /openapi.json` - return an OpenAPI JSON describing the entire API.
-- CRUD operations for: users, projects, documents, layers, texts, tokens, spans, relations, vocab-layers, vocab-items, vocab-links
-
-### as-of
-- The query parameter `:as-of` is available on all routes and must contain a valid ISO 8601 string if present.
-- It is only valid for GET requests--a 400 will be triggered with any other method.
-- When provided, the resource will be shown as it existed at the given time, allowing users to see past states.
-
-### Authentication
-- JWT tokens in `Authorization: Bearer <token>` header
-- Tokens do not expire by time; they are invalidated when the user's password changes
-- User permissions checked at project level for all operations
-
-## Testing
-Run tests with: `clojure -M:test`.
-To run a specific set of tests, you can use the `--namespace my.clojure.namespace` and `--var my.clojure.namespace/specific-test` arguments.
-Do not combine `--namespace` and `--var`, just use one or the other.
-
-Tests use a separate XTDB node configuration to avoid affecting development data.
-
-## Client Libraries
-Client libraries are maintained separately:
-
-* **JavaScript**: `plaid-client-js/` — ESM package, uses `fetch` for HTTP and SSE
-* **Python**: `plaid-client-py/` — pip-installable package, uses `requests`
-
-Both clients automatically convert between API conventions (kebab-case) and language-specific conventions (camelCase for JavaScript, snake_case for Python).
-
-## API Route Reference
-
-To quickly see available API routes from the OpenAPI specification:
-
-```bash
-# List all routes with their HTTP methods
-jq -r '.paths | keys[]' target/openapi.json
-
-# Show routes with their HTTP methods and summaries
-jq -r '.paths | to_entries[] | "\(.key):" + (.value | to_entries[] | " \(.key | ascii_upcase) - \(.value.summary // "No summary")")' target/openapi.json
-
-# List only specific entity routes (e.g., projects)
-jq -r '.paths | keys[] | select(contains("projects"))' target/openapi.json
-
-# Show authentication requirements
-jq -r '.paths | to_entries[] | select(.value | to_entries[] | .value.security) | .key' target/openapi.json
-```
-
-## REPL access & Clojure editing (clojure-mcp-light)
-* A running nREPL is the most powerful way to develop here. The dev REPL writes its port to `plaid-core/.nrepl-port`. Use `user/start` / `user/stop` to control the web server (see @src/dev/user.clj).
-* Evaluate Clojure against the running nREPL with the `clojure-eval` skill, or directly from a shell:
-  `clj-nrepl-eval -p "$(cat plaid-core/.nrepl-port)" "(your-expr)"`. Use it to call application fns (e.g. `plaid.xtdb2.project/get`), run XTQL/SQL against the node, and verify behavior before writing code.
-* Just use the normal `Edit`/`Write` tools for Clojure files — a `clj-paren-repair` PostToolUse hook automatically fixes delimiter/balance errors after each edit.
-* Try not to run all the tests at once. Prefer testing individual namespaces like `clojure -M:test --namespace plaid.rest-api.v1.project-test`. Pipe the output to a /tmp file so you can easily inspect it later.
-* When running tests, use `tee` to capture output: `clojure -M:test 2>&1 | tee /tmp/test-run.txt | tail -10` then grep the file for failures.
-
-## Development Access
-* **HTTP API**: Available at `http://localhost:8085/api/v1/` when the server is running. OpenAPI spec at `http://localhost:8085/api/v1/openapi.json`.
-* **Default credentials**: During development, use `a@b.com` / `password` as valid admin credentials. Login field is `user-id` (not `email`): `curl -X POST .../login -d '{"user-id":"a@b.com","password":"password"}'`.
-* **XTDB pgwire**: Connect via `psql -h localhost -p 5433 -d xtdb` (must specify `-h localhost` for TCP and `-d xtdb` for the database name).
-
-### When to use each interface
-* **REPL** (`clojure-eval` skill / `clj-nrepl-eval`): Best for most development tasks. Call application-level functions directly (e.g. `plaid.xtdb2.project/get`), run XTQL or SQL queries against the node, test code changes interactively. This is the most powerful option — you have full access to application internals and can require/call any namespace.
-* **HTTP API** (`curl`): Use when testing the REST API itself — verifying request/response formats, coercion, auth, middleware behavior, error handling. Also useful for end-to-end validation of a feature. Requires a JWT token from the login endpoint.
-* **pgwire** (`psql`): Use for quick ad-hoc SQL exploration of the database — checking what tables exist, viewing raw column names (note: nested keys use `$` separator, e.g. `project$name`), and querying history with `FOR ALL SYSTEM_TIME`. Handy for inspecting data without needing to write Clojure, but read-only and no access to application logic.
+* **`coerce-id-cols` only catches `:id` and `*_id` keys**. Aliases like
+  `[:pv.project_id :pid]` come back as raw strings — comparing to a UUID via
+  `=` silently never matches. See `common.clj:48-79`.
+* **Validation OUTSIDE `submit-operation!` doesn't get projected** to a
+  structured `:code` response. Move pre-flight `valid-name?` /
+  `validate-atomic-value!` / shape checks INSIDE the macro body so they
+  return `{:success false :code 400}` rather than bubble a raw 500.
+* **`add-join-if-absent!`** uses `INSERT ... ON CONFLICT DO NOTHING` — don't
+  add a SELECT-then-INSERT race back.
+* **`reparent-junction!`** in `token.clj` is SQLite-specific (qualified
+  column refs in EXISTS without an explicit table alias). Rewrite with
+  `UPDATE t AS t1` if porting to Postgres.
+* **`row->span` and `row->vocab-link` take a `tokens` arg** — they break
+  the otherwise-uniform 1-arg row-mapper contract because the token list
+  comes from a separate query.
+* **`text.clj` has its own private `row->token`** to dodge the
+  `plaid.sql.token` cycle — keep in sync with the real one.
+* **No longer applies (v2 holdovers worth knowing)**: nested map JSON keys
+  are NOT lowercased (SQLite has no PostgreSQL identifier rules — `:config`
+  round-trips fine). `:xt/system-from` is gone (BEGIN IMMEDIATE replaces
+  TOCTOU). `ASSERT NOT EXISTS` is gone. No operation-coordinator,
+  no `:snapshot-time`, no pgwire, no `?as-of=` query parameter.
 
 ## Avoiding N+1 Queries
-When you have a collection of IDs and need data for each one, **never** map a single-entity fetch over the list. Use batch operations instead:
 
-```clojure
-;; BAD — N+1: one query per ID
-(mapv #(get node %) ids)
-(keep #(vocab-item/get node %) ids)
-(mapv #(pxc/entity node :tokens %) tokens)
+When you have a collection of IDs and need data for each, **never** map a
+single-entity fetch over the list. Batch helpers in `common.clj`:
 
-;; GOOD — single query for all IDs
-(pxc/entities-with-sys-from node :projects (vec ids))
-(pxc/entities-with-sys-from-by-id node :tokens token-ids)  ; returns {id -> entity} map
+* `psc/fetch-ids` — single SELECT for many IDs.
+* `psc/fetch-ids-as-map` — same, returns `{id -> row}`.
+* `psc/bulk-update-by-id!` — single CASE UPDATE for many rows.
+* `psc/delete-where!` — batched pre-image SELECT + WHERE DELETE + per-row
+  audit.
+* For dynamic IN-lists: `(let [ph (str/join ", " (repeat (count ids) "?"))]
+   (psc/q db (into [(str "... IN (" ph ")")] ids)))`.
+
+Watch for: `(mapv #(ns/get db %) ids)`, fetching the same entity multiple
+times across validation + record + sys-from passes, sequential parent
+traversals in loops.
+
+## Namespace Shadowing in `plaid.sql.*`
+
+Most `plaid.sql.*` namespaces use `(:refer-clojure :exclude [get merge])` (some
+also exclude `format`). Inside those namespaces, use `clojure.core/get` /
+`clojure.core/merge` when you mean the standard-library version.
+
+## REPL access & Clojure editing
+
+* nREPL port lives in `plaid-core/.nrepl-port`. `user/start` / `user/stop`
+  control the web server (`src/dev/user.clj`).
+* Evaluate via the `clojure-eval` skill, or shell:
+  `clj-nrepl-eval -p "$(cat plaid-core/.nrepl-port)" "(your-expr)"`.
+* A `clj-paren-repair` PostToolUse hook fixes delimiter/balance errors
+  after each `Edit`/`Write`.
+
+## API Structure
+
+Base path: `/api/v1/`. Default port 8085 (see OPERATIONS.md §4).
+
+### Endpoints
+
+* `POST /login` — returns JWT.
+* `POST /logout` — invalidates ALL of the user's live tokens (not just the
+  current device's — bumps `users.password_changes`).
+* `GET /openapi.json` — full OpenAPI spec (can be disabled in production via
+  `:plaid.api :expose-openapi?`).
+* CRUD for users, projects, documents, layers, texts, tokens, spans,
+  relations, vocab-layers, vocab-items, vocab-links.
+* `?document-version=<int>` on mutating requests for OCC (see above).
+
+### Batches
+
+`submit-operations!` (REST batch handler) runs N sub-ops inside one outer
+SQLite tx. `with-tx*` detects an already-in-tx Connection and runs body
+inline rather than opening an inner tx, so a sub-op's throw rolls back the
+entire outer tx. Each sub-op binds its own `psc/*op*`, so per-row audits land
+under separate `operations` rows but share the outer tx's atomic commit.
+
+### Authentication
+
+JWT tokens in `Authorization: Bearer <token>` header. Tokens carry the user's
+`password_changes` counter; bumping that counter invalidates every outstanding
+token (used by both password change AND `/logout`). TTL is configurable via
+`:plaid.auth :jwt-ttl-seconds` (default 30 days).
+
+## Client Libraries
+
+* **JavaScript**: `plaid-client-js/` — ESM, `fetch`, SSE.
+* **Python**: `plaid-client-py/` — `requests`-based.
+
+Both auto-convert between kebab-case wire format and language conventions
+(camelCase / snake_case).
+
+## Development Access
+
+* **HTTP API**: `http://localhost:8085/api/v1/`. OpenAPI at
+  `http://localhost:8085/api/v1/openapi.json`.
+* **Default creds**: `a@b.com` / `password`. Login field is `user-id`:
+  `curl -X POST .../login -d '{"user-id":"a@b.com","password":"password"}'`.
+* **SQLite CLI**: `sqlite3 data/plaid.db` for ad-hoc reads. Don't write —
+  bypasses the audit log.
+
+### When to use each interface
+
+* **REPL** (`clojure-eval` skill): most powerful — call application fns
+  (`plaid.sql.project/get` etc.), run HoneySQL or raw SQL, iterate fast.
+* **HTTP API** (`curl`): for testing REST surface — coercion, auth,
+  middleware, error handling, end-to-end behavior.
+* **`sqlite3`**: ad-hoc SQL exploration. Schema-tables view: `.tables`.
+  Per-row history lives in `audit_writes`.
+
+## Tests
+
+Run: `clojure -M:test`. Pipe to `/tmp` and grep:
+
+```
+clojure -M:test 2>&1 | tee /tmp/test-run.txt | tail -10
 ```
 
-Common anti-patterns to watch for:
-- **`(mapv #(ns/get node %) ids)`**: Replace with batch fetch + in-memory formatting
-- **Fetching same entities multiple times** (validation, then records, then sys-from for match): Fetch once with `entities-with-sys-from-by-id` and reuse
-- **Unbounded table scans filtered in Clojure**: Push filters into SQL with `IN` clauses or XTQL `where`
-- **Sequential parent traversals in loops**: If you need a parent field (e.g. project-id) for N entities, batch-fetch the entities and extract the field in-memory
+Prefer single-namespace runs while iterating.
 
-For SQL `IN` queries with dynamic ID lists:
-```clojure
-(let [ph (str/join ", " (repeat (count ids) "?"))]
-  (xt/q node (into [(str "SELECT * FROM table WHERE _id IN (" ph ")")] ids)))
-```
+## OLAP Replica (Time Travel)
 
-## Namespace Shadowing in `plaid.xtdb2.*`
-Most namespaces in `src/main/plaid/xtdb2/` use `(:refer-clojure :exclude [get merge])` (some also exclude `format`) and define their own `get`, `merge`, etc. for entity operations. When writing code **inside** these namespaces, use `clojure.core/get`, `clojure.core/merge`, etc. whenever you need the standard library versions, or you will get errors or silently call the wrong function.
+Optional read-only XTDB v2 replica fed from `audit_writes` via an
+in-process tailer. Lives under `plaid.olap.*`:
 
-## Ideas / TODOs
+* `plaid.olap.core` — mount/defstate for the XTDB node, cursor accessors
+* `plaid.olap.replayer` — translates audit rows → XTDB tx-ops
+* `plaid.olap.tailer` — poll loop with stall-on-malformed-row semantics
+* `plaid.olap.document` — `get-at`, `get-with-layer-data-at`, `list-versions`
 
-- **Idempotent "replace partition" op for partitioning token layers.** Re-tokenizing a partitioning
-  layer today means `bulk-delete` the whole partition, then `bulk-create` the new one — two ops, and
-  the consumer must branch on empty-vs-established state. A single `PUT`-style "set this layer's
-  partition for this document" that clears + establishes atomically would remove that branching and
-  the clear-then-recreate dance. Consider a variant that accepts internal **cut points** (boundary
-  offsets) and tiles `[0, text-length)` server-side — hand-computing the full, whitespace-inclusive
-  tiling was the most error-prone part of consuming the partitioning API. Open scope question:
-  partitioning-only, or a more general "replace all tokens in this layer for this doc" (which carries
-  cascade implications for nested layers). Source: plaid-ud three-layer migration, 2026-05.
-- **Token-layer creation guardrail: detect under-configured nested layers.** A consumer with a stale
-  client bundle whose `token-layers/create` signature predates `overlap-mode`/`parent-token-layer-id`
-  silently produces projects with all-`any`, parent-less layers — immutable, so unrecoverable. The
-  server happily accepts the malformed shape today. A modest server-side check could reject (or
-  warn) on creates where the schema clearly expects nesting (e.g. a project that has multiple
-  same-text-layer token layers without parent pointers, or a layer named to suggest nesting). Even
-  surfacing the actual `overlap-mode` / `parent-token-layer` on `GET /token-layers/{id}` as
-  explicit, non-defaulted fields (vs. omitting them) would help frontends warn about this. Source:
-  plaid-ud, 2026-05 — at least one user project hit this on a doc with 237 orphan morphemes and
-  three `any`-mode parentless token layers; plaid-ud now detects the shape and shows an amber
-  banner, but can't recover such a project.
+Exists to support one read shape: "doc X at time T," exposed via
+`?as-of=<ISO-8601>` on document GET endpoints. Anti-features: no
+arbitrary queries, no analytics, no historical-ACL, no writes.
 
-## XTDB Reference
-See
+Disabled by default. Operators opt in via `:plaid.olap/config :enabled? true`
+in env config. See `OPERATIONS.md` §12 for the full ops guide and
+`docs/olap-design.md` for the design rationale + open questions.
+
+## See Also
+
+* `docs/manual.adoc` — user-facing conceptual model + layer semantics.
+* `docs/sql-port-review-2026-05-27.md` — 21-agent review consolidated;
+  includes audit-retention policy (§8).
+* `docs/olap-design.md` — OLAP replica design + decision rationale.
+* `OPERATIONS.md` — deployment, config keys, backup, CORS, JWT secret,
+  OLAP enable/disable + recovery (§12).

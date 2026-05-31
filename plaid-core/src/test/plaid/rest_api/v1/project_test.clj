@@ -2,7 +2,7 @@
   (:require [clojure.test :refer :all]
             [clojure.string]
             [ring.mock.request :as mock]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states
                                     with-rest-handler
                                     rest-handler
@@ -25,12 +25,15 @@
                                     assert-no-content
                                     assert-not-found
                                     assert-forbidden
-                                    assert-bad-request]]
+                                    assert-bad-request with-clean-db]]
             [plaid.test-helpers :refer [create-test-project delete-test-project
                                         create-text-layer create-token-layer
-                                        create-span-layer create-relation-layer]]))
+                                        create-span-layer create-relation-layer]]
+            [plaid.fixtures :as fix]
+            [plaid.sql.project :as prj]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 ;; Project API Endpoint Functions
 (defn create-project
@@ -197,6 +200,11 @@
         (assert-no-content response)))
 
     (testing "Remove maintainer access"
+      ;; Task #100 V4: removing user1 here would leave the project
+      ;; with zero maintainers, which is now blocked. Add user2 as a
+      ;; co-maintainer first so the removal is non-orphaning.
+      (assert-no-content
+       (add-maintainer admin-request project-id "user2@example.com"))
       (let [response (remove-maintainer admin-request project-id "user1@example.com")]
         (assert-no-content response)))
 
@@ -408,3 +416,89 @@
       (testing "User1 cannot update project without permissions"
         (let [response (update-project user1-request project-id {:name "Hacked Name"})]
           (assert-forbidden response))))))
+
+(deftest get-accessible-shape-matches-get
+  ;; Regression guard for Task #54: `get-accessible` was rewritten from
+  ;; an N+1 `(mapv #(get db %) ids)` into a batched hydrator. The REST
+  ;; consumer iterates the hydrated records and serializes them, so any
+  ;; shape drift breaks `GET /projects`. Build a project with the full
+  ;; layer stack + multi-role ACL + vocab grant, then assert that the
+  ;; batched hydrator returns the *exact* per-id map shape that `get`
+  ;; returns.
+  (testing "batched get-accessible per-project entry equals (get db id)"
+    (let [;; Create a project with text/token/span/relation layers
+          project-id (-> (create-project admin-request {:name "Shape Parity Project"})
+                         :body :id)
+          text-layer-id (-> (create-text-layer admin-request project-id "TL")
+                            :body :id)
+          token-layer-id (-> (create-token-layer admin-request text-layer-id "TokL")
+                             :body :id)
+          span-layer-id (-> (create-span-layer admin-request token-layer-id "SL")
+                            :body :id)
+          _ (-> (create-relation-layer admin-request span-layer-id "RL") :body :id)
+          ;; ACL: user1 reader, user2 writer (admin retains implicit access)
+          _ (add-reader admin-request project-id "user1@example.com")
+          _ (add-writer admin-request project-id "user2@example.com")
+          _ (add-maintainer admin-request project-id "user1@example.com")
+          db fix/db
+          ;; The single-id read path
+          single (prj/get db project-id)
+          ;; The batched read path — admin sees everything, so this
+          ;; project must appear in the result.
+          batched-list (prj/get-accessible db "admin@example.com")
+          batched (first (filter #(= (:project/id %) project-id) batched-list))]
+      (is (some? single)
+          "single-id get should return a project map")
+      (is (some? batched)
+          "batched get-accessible should include the project")
+      ;; Shape equality — keys, ACL vectors, layer tree, vocab grants,
+      ;; config blob. Layer vectors are order-sensitive (order_idx).
+      (is (= (set (keys single)) (set (keys batched)))
+          "key sets must match")
+      (is (= (:project/id single) (:project/id batched)))
+      (is (= (:project/name single) (:project/name batched)))
+      (is (= (:config single) (:config batched)))
+      (is (= (set (:project/readers single)) (set (:project/readers batched))))
+      (is (= (set (:project/writers single)) (set (:project/writers batched))))
+      (is (= (set (:project/maintainers single)) (set (:project/maintainers batched))))
+      (is (= (:project/text-layers single) (:project/text-layers batched))
+          "nested layer tree must be identical (order_idx preserved)")
+      (is (= (:project/vocabs single) (:project/vocabs batched)))))
+
+  (testing "get-accessible always returns a vector"
+    ;; The empty-ids early-out must preserve the vector return type so the
+    ;; REST consumer can iterate / serialize without lazy-seq surprises.
+    (let [db fix/db
+          result (prj/get-accessible db "user2@example.com")]
+      (is (vector? result)
+          "get-accessible must return a vector (not a lazy seq)"))))
+
+(deftest validation-routes-through-submit-operation-catch
+  ;; Regression test for task #47: pre-flight validations (valid-name?,
+  ;; validate-atomic-value!, body-shape checks, etc.) used to throw OUTSIDE
+  ;; the submit-operation! macro body, escaping past its catch and producing
+  ;; raw 500s at the REST layer. Now the outer try/catch in
+  ;; submit-operation* — combined with validations moved INTO the macro
+  ;; body — projects them to {:success false :code 400}.
+  (testing "Project create with empty name returns 400, not 500"
+    ;; valid-name? rejects empty strings. Before #47, this threw past the
+    ;; macro and surfaced as Ring's default 500.
+    (let [response (create-project admin-request {:name ""})]
+      (assert-bad-request response)))
+
+  (testing "Project create with non-string name returns 400, not 500"
+    ;; valid-name? rejects non-strings with code 400. We have to bypass the
+    ;; coercion layer to hit this — call the function directly.
+    (let [db fix/db
+          result (prj/create db {:project/name 42} "admin@example.com")]
+      (is (= false (:success result)))
+      (is (= 400 (:code result)))
+      (is (string? (:error result)))))
+
+  (testing "Project merge with empty name returns 400, not 500"
+    (let [create-resp (create-project admin-request {:name "validation-merge-test"})
+          pid (-> create-resp :body :id)
+          db fix/db
+          result (prj/merge db pid {:project/name ""} "admin@example.com")]
+      (is (= false (:success result)))
+      (is (= 400 (:code result))))))

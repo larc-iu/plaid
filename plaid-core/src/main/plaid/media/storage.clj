@@ -25,11 +25,13 @@
   (Tika.))
 
 (defn get-media-dir
-  "Get the media directory path from config"
+  "Get the media directory path. Co-located with the SQLite file under
+  the parent dir of `:plaid.server.sql/config :main-db-path`."
   []
-  (let [main-db-dir (-> config :plaid.server.xtdb/config :main-db-dir)
-        media-dir (str main-db-dir File/separator "media")]
-    media-dir))
+  (let [db-path (-> config :plaid.server.sql/config :main-db-path)
+        parent (or (some-> ^String db-path (java.io.File.) (.getParentFile) (.getPath))
+                   "data")]
+    (str parent File/separator "media")))
 
 (defn ensure-media-dir!
   "Ensure the media directory exists"

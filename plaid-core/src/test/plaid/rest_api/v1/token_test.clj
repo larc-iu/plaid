@@ -1,12 +1,13 @@
 (ns plaid.rest-api.v1.token-test
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-xtdb
+            [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request assert-forbidden
-                                    with-admin with-test-users user1-request user2-request]]
+                                    with-admin with-test-users user1-request user2-request with-clean-db]]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 (deftest token-crud-and-validation
   (let [proj (create-test-project admin-request "TknProj")
@@ -153,8 +154,9 @@
             other-tkl (-> other-tkl-res :body :id)
             _ (assert-created other-tkl-res)
             res (create-token admin-request other-tkl text-id 0 5)]
-        ;; This validation happens at database level and returns 500
-        (assert-status 500 res)))
+        ;; SQL port catches the mismatch in a pre-write validation pass and
+        ;; returns 400 (v2 surfaced the same error at DB-FK level as 500).
+        (assert-status 400 res)))
 
     (testing "Non-integer begin/end - coercion catches this at middleware level"
       (is (thrown? java.lang.IllegalArgumentException
@@ -316,6 +318,66 @@
         (doseq [token-id token-ids]
           (assert-not-found (get-token admin-request token-id)))))))
 
+(deftest token-precedence-ordering
+  ;; Task #101 — :token/precedence is load-bearing on the read side.
+  ;; Within a same (begin, end) extent, tokens come back ordered by
+  ;; precedence ASC NULLS LAST, then id ASC (deterministic
+  ;; tiebreaker). Across extents, begin/end take priority.
+  (let [proj (create-test-project admin-request "TokenPrecOrderProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        text-id (-> (create-text admin-request tl doc "hello world") :body :id)
+        ;; default overlap-mode (:any) so we can stack same-extent tokens
+        tkl (-> (create-token-layer admin-request tl "TKL") :body :id)
+        layer-tokens (fn []
+                       (->> (api-call admin-request
+                                      {:method :get
+                                       :path (str "/api/v1/documents/" doc
+                                                  "?include-body=true")})
+                            :body :document/text-layers
+                            (mapcat :text-layer/token-layers)
+                            (filter #(= tkl (:token-layer/id %)))
+                            first :token-layer/tokens))]
+
+    (testing "Same extent: precedence ASC NULLS LAST (precedences differ)"
+      ;; Three tokens at (0,5) with precedence [2, nil, 1] should sort to
+      ;; [1, 2, nil] regardless of insertion order.
+      (let [t-a (-> (create-token admin-request tkl text-id 0 5 2) :body :id)
+            t-b (-> (create-token admin-request tkl text-id 0 5 nil) :body :id)
+            t-c (-> (create-token admin-request tkl text-id 0 5 1) :body :id)]
+        (let [precs (mapv :token/precedence (layer-tokens))]
+          (is (= [1 2 nil] precs)
+              (str "Expected [1 2 nil]; got " precs)))
+        ;; And the ids come back in the right slots: t-c (prec=1) first,
+        ;; t-a (prec=2) second, t-b (nil) last.
+        (let [ids (mapv :token/id (layer-tokens))]
+          (is (= [t-c t-a t-b] ids)
+              (str "Expected ids ordered by precedence; got " ids)))
+        ;; Clean up before the next testing block.
+        (doseq [tid [t-a t-b t-c]]
+          (assert-no-content (delete-token admin-request tid)))))
+
+    (testing "NULL-vs-non-NULL ordering: precedence [nil, 1] → [1, nil]"
+      (let [t-nil (-> (create-token admin-request tkl text-id 0 5 nil) :body :id)
+            t-1 (-> (create-token admin-request tkl text-id 0 5 1) :body :id)]
+        (let [precs (mapv :token/precedence (layer-tokens))]
+          (is (= [1 nil] precs) (str "Expected [1 nil]; got " precs)))
+        (let [ids (mapv :token/id (layer-tokens))]
+          (is (= [t-1 t-nil] ids)))
+        (doseq [tid [t-nil t-1]]
+          (assert-no-content (delete-token admin-request tid)))))
+
+    (testing "Cross-extent: begin ASC primary, end ASC secondary"
+      ;; (0,5), (0,3), (3,5). Tied begin=0 → end ASC: (0,3) before (0,5).
+      (let [t05 (-> (create-token admin-request tkl text-id 0 5) :body :id)
+            t03 (-> (create-token admin-request tkl text-id 0 3) :body :id)
+            t35 (-> (create-token admin-request tkl text-id 3 5) :body :id)]
+        (let [extents (mapv (juxt :token/begin :token/end) (layer-tokens))]
+          (is (= [[0 3] [0 5] [3 5]] extents)
+              (str "Expected ordering by [begin end]; got " extents)))
+        (doseq [tid [t05 t03 t35]]
+          (assert-no-content (delete-token admin-request tid)))))))
+
 (deftest token-access-control
   (let [proj (create-test-project admin-request "TokenACProj")
         doc (create-test-document admin-request proj "Doc")
@@ -353,3 +415,41 @@
         (assert-created new-tok)
         (assert-ok (update-token user2-request new-id :begin 7 :end 10))
         (assert-no-content (delete-token user2-request new-id))))))
+
+(deftest token-precedence-explicit-null-clears
+  ;; Play-house D2: PATCH /tokens/{id} must distinguish an EXPLICIT
+  ;; `precedence: null` (clears the column back to no-explicit-ordering)
+  ;; from an OMITTED precedence key (left unchanged). Previously the
+  ;; handler used `(some? precedence)` + an `int?` schema, so a null
+  ;; precedence was both schema-rejected and silently dropped — there was
+  ;; no way to clear precedence via REST. (The SQL layer already supported
+  ;; it via `contains?` + set-precedence.) We send raw bodies via api-call
+  ;; because the update-token helper drops falsy values.
+  (let [proj (create-test-project admin-request "PrecNull")
+        doc (create-test-document admin-request proj "D")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tid (-> (create-text admin-request tl doc "hello world") :body :id)
+        tkl (-> (create-token-layer admin-request tl "TKL") :body :id)
+        tok (-> (create-token admin-request tkl tid 0 5 100) :body :id)
+        patch! (fn [body] (api-call admin-request {:method :patch
+                                                   :path (str "/api/v1/tokens/" tok)
+                                                   :body body}))
+        prec (fn [] (-> (get-token admin-request tok) :body :token/precedence))]
+    (is (= 100 (prec)) "precedence starts at 100")
+
+    (testing "explicit precedence:null clears the column"
+      (assert-ok (patch! {:precedence nil}))
+      (is (nil? (prec)) "precedence cleared to null"))
+
+    (testing "set it back to a concrete value"
+      (assert-ok (patch! {:precedence 7}))
+      (is (= 7 (prec))))
+
+    (testing "omitting precedence leaves it unchanged (only begin moves)"
+      (assert-ok (patch! {:begin 1}))
+      (is (= 7 (prec)) "precedence preserved when key is omitted")
+      (is (= 1 (-> (get-token admin-request tok) :body :token/begin))))
+
+    (testing "explicit null again clears even after a concrete value"
+      (assert-ok (patch! {:precedence nil}))
+      (is (nil? (prec))))))

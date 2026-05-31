@@ -174,12 +174,28 @@
 ;; Event Publishing and Distribution
 ;; =============================================================================
 
-;; Global event bus that receives all audit log events
-;; Uses a sliding buffer to prevent blocking if distribution is slow
+;; Counter for events dropped because the event bus buffer was full.
+;; Public so /health (and tests / future metrics surfaces) can read it.
+(defonce event-bus-drop-count (atom 0))
+
+(defn get-drop-count
+  "Return the current count of events dropped because the event bus buffer
+  was full. Exposed for the /health endpoint + metrics surfaces; callers
+  that want the atom itself can still deref `event-bus-drop-count` directly."
+  []
+  @event-bus-drop-count)
+
+;; Global event bus that receives all audit log events.
+;;
+;; Uses a `dropping-buffer` (not `sliding-buffer`) so that overflow is
+;; explicitly visible to publishers: `>!!`/`offer!` returns false when
+;; the buffer is full, letting `publish-*!` log a warning + bump the
+;; drop counter. Sliding-buffer would silently evict the oldest event
+;; on overflow — easier on memory, harder to diagnose.
 (defstate event-bus
   :start
-  (let [ch (async/chan (async/sliding-buffer 1000))]
-    (log/info "Started audit event bus")
+  (let [ch (async/chan (async/dropping-buffer 1000))]
+    (log/info "Started audit event bus (dropping-buffer 1000)")
     ;; Start the event distribution loop
     (log/info "Starting event distributor")
     (async/go-loop []
@@ -200,13 +216,43 @@
     ch)
   :stop
   (do
-    (log/info "Stopping audit event bus")
+    (log/info "Stopping audit event bus (total drops:" @event-bus-drop-count ")")
     (async/close! event-bus)))
+
+(defn- offer-event!
+  "Try to enqueue an event on the event bus. Returns true on success,
+  false if the buffer is full (in which case the event is dropped and
+  a warning is logged). `event-type` is a keyword tag for diagnostics.
+
+  The drop-path warn log is dispatched to a `future` rather than emitted
+  inline because the publishing thread may be holding the SQLite writer
+  lock (e.g. `plaid.sql.operation/submit-operation*` publishes the audit
+  event before returning to the REST handler). A slow log appender (file
+  sync, remote sink, …) would otherwise extend the writer-held window
+  for every dropped event."
+  [event event-type]
+  (let [accepted? (async/offer! event-bus event)]
+    (when-not accepted?
+      (let [total-drops (swap! event-bus-drop-count inc)
+            ;; Task #119: capture the drop time NOW, before dispatching
+            ;; the warn into a future. Under sustained overflow the
+            ;; futures may queue + emit minutes later, at which point a
+            ;; `(java.util.Date.)` inside the log/warn body would
+            ;; describe the EMIT time, not the actual drop. Stamping
+            ;; here pins the timeline so operators can correlate drops
+            ;; against the upstream burst that caused them.
+            drop-at (java.util.Date.)]
+        (future
+          (log/warn "Event bus full — dropping event"
+                    {:event/type event-type
+                     :event/at drop-at
+                     :total-drops total-drops}))))
+    (boolean accepted?)))
 
 (defn publish-audit-event!
   "Publish an audit event to the event bus for distribution to subscribed clients.
-   
-   This is called by the database layer (plaid.xtdb2.operation) after successful
+
+   This is called by the database layer (plaid.sql.operation) after successful
    write operations. The event contains:
    - audit/id: Unique identifier for this audit entry
    - audit/projects: Set of affected project IDs
@@ -241,10 +287,9 @@
                                                (update :op/type op-type-to-string))
                                           operations)}]
         (log/debug "Event data:" event)
-        (let [put-result (async/put! event-bus event)]
-          (if put-result
-            (do (log/debug "Event published successfully") true)
-            (do (log/warn "Failed to put event on bus - channel may be closed") false)))))
+        (if (offer-event! event :audit-log)
+          (do (log/debug "Event published successfully") true)
+          false)))
     (catch Exception e
       (log/error e "Exception while publishing audit event"
                  {:audit-id (:audit/id audit-entry)
@@ -286,12 +331,37 @@
                    :message/time    (java.util.Date.)
                    :message/data    message-data}]
         (log/debug "Message event data:" event)
-        (let [put-result (async/put! event-bus event)]
-          (if put-result
-            (do (log/debug "Message published successfully") true)
-            (do (log/warn "Failed to put message on bus - channel may be closed") false)))))
+        (if (offer-event! event :message)
+          (do (log/debug "Message published successfully") true)
+          false)))
     (catch Exception e
       (log/error e "Exception while publishing message event"
                  {:project-id project-id
                   :user-id    user-id})
       false)))
+
+;; =============================================================================
+;; Test helpers
+;; =============================================================================
+
+(defn reset-state!
+  "Test-helper: wipe the in-memory subscriber + heartbeat + drop-counter
+  state. Task #113.
+
+  Does NOT touch the `event-bus` core.async channel itself — that's
+  started/stopped by mount, and a fresh channel between every deftest
+  would race the distributor go-loop. Just resets the bookkeeping atoms
+  + the drop counter so tests can observe drop counts and subscriber
+  registrations starting from zero.
+
+  Best-effort across mount lifecycle states: the drop-counter is a
+  plain `defonce` atom and always resettable; the three defstate atoms
+  are only resettable when their defstate is started (mount rebinds
+  them to plain atoms on :start). Falls through silently when they're
+  unstarted so the helper is safe to call from per-test fixtures that
+  run before / outside `mount/start`."
+  []
+  (reset! event-bus-drop-count 0)
+  (try (reset! client-registry {}) (catch Exception _))
+  (try (reset! channel-mappings {}) (catch Exception _))
+  (try (reset! heartbeat-registry {}) (catch Exception _)))

@@ -2,17 +2,17 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [reitit.coercion.malli]
-            [plaid.xtdb2.text-layer :as txtl]
-            [plaid.xtdb2.token-layer :as tokl]))
+            [plaid.sql.text-layer :as txtl]
+            [plaid.sql.token-layer :as tokl]))
 
-(defn get-project-id [{xt-map :xt-map params :parameters}]
+(defn get-project-id [{db :db params :parameters}]
   (let [txtl-id (-> params :body :text-layer-id)
         tokl-id (-> params :path :token-layer-id)]
     (cond txtl-id
-          (txtl/project-id xt-map txtl-id)
+          (txtl/project-id db txtl-id)
 
           tokl-id
-          (tokl/project-id xt-map tokl-id)
+          (tokl/project-id db tokl-id)
 
           :else
           nil)))
@@ -48,11 +48,11 @@
                                 [:name :string]
                                 [:overlap-mode {:optional true} [:enum "any" "non-overlapping" "partitioning"]]
                                 [:parent-token-layer-id {:optional true} :uuid]]}
-            :handler    (fn [{{{:keys [name text-layer-id overlap-mode parent-token-layer-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
+            :handler    (fn [{{{:keys [name text-layer-id overlap-mode parent-token-layer-id]} :body} :parameters db :db user-id :user/id}]
                           (let [attrs (cond-> {:token-layer/name name}
                                         overlap-mode (assoc :token-layer/overlap-mode (keyword overlap-mode))
                                         parent-token-layer-id (assoc :token-layer/parent-token-layer parent-token-layer-id))
-                                result (tokl/create {:node xtdb} attrs text-layer-id user-id)]
+                                result (tokl/create db attrs text-layer-id user-id)]
                             (if (:success result)
                               {:status 201
                                :body   {:id (:extra result)}}
@@ -65,8 +65,8 @@
     [""
      {:get    {:summary "Get a token layer by ID."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters xt-map :xt-map}]
-                          (let [token-layer (tokl/get xt-map token-layer-id)]
+               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters db :db}]
+                          (let [token-layer (tokl/get db token-layer-id)]
                             (if (some? token-layer)
                               {:status 200
                                :body   token-layer}
@@ -76,17 +76,17 @@
       :patch  {:summary    "Update a token layer's name."
                :middleware [[pra/wrap-maintainer-required get-project-id]]
                :parameters {:body [:map [:name :string]]}
-               :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [name]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error]} (tokl/merge {:node xtdb} token-layer-id {:token-layer/name name} user-id)]
+               :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [name]} :body} :parameters db :db user-id :user/id}]
+                             (let [{:keys [success code error]} (tokl/merge db token-layer-id {:token-layer/name name} user-id)]
                                (if success
                                  {:status 200
-                                  :body   (tokl/get xtdb token-layer-id)}
+                                  :body   (tokl/get db token-layer-id)}
                                  {:status (or code 500)
                                   :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a token layer."
                :middleware [[pra/wrap-maintainer-required get-project-id]]
-               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                          (let [{:keys [success code error]} (tokl/delete {:node xtdb} token-layer-id user-id)]
+               :handler (fn [{{{:keys [token-layer-id]} :path} :parameters db :db user-id :user/id}]
+                          (let [{:keys [success code error]} (tokl/delete db token-layer-id user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500)
@@ -96,9 +96,9 @@
      {:post {:summary    "Shift a token layer's order."
              :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
-             :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [direction]} :body} :parameters xtdb :xtdb user-id :user/id}]
+             :handler    (fn [{{{:keys [token-layer-id]} :path {:keys [direction]} :body} :parameters db :db user-id :user/id}]
                            (let [up? (= direction "up")
-                                 {:keys [success code error]} (tokl/shift-token-layer {:node xtdb} token-layer-id up? user-id)]
+                                 {:keys [success code error]} (tokl/shift-token-layer db token-layer-id up? user-id)]
                              (if success
                                {:status 204}
                                {:status (or code 400)

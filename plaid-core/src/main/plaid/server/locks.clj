@@ -1,15 +1,44 @@
 (ns plaid.server.locks
   "Document locking system for ensuring atomicity of batch operations"
   (:require [clojure.tools.logging :as log]
+            [mount.core :refer [defstate]]
             [plaid.server.config :refer [config]])
   (:import [java.time Instant]))
 
-(def ^:private lock-expiration-ms
-  (get-in config [:plaid.server.locks/config :expiration-ms] 60000)) ; 60 seconds
+;; Task #119: read at call time, not load time. The previous
+;; `def ^:private lock-expiration-ms` was captured at namespace load,
+;; which meant operators who tuned `:plaid.server.locks/config
+;; :expiration-ms` AFTER namespace load (e.g. test fixtures binding
+;; a fresh config, or a hot-reload that re-binds plaid.server.config)
+;; would silently see the stale boot-time value. Reading from the
+;; live config defstate at every `check-document-locks` /
+;; `acquire-lock!` invocation makes the knob actually adjustable
+;; without a full JVM restart.
+(def ^:const default-lock-expiration-ms 60000)
 
-(def ^:private locks
-  "Map of document-id -> {:user-id user-id :expires-at instant}"
-  (atom {}))
+(defn- lock-expiration-ms
+  "Resolve the current lock expiration window from the live config
+  defstate. Falls back to `default-lock-expiration-ms` if the config
+  is unbound (e.g. during a test that doesn't start the config
+  defstate)."
+  []
+  (or (get-in config [:plaid.server.locks/config :expiration-ms])
+      default-lock-expiration-ms))
+
+;; Map of document-id -> {:user-id user-id :expires-at instant}
+;;
+;; The atom itself is held in a `defonce` (mount's `DerefableState`
+;; doesn't implement IAtom, so it can't back a `swap!` directly). A
+;; companion `defstate` (`lock-lifecycle`, below) participates in the
+;; mount lifecycle and clears the atom on :start and :stop so test
+;; fixtures that (mount/start)/(mount/stop) get a fresh empty lock
+;; table per run — without it, locks acquired in one test would leak
+;; into the next.
+(defonce ^:private locks (atom {}))
+
+(defstate ^:private lock-lifecycle
+  :start (do (reset! locks {}) :ready)
+  :stop (do (reset! locks {}) :stopped))
 
 (defn- current-time-ms []
   (.toEpochMilli (Instant/now)))
@@ -35,7 +64,7 @@
    - :conflict if lock is held by another user"
   [document-id user-id]
   (let [now (current-time-ms)
-        expires-at (+ now lock-expiration-ms)]
+        expires-at (+ now (lock-expiration-ms))]
     (swap! locks
            (fn [lock-map]
              (if-let [existing-lock (get lock-map document-id)]
@@ -119,4 +148,15 @@
   (doseq [doc-id document-ids]
     (when (get-lock-info doc-id)
       (acquire-lock! doc-id user-id))))
+
+(defn reset-state!
+  "Test-helper: wipe the entire in-memory lock table. Task #113.
+
+  The locks atom is `defonce`-d so a deftest that acquired a lock
+  earlier in the run (typical for batch / OCC integration tests) would
+  otherwise carry it into the next deftest's setup, breaking test-order
+  independence. Called from `plaid.fixtures/with-clean-db` (and any
+  per-test reset hook that wants a fresh lock-table)."
+  []
+  (reset! locks {}))
 

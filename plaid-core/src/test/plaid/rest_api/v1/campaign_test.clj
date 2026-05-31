@@ -24,12 +24,13 @@
    violations are reported (filters any transient read glitch)."
   (:require [clojure.test :refer :all]
             [clojure.string :as str]
-            [plaid.fixtures :refer [with-xtdb with-mount-states with-rest-handler
+            [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     admin-request api-call with-admin with-test-users
-                                    assert-created]]
+                                    assert-created with-clean-db]]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-xtdb with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(use-fixtures :each with-clean-db)
 
 ;; ---------------------------------------------------------------------------
 ;; Real-ish text + canonical word offsets

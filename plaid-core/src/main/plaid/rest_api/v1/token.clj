@@ -3,40 +3,40 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.xtdb2.token :as tok]
-            [plaid.xtdb2.token-layer :as tokl]))
+            [plaid.sql.token :as tok]
+            [plaid.sql.token-layer :as tokl]))
 
-(defn get-project-id [{xt-map :xt-map params :parameters}]
+(defn get-project-id [{db :db params :parameters}]
   (let [tokl-id (or (-> params :body :token-layer-id))
         token-id (-> params :path :token-id)]
     (cond
-      tokl-id (tokl/project-id xt-map tokl-id)
-      token-id (tok/project-id xt-map token-id)
+      tokl-id (tokl/project-id db tokl-id)
+      token-id (tok/project-id db token-id)
       :else nil)))
 
-(defn bulk-get-project-id [{xt-map :xt-map params :parameters}]
+(defn bulk-get-project-id [{db :db params :parameters}]
   (let [tokl-id (or (-> params :body first :token-layer-id))
         token-id (-> params :body first)]
     (cond
-      tokl-id (tokl/project-id xt-map tokl-id)
-      token-id (tok/project-id xt-map token-id)
+      tokl-id (tokl/project-id db tokl-id)
+      token-id (tok/project-id db token-id)
       :else nil)))
 
-(defn get-document-id [{xt-map :xt-map params :parameters}]
+(defn get-document-id [{db :db params :parameters}]
   (let [token-id (-> params :path :token-id)
         text-id (-> params :body :text)]
     (cond
-      token-id (when-let [token (tok/get xt-map token-id)]
-                 (tok/get-doc-id-of-text xt-map (:token/text token)))
-      text-id (tok/get-doc-id-of-text xt-map text-id))))
+      token-id (when-let [token (tok/get db token-id)]
+                 (tok/get-doc-id-of-text db (:token/text token)))
+      text-id (tok/get-doc-id-of-text db text-id))))
 
-(defn bulk-get-document-id [{xt-map :xt-map params :parameters}]
+(defn bulk-get-document-id [{db :db params :parameters}]
   (let [token-id (-> params :body first)
         text-id (when (map? token-id) (:text token-id))]
     (cond
-      text-id (tok/get-doc-id-of-text xt-map text-id)
-      (uuid? token-id) (when-let [token (tok/get xt-map token-id)]
-                         (tok/get-doc-id-of-text xt-map (:token/text token))))))
+      text-id (tok/get-doc-id-of-text db text-id)
+      (uuid? token-id) (when-let [token (tok/get db token-id)]
+                         (tok/get-doc-id-of-text db (:token/text token))))))
 
 (def token-routes
   ["/tokens"
@@ -56,8 +56,9 @@
                              "\n<body>end</body>: the exclusive character-based offset at which this token ends in the body of the text specified by <body>text</body>"
                              "\n<body>precedence</body>: used for tokens with the same <body>begin</body> value in order to indicate their preferred linear order.")
                :middleware [[pra/wrap-writer-required get-project-id]
-                            [prm/wrap-document-version get-document-id]]
-               :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                            [prm/wrap-document-version get-document-id]
+                            metadata/wrap-inline-metadata-shape-guard]
+               :parameters {:query [:map [:document-version {:optional true} :int]]
                             :body [:map
                                    [:token-layer-id :uuid]
                                    [:text :uuid]
@@ -65,17 +66,18 @@
                                    [:end int?]
                                    [:precedence {:optional true} int?]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [token-layer-id text begin end precedence metadata]} :body} :parameters xtdb :xtdb user-id :user/id}]
+               :handler (fn [{{{:keys [token-layer-id text begin end precedence metadata]} :body} :parameters db :db user-id :user/id :as request}]
                           (let [attrs (cond-> {:token/layer token-layer-id
                                                :token/text text
                                                :token/begin begin
                                                :token/end end}
                                         (some? precedence) (assoc :token/precedence precedence))
-                                result (tok/create {:node xtdb} attrs user-id metadata)]
+                                doc-id (get-document-id request)
+                                result (tok/create db attrs user-id metadata)]
                             (if (:success result)
-                              (prm/assoc-document-versions-in-header
+                              (prm/assoc-document-version-in-header
                                {:status 201 :body {:id (:extra result)}}
-                               result)
+                               db doc-id)
                               {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
 
    ["/bulk" {:conflicting true
@@ -89,8 +91,9 @@
                                   "<body>metadata</body>, an optional map of metadata")
                     :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
-                                 [prm/wrap-document-version bulk-get-document-id]]
-                    :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                                 [prm/wrap-document-version bulk-get-document-id]
+                                 metadata/wrap-inline-metadata-shape-guard]
+                    :parameters {:query [:map [:document-version {:optional true} :int]]
                                  :body [:sequential
                                         [:map
                                          [:token-layer-id :uuid]
@@ -99,7 +102,7 @@
                                          [:end int?]
                                          [:precedence {:optional true} int?]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
-                    :handler (fn [{{tokens :body} :parameters xtdb :xtdb user-id :user/id}]
+                    :handler (fn [{{tokens :body} :parameters db :db user-id :user/id :as request}]
                                (let [tokens-attrs (mapv (fn [token-data]
                                                           (let [{:keys [token-layer-id text begin end precedence metadata]} token-data
                                                                 attrs (cond-> {:token/layer token-layer-id
@@ -111,11 +114,12 @@
                                                               (assoc attrs :metadata metadata)
                                                               attrs)))
                                                         tokens)
-                                     result (tok/bulk-create {:node xtdb} tokens-attrs user-id)]
+                                     doc-id (bulk-get-document-id request)
+                                     result (tok/bulk-create db tokens-attrs user-id)]
                                  (if (:success result)
-                                   (prm/assoc-document-versions-in-header
+                                   (prm/assoc-document-version-in-header
                                     {:status 201 :body {:ids (:extra result)}}
-                                    result)
+                                    db doc-id)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
              :delete {:summary (str "Delete multiple tokens in a single operation. Provide an array of IDs. As with "
                                     "single delete, each deleted token also drags down the descendant tokens nested "
@@ -124,14 +128,15 @@
                       :openapi {:x-client-method "bulk-delete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
-                      :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                      :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:sequential :uuid]}
-                      :handler (fn [{{token-ids :body} :parameters xtdb :xtdb user-id :user/id}]
-                                 (let [{:keys [success code error] :as result} (tok/bulk-delete {:node xtdb} token-ids user-id)]
+                      :handler (fn [{{token-ids :body} :parameters db :db user-id :user/id :as request}]
+                                 (let [doc-id (bulk-get-document-id request)
+                                       {:keys [success code error]} (tok/bulk-delete db token-ids user-id)]
                                    (if success
-                                     (prm/assoc-document-versions-in-header
+                                     (prm/assoc-document-version-in-header
                                       {:status 204}
-                                      result)
+                                      db doc-id)
                                      {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
    ["/:token-id"
@@ -140,8 +145,8 @@
 
     ["" {:get {:summary "Get a token."
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :handler (fn [{{{:keys [token-id]} :path} :parameters xt-map :xt-map}]
-                          (let [token (tok/get xt-map token-id)]
+               :handler (fn [{{{:keys [token-id]} :path} :parameters db :db}]
+                          (let [token (tok/get db token-id)]
                             (if (some? token)
                               {:status 200 :body token}
                               {:status 404 :body {:error "Token not found"}})))}
@@ -157,25 +162,36 @@
                                "(400) — use the token shift endpoint instead. Non-extent updates (e.g. "
                                "<body>precedence</body>) are always allowed."
                                "\n"
+                               "\n<body>precedence</body> may be set to <body>null</body> explicitly to clear it (revert "
+                               "to no explicit ordering); a key that is omitted from the body is left unchanged."
+                               "\n"
                                "\nIf the layer has child token layers, an extent change cascades to descendants exactly "
                                "as the shift endpoint does (straddlers split/trimmed, fully-outside children deleted).")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
-                 :parameters {:query [:map [:document-version {:optional true} :uuid]]
+                 :parameters {:query [:map [:document-version {:optional true} :int]]
                               :body [:map
                                      [:begin {:optional true} int?]
                                      [:end {:optional true} int?]
-                                     [:precedence {:optional true} int?]]}
-                 :handler (fn [{{{:keys [token-id]} :path {:keys [begin end precedence]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                            (let [raw-attrs (cond-> {}
+                                     ;; [:maybe int?] so an explicit `null` is accepted (clears
+                                     ;; precedence); `{:optional true}` distinguishes that from
+                                     ;; an omitted key (left unchanged) — see handler's contains?.
+                                     [:precedence {:optional true} [:maybe int?]]]}
+                 :handler (fn [{{{:keys [token-id]} :path body :body} :parameters db :db user-id :user/id :as request}]
+                            (let [{:keys [begin end]} body
+                                  raw-attrs (cond-> {}
                                               (some? begin) (assoc :token/begin begin)
                                               (some? end) (assoc :token/end end)
-                                              (some? precedence) (assoc :token/precedence precedence))
-                                  {success :success code :code error :error :as result} (tok/merge {:node xtdb} token-id raw-attrs user-id)]
+                                              ;; contains? (not some?): an explicit precedence:null
+                                              ;; clears the column; an omitted key is left untouched.
+                                              ;; tok/merge already honors a nil :token/precedence.
+                                              (contains? body :precedence) (assoc :token/precedence (:precedence body)))
+                                  doc-id (get-document-id request)
+                                  {success :success code :code error :error} (tok/merge db token-id raw-attrs user-id)]
                               (if success
-                                (prm/assoc-document-versions-in-header
-                                 {:status 200 :body (tok/get xtdb token-id)}
-                                 result)
+                                (prm/assoc-document-version-in-header
+                                 {:status 200 :body (tok/get db token-id)}
+                                 db doc-id)
                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}
          :delete {:summary (str "Delete a token and remove it from any spans. If this causes the span to have no "
                                 "remaining associated tokens, the span will also be deleted. If the layer has child "
@@ -185,13 +201,14 @@
                                 "merge endpoint to combine tokens, or bulk-delete to remove the whole partition.")
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
-                  :parameters {:query [:map [:document-version {:optional true} :uuid]]}
-                  :handler (fn [{{{:keys [token-id]} :path} :parameters xtdb :xtdb user-id :user/id}]
-                             (let [{:keys [success code error] :as result} (tok/delete {:node xtdb} token-id user-id)]
+                  :parameters {:query [:map [:document-version {:optional true} :int]]}
+                  :handler (fn [{{{:keys [token-id]} :path} :parameters db :db user-id :user/id :as request}]
+                             (let [doc-id (get-document-id request)
+                                   {:keys [success code error]} (tok/delete db token-id user-id)]
                                (if success
-                                 (prm/assoc-document-versions-in-header
+                                 (prm/assoc-document-version-in-header
                                   {:status 204}
-                                  result)
+                                  db doc-id)
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ["/split"
@@ -202,15 +219,16 @@
                            "no child split).")
              :middleware [[pra/wrap-writer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
-             :parameters {:query [:map [:document-version {:optional true} :uuid]]
+             :parameters {:query [:map [:document-version {:optional true} :int]]
                           :body [:map [:position int?]]}
-             :handler (fn [{{{:keys [token-id]} :path {:keys [position]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                        (let [{:keys [success code error extra] :as result}
-                              (tok/split {:node xtdb} token-id position user-id)]
+             :handler (fn [{{{:keys [token-id]} :path {:keys [position]} :body} :parameters db :db user-id :user/id :as request}]
+                        (let [doc-id (get-document-id request)
+                              {:keys [success code error extra]}
+                              (tok/split db token-id position user-id)]
                           (if success
-                            (prm/assoc-document-versions-in-header
+                            (prm/assoc-document-version-in-header
                              {:status 201 :body {:id extra}}
-                             result)
+                             db doc-id)
                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ["/merge"
@@ -222,15 +240,16 @@
                            "nested in either remain contained — nothing is orphaned.")
              :middleware [[pra/wrap-writer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
-             :parameters {:query [:map [:document-version {:optional true} :uuid]]
+             :parameters {:query [:map [:document-version {:optional true} :int]]
                           :body [:map [:other-token-id :uuid]]}
-             :handler (fn [{{{:keys [token-id]} :path {:keys [other-token-id]} :body} :parameters xtdb :xtdb user-id :user/id}]
-                        (let [{:keys [success code error extra] :as result}
-                              (tok/merge-tokens {:node xtdb} token-id other-token-id user-id)]
+             :handler (fn [{{{:keys [token-id]} :path {:keys [other-token-id]} :body} :parameters db :db user-id :user/id :as request}]
+                        (let [doc-id (get-document-id request)
+                              {:keys [success code error extra]}
+                              (tok/merge-tokens db token-id other-token-id user-id)]
                           (if success
-                            (prm/assoc-document-versions-in-header
-                             {:status 200 :body (tok/get xtdb extra)}
-                             result)
+                            (prm/assoc-document-version-in-header
+                             {:status 200 :body (tok/get db extra)}
+                             db doc-id)
                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ["/shift"
@@ -244,20 +263,21 @@
                            "and straddlers are trimmed to fit.")
              :middleware [[pra/wrap-writer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
-             :parameters {:query [:map [:document-version {:optional true} :uuid]]
+             :parameters {:query [:map [:document-version {:optional true} :int]]
                           :body [:map
                                  [:begin {:optional true} int?]
                                  [:end {:optional true} int?]]}
-             :handler (fn [{{{:keys [token-id]} :path {:keys [begin end]} :body} :parameters xtdb :xtdb user-id :user/id}]
+             :handler (fn [{{{:keys [token-id]} :path {:keys [begin end]} :body} :parameters db :db user-id :user/id :as request}]
                         (let [attrs (cond-> {}
                                       (some? begin) (assoc :token/begin begin)
                                       (some? end) (assoc :token/end end))
-                              {:keys [success code error] :as result}
-                              (tok/shift-boundary {:node xtdb} token-id attrs user-id)]
+                              doc-id (get-document-id request)
+                              {:keys [success code error]}
+                              (tok/shift-boundary db token-id attrs user-id)]
                           (if success
-                            (prm/assoc-document-versions-in-header
-                             {:status 200 :body (tok/get xtdb token-id)}
-                             result)
+                            (prm/assoc-document-version-in-header
+                             {:status 200 :body (tok/get db token-id)}
+                             db doc-id)
                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations

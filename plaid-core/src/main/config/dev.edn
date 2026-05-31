@@ -1,6 +1,9 @@
 {:taoensso.timbre/logging-config
  {:min-level :debug}
 
- :plaid.server.xtdb/config
- {:main-db-dir    "data"
-  :use-inspector  true}}
+ :plaid.server.sql/config
+ {:main-db-path "data/plaid.db"}
+
+ ;; olap shadow replica on in dev (default-off in defaults.edn);
+ ;; deep-merged over the defaults, so only this key flips.
+ :plaid.olap/config {:enabled? true}}

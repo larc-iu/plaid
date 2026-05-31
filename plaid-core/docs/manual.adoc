@@ -85,36 +85,12 @@ firstDocument= client.documents.get(firstDocumentId, true)
 console.log("First document:", firstDocument)
 ----
 
-== Time-traveling Database
-Plaid uses the database https://docs.xtdb.com/[XTDB] to store data.
-An unusual feature of this database is that it is **immutable**.
-This means that whenever a value inside the database changes, the old value is not lost: rather, the old state of the database is still accessible for reading, even after a new version has been created.
-This allows Plaid to provide **time travel**, allowing you to access all historical states of your documents and projects.
+== Audit Log
 
-It is simple to make use of this in the client: simply include an ISO-8601 time as the final argument of any `.get` method.
-(In Python, you may also use the keyword argument `as_of`.)
-Consider a simple example where we are modifying the name of a document:
+Every write to the database is recorded in an append-only **audit log** which provides an account of who performed every change.
+Audit history is retained indefinitely (see the retention policy in `OPERATIONS.md` §11 and `docs/sql-port-review-2026-05-27.md` §8); operators monitor disk and prune only after the planned downstream OLAP replica is built and caught up.
 
-[,python]
-----
-# Read original name
-client.documents.get(document_id)["name"]
-#=> "Old Name"
-
-# Update name
-client.documents.update(document_id, name="New Name")
-
-# Read current name
-client.documents.get(document_id)["name"]
-#=> "New Name"
-
-# Read old name by providing time in the past
-client.documents.get(document_id, "2025-07-08T09:00:00Z")["name"]
-#=> "Old Name"
-
-----
-
-Additionally, an **audit log** provides an account of who performed every write to the database:
+The log can be queried like so:
 
 [,python]
 ----
