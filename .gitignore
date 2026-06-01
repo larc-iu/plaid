@@ -26,6 +26,10 @@ xtdb-store
 builds/
 /plaid-core/data/
 /plaid-core/resources/
+# keep DB migrations tracked (schema lives here — must ship)
+!/plaid-core/resources/
+/plaid-core/resources/*
+!/plaid-core/resources/migrations/
 mutations.ednl
 Gemfile.lock
 .aider*
@@ -35,3 +39,5 @@ __pycache__/
 .token*
 dist/
 _site/
+test-results/
+playwright-report/
