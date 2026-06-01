@@ -49,54 +49,18 @@
 (defn admin? [user-record]
   (boolean (:user/is-admin user-record)))
 
-(def ^:const default-limit
-  "Default page size for `get-all` when no `:limit` is supplied."
-  100)
-
-(def ^:const max-limit
-  "Hard ceiling on `:limit`. The REST layer rejects larger values up
-  front; clamping here is the defense-in-depth backstop."
-  1000)
-
-(defn- clamp-limit
-  [limit]
-  (let [n (cond
-            (nil? limit) default-limit
-            (integer? limit) limit
-            :else (try (Long/parseLong (str limit))
-                       (catch Exception _ default-limit)))]
-    (cond
-      (<= n 0) default-limit
-      (> n max-limit) max-limit
-      :else n)))
-
 (defn get-all
-  "Get all users formatted for external consumption. Ordered by
-  `:username` so cursor pagination is deterministic.
+  "Get all users formatted for external consumption, ordered by
+  `:username`. Returns a bare seq of `{:user/id :user/username
+  :user/is-admin}` maps.
 
-  Two-arity form takes `{:limit n :cursor username-or-nil}` and returns
-  `{:entries [...] :next-cursor username-or-nil}`. Single-arity form
-  preserves the legacy behavior (unpaginated seq) for internal callers
-  that don't need pagination; the REST surface always uses the
-  paginated form (task #99)."
-  ([db]
-   (->> (psc/q db {:select [:*] :from [:users] :order-by [:username]})
-        (map row->user)
-        (map #(select-keys % [:user/id :user/username :user/is-admin]))))
-  ([db {:keys [limit cursor]}]
-   (let [eff (clamp-limit limit)
-         where (when cursor [:> :username cursor])
-         rows (psc/q db (cond-> {:select [:*]
-                                 :from [:users]
-                                 :order-by [:username]
-                                 :limit eff}
-                          where (assoc :where where)))
-         entries (->> rows
-                      (map row->user)
-                      (mapv #(select-keys % [:user/id :user/username :user/is-admin])))]
-     {:entries entries
-      :next-cursor (when (= (count rows) eff)
-                     (:username (last rows)))})))
+  Pagination was intentionally deferred (the REST surface returns this
+  bare list); when it's added back, keyset-paginate on `:username` and
+  give every list endpoint the same envelope rather than just this one."
+  [db]
+  (->> (psc/q db {:select [:*] :from [:users] :order-by [:username]})
+       (map row->user)
+       (map #(select-keys % [:user/id :user/username :user/is-admin]))))
 
 (defn find-by-username
   "Find a user by username. Returns full internal record."

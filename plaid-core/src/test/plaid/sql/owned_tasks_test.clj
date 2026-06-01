@@ -51,13 +51,13 @@
           _ (doseq [tid token-ids]
               (assert-created (create-vocab-link admin-request item-id [tid])))
           ;; Sanity: per-doc audit before vocab/delete already has rows.
-          before (count (:entries (:body (get-document-audit admin-request (first doc-ids)))))
+          before (count (:body (get-document-audit admin-request (first doc-ids))))
           _ (assert-no-content (delete-vocab-layer admin-request vocab-id))
           ;; Fetch the per-doc audit for doc1 — must include both the
           ;; vocab/delete parent op AND the doc-version-bump row.
           after-resp (get-document-audit admin-request (first doc-ids))
           _ (assert-ok after-resp)
-          entries (:entries (:body after-resp))
+          entries (:body after-resp)
           op-types (mapv (fn [e] (-> e :audit/ops first :op/type)) entries)]
       (is (> (count entries) before)
           (str "Expected new audit rows after vocab/delete; before=" before
@@ -73,11 +73,10 @@
 (deftest list-users-admin-only
   (testing "Non-admins cannot enumerate users"
     (assert-forbidden (api-call user1-request {:method :get :path "/api/v1/users"})))
-  (testing "Admins get the list (paginated shape)"
+  (testing "Admins get the list (bare array)"
     (let [resp (api-call admin-request {:method :get :path "/api/v1/users"})]
       (assert-ok resp)
-      (is (map? (:body resp)))
-      (is (contains? (:body resp) :entries)))))
+      (is (sequential? (:body resp))))))
 
 ;; ============================================================
 ;; Task #95 — User-Agent sanitization
@@ -95,43 +94,24 @@
     (is (nil? (op/sanitize-user-agent nil)))))
 
 ;; ============================================================
-;; Task #99 — /users pagination
+;; /users list shape — bare array (pagination intentionally deferred)
 ;; ============================================================
 
-(deftest list-users-pagination
-  (testing "Limit + cursor produce non-overlapping pages, deterministic order"
-    ;; Create enough scratch users to test paging. with-admin/with-test-users
-    ;; already give us admin@, user1@, user2@; throw in 4 more.
+(deftest list-users-returns-bare-array
+  (testing "GET /users returns a plain, username-ordered array of all users"
+    ;; with-admin/with-test-users give us admin@, user1@, user2@; add 4 more.
     (doseq [u ["zz-aaa@example.com" "zz-bbb@example.com" "zz-ccc@example.com" "zz-ddd@example.com"]]
       (user/create db u false "password"))
-    (let [p1 (api-call admin-request {:method :get :path "/api/v1/users?limit=3"})
-          _ (assert-ok p1)
-          body1 (:body p1)
-          entries1 (:entries body1)
-          cursor1 (:next-cursor body1)
-          _ (is (= 3 (count entries1)) (str "p1 entries=" entries1))
-          _ (is (some? cursor1) "cursor should be present")
-          p2 (api-call admin-request {:method :get
-                                      :path (str "/api/v1/users?limit=3&cursor=" cursor1)})
-          _ (assert-ok p2)
-          entries2 (:entries (:body p2))]
-      (is (empty? (clojure.set/intersection (set (map :user/username entries1))
-                                            (set (map :user/username entries2))))
-          "Pages must not overlap")
-      (is (= entries1 (vec (sort-by :user/username entries1)))
-          "Page entries must be ordered by username"))))
-
-(deftest list-users-pagination-validation
-  ;; The malli coercion failure path emits a raw Clojure map body that
-  ;; `parse-response-body` can't slurp — drop down to the rest-handler
-  ;; and only inspect the status code (matches audit-pagination-test's
-  ;; `raw-status` helper).
-  (let [raw-status (fn [path]
-                     (:status (rest-handler (admin-request :get path))))]
-    (testing "limit > max-limit rejected by malli"
-      (is (= 400 (raw-status (str "/api/v1/users?limit=" (inc user/max-limit))))))
-    (testing "limit <= 0 rejected"
-      (is (= 400 (raw-status "/api/v1/users?limit=0"))))))
+    (let [r (api-call admin-request {:method :get :path "/api/v1/users"})
+          _ (assert-ok r)
+          body (:body r)]
+      (is (sequential? body) "bare array, not an {:entries ...} envelope")
+      ;; all 7 users present (3 standing + 4 created), none dropped by a cap
+      (is (>= (count body) 7) (str "expected the full roster, got " (count body)))
+      (is (every? #(contains? % :user/username) body))
+      (is (= (map :user/username body)
+             (sort (map :user/username body)))
+          "ordered by username"))))
 
 ;; ============================================================
 ;; Task #100 V4 — last maintainer / last admin guards

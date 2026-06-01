@@ -3,36 +3,24 @@
             [reitit.coercion.malli]
             [plaid.sql.user :as user]))
 
-;; Pagination query schema for GET /users — mirrors the audit pagination
-;; pattern in plaid.rest-api.v1.audit. `:limit` is bounded by
-;; `user/max-limit` (defense-in-depth: the SQL layer clamps too).
-;; `:cursor` is the `:username` of the last row from the previous page.
-(def ^:private pagination-query
-  [:map
-   [:limit {:optional true} [:int {:min 1 :max user/max-limit}]]
-   [:cursor {:optional true} string?]])
-
 (def user-routes
   ["/users"
    {:openapi {:security [{:auth []}]}
     :middleware [pra/wrap-login-required]}
 
    [""
-    {:get {:summary "List all users (admin-only, paginated)"
+    {:get {:summary "List all users (admin-only)"
            ;; Task #95: previously returned the full user roster to any
            ;; authenticated caller — a needless enumeration surface for
            ;; account-spraying / password-spray attacks. Locked down to
            ;; admins; non-admins get 403 (no special-case "your own
            ;; record" payload — they already know who they are via /me).
-           ;; Task #99: paginated. Default 100 / max 1000, ordered by
-           ;; :username, keyset cursor = last username of previous page.
+           ;; Returns a bare array of users (pagination intentionally
+           ;; deferred — see the note in plaid.sql.user/get-all).
            :middleware [pra/wrap-admin-required]
-           :parameters {:query pagination-query}
-           :handler (fn [{db :db {{:keys [limit cursor] :as query} :query} :parameters}]
+           :handler (fn [{db :db}]
                       {:status 200
-                       :body (user/get-all db (cond-> {}
-                                                limit  (assoc :limit limit)
-                                                cursor (assoc :cursor cursor)))})}
+                       :body (user/get-all db)})}
      :post {:summary "Create a new user"
             :middleware [pra/wrap-admin-required]
             :parameters {:body {:username string? :password string? :is-admin boolean?}}

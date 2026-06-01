@@ -132,23 +132,23 @@
          where (if (seq all-extra)
                  (into [:and base-where] all-extra)
                  base-where)]
-     (psc/q db {:select [:*]
-                :from [:operations]
-                :where where
-                :order-by [:ts :id]
-                :limit eff-limit}))))
+     ;; No `:limit` supplied → return the full (time-windowed) set with
+     ;; no LIMIT clause. A caller paging a huge log opts in via `?limit=`;
+     ;; the `?cursor=` keyset still seeks off the last returned op-id.
+     (psc/q db (cond-> {:select [:*]
+                        :from [:operations]
+                        :where where
+                        :order-by [:ts :id]}
+                 limit (assoc :limit eff-limit))))))
 
-(defn- paginate
-  "Turn a raw fetched page into the response shape
-  `{:entries [...] :next-cursor uuid-or-nil}`. The cursor is `nil` when
-  the page returned fewer rows than the requested limit (caller is at
-  the end)."
-  [db rows limit]
-  (let [eff (clamp-limit limit)
-        entries (enrich-ops db rows)]
-    {:entries entries
-     :next-cursor (when (= (count rows) eff)
-                    (:id (last rows)))}))
+(defn- format-audit
+  "Enrich a fetched page of operations rows into the external audit-entry
+  shape. Returns a BARE vector (pagination intentionally deferred — when
+  it's added back, wrap every list endpoint in the same envelope, not
+  just this one). `?limit`/`?cursor` still work for callers paging a
+  large log: the cursor is simply the `:audit/id` of the last entry."
+  [db rows]
+  (enrich-ops db rows))
 
 (defn get-project-audit-log
   ([db project-id]
@@ -157,7 +157,7 @@
    (get-project-audit-log db project-id start-time end-time nil))
   ([db project-id start-time end-time opts]
    (let [rows (query-ops db [:= :project_id project-id] [start-time end-time] opts)]
-     (paginate db rows (:limit opts)))))
+     (format-audit db rows))))
 
 (defn get-document-audit-log
   "Audit entries that affect `document-id`. Returns ops whose
@@ -187,7 +187,7 @@
                                        [:= :audit_writes.target_table "documents"]
                                        [:= :audit_writes.target_id document-id]]}]]
          rows (query-ops db base-where [start-time end-time] opts)]
-     (paginate db rows (:limit opts)))))
+     (format-audit db rows))))
 
 (defn get-user-audit-log
   ([db user-id]
@@ -196,4 +196,4 @@
    (get-user-audit-log db user-id start-time end-time nil))
   ([db user-id start-time end-time opts]
    (let [rows (query-ops db [:= :user_id user-id] [start-time end-time] opts)]
-     (paginate db rows (:limit opts)))))
+     (format-audit db rows))))

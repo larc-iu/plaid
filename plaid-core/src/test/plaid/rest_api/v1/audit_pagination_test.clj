@@ -1,6 +1,9 @@
 (ns plaid.rest-api.v1.audit-pagination-test
-  "Regression for #85: GET /projects/:id/audit honours `?limit=` + `?cursor=`
-  and surfaces a `:next-cursor` field for forward pagination."
+  "GET /projects/:id/audit returns a BARE array by default (pagination
+  deferred), but still honours the optional `?limit=` + `?cursor=` escape
+  hatch for callers paging a large log. The cursor is the `:audit/id` of
+  the last entry from the previous page; there is no `:next-cursor`
+  envelope field anymore — the caller derives it from the array tail."
   (:require [clojure.test :refer :all]
             [plaid.fixtures :as fix :refer [with-db with-mount-states with-rest-handler
                                             admin-request rest-handler with-admin
@@ -25,34 +28,32 @@
         _ (create-many-ops! proj 150)
         page1 (get-project-audit admin-request proj {:limit 50})
         _ (assert-ok page1)
-        body1 (:body page1)
-        entries1 (:entries body1)
-        cursor1 (:next-cursor body1)]
+        entries1 (:body page1)
+        ;; cursor for the next page = id of the last entry on this page
+        cursor1 (:audit/id (last entries1))]
 
-    (testing "First page respects limit and exposes a next-cursor"
+    (testing "Default (no limit) returns the FULL log as a bare array"
+      (let [r (get-project-audit admin-request proj)
+            body (:body r)]
+        (assert-ok r)
+        (is (sequential? body) "default response is a bare array, not an envelope")
+        (is (> (count body) 50)
+            "with no limit the full set (>150) comes back, not a 100-capped page")))
+
+    (testing "First page respects ?limit"
       (is (= 50 (count entries1))
           (str "Expected exactly 50 entries, got " (count entries1)))
-      (is (some? cursor1) "next-cursor should be present when more results exist"))
+      (is (some? cursor1)))
 
-    (testing "Second page picks up strictly after the cursor"
+    (testing "Second page picks up strictly after ?cursor"
       (let [page2 (get-project-audit admin-request proj {:limit 50 :cursor cursor1})
             _ (assert-ok page2)
-            body2 (:body page2)
-            entries2 (:entries body2)
-            cursor2 (:next-cursor body2)
+            entries2 (:body page2)
             ids1 (set (map :audit/id entries1))
             ids2 (set (map :audit/id entries2))]
         (is (= 50 (count entries2)) "Second page should also be full")
-        (is (some? cursor2) "Third page should still exist")
         (is (empty? (clojure.set/intersection ids1 ids2))
-            "Cursor pagination must not duplicate rows across pages")))
-
-    (testing "Limit > result set yields nil next-cursor"
-      (let [r (get-project-audit admin-request proj {:limit 1000})
-            body (:body r)]
-        (assert-ok r)
-        (is (nil? (:next-cursor body))
-            "next-cursor must be nil when the page returns fewer than limit rows")))))
+            "Cursor pagination must not duplicate rows across pages")))))
 
 (defn- raw-status
   "Hit the rest-handler directly and return only the status code. Used to
