@@ -36,7 +36,6 @@
         migratus/migratus {:mvn/version "1.6.4"}
 
         ;; OLAP — XTDB v2 read-only time-travel replica fed from audit_writes
-        ;; (see docs/olap-design.md, or /home/luke/.claude/plans/sigh-makes-me-sad-drifting-island.md)
         com.xtdb/xtdb-api {:mvn/version "2.2.0-beta1"}
         com.xtdb/xtdb-core {:mvn/version "2.2.0-beta1"}
 

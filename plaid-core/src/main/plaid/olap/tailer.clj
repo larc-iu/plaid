@@ -503,7 +503,7 @@
 (defn- maybe-log-progress!
   "Emit an `:info` progress line during long replays. Fires every
   `cold-replay-log-stride` rows applied since this loop instance started
-  — the design doc (`docs/olap-design.md:198`) promised this cadence for
+  — the design notes promised this cadence for
   cold-replay visibility, but the prior implementation never wired it.
 
   Cheap: a single atom CAS per call, plus a `quot` to decide whether

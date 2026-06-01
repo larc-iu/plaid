@@ -84,7 +84,6 @@
  ;; When enabled, an in-process tailer polls audit_writes and replays
  ;; into the XTDB node at :storage-path / :log-path. REST clients reach
  ;; the replica via ?as-of=<ISO-8601> on document GET endpoints.
- ;; See docs/olap-design.md for the full design.
  :plaid.olap/config {:enabled? false
                      :storage-path "data/olap-storage"
                      :log-path "data/olap-log"

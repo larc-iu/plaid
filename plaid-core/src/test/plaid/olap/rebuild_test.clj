@@ -222,7 +222,7 @@
 ;; audit log forward (idempotent). The replica SELF-HEALS to the correct
 ;; state. This test pins exactly that property — convergence after
 ;; close/reopen/re-tail — NOT exact cursor persistence (which XTDB does
-;; not guarantee). See OPERATIONS.md §12.7.
+;; not guarantee). See the OLAP operations notes §12.7.
 
 (defn- start-disk-node
   "Start an on-disk XTDB node mirroring `plaid.olap.core/start-xtdb-node`

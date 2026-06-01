@@ -32,9 +32,7 @@
     :tailer/op-too-large        — one op's audit rows exceed the batch cap.
     :tailer/not-enabled         — resume! called with OLAP disabled.
   The `:replayer/*` and `:tailer/*` types are caught by the tailer loop
-  (→ stall), never surfaced to REST callers directly.
-
-  See `docs/olap-design.md` for the full design."
+  (→ stall), never surfaced to REST callers directly."
   (:require [clojure.core.async :as async]
             [clojure.java.io :as io]
             [mount.core :refer [defstate]]

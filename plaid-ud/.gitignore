@@ -1,0 +1,3 @@
+# CLAUDE.md is an agent-facing doc: kept on disk (the harness auto-loads it)
+# but not committed. See plaid-core/.gitignore for the project convention.
+/CLAUDE.md

@@ -1,0 +1,9 @@
+# Agent-facing docs are kept out of version control. The canonical copies
+# live in the external project doc tree
+# (~/.claude/projects/-home-luke-local-plaid/docs/), indexed from MEMORY.md.
+# CLAUDE.md is kept on disk (the harness auto-loads it) but not committed.
+/CLAUDE.md
+/OPERATIONS.md
+/docs/olap-design.md
+/docs/sql-port-review-2026-05-27.md
+/docs/xtdb2_reference.md
