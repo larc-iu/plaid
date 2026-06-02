@@ -1,0 +1,28 @@
+.entry {
+  border-bottom: 1px solid var(--mantine-color-gray-1);
+  cursor: pointer;
+  transition: background-color 100ms ease;
+}
+.entry:hover {
+  background: var(--mantine-color-gray-0);
+}
+.entry[data-selected='true'] {
+  background: var(--mantine-color-blue-0);
+}
+.entry[data-selected='true']:hover {
+  background: var(--mantine-color-blue-1);
+}
+
+/* Two-line clamp for the operation description. */
+.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+  max-height: 2.6em;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--mantine-color-gray-9);
+  word-break: break-word;
+}

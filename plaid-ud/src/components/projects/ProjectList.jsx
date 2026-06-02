@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import {
+  Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader, ActionIcon, Tooltip,
+} from '@mantine/core';
+import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ProjectForm } from './ProjectForm';
+import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import classes from '../common/listRow.module.css';
 
 export const ProjectList = () => {
   const [projects, setProjects] = useState([]);
@@ -9,6 +15,7 @@ export const ProjectList = () => {
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const { getClient } = useAuth();
+  const navigate = useNavigate();
 
   const fetchProjects = async () => {
     try {
@@ -37,25 +44,25 @@ export const ProjectList = () => {
     fetchProjects();
   }, []);
 
-  const handleDelete = async (projectId, projectName) => {
-    if (!confirm(`Are you sure you want to delete project "${projectName}"? This action cannot be undone.`)) {
-      return;
-    }
-
-    // Optimistic remove so the UI doesn't gate on the server round-trip.
-    // Snapshot for rollback if the server rejects.
-    const previousProjects = projects;
-    setProjects(prev => prev.filter(p => p.id !== projectId));
-    setError('');
-
-    try {
-      const client = getClient();
-      await client.projects.delete(projectId);
-    } catch (err) {
-      setProjects(previousProjects);
-      setError('Failed to delete project: ' + (err.message || 'Unknown error'));
-      console.error('Error deleting project:', err);
-    }
+  const handleDelete = (projectId, projectName) => {
+    confirmDelete({
+      title: 'Delete project',
+      message: `Are you sure you want to delete project "${projectName}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        // Optimistic remove so the UI doesn't gate on the server round-trip.
+        // Snapshot for rollback if the server rejects.
+        const previousProjects = projects;
+        setProjects(prev => prev.filter(p => p.id !== projectId));
+        try {
+          await getClient().projects.delete(projectId);
+          notifySuccess(`Deleted "${projectName}"`);
+        } catch (err) {
+          setProjects(previousProjects);
+          notifyError(err.message || 'Unknown error', 'Failed to delete project');
+          console.error('Error deleting project:', err);
+        }
+      },
+    });
   };
 
   const handleProjectCreated = () => {
@@ -64,76 +71,68 @@ export const ProjectList = () => {
   };
 
   if (loading) {
-    return <div className="text-center text-gray-600 py-8">Loading projects...</div>;
+    return <Center py={48}><Loader /></Center>;
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Projects</h2>
-        <button 
-          className="px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors text-sm font-medium"
-          onClick={() => setShowCreateForm(true)}
-        >
-          + New UD Project
-        </button>
-      </div>
+    <>
+      <Group justify="space-between" mb="lg">
+        <Title order={2}>Projects</Title>
+        <Button color="dark" leftSection={<IconPlus size={16} />} onClick={() => setShowCreateForm(true)}>
+          New UD Project
+        </Button>
+      </Group>
 
-      {error && (
-        <div className="rounded-md bg-red-50 p-4 mb-4">
-          <p className="text-sm text-red-800">{error}</p>
-        </div>
-      )}
+      {error && <Alert color="red" mb="md">{error}</Alert>}
 
-      <ProjectForm 
+      <ProjectForm
         isOpen={showCreateForm}
         onClose={() => setShowCreateForm(false)}
         onSuccess={handleProjectCreated}
       />
 
       {projects.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500">No projects yet. Create your first UD project to get started!</p>
-        </div>
+        <Center py={48}>
+          <Text c="dimmed">No projects yet. Create your first UD project to get started!</Text>
+        </Center>
       ) : (
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <ul className="divide-y divide-gray-200">
-            {projects.map(project => (
-              <li key={project.id} className="hover:bg-gray-50 transition-colors">
-                <div className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-medium text-gray-900">{project.name}</h3>
-                      <div className="mt-1 flex items-center gap-4 text-sm text-gray-500">
-                        <span>ID: {project.id}</span>
-                        {project.documents && (
-                          <span>
-                            {project.documents.length} document{project.documents.length !== 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Link 
-                        to={`/projects/${project.id}/documents`}
-                        className="px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                      >
-                        View Documents
-                      </Link>
-                      <button 
-                        className="px-3 py-1.5 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
-                        onClick={() => handleDelete(project.id, project.name)}
-                      >
-                        Delete
-                      </button>
-                    </div>
+        <Paper withBorder radius="md">
+          <Stack gap={0}>
+            {projects.map((project, i) => (
+              <Box
+                key={project.id}
+                className={classes.row}
+                onClick={() => navigate(`/projects/${project.id}/documents`)}
+                p="md"
+                style={{ borderTop: i ? '1px solid var(--mantine-color-gray-2)' : undefined }}
+              >
+                <Group justify="space-between" wrap="nowrap">
+                  <div>
+                    <Text fw={500} size="lg">{project.name}</Text>
+                    <Group gap="md" mt={4}>
+                      <Text size="sm" c="dimmed">ID: {project.id}</Text>
+                      {project.documents && (
+                        <Text size="sm" c="dimmed">
+                          {project.documents.length} document{project.documents.length !== 1 ? 's' : ''}
+                        </Text>
+                      )}
+                    </Group>
                   </div>
-                </div>
-              </li>
+                  <Tooltip label="Delete project">
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      onClick={(e) => { e.stopPropagation(); handleDelete(project.id, project.name); }}
+                    >
+                      <IconTrash size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+              </Box>
             ))}
-          </ul>
-        </div>
+          </Stack>
+        </Paper>
       )}
-    </div>
+    </>
   );
 };

@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import {
+  SimpleGrid, Stack, Title, Textarea, Button, Group, Text, Alert, Paper, Center, Loader,
+} from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { missingUdLayerLabels } from '../../utils/udLayerUtils.js';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
+import { confirmDelete } from '../../utils/feedback.jsx';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { DocumentTabs } from './DocumentTabs.jsx';
 
@@ -90,11 +94,17 @@ export const TextEditor = () => {
     if (ok) setOriginalTokenizedText(textContent);
   };
 
-  const handleClearTokens = async () => {
+  const handleClearTokens = () => {
     if (!doc) return;
-    if (!confirm('Are you sure you want to clear all tokens? This action cannot be undone.')) return;
-    const ok = await doc.clearTokens();
-    if (ok) setOriginalTokenizedText('');
+    confirmDelete({
+      title: 'Clear all tokens',
+      message: 'Are you sure you want to clear all tokens? This action cannot be undone.',
+      confirmLabel: 'Clear',
+      onConfirm: async () => {
+        const ok = await doc.clearTokens();
+        if (ok) setOriginalTokenizedText('');
+      },
+    });
   };
 
   const handleWordCreate = async (begin, end) => {
@@ -112,23 +122,15 @@ export const TextEditor = () => {
   const handleSetWordMorphemes = (word, forms) => doc?.setWordMorphemes(word, forms);
 
   if (loading) {
-    return <div className="text-center text-gray-600 py-8">Loading document...</div>;
+    return <Center py={48}><Loader /></Center>;
   }
 
   if (loadError) {
-    return (
-      <div className="rounded-md bg-red-50 p-4">
-        <p className="text-sm text-red-800">{loadError}</p>
-      </div>
-    );
+    return <Alert color="red">{loadError}</Alert>;
   }
 
   if (!doc || !project) {
-    return (
-      <div className="rounded-md bg-red-50 p-4">
-        <p className="text-sm text-red-800">Document or project not found</p>
-      </div>
-    );
+    return <Alert color="red">Document or project not found</Alert>;
   }
 
   const layerInfo = doc.layerInfo;
@@ -166,7 +168,7 @@ export const TextEditor = () => {
     : [];
 
   return (
-    <div>
+    <>
       <DocumentTabs
         projectId={projectId}
         documentId={documentId}
@@ -174,90 +176,76 @@ export const TextEditor = () => {
         document={doc.raw}
       />
 
-      {opError && (
-        <div className="mb-3 mx-6 rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-800">
-          {opError}
-        </div>
-      )}
+      {opError && <Alert color="red" mb="sm">{opError}</Alert>}
 
       {missingLayerLabels.length > 0 && (
-        <div className="mb-3 mx-6 rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+        <Alert color="yellow" mb="sm">
           Project configuration incomplete: {missingLayerLabels.join(', ')}.
-        </div>
+        </Alert>
       )}
 
       {layersMisconfigured && (
-        <div className="mb-3 mx-6 rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+        <Alert color="yellow" mb="sm">
           This project's token layers are missing their overlap-mode / parent
           configuration (likely created with an older client bundle). Tokenization
           will still work, but server-enforced nesting and partitioning won't.
           Consider recreating the project.
-        </div>
+        </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Text Content</h3>
-          <textarea
-            className="w-full min-h-[300px] p-4 border-2 border-gray-300 rounded-md font-mono text-sm leading-relaxed resize-y focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="xl">
+        <Stack gap="md">
+          <Title order={4}>Text Content</Title>
+          <Textarea
             value={textContent}
             onChange={handleTextChange}
-            placeholder="Enter your text here. Use newlines to separate sentences.
+            placeholder={`Enter your text here. Use newlines to separate sentences.
 
 Example:
 The quick brown fox jumps over the lazy dog.
-This is a second sentence for testing."
-            rows={12}
+This is a second sentence for testing.`}
+            autosize
+            minRows={12}
+            styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', lineHeight: 1.6 } }}
           />
 
-          <div className="flex items-center gap-3 mt-4">
-            <button
-              onClick={handleSaveText}
-              disabled={saving || !textContent.trim()}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              {saving ? 'Saving...' : 'Save Text'}
-            </button>
+          <Group gap="sm">
+            <Button color="green" onClick={handleSaveText} disabled={saving || !textContent.trim()} loading={saving}>
+              Save Text
+            </Button>
 
-            <button
+            <Button
               onClick={handleTokenize}
               disabled={saving || !textContent.trim() || isTextDirty || hasTokens}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
               title={isTextDirty ? 'Please save text changes before tokenizing' : (hasTokens ? 'Clear tokens before re-tokenizing' : '')}
             >
-              {saving ? 'Processing...' : 'Basic Tokenize'}
-            </button>
+              Basic Tokenize
+            </Button>
 
             {hasTokens && (
-              <button
-                onClick={handleClearTokens}
-                disabled={saving}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
+              <Button color="red" onClick={handleClearTokens} disabled={saving}>
                 Clear Tokens
-              </button>
+              </Button>
             )}
 
-            <div className="ml-auto text-sm font-medium text-gray-600">
+            <Text size="sm" fw={500} c="dimmed" ml="auto">
               {wordTokens.length} word{wordTokens.length !== 1 ? 's' : ''}, {sentenceTokens.length} sentence{sentenceTokens.length !== 1 ? 's' : ''}
-            </div>
-          </div>
+            </Text>
+          </Group>
 
-          <div className="mt-2 text-sm">
-            {saving && <span className="text-blue-600 italic">Processing...</span>}
+          <Text size="sm">
+            {saving && <Text span c="blue" fs="italic">Processing...</Text>}
             {!saving && lastSaved && (
-              <span className="text-green-600">
-                Saved: {lastSaved.toLocaleTimeString()}
-              </span>
+              <Text span c="green">Saved: {lastSaved.toLocaleTimeString()}</Text>
             )}
             {!saving && !lastSaved && textContent && isTextDirty && (
-              <span className="text-yellow-600 italic">Unsaved changes</span>
+              <Text span c="yellow.8" fs="italic">Unsaved changes</Text>
             )}
-          </div>
-        </div>
+          </Text>
+        </Stack>
 
-        <div className="border border-gray-200 rounded-md p-4 bg-gray-50">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Token Visualization</h3>
+        <Paper withBorder bg="gray.0" p="md" radius="md">
+          <Title order={4} mb="md">Token Visualization</Title>
           <TokenVisualizer
             text={textContent}
             originalText={originalTokenizedText}
@@ -272,8 +260,8 @@ This is a second sentence for testing."
             onSetWordMorphemes={handleSetWordMorphemes}
             setError={(msg) => doc.setError(msg)}
           />
-        </div>
-      </div>
-    </div>
+        </Paper>
+      </SimpleGrid>
+    </>
   );
 };

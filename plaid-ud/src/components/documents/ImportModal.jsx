@@ -1,7 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
+import {
+  Modal, TextInput, Textarea, Button, Group, Stack, Alert, Tabs, FileInput, Paper, Text, Code,
+} from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
-import { Modal, Button, FormField, ErrorMessage } from '../ui';
 
 export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
   const [importText, setImportText] = useState('');
@@ -10,11 +12,9 @@ export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [importMethod, setImportMethod] = useState('paste'); // 'paste' or 'upload'
-  const fileInputRef = useRef(null);
   const { getClient } = useAuth();
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
+  const handleFile = (file) => {
     if (!file) return;
 
     const reader = new FileReader();
@@ -60,26 +60,20 @@ export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
 
   return (
     <Modal
-      isOpen={isOpen}
+      opened={isOpen}
       onClose={onClose}
       title={success ? 'Import Successful!' : 'Import CoNLL-U Document'}
-      size="large"
+      size="lg"
+      centered
     >
-      <div className="p-6 space-y-4">
+      <Stack gap="md">
         {success && (
-          <div className="rounded-md bg-green-50 p-4">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <p className="text-sm text-green-800">Document imported successfully! Redirecting...</p>
-            </div>
-          </div>
+          <Alert color="green">Document imported successfully! Redirecting...</Alert>
         )}
 
-        <ErrorMessage message={error} />
+        {error && <Alert color="red">{error}</Alert>}
 
-        <FormField
+        <TextInput
           label="Document Name"
           name="documentName"
           value={documentName}
@@ -87,96 +81,64 @@ export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
           placeholder="Enter document name"
           required
           disabled={loading}
+          data-autofocus
         />
 
-        <div className="space-y-4">
-          <div className="flex gap-4">
-            <Button
-              type="button"
-              onClick={() => setImportMethod('paste')}
-              variant={importMethod === 'paste' ? 'primary' : 'secondary'}
-              disabled={loading}
-            >
-              Paste Text
-            </Button>
-            <Button
-              type="button"
-              onClick={() => setImportMethod('upload')}
-              variant={importMethod === 'upload' ? 'primary' : 'secondary'}
-              disabled={loading}
-            >
-              Upload File
-            </Button>
-          </div>
+        <Tabs value={importMethod} onChange={setImportMethod}>
+          <Tabs.List>
+            <Tabs.Tab value="paste">Paste Text</Tabs.Tab>
+            <Tabs.Tab value="upload">Upload File</Tabs.Tab>
+          </Tabs.List>
 
-          {importMethod === 'paste' ? (
-            <FormField
+          <Tabs.Panel value="paste" pt="md">
+            <Textarea
               label="CoNLL-U Text"
-              name="conlluText"
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder="Paste your CoNLL-U formatted text here..."
+              minRows={15}
+              autosize
+              maxRows={20}
               disabled={loading}
-            >
-              <textarea
-                id="conlluText"
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                placeholder="Paste your CoNLL-U formatted text here..."
-                rows={15}
-                disabled={loading}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-mono disabled:bg-gray-100 disabled:cursor-not-allowed"
-              />
-            </FormField>
-          ) : (
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".conllu,.txt"
-                onChange={handleFileUpload}
-                className="hidden"
-                disabled={loading}
-              />
-              <Button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={loading}
-                variant="secondary"
-              >
-                Choose File...
-              </Button>
-              {importText && (
-                <div className="mt-4 p-4 bg-gray-50 rounded-md">
-                  <p className="text-sm text-gray-600 mb-2">File loaded. Preview:</p>
-                  <pre className="text-xs font-mono text-gray-700 overflow-x-auto max-h-40 overflow-y-auto">
-                    {importText.substring(0, 500)}
-                    {importText.length > 500 && '...'}
-                  </pre>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+              styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
+            />
+          </Tabs.Panel>
 
-      <div className="p-6 border-t border-gray-200 bg-gray-50">
-        <div className="flex justify-end gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onClose}
-            disabled={loading}
-          >
+          <Tabs.Panel value="upload" pt="md">
+            <FileInput
+              label="CoNLL-U File"
+              accept=".conllu,.txt"
+              placeholder="Choose file..."
+              onChange={handleFile}
+              disabled={loading}
+              clearable
+            />
+            {importText && (
+              <Paper bg="gray.0" p="md" radius="md" mt="md">
+                <Text size="sm" c="dimmed" mb="xs">File loaded. Preview:</Text>
+                <Code block style={{ maxHeight: 160, overflow: 'auto' }}>
+                  {importText.substring(0, 500)}
+                  {importText.length > 500 && '...'}
+                </Code>
+              </Paper>
+            )}
+          </Tabs.Panel>
+        </Tabs>
+
+        <Group justify="flex-end" gap="sm" pt="sm">
+          <Button type="button" variant="default" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
           <Button
             type="button"
             onClick={performImport}
-            disabled={loading || !importText.trim() || !documentName.trim()}
-            isLoading={loading}
+            loading={loading}
+            disabled={!importText.trim() || !documentName.trim()}
           >
-            {loading ? 'Importing...' : 'Import'}
+            Import
           </Button>
-        </div>
-      </div>
+        </Group>
+      </Stack>
     </Modal>
   );
 };

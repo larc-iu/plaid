@@ -10,7 +10,9 @@ import {
   UD_LAYER_LABELS,
   getUdLayerInfo
 } from '../../utils/udLayerUtils.js';
-import { Button, FormField, ErrorMessage } from '../ui';
+import {
+  Container, Title, Text, Button, Group, Stack, Alert, Paper, Radio, Select, TextInput, List, Center, Loader,
+} from '@mantine/core';
 
 // Span layers, in creation order, all attached to the morpheme token layer.
 const SPAN_KEYS_IN_ORDER = ['form', 'lemma', 'upos', 'xpos', 'features'];
@@ -195,7 +197,7 @@ export const ProjectConfiguration = () => {
   };
 
   if (loading) {
-    return <div className="text-center text-gray-600 py-12">Loading project configuration...</div>;
+    return <Center py={48}><Loader /></Center>;
   }
 
   if (!project || !canConfigure) {
@@ -208,120 +210,87 @@ export const ProjectConfiguration = () => {
     : '';
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-6">
+    <Container size="lg" py="xl">
+      <Group justify="space-between" align="flex-start" mb="lg">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Configure UD Layers</h1>
-          <p className="text-gray-600 mt-1">Project: {project.name}</p>
+          <Title order={1}>Configure UD Layers</Title>
+          <Text c="dimmed" mt={4}>Project: {project.name}</Text>
           {info.isConfigured ? (
-            <p className="text-sm text-green-600 mt-2">All Universal Dependencies layers are configured.</p>
+            <Text size="sm" c="green" mt="xs">All Universal Dependencies layers are configured.</Text>
           ) : (
             missingLabels && (
-              <p className="text-sm text-amber-600 mt-2">Missing configuration detected for: {missingLabels}</p>
+              <Text size="sm" c="orange" mt="xs">Missing configuration detected for: {missingLabels}</Text>
             )
           )}
         </div>
-        <Link
-          to={`/projects/${projectId}/documents`}
-          className="inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 focus:ring-blue-500 px-4 py-2 text-sm"
-        >
+        <Button component={Link} to={`/projects/${projectId}/documents`} variant="default">
           Back to Documents
-        </Link>
-      </div>
+        </Button>
+      </Group>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        <ErrorMessage message={error} />
-        {successMessage && (
-          <div className="rounded-md bg-green-50 border border-green-200 p-4 text-green-700 text-sm">
-            {successMessage}
-          </div>
-        )}
+      <form onSubmit={handleSubmit}>
+        <Stack gap="xl">
+          {error && <Alert color="red">{error}</Alert>}
+          {successMessage && <Alert color="green">{successMessage}</Alert>}
 
-        <section className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Text Layer</h2>
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="radio"
-                  className="text-blue-600 focus:ring-blue-500"
-                  checked={formData.textLayerType === 'existing'}
-                  onChange={() => setFormData(prev => ({ ...prev, textLayerType: 'existing' }))}
-                  disabled={availableTextLayers.length === 0}
+          <Paper withBorder p="lg" radius="md">
+            <Title order={2} size="h4" mb="md">Text Layer</Title>
+            <Stack gap="md">
+              <Radio.Group
+                value={formData.textLayerType}
+                onChange={(value) => setFormData(prev => ({ ...prev, textLayerType: value }))}
+              >
+                <Group gap="lg">
+                  <Radio value="existing" label="Use existing" disabled={availableTextLayers.length === 0} />
+                  <Radio value="new" label="Create new" />
+                </Group>
+              </Radio.Group>
+
+              {formData.textLayerType === 'existing' ? (
+                <Select
+                  label="Select text layer"
+                  placeholder="Select a text layer"
+                  value={formData.selectedTextLayerId || null}
+                  onChange={(value) => setFormData(prev => ({ ...prev, selectedTextLayerId: value || '' }))}
+                  data={availableTextLayers.map(layer => ({ value: layer.id, label: `${layer.name} (${layer.id})` }))}
                 />
-                Use existing
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="radio"
-                  className="text-blue-600 focus:ring-blue-500"
-                  checked={formData.textLayerType === 'new'}
-                  onChange={() => setFormData(prev => ({ ...prev, textLayerType: 'new' }))}
+              ) : (
+                <TextInput
+                  label="New text layer name"
+                  name="newTextLayerName"
+                  value={formData.newTextLayerName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, newTextLayerName: e.target.value }))}
+                  placeholder="e.g. Text"
                 />
-                Create new
-              </label>
-            </div>
+              )}
+            </Stack>
+          </Paper>
 
-            {formData.textLayerType === 'existing' ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select text layer</label>
-                <select
-                  value={formData.selectedTextLayerId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, selectedTextLayerId: e.target.value }))}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                >
-                  <option value="">Select a text layer</option>
-                  {availableTextLayers.map(layer => (
-                    <option key={layer.id} value={layer.id}>{layer.name} ({layer.id})</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <FormField
-                label="New text layer name"
-                name="newTextLayerName"
-                value={formData.newTextLayerName}
-                onChange={(e) => setFormData(prev => ({ ...prev, newTextLayerName: e.target.value }))}
-                placeholder="e.g. Text"
-              />
-            )}
-          </div>
-        </section>
+          <Paper withBorder p="lg" radius="md">
+            <Title order={2} size="h4" mb="xs">Token Hierarchy &amp; Annotations</Title>
+            <Text size="sm" c="dimmed" mb="md">
+              Saving creates (or completes) the three-layer token hierarchy and the annotation layers below.
+              Existing UD-flagged layers are reused, so this is safe to re-run.
+            </Text>
+            <List size="sm" spacing={4}>
+              <List.Item><Text span fw={500}>Sentences</Text> token layer (partitioning)</List.Item>
+              <List.Item><Text span fw={500}>Words</Text> token layer (non-overlapping, nested in sentences)</List.Item>
+              <List.Item><Text span fw={500}>Morphemes</Text> token layer (overlap allowed, nested in words)</List.Item>
+              <List.Item>Span layers on morphemes: Form, Lemma, UPOS, XPOS, Features</List.Item>
+              <List.Item>Dependency relation layer on the Lemma layer</List.Item>
+            </List>
+          </Paper>
 
-        <section className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Token Hierarchy &amp; Annotations</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Saving creates (or completes) the three-layer token hierarchy and the annotation layers below.
-            Existing UD-flagged layers are reused, so this is safe to re-run.
-          </p>
-          <ul className="text-sm text-gray-700 space-y-1 ml-4 list-disc">
-            <li><span className="font-medium">Sentences</span> token layer (partitioning)</li>
-            <li><span className="font-medium">Words</span> token layer (non-overlapping, nested in sentences)</li>
-            <li><span className="font-medium">Morphemes</span> token layer (overlap allowed, nested in words)</li>
-            <li>Span layers on morphemes: Form, Lemma, UPOS, XPOS, Features</li>
-            <li>Dependency relation layer on the Lemma layer</li>
-          </ul>
-        </section>
-
-        <div className="flex justify-end gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => navigate(-1)}
-            disabled={saving}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="dark"
-            isLoading={saving}
-            disabled={saving}
-          >
-            Save Configuration
-          </Button>
-        </div>
+          <Group justify="flex-end" gap="sm">
+            <Button type="button" variant="default" onClick={() => navigate(-1)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" color="dark" loading={saving}>
+              Save Configuration
+            </Button>
+          </Group>
+        </Stack>
       </form>
-    </div>
+    </Container>
   );
 };

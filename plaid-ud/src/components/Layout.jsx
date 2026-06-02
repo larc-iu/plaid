@@ -1,4 +1,5 @@
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
+import { Box, Container, Group, Title, Button } from '@mantine/core';
 import { useAuth } from '../contexts/AuthContext';
 
 export const Layout = () => {
@@ -11,37 +12,43 @@ export const Layout = () => {
     navigate('/login');
   };
 
-  // Check if we're on the annotation editor route
+  // The annotation editor wants the full viewport width; every other screen is
+  // constrained to a centered container.
   const isAnnotationEditor = location.pathname.includes('/annotate');
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <h1 className="text-xl font-semibold text-gray-900">UD Editor</h1>
+    <Box style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Box
+        component="header"
+        bg="white"
+        style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
+      >
+        <Container size="xl">
+          <Group justify="space-between" h={64}>
+            <Title order={3}>UD Editor</Title>
             {user && (
-              <div className="flex items-center gap-4">
-                <Link 
-                  to="/profile"
-                  className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
-                >
+              <Group gap="xs">
+                <Button component={Link} to="/profile" variant="subtle" color="gray" size="sm">
                   👤 {user.username}
-                </Link>
-                <button 
-                  onClick={handleLogout} 
-                  className="text-sm text-gray-700 hover:text-gray-900 px-3 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
-                >
+                </Button>
+                <Button onClick={handleLogout} variant="subtle" color="gray" size="sm">
                   Logout
-                </button>
-              </div>
+                </Button>
+              </Group>
             )}
-          </div>
-        </div>
-      </header>
-      <main className={isAnnotationEditor ? "flex-1" : "flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8"}>
-        <Outlet />
-      </main>
-    </div>
+          </Group>
+        </Container>
+      </Box>
+
+      <Box component="main" style={{ flex: 1 }}>
+        {isAnnotationEditor ? (
+          <Outlet />
+        ) : (
+          <Container size="xl" py="xl">
+            <Outlet />
+          </Container>
+        )}
+      </Box>
+    </Box>
   );
 };

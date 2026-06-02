@@ -1,0 +1,10 @@
+/* Clickable list row: the whole row navigates; secondary actions inside it
+   stop propagation. Shared by ProjectList and DocumentList. */
+.row {
+  cursor: pointer;
+  transition: background-color 100ms ease;
+}
+
+.row:hover {
+  background-color: var(--mantine-color-gray-0);
+}

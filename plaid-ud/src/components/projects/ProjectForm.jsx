@@ -1,6 +1,6 @@
 import { useState } from 'react';
+import { Modal, TextInput, Button, Group, Stack, Alert, Paper, Text, List } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
-import { Modal, Button, FormField, ErrorMessage } from '../ui';
 import {
   UD_NAMESPACE,
   UD_TEXT_CONFIG_KEY,
@@ -140,52 +140,44 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create New UD Project" size="small">
-      <div className="p-6">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <ErrorMessage message={error} />
-          
-          <FormField
+    <Modal opened={isOpen} onClose={onClose} title="Create New UD Project" size="sm" centered>
+      <form onSubmit={handleSubmit}>
+        <Stack gap="md">
+          {error && <Alert color="red">{error}</Alert>}
+
+          <TextInput
             label="Project Name"
             name="projectName"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
             placeholder="Enter project name"
             required
-            autoFocus
             disabled={loading}
+            data-autofocus
           />
-          
-          <div className="bg-gray-50 rounded-md p-4 text-sm text-gray-600">
-            This will create a new project with all necessary layers for Universal Dependencies annotation:
-            <ul className="mt-2 ml-4 list-disc space-y-1">
-              <li>Text layer</li>
-              <li>Token hierarchy: Sentences &rarr; Words &rarr; Morphemes</li>
-              <li>Span layers for: Form, Lemma, UPOS, XPOS, Features</li>
-              <li>Relation layer for dependency parsing</li>
-            </ul>
-          </div>
-          
-          <div className="flex justify-end gap-3">
-            <Button 
-              type="button" 
-              variant="secondary"
-              onClick={onClose}
-              disabled={loading}
-            >
+
+          <Paper bg="gray.0" p="md" radius="md">
+            <Text size="sm" c="dimmed">
+              This will create a new project with all necessary layers for Universal Dependencies annotation:
+            </Text>
+            <List size="sm" spacing={4} mt="xs" c="dimmed">
+              <List.Item>Text layer</List.Item>
+              <List.Item>Token hierarchy: Sentences &rarr; Words &rarr; Morphemes</List.Item>
+              <List.Item>Span layers for: Form, Lemma, UPOS, XPOS, Features</List.Item>
+              <List.Item>Relation layer for dependency parsing</List.Item>
+            </List>
+          </Paper>
+
+          <Group justify="flex-end" gap="sm">
+            <Button type="button" variant="default" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
-              variant="dark"
-              disabled={loading}
-              isLoading={loading}
-            >
-              {loading ? 'Creating...' : 'Create Project'}
+            <Button type="submit" color="dark" loading={loading}>
+              Create Project
             </Button>
-          </div>
-        </form>
-      </div>
+          </Group>
+        </Stack>
+      </form>
     </Modal>
   );
 };

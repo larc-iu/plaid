@@ -1,11 +1,19 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import {
+  Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader,
+  ActionIcon, Tooltip, Breadcrumbs, Anchor,
+} from '@mantine/core';
+import { IconPlus, IconTrash, IconPencil, IconUpload, IconSettings } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
 import { ImportModal } from './ImportModal';
+import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import classes from '../common/listRow.module.css';
 
 export const DocumentList = () => {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +29,7 @@ export const DocumentList = () => {
       if (!client) {
         throw new Error('Not authenticated');
       }
-      
+
       // Fetch project with documents
       const projectData = await client.projects.get(projectId, true);
       setProject(projectData);
@@ -44,19 +52,21 @@ export const DocumentList = () => {
     fetchProjectAndDocuments();
   }, [projectId]);
 
-  const handleDelete = async (documentId, documentName) => {
-    if (!confirm(`Are you sure you want to delete document "${documentName}"? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      const client = getClient();
-      await client.documents.delete(documentId);
-      await fetchProjectAndDocuments(); // Refresh the list
-    } catch (err) {
-      setError('Failed to delete document');
-      console.error('Error deleting document:', err);
-    }
+  const handleDelete = (documentId, documentName) => {
+    confirmDelete({
+      title: 'Delete document',
+      message: `Are you sure you want to delete document "${documentName}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          await getClient().documents.delete(documentId);
+          notifySuccess(`Deleted "${documentName}"`);
+          await fetchProjectAndDocuments(); // Refresh the list
+        } catch (err) {
+          notifyError(err.message || 'Unknown error', 'Failed to delete document');
+          console.error('Error deleting document:', err);
+        }
+      },
+    });
   };
 
   const handleDocumentCreated = () => {
@@ -76,65 +86,54 @@ export const DocumentList = () => {
   };
 
   if (loading) {
-    return <div className="text-center text-gray-600 py-8">Loading documents...</div>;
+    return <Center py={48}><Loader /></Center>;
   }
 
   if (!project) {
-    return (
-      <div className="rounded-md bg-red-50 p-4">
-        <p className="text-sm text-red-800">Project not found</p>
-      </div>
-    );
+    return <Alert color="red">Project not found</Alert>;
   }
 
-  return (
-    <div>
-      <nav className="flex items-center text-sm text-gray-500 mb-6">
-        <Link to="/projects" className="text-blue-600 hover:text-blue-800">Projects</Link>
-        <span className="mx-2">/</span>
-        <span className="text-gray-900">{project.name}</span>
-      </nav>
+  const sortedDocuments = [...documents].sort((d1, d2) => (d1.name < d2.name ? -1 : d1.name > d2.name ? 1 : 0));
 
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Documents in {project.name}</h2>
-        <div className="flex gap-3">
+  return (
+    <>
+      <Breadcrumbs mb="lg">
+        <Anchor component={Link} to="/projects" size="sm">Projects</Anchor>
+        <Text size="sm" c="dimmed">{project.name}</Text>
+      </Breadcrumbs>
+
+      <Group justify="space-between" mb="lg">
+        <Title order={2}>Documents in {project.name}</Title>
+        <Group gap="sm">
           {canManageProject() && (
-            <Link
+            <Button
+              component={Link}
               to={`/projects/${projectId}/management`}
-              className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm font-medium"
+              color="grape"
+              leftSection={<IconSettings size={16} />}
             >
               Project Management
-            </Link>
+            </Button>
           )}
-          <button 
-            className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
-            onClick={() => setShowImportModal(true)}
-          >
+          <Button variant="default" leftSection={<IconUpload size={16} />} onClick={() => setShowImportModal(true)}>
             Import
-          </button>
-          <button 
-            className="px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors text-sm font-medium"
-            onClick={() => setShowCreateForm(true)}
-          >
-            + New Document
-          </button>
-        </div>
-      </div>
+          </Button>
+          <Button color="dark" leftSection={<IconPlus size={16} />} onClick={() => setShowCreateForm(true)}>
+            New Document
+          </Button>
+        </Group>
+      </Group>
 
-      {error && (
-        <div className="rounded-md bg-red-50 p-4 mb-4">
-          <p className="text-sm text-red-800">{error}</p>
-        </div>
-      )}
+      {error && <Alert color="red" mb="md">{error}</Alert>}
 
-      <DocumentForm 
+      <DocumentForm
         projectId={projectId}
         isOpen={showCreateForm}
         onClose={() => setShowCreateForm(false)}
         onSuccess={handleDocumentCreated}
       />
 
-      <ImportModal 
+      <ImportModal
         projectId={projectId}
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
@@ -142,47 +141,54 @@ export const DocumentList = () => {
       />
 
       {documents.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500">No documents yet. Create your first document to start annotating!</p>
-        </div>
+        <Center py={48}>
+          <Text c="dimmed">No documents yet. Create your first document to start annotating!</Text>
+        </Center>
       ) : (
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <ul className="divide-y divide-gray-200">
-            {documents.sort((d1, d2) => d1.name < d2.name ? -1 : d1.name > d2.name ? 1 : 0).map(document => (
-              <li key={document.id} className="hover:bg-gray-50 transition-colors">
-                <div className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-medium text-gray-900">{document.name}</h3>
-                      <p className="mt-1 text-sm text-gray-500">ID: {document.id}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Link 
-                        to={`/projects/${projectId}/documents/${document.id}/edit`}
-                        className="px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                      >
-                        Edit Text
-                      </Link>
-                      <Link 
-                        to={`/projects/${projectId}/documents/${document.id}/annotate`}
-                        className="px-3 py-1.5 text-sm text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors"
-                      >
-                        Annotate
-                      </Link>
-                      <button 
-                        className="px-3 py-1.5 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors"
-                        onClick={() => handleDelete(document.id, document.name)}
-                      >
-                        Delete
-                      </button>
-                    </div>
+        <Paper withBorder radius="md">
+          <Stack gap={0}>
+            {sortedDocuments.map((document, i) => (
+              <Box
+                key={document.id}
+                className={classes.row}
+                onClick={() => navigate(`/projects/${projectId}/documents/${document.id}/annotate`)}
+                p="md"
+                style={{ borderTop: i ? '1px solid var(--mantine-color-gray-2)' : undefined }}
+              >
+                <Group justify="space-between" wrap="nowrap">
+                  <div>
+                    <Text fw={500} size="lg">{document.name}</Text>
+                    <Text size="sm" c="dimmed" mt={4}>ID: {document.id}</Text>
                   </div>
-                </div>
-              </li>
+                  <Group gap="xs" wrap="nowrap">
+                    <Tooltip label="Edit text">
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/projects/${projectId}/documents/${document.id}/edit`);
+                        }}
+                      >
+                        <IconPencil size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label="Delete document">
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(document.id, document.name); }}
+                      >
+                        <IconTrash size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                </Group>
+              </Box>
             ))}
-          </ul>
-        </div>
+          </Stack>
+        </Paper>
       )}
-    </div>
+    </>
   );
 };

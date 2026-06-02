@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { DependencyTree } from './DependencyTree.jsx';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
+import { notifyError } from '../../../utils/feedback.jsx';
 import './SentenceRow.css';
 
 // Shared throttle for tab navigation across all EditableCell instances
@@ -129,7 +130,7 @@ const FeaturesCell = React.memo(({ features, spanIds, tokenId, columnWidth, onAn
     
     // Validate format (key=value)
     if (!newFeature.includes('=')) {
-      alert('Features must be in the format "key=value"');
+      notifyError('Features must be in the format "key=value"');
       return;
     }
 

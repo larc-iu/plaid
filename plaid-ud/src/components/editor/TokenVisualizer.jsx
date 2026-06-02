@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { Alert, Text } from '@mantine/core';
 import { containsToken } from '../../utils/udLayerUtils.js';
+import { notifyError } from '../../utils/feedback.jsx';
+import classes from './TokenVisualizer.module.css';
 
 // Raw-text overlay editor for the three-layer token hierarchy. The editable
 // surface is the WORD layer (rendered as badges over the document text); a word
@@ -25,11 +28,11 @@ export const TokenVisualizer = ({
   onSetWordMorphemes,
   setError
 }) => {
-  // Fix #13: prefer the parent's error banner over `alert()` for inline
-  // validation errors. Falls back to alert if the prop isn't wired.
+  // Prefer the parent's error banner for inline validation errors; fall back to
+  // a toast if the prop isn't wired.
   const reportError = (msg) => {
     if (typeof setError === 'function') setError(msg);
-    else alert(msg);
+    else notifyError(msg);
   };
   const [hoveredWord, setHoveredWord] = useState(null);
   const [editingWord, setEditingWord] = useState(null);
@@ -115,8 +118,9 @@ export const TokenVisualizer = ({
   // usually still over the badge, so removing the popup fires a mouseenter on
   // the badge and the tooltip pops back up. Suppress hover-opens for a short
   // window after an explicit close so Save/Cancel actually dismisses the UI.
+  const SUPPRESS_HOVER_MS = 600;
   const suppressHoverUntilRef = useRef(0);
-  const suppressHover = () => { suppressHoverUntilRef.current = Date.now() + 600; };
+  const suppressHover = () => { suppressHoverUntilRef.current = Date.now() + SUPPRESS_HOVER_MS; };
 
   const cancelPendingTimer = () => {
     if (closeTimeoutRef.current) {
@@ -314,7 +318,7 @@ export const TokenVisualizer = ({
   }, [wordTokens, originalText, text]);
 
   if (!text) {
-    return <div className="text-center py-8 text-gray-500"><p>No text to visualize</p></div>;
+    return <Text ta="center" py="xl" c="dimmed">No text to visualize</Text>;
   }
 
   if (wordTokens.length === 0) {
@@ -322,12 +326,12 @@ export const TokenVisualizer = ({
       <div>
         <div
           ref={textContainerRef}
-          className="p-4 bg-white rounded border border-gray-200 font-mono text-sm whitespace-pre-wrap select-text"
+          className={`${classes.container} ${classes.rawText}`}
           onMouseUp={handleTextSelection}
         >
           {text}
         </div>
-        <p className="mt-4 text-sm text-gray-500 text-center">
+        <p className={classes.emptyHint}>
           No tokens yet. Click &quot;Basic Tokenize&quot; to create the hierarchy, or select text to create a word.
         </p>
       </div>
@@ -344,7 +348,9 @@ export const TokenVisualizer = ({
     return (
       <span
         key={`w-${word.id}`}
-        className={`relative inline-block px-1 py-0.5 border rounded mx-0.5 cursor-pointer transition-colors whitespace-pre ${isMwt ? 'bg-orange-100 border-orange-400 hover:bg-orange-200' : 'bg-blue-100 border-blue-300 hover:bg-blue-200'} ${isSentStart ? 'border-green-500 border-2' : ''}`}
+        className={classes.badge}
+        data-mwt={isMwt}
+        data-sent-start={isSentStart}
         onMouseEnter={() => handleWordMouseEnter(word)}
         onMouseLeave={handleWordMouseLeave}
         onClick={async () => {
@@ -365,21 +371,21 @@ export const TokenVisualizer = ({
           // — that gap occasionally hits a sibling badge mid-traverse and
           // pre-empts the hover-close delay, swapping to the wrong tooltip.
           <div
-            className="tv-overlay absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 z-10 bg-gray-800 text-white text-sm px-3 py-2 rounded shadow-lg whitespace-nowrap min-w-48"
+            className={`tv-overlay ${classes.tooltip}`}
             onMouseEnter={handleTooltipMouseEnter}
             onMouseLeave={handleTooltipMouseLeave}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-2">
-              <div className="font-semibold">Word {String(word.id).slice(0, 8)}</div>
-              <div className="text-gray-300">Range: [{word.begin}-{word.end}]</div>
-              <div className="text-gray-300">Text: &quot;{wordText}&quot;</div>
-              {isMwt && <div className="text-orange-300 mt-1">Morphemes: {morphs.map(m => formOf(m, word)).join(' + ')}</div>}
+            <div className={classes.tooltipMeta}>
+              <div className={classes.tooltipTitle}>Word {String(word.id).slice(0, 8)}</div>
+              <div className={classes.tooltipDim}>Range: [{word.begin}-{word.end}]</div>
+              <div className={classes.tooltipDim}>Text: &quot;{wordText}&quot;</div>
+              {isMwt && <div className={classes.tooltipMorph}>Morphemes: {morphs.map(m => formOf(m, word)).join(' + ')}</div>}
             </div>
 
             {onSentenceToggle && (
               <label
-                className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-600 cursor-pointer"
+                className={classes.tooltipSentToggle}
                 onClick={(e) => e.stopPropagation()}
               >
                 <input
@@ -390,77 +396,76 @@ export const TokenVisualizer = ({
                     try { await onSentenceToggle(word.begin); setHoveredWord(null); }
                     catch (e) { console.error('Failed to toggle sentence boundary:', e); }
                   }}
-                  className="rounded border-gray-400 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-gray-300 text-xs">Start of sentence</span>
+                <span className={classes.tooltipSentLabel}>Start of sentence</span>
               </label>
             )}
 
-            <div className="flex gap-2">
-              <button onClick={() => handleEditClick(word)} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded">Edit Range</button>
+            <div className={classes.tooltipActions}>
+              <button onClick={() => handleEditClick(word)} className={`${classes.tipBtn} ${classes.tipBtnEdit}`}>Edit Range</button>
               {onSetWordMorphemes && (
-                <button onClick={() => openMorphemeEditor(word)} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white text-xs px-2 py-1 rounded">Morphemes</button>
+                <button onClick={() => openMorphemeEditor(word)} className={`${classes.tipBtn} ${classes.tipBtnMorph}`}>Morphemes</button>
               )}
-              <button onClick={() => handleDeleteClick(word)} className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded">Delete</button>
+              <button onClick={() => handleDeleteClick(word)} className={`${classes.tipBtn} ${classes.tipBtnDelete}`}>Delete</button>
             </div>
           </div>
         )}
 
         {editingWord && editingWord.id === word.id && (
           <div
-            className="tv-overlay absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-10 bg-white border border-gray-300 shadow-lg rounded-lg p-4 min-w-64"
+            className={`tv-overlay ${classes.popover}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-3">
-              <div className="font-semibold text-gray-900 mb-1">Edit Word Range</div>
-              <div className="text-sm text-gray-600">Word: &quot;{text.slice(editingWord.begin, editingWord.end)}&quot;</div>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <div className={classes.popoverTitle}>Edit Word Range</div>
+              <div className={classes.popoverSub}>Word: &quot;{text.slice(editingWord.begin, editingWord.end)}&quot;</div>
             </div>
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className={classes.rangeGrid}>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Begin</label>
-                <input type="number" value={editBegin} onChange={(e) => setEditBegin(e.target.value)} className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500" min="0" max={text.length} />
+                <label className={classes.fieldLabel}>Begin</label>
+                <input type="number" value={editBegin} onChange={(e) => setEditBegin(e.target.value)} className={classes.numInput} min="0" max={text.length} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">End</label>
-                <input type="number" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500" min="1" max={text.length} />
+                <label className={classes.fieldLabel}>End</label>
+                <input type="number" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} className={classes.numInput} min="1" max={text.length} />
               </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={validateAndSave} className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded">Save</button>
-              <button onClick={handleEditCancel} className="flex-1 bg-gray-600 hover:bg-gray-700 text-white text-xs px-3 py-1 rounded">Cancel</button>
+            <div className={classes.popoverActions}>
+              <button onClick={validateAndSave} className={classes.saveBtn}>Save</button>
+              <button onClick={handleEditCancel} className={classes.cancelBtn}>Cancel</button>
             </div>
           </div>
         )}
 
         {morphemeWord && morphemeWord.id === word.id && (
           <div
-            className="tv-overlay absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-10 bg-white border border-gray-300 shadow-lg rounded-lg p-4 min-w-64 text-left"
+            className={`tv-overlay ${classes.popover} ${classes.popoverLeft}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="font-semibold text-gray-900 mb-1">Morphemes of &quot;{text.slice(word.begin, word.end)}&quot;</div>
-            <div className="text-xs text-gray-500 mb-2">One form = an ordinary word; multiple = a multiword token.</div>
-            <div className="space-y-1">
+            <div className={classes.popoverTitle}>Morphemes of &quot;{text.slice(word.begin, word.end)}&quot;</div>
+            <div className={classes.popoverHint}>One form = an ordinary word; multiple = a multiword token.</div>
+            <div className={classes.morphList}>
               {draftForms.map((form, i) => (
-                <div key={i} className="flex items-center gap-1">
+                <div key={i} className={classes.morphRow}>
                   <input
                     type="text"
                     value={form}
                     onChange={(e) => setDraftForms(prev => prev.map((f, idx) => (idx === i ? e.target.value : f)))}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveMorphemes(); } else if (e.key === 'Escape') { e.preventDefault(); cancelMorphemes(); } }}
-                    className="w-28 px-1 py-0.5 text-sm border border-gray-300 rounded font-mono"
+                    className={classes.morphInput}
                     autoFocus={i === draftForms.length - 1}
                   />
                   {draftForms.length > 1 && (
-                    <button onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))} className="text-red-500 text-xs" title="Remove morpheme">×</button>
+                    <button onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))} className={classes.morphRemove} title="Remove morpheme">×</button>
                   )}
                 </div>
               ))}
             </div>
-            <div className="flex items-center gap-2 mt-2">
-              <button onClick={() => setDraftForms(prev => [...prev, ''])} className="text-xs text-blue-600 hover:underline">+ morpheme</button>
-              <div className="ml-auto flex gap-1">
-                <button onClick={cancelMorphemes} className="text-xs px-2 py-0.5 rounded border border-gray-300">Cancel</button>
-                <button onClick={saveMorphemes} className="text-xs px-2 py-0.5 rounded bg-blue-600 text-white">Save</button>
+            <div className={classes.morphFooter}>
+              <button onClick={() => setDraftForms(prev => [...prev, ''])} className={classes.addMorph}>+ morpheme</button>
+              <div className={classes.morphActions}>
+                <button onClick={cancelMorphemes} className={classes.miniCancel}>Cancel</button>
+                <button onClick={saveMorphemes} className={classes.miniSave}>Save</button>
               </div>
             </div>
           </div>
@@ -489,20 +494,20 @@ export const TokenVisualizer = ({
       const els = [];
       words.forEach((word, wi) => {
         if (word.begin > lastEnd) {
-          els.push(<span key={`bt-${si}-${wi}`} className="text-gray-400">{text.slice(lastEnd, word.begin)}</span>);
+          els.push(<span key={`bt-${si}-${wi}`} className={classes.plainText}>{text.slice(lastEnd, word.begin)}</span>);
         }
         els.push(renderWordBadge(word));
         lastEnd = Math.max(lastEnd, word.end);
       });
-      return <div key={`s-${si}`} className="mb-2 relative">{els}</div>;
+      return <div key={`s-${si}`} className={classes.sentence}>{els}</div>;
     });
 
     if (lastEnd < text.length) {
-      blocks.push(<div key="trail" className="text-gray-400">{text.slice(lastEnd)}</div>);
+      blocks.push(<div key="trail" className={classes.plainText}>{text.slice(lastEnd)}</div>);
     }
     if (invalid.length) {
       blocks.push(
-        <div key="invalid" className="mt-2 text-xs text-amber-600">
+        <div key="invalid" className={classes.invalidNote}>
           {invalid.length} word{invalid.length !== 1 ? 's' : ''} no longer match the edited text — save and re-tokenize to resync.
         </div>
       );
@@ -513,18 +518,18 @@ export const TokenVisualizer = ({
   return (
     <div>
       {isTextDirty && (
-        <div className="mb-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+        <Alert color="yellow" mb="xs" p="xs">
           Showing token positions relocated for your unsaved edits. Save the text to apply.
-        </div>
+        </Alert>
       )}
       <div
         ref={textContainerRef}
-        className="p-4 bg-white rounded border border-gray-200 font-mono text-sm leading-relaxed select-text"
+        className={classes.container}
         onMouseUp={handleTextSelection}
       >
         {renderText()}
       </div>
-      <p className="mt-3 text-xs text-gray-500">
+      <p className={classes.hint}>
         Click a word to toggle a sentence boundary; hover for Edit Range / Morphemes / Delete; select text to create a word.
         With a word hovered, <code>s</code>/<code>S</code> move its start, <code>d</code>/<code>D</code> move its end.
       </p>

@@ -1,0 +1,298 @@
+/* Styling-only port of the bespoke token-overlay editor. Behavior (hover
+   timers, popover state machine, selection TreeWalker, keyboard nudge) lives
+   in TokenVisualizer.jsx and is intentionally unchanged. Badge variants are
+   driven by data-mwt / data-sent-start attributes. */
+
+.container {
+  padding: 1rem;
+  background: var(--mantine-color-white);
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-sm);
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 0.875rem;
+  line-height: 1.625;
+  user-select: text;
+}
+
+.rawText {
+  white-space: pre-wrap;
+}
+
+.sentence {
+  margin-bottom: 0.5rem;
+  position: relative;
+}
+
+.plainText {
+  color: var(--mantine-color-gray-4);
+}
+
+/* --- word badges --- */
+.badge {
+  position: relative;
+  display: inline-block;
+  padding: 0.125rem 0.25rem;
+  margin: 0 0.125rem;
+  border: 1px solid var(--mantine-color-blue-3);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-blue-1);
+  cursor: pointer;
+  transition: background-color 100ms ease;
+  white-space: pre;
+}
+.badge:hover {
+  background: var(--mantine-color-blue-2);
+}
+.badge[data-mwt='true'] {
+  background: var(--mantine-color-orange-1);
+  border-color: var(--mantine-color-orange-4);
+}
+.badge[data-mwt='true']:hover {
+  background: var(--mantine-color-orange-2);
+}
+.badge[data-sent-start='true'] {
+  border-color: var(--mantine-color-green-5);
+  border-width: 2px;
+}
+
+/* --- hover tooltip (dark) --- */
+.tooltip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: -0.25rem;
+  z-index: 10;
+  min-width: 12rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-gray-8);
+  color: var(--mantine-color-white);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  box-shadow: var(--mantine-shadow-lg);
+}
+.tooltipMeta {
+  margin-bottom: 0.5rem;
+}
+.tooltipTitle {
+  font-weight: 600;
+}
+.tooltipDim {
+  color: var(--mantine-color-gray-4);
+}
+.tooltipMorph {
+  color: var(--mantine-color-orange-3);
+  margin-top: 0.25rem;
+}
+.tooltipSentToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--mantine-color-gray-6);
+  cursor: pointer;
+}
+.tooltipSentLabel {
+  color: var(--mantine-color-gray-4);
+  font-size: 0.75rem;
+}
+.tooltipActions {
+  display: flex;
+  gap: 0.5rem;
+}
+.tipBtn {
+  flex: 1;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  border-radius: var(--mantine-radius-sm);
+  color: var(--mantine-color-white);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.tipBtnEdit {
+  background: var(--mantine-color-blue-6);
+}
+.tipBtnEdit:hover {
+  background: var(--mantine-color-blue-7);
+}
+.tipBtnMorph {
+  background: var(--mantine-color-orange-6);
+}
+.tipBtnMorph:hover {
+  background: var(--mantine-color-orange-7);
+}
+.tipBtnDelete {
+  background: var(--mantine-color-red-6);
+}
+.tipBtnDelete:hover {
+  background: var(--mantine-color-red-7);
+}
+
+/* --- light popovers (edit range / morphemes) --- */
+.popover {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 0.25rem;
+  z-index: 10;
+  min-width: 16rem;
+  padding: 1rem;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-white);
+  box-shadow: var(--mantine-shadow-lg);
+}
+.popoverLeft {
+  text-align: left;
+}
+.popoverTitle {
+  font-weight: 600;
+  color: var(--mantine-color-gray-9);
+  margin-bottom: 0.25rem;
+}
+.popoverSub {
+  font-size: 0.875rem;
+  color: var(--mantine-color-gray-6);
+}
+.popoverHint {
+  font-size: 0.75rem;
+  color: var(--mantine-color-gray-5);
+  margin-bottom: 0.5rem;
+}
+.rangeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+.fieldLabel {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--mantine-color-gray-7);
+  margin-bottom: 0.25rem;
+}
+.numInput {
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-sm);
+}
+.numInput:focus {
+  outline: none;
+  border-color: var(--mantine-color-blue-5);
+  box-shadow: 0 0 0 1px var(--mantine-color-blue-5);
+}
+.popoverActions {
+  display: flex;
+  gap: 0.5rem;
+}
+.saveBtn,
+.cancelBtn {
+  flex: 1;
+  padding: 0.25rem 0.75rem;
+  border: none;
+  border-radius: var(--mantine-radius-sm);
+  color: var(--mantine-color-white);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.saveBtn {
+  background: var(--mantine-color-green-6);
+}
+.saveBtn:hover {
+  background: var(--mantine-color-green-7);
+}
+.cancelBtn {
+  background: var(--mantine-color-gray-6);
+}
+.cancelBtn:hover {
+  background: var(--mantine-color-gray-7);
+}
+
+/* --- morpheme editor --- */
+.morphList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.morphRow {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.morphInput {
+  width: 7rem;
+  padding: 0.125rem 0.25rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-sm);
+  font-family: var(--mantine-font-family-monospace);
+}
+.morphRemove {
+  border: none;
+  background: none;
+  color: var(--mantine-color-red-5);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.morphFooter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.addMorph {
+  border: none;
+  background: none;
+  color: var(--mantine-color-blue-6);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.addMorph:hover {
+  text-decoration: underline;
+}
+.morphActions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.25rem;
+}
+.miniCancel {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-white);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.miniSave {
+  padding: 0.125rem 0.5rem;
+  border: none;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-blue-6);
+  color: var(--mantine-color-white);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* --- footer/meta hints --- */
+.hint {
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--mantine-color-gray-6);
+}
+.invalidNote {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--mantine-color-orange-6);
+}
+.emptyHint {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: var(--mantine-color-gray-6);
+  text-align: center;
+}

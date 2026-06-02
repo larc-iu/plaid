@@ -22,6 +22,11 @@ export const DependencyTree = ({
   const [positionsInitialized, setPositionsInitialized] = useState(false);
   const svgRef = useRef(null);
   const labelRefs = useRef(new Map());
+  // Set true only by Enter (commit-and-stay), so its synchronous blur restores
+  // focus to the label. Every other exit — pointer click-away, Escape, Tab
+  // (which does its own focus-next) — leaves it false so the label releases
+  // instead of snapping focus back. Consumed/reset in the label's onBlur.
+  const exitViaKeyboardRef = useRef(false);
 
   // Constants for layout (back to original working version)
   const TOKEN_SPACING = 80;
@@ -474,12 +479,23 @@ export const DependencyTree = ({
                   onRelationUpdate(relation.id, newValue);
                 }
                 setEditingRelation(null);
-                
+
+                // A pointer click-away (or Escape) should release the label,
+                // not snap focus back into it — otherwise the label re-focuses,
+                // re-enters edit mode, and you can't click out. Only keyboard
+                // navigation (Tab/Enter) restores focus to keep traversal alive.
+                const exitViaKeyboard = exitViaKeyboardRef.current;
+                exitViaKeyboardRef.current = false;
+                if (!exitViaKeyboard) {
+                  setFocusedRelation(null);
+                  return;
+                }
+
                 // Only restore focus if the user isn't focusing on something else
                 // Check if the related target has a tabIndex (indicating it's an EditableCell or other focusable element)
                 const relatedTarget = e.relatedTarget;
                 const isMovingToEditableCell = relatedTarget && relatedTarget.getAttribute && relatedTarget.getAttribute('tabIndex') !== null && relatedTarget.getAttribute('tabIndex') !== '-1';
-                
+
                 if (!isMovingToEditableCell) {
                   // Restore focus to the label after editing
                   setTimeout(() => {
@@ -497,6 +513,7 @@ export const DependencyTree = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
+                  exitViaKeyboardRef.current = true;
                   e.target.blur();
                 } else if (e.key === 'Escape') {
                   e.target.textContent = relation.value || 'dep';
@@ -508,7 +525,11 @@ export const DependencyTree = ({
                   setEditingRelation(null);
                   setFocusedRelation(null);
                 } else if (e.key === 'Tab') {
-                  // Handle tab navigation during editing
+                  // Handle tab navigation during editing. Tab does its own
+                  // focus-the-next-label below, so it must NOT set the
+                  // keyboard-restore flag — on a single relation the blur never
+                  // fires to consume it, and the leaked flag would then make the
+                  // next pointer click-away refocus instead of release.
                   e.preventDefault();
                   const newValue = e.target.textContent.trim();
                   const currentValue = relation.value || 'dep';
