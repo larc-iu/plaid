@@ -69,8 +69,10 @@
 ;; Clause heads accepted by the grammar but not implemented until a later
 ;; milestone. Rejected by validate with a "not yet supported" message rather
 ;; than an "unknown clause" one, so the surface stays forward-compatible.
+;; (Empty now that :seq landed in M3 — the mechanism is retained for the next
+;; deferral.)
 (def ^:private deferred-clauses
-  #{:seq})
+  #{})
 
 ;; ---------------------------------------------------------------------------
 ;; Errors
@@ -102,15 +104,54 @@
     (err! :parse (str "Clause constraint must be a map, got: " (pr-str m))))
   (reduce-kv (fn [acc k v] (assoc acc (->kw k) (->var v))) {} m))
 
+;; --- :seq sugar (CQP-style token sequences) --------------------------------
+;; A :seq clause walks one token layer; each element is a span/token pattern
+;; over a token in that layer, with immediate-:precedes adjacency between
+;; elements. Quantifiers `:?` / `:rep n m` are bounded and unroll downstream
+;; (see `expand`); `:*` / `:+` parse but are rejected at validation.
+
+(defn- normalize-seq-atom
+  "Normalize a seq element atom: [:span {cmap}] or [:span {cmap} :as ?v]."
+  [head args]
+  (when-not (map? (first args))
+    (err! :parse (str "seq " (clojure.core/name head) " element needs a constraint map")))
+  (let [cmap (normalize-constraints (first args))
+        more (rest args)
+        named (when (seq more)
+                (if (= :as (->kw (first more)))
+                  (->var (second more))
+                  (err! :parse (str "Unexpected token in seq element after constraints: "
+                                    (pr-str (first more))))))]
+    (cond-> [head cmap] named (conj :as named))))
+
+(defn- normalize-seq-element
+  [elem]
+  (when-not (and (sequential? elem) (seq elem))
+    (err! :parse (str "Each seq element must be a non-empty vector, got: " (pr-str elem))))
+  (let [head (->kw (first elem))]
+    (cond
+      (#{:? :* :+} head) [head (normalize-seq-element (second elem))]
+      (= :rep head)      (let [[_ n m inner] elem] [:rep n m (normalize-seq-element inner)])
+      :else              (normalize-seq-atom head (rest elem)))))
+
+(defn- normalize-seq-clause
+  "Normalize a [:seq {config} elem ...] clause."
+  [args]
+  (when-not (map? (first args))
+    (err! :parse "A :seq clause needs a config map (with at least :layer) as its first argument"))
+  (into [:seq (normalize-constraints (first args))]
+        (map normalize-seq-element (rest args))))
+
 (defn- normalize-clause
   [clause]
   (when-not (and (sequential? clause) (seq clause))
     (err! :parse (str "Each :where clause must be a non-empty vector, got: " (pr-str clause))))
-  (let [head (->kw (first clause))
-        args (rest clause)]
-    (into [head]
-          (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
-          args)))
+  (let [head (->kw (first clause))]
+    (if (= head :seq)
+      (normalize-seq-clause (rest clause))
+      (into [head]
+            (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
+            (rest clause)))))
 
 (defn parse
   "Normalize a raw request map (string- or keyword-keyed; JSON or EDN dialect)
@@ -251,6 +292,125 @@
         (assoc ::var-kinds kinds))))
 
 (defn parse+validate
-  "Convenience: parse a raw body then validate. Returns the checked canonical AST."
+  "Convenience: parse a raw body then validate. Returns the checked canonical AST.
+  Does NOT desugar `:seq` — use `expand` for the full pipeline."
   [raw]
   (validate (parse raw)))
+
+;; ---------------------------------------------------------------------------
+;; :seq desugaring -> one or more branch queries (UNIONed downstream)
+;; ---------------------------------------------------------------------------
+
+(def ^:private bounded-rep-max 16)
+(def ^:private seq-branch-cap 64)
+
+(defn- seq-clause? [c] (= :seq (first c)))
+(defn- seq-atom? [elem] (contains? entity-clauses (first elem)))
+(defn- seq-element-atom [elem] (if (seq-atom? elem) elem (last elem)))
+
+(defn- element-counts
+  "Allowed occurrence counts for a seq element (bounded only)."
+  [elem]
+  (cond
+    (seq-atom? elem) [1]
+    (= :? (first elem)) [0 1]
+    (#{:* :+} (first elem))
+    (err! :validate (str "Unbounded seq quantifier :" (clojure.core/name (first elem))
+                         " is not supported in v0 — use a bounded :rep [n m]"))
+    (= :rep (first elem))
+    (let [[_ n m] elem]
+      (when-not (and (integer? n) (integer? m) (<= 0 n m) (<= m bounded-rep-max))
+        (err! :validate (str ":rep bounds must be integers 0 <= n <= m <= " bounded-rep-max
+                             ", got [" n " " m "]")))
+      (vec (range n (inc m))))
+    :else (err! :validate (str "Unknown seq quantifier in " (pr-str elem)))))
+
+(defn- validate-seq-atom!
+  [atom quantified?]
+  (let [[head cmap & more] atom
+        named? (= :as (first more))]
+    (when-not (#{:span :token} head)
+      (err! :validate (str "seq elements must be :span or :token patterns, got :" (clojure.core/name head))))
+    (when (and quantified? named?)
+      (err! :validate "Quantified seq elements cannot be named with :as (only fixed elements may bind a :find var)"))
+    (when (and named? (not (var? (second more))))
+      (err! :validate (str "seq :as must be followed by a var, got: " (pr-str (second more)))))
+    (let [allowed (entity-clauses head)
+          unknown (remove allowed (keys (or cmap {})))]
+      (when (seq unknown)
+        (err! :validate (str "Unknown constraint key(s) " (vec unknown) " in seq :" (clojure.core/name head) " element"))))))
+
+(defn- cartesian
+  "All combinations choosing one item from each collection, as vectors in order."
+  [colls]
+  (reduce (fn [acc coll] (vec (for [a acc c coll] (conj a c)))) [[]] colls))
+
+(defn- fresh! [counter prefix] (symbol (str "?__" prefix (swap! counter inc))))
+
+(defn- atom->clauses
+  "Base clauses binding one atom-occurrence to a token in `seq-layer`.
+  Returns [clauses token-var]."
+  [atom seq-layer counter]
+  (let [[head cmap & more] atom
+        named (when (= :as (first more)) (second more))]
+    (case head
+      :token (let [tv (or named (fresh! counter "seqt"))]
+               [[[:token tv (assoc cmap :layer seq-layer)]] tv])
+      :span  (let [tv (fresh! counter "seqt")
+                   sv (or named (fresh! counter "seqs"))]
+               [[[:span sv cmap] [:covers sv tv] [:token tv {:layer seq-layer}]] tv]))))
+
+(defn- seq-fragment
+  "Desugar one seq clause under a chosen per-element count combo into base
+  clauses: per-occurrence token binds (+ covering span) chained by :precedes."
+  [config elements counts counter]
+  (let [seq-layer (:layer config)
+        atoms (mapcat (fn [elem cnt] (repeat cnt (seq-element-atom elem))) elements counts)
+        pairs (mapv #(atom->clauses % seq-layer counter) atoms)
+        clauses (vec (mapcat first pairs))
+        tvars (mapv second pairs)]
+    (into clauses (map (fn [a b] [:precedes a b]) tvars (rest tvars)))))
+
+(defn- expand-where
+  "Expand a :where (possibly containing :seq clauses) into one or more branch
+  :where vectors. No :seq -> the input unchanged (single branch). Bounded
+  quantifiers unroll to a branch per length combination (UNIONed downstream)."
+  [where]
+  (let [seqs (filterv seq-clause? where)
+        statics (filterv (complement seq-clause?) where)]
+    (if (empty? seqs)
+      [where]
+      (let [per-seq (mapv (fn [sc]
+                            (let [[_ config & elements] sc]
+                              (when-not (:layer config)
+                                (err! :validate ":seq requires a :layer in its config map"))
+                              (when (empty? elements)
+                                (err! :validate ":seq needs at least one element"))
+                              (doseq [e elements]
+                                (validate-seq-atom! (seq-element-atom e) (not (seq-atom? e))))
+                              {:config config
+                               :elements (vec elements)
+                               :combos (cartesian (mapv element-counts elements))}))
+                          seqs)
+            total (reduce * 1 (map (comp count :combos) per-seq))]
+        (when (> total seq-branch-cap)
+          (err! :validate (str ":seq expansion produces " total
+                               " branches (cap " seq-branch-cap ") — tighten the quantifiers")))
+        (mapv (fn [chosen]
+                (let [counter (atom 0)
+                      frags (map (fn [{:keys [config elements]} combo]
+                                   (seq-fragment config elements combo counter))
+                                 per-seq chosen)]
+                  (into statics (apply concat frags))))
+              (cartesian (mapv :combos per-seq)))))))
+
+(defn expand
+  "Parse + desugar `:seq` + validate. Returns a NON-EMPTY vector of validated
+  branch ASTs sharing the same :find/:scope/:limit/:return; the executor UNIONs
+  them. This is the entry point the query endpoint uses (handles :seq, unlike
+  `parse+validate`)."
+  [raw]
+  (let [parsed (parse raw)
+        base (dissoc parsed :where)]
+    (mapv (fn [w] (validate (assoc base :where (vec w))))
+          (expand-where (vec (:where parsed))))))

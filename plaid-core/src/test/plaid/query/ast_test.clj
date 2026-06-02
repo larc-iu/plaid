@@ -3,6 +3,7 @@
   validation (shape + arity + var-kind inference + safety), and the error
   taxonomy. No DB."
   (:require [clojure.test :refer [deftest is testing]]
+            [clojure.set]
             [plaid.query.ast :as ast]))
 
 (defn- code-of [f]
@@ -52,8 +53,6 @@
         "kind conflict: span used as token")
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layr" "pos"}]]})))
         "unknown constraint key")
-    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["seq" "?t"]]})))
-        "deferred clause :seq")
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?a"] "where" [["precedes" "?a"]]})))
         "bad rel arity")
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?a"] "where" []})))
@@ -86,6 +85,81 @@
     (is (= 400 (code-of #(ast/parse+validate
                           {"find" ["?x"]
                            "where" [["vocab" "?x" {}] ["covers" "?x" "?y"]]}))))))
+
+;; ---------------------------------------------------------------------------
+;; M3: :seq sugar (desugar via `expand`)
+;; ---------------------------------------------------------------------------
+
+(defn- branches [raw] (ast/expand raw))
+
+(deftest expand-non-seq-is-single-branch
+  (testing "a query with no :seq expands to exactly one validated branch"
+    (let [bs (branches {"find" ["?s"] "where" [["span" "?s" {"layer" "pos" "value" "NOUN"}]]})]
+      (is (= 1 (count bs)))
+      (is (= [(symbol "?s")] (:find (first bs)))))))
+
+(deftest expand-seq-plain-is-one-branch
+  (testing "DET then NOUN (no quantifiers) -> one branch, sugar to covers+precedes"
+    (let [bs (branches {"find" ["?s1" "?s2"]
+                        "where" [["seq" {"layer" "words"}
+                                  ["span" {"layer" "pos" "value" "DET"} "as" "?s1"]
+                                  ["span" {"layer" "pos" "value" "NOUN"} "as" "?s2"]]]})
+          w (:where (first bs))]
+      (is (= 1 (count bs)))
+      ;; named span vars survive; precedes + covers + token binds were emitted
+      (is (some #(= % [:span (symbol "?s1") {:layer "pos" :value "DET"}]) w))
+      (is (some #(= % [:span (symbol "?s2") {:layer "pos" :value "NOUN"}]) w))
+      (is (= 1 (count (filter #(= :precedes (first %)) w))))
+      (is (= 2 (count (filter #(= :covers (first %)) w)))))))
+
+(deftest expand-seq-optional-unrolls-to-union
+  (testing "a :? element unrolls to two branches (absent / present)"
+    (let [bs (branches {"find" ["?s1" "?s2"]
+                        "where" [["seq" {"layer" "words"}
+                                  ["span" {"layer" "pos" "value" "DET"} "as" "?s1"]
+                                  ["?" ["span" {"layer" "pos" "value" "ADJ"}]]
+                                  ["span" {"layer" "pos" "value" "NOUN"} "as" "?s2"]]]})]
+      (is (= 2 (count bs)))
+      ;; every branch binds both find vars
+      (is (every? (fn [b] (= #{(symbol "?s1") (symbol "?s2")}
+                             (clojure.set/intersection #{(symbol "?s1") (symbol "?s2")}
+                                                       (set (keys (::ast/var-kinds b))))))
+                  bs))
+      ;; one branch has 2 precedes (DET-ADJ-NOUN), the other 1 (DET-NOUN)
+      (is (= #{1 2} (set (map (fn [b] (count (filter #(= :precedes (first %)) (:where b)))) bs)))))))
+
+(deftest expand-seq-rep-unrolls
+  (testing ":rep 0 2 unrolls to three length branches"
+    (is (= 3 (count (branches {"find" ["?s1" "?s2"]
+                               "where" [["seq" {"layer" "words"}
+                                         ["span" {"layer" "pos" "value" "DET"} "as" "?s1"]
+                                         ["rep" 0 2 ["span" {"layer" "pos" "value" "ADJ"}]]
+                                         ["span" {"layer" "pos" "value" "NOUN"} "as" "?s2"]]]}))))))
+
+(deftest expand-seq-errors
+  (testing "seq author errors are :code 400"
+    (is (= 400 (code-of #(branches {"find" ["?s"]
+                                    "where" [["seq" {"layer" "w"}
+                                              ["*" ["span" {"layer" "pos"}]]]]})))
+        "unbounded :* rejected")
+    (is (= 400 (code-of #(branches {"find" ["?s"]
+                                    "where" [["seq" {"layer" "w"}
+                                              ["+" ["span" {"layer" "pos"}]]]]})))
+        "unbounded :+ rejected")
+    (is (= 400 (code-of #(branches {"find" ["?x"]
+                                    "where" [["seq" {"layer" "w"}
+                                              ["?" ["span" {"layer" "pos"} "as" "?x"]]]]})))
+        "named quantified element rejected")
+    (is (= 400 (code-of #(branches {"find" ["?s"]
+                                    "where" [["seq" {"layer" "w"}
+                                              ["rep" 0 999 ["span" {"layer" "pos"}]]]]})))
+        ":rep over per-element cap rejected")
+    (is (= 400 (code-of #(branches {"find" ["?s"] "where" [["seq" {} ["span" {"layer" "pos"} "as" "?s"]]]})))
+        ":seq without :layer rejected")
+    (is (= 400 (code-of #(branches {"find" ["?s"]
+                                    "where" [["seq" {"layer" "w"}
+                                              ["relation" {"layer" "dep"} "as" "?s"]]]})))
+        "non span/token seq element rejected")))
 
 (deftest var-predicate
   (is (ast/var? (symbol "?s")))
