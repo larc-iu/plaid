@@ -98,18 +98,64 @@ export const TokenVisualizer = ({
   }, [hoveredWord, editingWord, morphemeWord, isTextDirty, text, onWordUpdate]);
 
   // --- hover tooltip timing ---
+  // Open the tooltip only after the cursor lingers on a badge for a moment.
+  // Pass-overs through multiple badges should NOT flash tooltips on each;
+  // only deliberate stops should. This also kills a class of "opens then
+  // immediately closes" bugs caused by deferred close timers from earlier
+  // badges firing after a rapid-traverse hand-off.
+  const HOVER_OPEN_DELAY_MS = 120;
+  // After cursor leaves the badge, give the user time to reach the tooltip
+  // (which sits below the badge). 500ms is the lower bound; tighten if it
+  // starts to feel sticky.
+  const HOVER_CLOSE_DELAY_MS = 500;
+  // Once the mouse is INSIDE the tooltip, leaving its edge for a moment
+  // (e.g. mousing past a button) shouldn't dismiss it instantly either.
+  const TOOLTIP_LEAVE_DELAY_MS = 250;
+  // When a popup (morpheme editor / edit-range modal) closes, the cursor is
+  // usually still over the badge, so removing the popup fires a mouseenter on
+  // the badge and the tooltip pops back up. Suppress hover-opens for a short
+  // window after an explicit close so Save/Cancel actually dismisses the UI.
+  const suppressHoverUntilRef = useRef(0);
+  const suppressHover = () => { suppressHoverUntilRef.current = Date.now() + 600; };
+
+  const cancelPendingTimer = () => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  };
   const handleWordMouseEnter = (word) => {
     if (isTextDirty) return;
-    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
-    setHoveredWord(word);
+    if (Date.now() < suppressHoverUntilRef.current) return;
+    cancelPendingTimer();
+    // If the tooltip is already open for this word, keep it open. Otherwise
+    // schedule an open — gated so quick traversals don't blink tooltips.
+    if (hoveredWord && hoveredWord.id === word.id) return;
+    closeTimeoutRef.current = setTimeout(() => {
+      closeTimeoutRef.current = null;
+      setHoveredWord(word);
+    }, HOVER_OPEN_DELAY_MS);
   };
   const handleWordMouseLeave = () => {
-    closeTimeoutRef.current = setTimeout(() => setHoveredWord(null), 250);
+    cancelPendingTimer();
+    // Only schedule a close if a tooltip is currently open. (If the user
+    // never lingered, there's nothing to close.)
+    if (!hoveredWord) return;
+    closeTimeoutRef.current = setTimeout(() => {
+      closeTimeoutRef.current = null;
+      setHoveredWord(null);
+    }, HOVER_CLOSE_DELAY_MS);
   };
   const handleTooltipMouseEnter = () => {
-    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    cancelPendingTimer();
   };
-  const handleTooltipMouseLeave = () => setHoveredWord(null);
+  const handleTooltipMouseLeave = () => {
+    cancelPendingTimer();
+    closeTimeoutRef.current = setTimeout(() => {
+      closeTimeoutRef.current = null;
+      setHoveredWord(null);
+    }, TOOLTIP_LEAVE_DELAY_MS);
+  };
 
   // --- boundary edit modal ---
   const handleEditClick = (word) => {
@@ -118,7 +164,12 @@ export const TokenVisualizer = ({
     setEditEnd(String(word.end));
     setHoveredWord(null);
   };
-  const handleEditCancel = () => setEditingWord(null);
+  const handleEditCancel = () => {
+    setEditingWord(null);
+    setHoveredWord(null);
+    cancelPendingTimer();
+    suppressHover();
+  };
   const validateAndSave = async () => {
     const nb = parseInt(editBegin, 10);
     const ne = parseInt(editEnd, 10);
@@ -129,6 +180,9 @@ export const TokenVisualizer = ({
     try {
       await onWordUpdate?.(editingWord.id, nb, ne);
       setEditingWord(null);
+      setHoveredWord(null);
+      cancelPendingTimer();
+      suppressHover();
     } catch (e) {
       console.error('Word update failed:', e);
     }
@@ -150,7 +204,13 @@ export const TokenVisualizer = ({
     setMorphemeWord(word);
     setHoveredWord(null);
   };
-  const cancelMorphemes = () => { setMorphemeWord(null); setDraftForms([]); };
+  const cancelMorphemes = () => {
+    setMorphemeWord(null);
+    setDraftForms([]);
+    setHoveredWord(null);
+    cancelPendingTimer();
+    suppressHover();
+  };
   const saveMorphemes = async () => {
     const forms = draftForms.map(f => f.trim()).filter(Boolean);
     const word = morphemeWord;
@@ -268,7 +328,7 @@ export const TokenVisualizer = ({
           {text}
         </div>
         <p className="mt-4 text-sm text-gray-500 text-center">
-          No tokens yet. Click &quot;Whitespace Tokenize&quot; to create the hierarchy, or select text to create a word.
+          No tokens yet. Click &quot;Basic Tokenize&quot; to create the hierarchy, or select text to create a word.
         </p>
       </div>
     );
@@ -300,8 +360,12 @@ export const TokenVisualizer = ({
         {display}
 
         {hoveredWord && hoveredWord.id === word.id && !editingWord && !morphemeWord && (
+          // Overlap the badge by a few px (negative top margin) so the mouse
+          // can travel from badge to tooltip without crossing empty row-gap
+          // — that gap occasionally hits a sibling badge mid-traverse and
+          // pre-empts the hover-close delay, swapping to the wrong tooltip.
           <div
-            className="tv-overlay absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-10 bg-gray-800 text-white text-sm px-3 py-2 rounded shadow-lg whitespace-nowrap min-w-48"
+            className="tv-overlay absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 z-10 bg-gray-800 text-white text-sm px-3 py-2 rounded shadow-lg whitespace-nowrap min-w-48"
             onMouseEnter={handleTooltipMouseEnter}
             onMouseLeave={handleTooltipMouseLeave}
             onClick={(e) => e.stopPropagation()}

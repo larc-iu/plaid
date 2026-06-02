@@ -183,15 +183,26 @@ export function buildConlluHierarchy(parsedData) {
         const startIdx = mwt.start - 1;
         const endIdx = mwt.end - 1;
         const members = rows.slice(startIdx, endIdx + 1);
+        // Track whether the MWT row explicitly carried a non-underscore FORM.
+        // If it didn't, we still need *some* `surfaceForm` to place the unit
+        // (locateUnits' indexOf needs a non-empty string), so we fall back to
+        // joining member forms — but the importer must NOT persist this
+        // synthetic value on `metadata.form`. `hasExplicitForm` distinguishes
+        // these cases for downstream consumers.
+        const hasExplicitForm = Boolean(mwt.form);
+        const surfaceForm = hasExplicitForm
+          ? mwt.form
+          : members.map(r => r.form).filter(Boolean).join('');
         units.push({
-          surfaceForm: mwt.form || members.map(r => r.form).join(''),
+          surfaceForm,
+          hasExplicitForm,
           isMwt: true,
           members,
           misc: mwt.misc || null
         });
         i = endIdx + 1;
       } else {
-        units.push({ surfaceForm: rows[i].form, isMwt: false, members: [rows[i]], misc: null });
+        units.push({ surfaceForm: rows[i].form, hasExplicitForm: false, isMwt: false, members: [rows[i]], misc: null });
         i += 1;
       }
     }
@@ -236,9 +247,29 @@ export function buildConlluHierarchy(parsedData) {
 
   parsedData.sentences.forEach((sentence, sentIdx) => {
     const units = surfaceUnitsForSentence(sentence);
-    const sentenceText = (sentence.metadata && sentence.metadata.text)
+    const rawSentenceText = (sentence.metadata && sentence.metadata.text)
       ? sentence.metadata.text
       : units.map(u => u.surfaceForm).join(' ');
+
+    const unitPositions = locateUnits(rawSentenceText, units);
+    // The synthetic-offset fallback can place a unit past
+    // `rawSentenceText.length` when cumulative form lengths exceed the
+    // metadata text. Pad the body with spaces so the words still tile inside
+    // their sentence — otherwise the server's nesting constraint rejects the
+    // word bulk-create.
+    const maxEnd = unitPositions.reduce((acc, p) => Math.max(acc, p.end), 0);
+    const overflowed = maxEnd > rawSentenceText.length;
+    const sentenceText = overflowed
+      ? rawSentenceText + ' '.repeat(maxEnd - rawSentenceText.length)
+      : rawSentenceText;
+    // When we had to pad, the body no longer matches the `# text =`
+    // metadata. Drop the stored `text` key so the exporter falls back to
+    // the (padded) body substring, then trims — round-trip yields the
+    // original visible text without a body/metadata mismatch.
+    const sentenceMetadata = sentence.metadata || {};
+    const finalMetadata = overflowed && 'text' in sentenceMetadata
+      ? Object.fromEntries(Object.entries(sentenceMetadata).filter(([k]) => k !== 'text'))
+      : sentenceMetadata;
 
     const sentenceStart = text.length;
     text += sentenceText;
@@ -246,19 +277,25 @@ export function buildConlluHierarchy(parsedData) {
     if (!isLast) text += '\n';
     const sentenceEnd = text.length; // includes the trailing newline for non-last sentences
 
-    const unitPositions = locateUnits(sentenceText, units);
-
     const words = units.map((unit, unitIdx) => {
       const begin = sentenceStart + unitPositions[unitIdx].begin;
       const end = sentenceStart + unitPositions[unitIdx].end;
       const morphemes = unit.members.map((row, mi) => ({ begin, end, precedence: mi, row }));
-      return { begin, end, isMwt: unit.isMwt, surfaceForm: unit.surfaceForm, morphemes, misc: unit.misc };
+      return {
+        begin,
+        end,
+        isMwt: unit.isMwt,
+        hasExplicitForm: unit.hasExplicitForm,
+        surfaceForm: unit.surfaceForm,
+        morphemes,
+        misc: unit.misc
+      };
     });
 
     sentences.push({
       begin: sentenceStart,
       end: sentenceEnd,
-      metadata: sentence.metadata || {},
+      metadata: finalMetadata,
       words
     });
   });

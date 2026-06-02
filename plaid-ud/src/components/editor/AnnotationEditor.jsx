@@ -1,37 +1,71 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
-import { useDocumentData } from './hooks/useDocumentData.js';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
-import { useAnnotationHandlers } from './hooks/useAnnotationHandlers.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useNlpService } from './hooks/useNlpService.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
 import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { ConlluDocument } from '../../domain/ConlluDocument.js';
+import { useConlluDocument } from '../../domain/useConlluDocument.js';
 
 export const AnnotationEditor = () => {
   const { projectId, documentId } = useParams();
   const navigate = useNavigate();
-  const [sentences, setSentences] = useState([]);
-  
   // History viewer state
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
   const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
   const [viewingHistoricalState, setViewingHistoricalState] = useState(false);
-  
-  const {
-    document, 
-    project, 
-    loading, 
-    error, 
-    setDocument, 
-    setError, 
-    refreshData 
-  } = useDocumentData(projectId, documentId);
-  const { user } = useAuth();
-  
+
+  // Long-lived current document + ambient component state.
+  const [doc, setDoc] = useState(null);
+  const [project, setProject] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const { getClient, user } = useAuth();
+
+  useConlluDocument(doc);
+
+  const fetchData = async (initial) => {
+    if (!projectId || !documentId) return;
+    const client = getClient();
+    if (!client) {
+      window.location.href = '/login';
+      return;
+    }
+    try {
+      if (initial) setLoading(true);
+      const [projectData, documentData] = await Promise.all([
+        client.projects.get(projectId),
+        client.documents.get(documentId, true)
+      ]);
+      setProject(projectData);
+      setDoc(new ConlluDocument({ raw: documentData, client, projectId }));
+      client.enterStrictMode(documentId);
+      setLoadError('');
+    } catch (err) {
+      if (err.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      setLoadError('Failed to load document: ' + (err.message || 'Unknown error'));
+      console.error('Error fetching data:', err);
+    } finally {
+      if (initial) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, documentId]);
+
+  const refreshData = useCallback(() => fetchData(false), [projectId, documentId, getClient]);
+
+  const error = loadError || doc?.error || '';
+
   // History functionality
   const {
     auditEntries,
@@ -44,12 +78,19 @@ export const AnnotationEditor = () => {
     clearHistoricalDocument,
     fetchAuditLog
   } = useDocumentHistory(documentId);
-  
-  // Use historical document if viewing historical state, otherwise use current document
-  const activeDocument = viewingHistoricalState ? historicalDocument : document;
-  
-  const layerInfo = useLayerInfo(activeDocument);
-  const processedSentences = useSentenceData(activeDocument);
+
+  // When viewing historical state we fall back to the legacy raw-doc render
+  // path (useSentenceData still accepts a raw document and delegates to
+  // ConlluDocument internally). Handlers are passed `null` in that mode, so
+  // mutations stay disabled.
+  const activeDocument = viewingHistoricalState ? historicalDocument : doc?.raw;
+
+  const historicalLayerInfo = useLayerInfo(historicalDocument);
+  const layerInfo = viewingHistoricalState ? historicalLayerInfo : doc?.layerInfo;
+  const historicalSentences = useSentenceData(historicalDocument);
+  const processedSentences = viewingHistoricalState
+    ? historicalSentences
+    : (doc?.sentences || []);
 
   useEffect(() => {
     if (loading) return;
@@ -71,13 +112,13 @@ export const AnnotationEditor = () => {
     }
   }, [loading, layerInfo, project, projectId, user, navigate, activeDocument]);
   
-  const {
-    handleAnnotationUpdate,
-    handleFeatureDelete,
-    handleRelationCreate,
-    handleRelationUpdate,
-    handleRelationDelete
-  } = useAnnotationHandlers(activeDocument, setDocument, setError, layerInfo, refreshData);
+  // Bind annotation/relation handlers to the current document. When viewing
+  // historical state we pass `null` so VirtualSentenceRow disables editing.
+  const handleAnnotationUpdate = (tokenId, field, value) => doc?.updateAnnotation(tokenId, field, value);
+  const handleFeatureDelete = (spanId) => doc?.deleteFeature(spanId);
+  const handleRelationCreate = (s, t, dep) => doc?.createRelation(s, t, dep);
+  const handleRelationUpdate = (id, dep) => doc?.updateRelation(id, dep);
+  const handleRelationDelete = (id) => doc?.deleteRelation(id);
 
   // NLP Service integration
   const {
@@ -139,10 +180,6 @@ export const AnnotationEditor = () => {
       setViewingHistoricalState(true);
     }
   };
-
-  useEffect(() => {
-    setSentences(processedSentences);
-  }, [processedSentences]);
 
   // Handle parse success - refresh data and clear status after delay
   useEffect(() => {
@@ -553,9 +590,9 @@ export const AnnotationEditor = () => {
             )}
 
             {/* All sentences displayed vertically */}
-            {sentences.map((sentenceData, index) => {
+            {processedSentences.map((sentenceData, index) => {
               // Calculate total tokens before this sentence
-              const totalTokensBefore = sentences
+              const totalTokensBefore = processedSentences
                 .slice(0, index)
                 .reduce((total, prevSentence) => total + prevSentence.tokens.length, 0);
 

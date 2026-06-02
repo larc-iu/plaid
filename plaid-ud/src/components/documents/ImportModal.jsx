@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { parseCoNLLU, buildConlluHierarchy } from '../../utils/conlluParser';
-import { getUdLayerInfo, missingUdLayerLabels } from '../../utils/udLayerUtils.js';
+import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { Modal, Button, FormField, ErrorMessage } from '../ui';
 
 export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
@@ -38,7 +37,6 @@ export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
       setError('Document name is required');
       return;
     }
-
     if (!importText.trim()) {
       setError('No content to import');
       return;
@@ -47,222 +45,14 @@ export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
     setLoading(true);
     setError('');
 
-    const client = getClient();
-    let createdDocumentId = null;
-
     try {
-      // Step 1: Parse CoNLL-U
-      const parsedData = parseCoNLLU(importText);
-
-      if (parsedData.sentences.length === 0) {
-        throw new Error('No valid sentences found in CoNLL-U data');
-      }
-
-      // Step 2: Create document
-      const documentResponse = await client.documents.create(projectId, documentName);
-      createdDocumentId = documentResponse.id;
-
-      // Step 3: Get document with layers to find IDs
-      const fullDocument = await client.documents.get(createdDocumentId, true);
-      const layerInfo = getUdLayerInfo(fullDocument);
-
-      if (!layerInfo.isConfigured) {
-        const missingLabels = missingUdLayerLabels(layerInfo.missingLayers).join(', ');
-        throw new Error(
-          missingLabels
-            ? `Project is missing required UD layer configuration: ${missingLabels}. Configure the project before importing.`
-            : 'Project is missing required UD layer configuration. Configure the project before importing.'
-        );
-      }
-
-      const {
-        textLayer,
-        sentenceTokenLayer,
-        wordTokenLayer,
-        morphemeTokenLayer,
-        formLayer,
-        lemmaLayer,
-        uposLayer,
-        xposLayer,
-        featuresLayer,
-        relationLayer
-      } = layerInfo;
-
-      // Step 4: Build the sentence > word > morpheme hierarchy with offsets
-      const hierarchy = buildConlluHierarchy(parsedData);
-
-      // Step 5: Create the text
-      const textResponse = await client.texts.create(
-        textLayer.id,
-        createdDocumentId,
-        hierarchy.text
-      );
-      const textId = textResponse.id;
-
-      // Build token operations for the three layers (sentences -> words ->
-      // morphemes), tracking each morpheme's originating row + sentence so we can
-      // attach spans and wire up dependency relations afterwards. We carry CoNLL-U
-      // metadata onto the tokens so the export side can round-trip it:
-      // arbitrary `# k = v` lines on the sentence token, and the MWT MISC column
-      // on the word token.
-      const sentenceOps = hierarchy.sentences.map(s => {
-        const op = { tokenLayerId: sentenceTokenLayer.id, text: textId, begin: s.begin, end: s.end };
-        if (s.metadata && Object.keys(s.metadata).length > 0) op.metadata = s.metadata;
-        return op;
-      });
-      const wordOps = [];
-      hierarchy.sentences.forEach(s => s.words.forEach(w => {
-        const op = { tokenLayerId: wordTokenLayer.id, text: textId, begin: w.begin, end: w.end };
-        // For MWTs only, persist the surface form on the word's metadata so the
-        // exporter can round-trip it. (For 1:1 words, the body substring is the
-        // surface form — the exporter falls back to that and we keep word
-        // metadata clean.)
-        const meta = {};
-        if (w.isMwt && w.surfaceForm) meta.form = w.surfaceForm;
-        if (w.misc) meta.misc = w.misc;
-        if (Object.keys(meta).length > 0) op.metadata = meta;
-        wordOps.push(op);
-      }));
-      const morphemeOps = [];
-      const morphemeMeta = []; // { sentIdx, row, wordSubstring }
-      hierarchy.sentences.forEach((s, sentIdx) => {
-        s.words.forEach(w => {
-          const wordSubstring = hierarchy.text.substring(w.begin, w.end);
-          w.morphemes.forEach(m => {
-            morphemeOps.push({
-              tokenLayerId: morphemeTokenLayer.id,
-              text: textId,
-              begin: m.begin,
-              end: m.end,
-              precedence: m.precedence
-            });
-            morphemeMeta.push({ sentIdx, row: m.row, wordSubstring });
-          });
-        });
-      });
-
-      // Step 6: Create the token hierarchy atomically in one batch (sentences ->
-      // words -> morphemes). Batch ops run sequentially so each nested layer sees
-      // the one above it, the whole hierarchy rolls back together on failure, and
-      // the batch returns each op's ids (used below for the morpheme spans).
-      client.beginBatch();
-      client.tokens.bulkCreate(sentenceOps);
-      let morphemeResultIndex = -1;
-      if (wordOps.length > 0) client.tokens.bulkCreate(wordOps);
-      if (morphemeOps.length > 0) {
-        client.tokens.bulkCreate(morphemeOps);
-        morphemeResultIndex = (wordOps.length > 0) ? 2 : 1;
-      }
-      const tokenResults = await client.submitBatch();
-      const morphemeIds = morphemeResultIndex >= 0
-        ? (tokenResults[morphemeResultIndex]?.body?.ids || [])
-        : [];
-
-      // Step 7: Create annotation spans on morphemes.
-      // Per-sentence lemma span ids indexed by row (0-based) for relation wiring.
-      const lemmaSpanIds = parsedData.sentences.map(s => s.tokens.map(() => null));
-
-      const formOps = [];
-      const lemmaOps = [];
-      const lemmaMeta = []; // parallel to lemmaOps: { sentIdx, rowIndex }
-      const uposOps = [];
-      const xposOps = [];
-      const featOps = [];
-
-      morphemeMeta.forEach((meta, i) => {
-        const morphemeId = morphemeIds[i];
-        if (!morphemeId) return;
-        const row = meta.row;
-        const rowIndex = row.id - 1;
-
-        // A Form span is only needed when the surface form differs from the
-        // morpheme's substring (i.e. real MWT components); 1:1 words fall back
-        // to the substring.
-        if (formLayer && row.form && row.form !== meta.wordSubstring) {
-          formOps.push({ spanLayerId: formLayer.id, tokens: [morphemeId], value: row.form });
-        }
-        if (lemmaLayer && row.lemma) {
-          lemmaOps.push({ spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: row.lemma });
-          lemmaMeta.push({ sentIdx: meta.sentIdx, rowIndex });
-        }
-        if (uposLayer && row.upos) {
-          uposOps.push({ spanLayerId: uposLayer.id, tokens: [morphemeId], value: row.upos });
-        }
-        if (xposLayer && row.xpos) {
-          xposOps.push({ spanLayerId: xposLayer.id, tokens: [morphemeId], value: row.xpos });
-        }
-        if (featuresLayer && Array.isArray(row.feats)) {
-          row.feats.forEach(f => featOps.push({ spanLayerId: featuresLayer.id, tokens: [morphemeId], value: f }));
-        }
-      });
-
-      // Bundle all five span bulkCreates into ONE atomic batch so a partial
-      // failure rolls them back together. Track the result index for lemma so we
-      // can recover ids for the follow-up relation batch.
-      client.beginBatch();
-      const spanOpsInOrder = []; // [{ kind, ops }] in batch order, to find lemma result
-      if (formOps.length) { client.spans.bulkCreate(formOps); spanOpsInOrder.push('form'); }
-      if (lemmaOps.length) { client.spans.bulkCreate(lemmaOps); spanOpsInOrder.push('lemma'); }
-      if (uposOps.length) { client.spans.bulkCreate(uposOps); spanOpsInOrder.push('upos'); }
-      if (xposOps.length) { client.spans.bulkCreate(xposOps); spanOpsInOrder.push('xpos'); }
-      if (featOps.length) { client.spans.bulkCreate(featOps); spanOpsInOrder.push('feat'); }
-      let spanResults = [];
-      if (spanOpsInOrder.length > 0) {
-        spanResults = await client.submitBatch();
-      }
-      const lemmaResultIdx = spanOpsInOrder.indexOf('lemma');
-      if (lemmaResultIdx >= 0) {
-        const ids = spanResults[lemmaResultIdx]?.body?.ids || [];
-        lemmaMeta.forEach((lm, k) => { lemmaSpanIds[lm.sentIdx][lm.rowIndex] = ids[k]; });
-      }
-
-      // Step 8: Create dependency relations on lemma spans (head/deprel).
-      // Relations reference span ids produced by the previous batch, so they
-      // must go in a separate follow-up batch (the "no within-batch references"
-      // constraint).
-      if (relationLayer) {
-        const relationOps = [];
-        parsedData.sentences.forEach((sentence, sentIdx) => {
-          const ids = lemmaSpanIds[sentIdx];
-          sentence.tokens.forEach((token, tokIdx) => {
-            const targetId = ids[tokIdx];
-            if (!token.deprel || !targetId) return;
-            if (token.head === 0) {
-              // Root edge: self-referencing relation
-              relationOps.push({ relationLayerId: relationLayer.id, source: targetId, target: targetId, value: token.deprel });
-            } else if (token.head > 0) {
-              const sourceId = ids[token.head - 1];
-              if (sourceId) {
-                relationOps.push({ relationLayerId: relationLayer.id, source: sourceId, target: targetId, value: token.deprel });
-              }
-            }
-          });
-        });
-        if (relationOps.length > 0) {
-          client.beginBatch();
-          client.relations.bulkCreate(relationOps);
-          await client.submitBatch();
-        }
-      }
-
-      // Success!
+      const client = getClient();
+      await ConlluDocument.importFromConllu(client, projectId, documentName, importText);
       setSuccess(true);
-      setTimeout(() => {
-        onSuccess();
-      }, 2000); // Show success state for 2 seconds
-
+      setTimeout(() => { onSuccess(); }, 2000);
     } catch (err) {
       console.error('Import failed:', err);
       setError(`Import failed: ${err.message || 'Unknown error'}`);
-
-      // Clean up: delete document if it was created
-      if (createdDocumentId) {
-        try {
-          await client.documents.delete(createdDocumentId);
-        } catch (deleteErr) {
-          console.error('Failed to clean up document:', deleteErr);
-        }
-      }
     } finally {
       setLoading(false);
     }
