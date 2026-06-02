@@ -21,9 +21,7 @@ export const useNlpService = (projectId, documentId) => {
     setIsDiscovering(true);
     
     try {
-      console.log('Starting service discovery for project:', projectId);
       const services = await client.messages.discoverServices(projectId, 3000);
-      console.log('Discovered services:', services);
       setAvailableServices(services);
     } catch (error) {
       console.error('Failed to discover services:', error);
@@ -51,16 +49,14 @@ export const useNlpService = (projectId, documentId) => {
       setParseStatus('started');
       setParseError(null);
       setIsParsing(true);
-      
-      console.log('Sending service request with documentId:', documentId);
-      const result = await client.messages.requestService(
+
+      await client.messages.requestService(
         projectId,
         nlpService.serviceId,
         { documentId },
         30000  // 30 second timeout
       );
       
-      console.log('Parse result:', result);
       setParseStatus('success');
       setIsParsing(false);
       

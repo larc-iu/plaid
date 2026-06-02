@@ -45,22 +45,23 @@ export const UD_LAYER_LABELS = {
 
 const hasConfigFlag = (config, key) => config?.[UD_NAMESPACE]?.[key] === true;
 
-export const findUdTextLayer = (document) => {
+// Internal helpers for getUdLayerInfo — find a UD-flagged layer at each level.
+const findUdTextLayer = (document) => {
   if (!document?.textLayers) return null;
   return document.textLayers.find(layer => hasConfigFlag(layer.config, UD_TEXT_CONFIG_KEY)) || null;
 };
 
-export const findUdTokenLayer = (textLayer, configKey) => {
+const findUdTokenLayer = (textLayer, configKey) => {
   if (!textLayer?.tokenLayers) return null;
   return textLayer.tokenLayers.find(layer => hasConfigFlag(layer.config, configKey)) || null;
 };
 
-export const findUdSpanLayer = (tokenLayer, configKey) => {
+const findUdSpanLayer = (tokenLayer, configKey) => {
   if (!tokenLayer?.spanLayers) return null;
   return tokenLayer.spanLayers.find(layer => hasConfigFlag(layer.config, configKey)) || null;
 };
 
-export const findUdRelationLayer = (spanLayer, configKey = UD_RELATION_CONFIG_KEY) => {
+const findUdRelationLayer = (spanLayer, configKey = UD_RELATION_CONFIG_KEY) => {
   if (!spanLayer?.relationLayers) return null;
   return spanLayer.relationLayers.find(layer => hasConfigFlag(layer.config, configKey)) || null;
 };
@@ -156,8 +157,6 @@ export const getUdLayerInfo = (document) => {
     isConfigured: normalizedMissing.length === 0
   };
 };
-
-export const hasRequiredUdLayers = (document) => getUdLayerInfo(document).isConfigured;
 
 export const missingUdLayerLabels = (missingKeys) => {
   if (!Array.isArray(missingKeys)) return [];

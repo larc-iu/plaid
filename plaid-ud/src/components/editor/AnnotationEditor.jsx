@@ -42,12 +42,12 @@ export const AnnotationEditor = () => {
     }
     try {
       if (initial) setLoading(true);
-      const [projectData, documentData] = await Promise.all([
+      const [projectData, next] = await Promise.all([
         client.projects.get(projectId),
-        client.documents.get(documentId, true)
+        ConlluDocument.load(client, projectId, documentId)
       ]);
       setProject(projectData);
-      setDoc(new ConlluDocument({ raw: documentData, client, projectId }));
+      setDoc(next);
       client.enterStrictMode(documentId);
       setLoadError('');
     } catch (err) {
@@ -127,13 +127,12 @@ export const AnnotationEditor = () => {
 
   // NLP Service integration
   const {
-    isAwake,
-    isChecking,
     isParsing,
-    connectionStatus,
+    isDiscovering,
+    hasServices,
     parseStatus,
     parseError,
-    checkIfAwake,
+    discoverServices,
     requestParse,
     clearParseStatus,
     canParse,
@@ -202,25 +201,21 @@ export const AnnotationEditor = () => {
           History
         </Button>
 
-        {connectionStatus === 'connected' && (
-          <>
-            <Badge
-              size="lg"
-              variant="light"
-              color={isAwake ? 'green' : isChecking ? 'yellow' : 'gray'}
-              leftSection={
-                isChecking ? <Loader size={12} color="yellow" />
-                  : isAwake ? <IconBolt size={14} />
-                    : <IconFileOff size={14} />
-              }
-            >
-              {isChecking ? 'Checking NLP...' : isAwake ? 'NLP Ready' : 'NLP Offline'}
-            </Badge>
+        <Badge
+          size="lg"
+          variant="light"
+          color={isDiscovering ? 'yellow' : hasServices ? 'green' : 'gray'}
+          leftSection={
+            isDiscovering ? <Loader size={12} color="yellow" />
+              : hasServices ? <IconBolt size={14} />
+                : <IconFileOff size={14} />
+          }
+        >
+          {isDiscovering ? 'Checking NLP...' : hasServices ? 'NLP Ready' : 'NLP Offline'}
+        </Badge>
 
-            {!isAwake && !isChecking && (
-              <Button size="xs" onClick={checkIfAwake}>Retry</Button>
-            )}
-          </>
+        {!isDiscovering && !hasServices && (
+          <Button size="xs" onClick={discoverServices}>Retry</Button>
         )}
 
         {selectedHistoryEntry && (

@@ -35,12 +35,11 @@ export const TextEditor = () => {
     }
     try {
       if (initial) setLoading(true);
-      const [projectData, documentData] = await Promise.all([
+      const [projectData, next] = await Promise.all([
         client.projects.get(projectId),
-        client.documents.get(documentId, true)
+        ConlluDocument.load(client, projectId, documentId)
       ]);
       setProject(projectData);
-      const next = new ConlluDocument({ raw: documentData, client, projectId });
       setDoc(next);
       const text = next.layerInfo.textLayer?.text;
       if (text?.body) {

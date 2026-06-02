@@ -55,7 +55,7 @@ export function parseCoNLLU(text) {
       throw new Error(`Invalid CoNLL-U format: Expected 10 columns, found ${columns.length} in line: ${trimmedLine}`);
     }
     
-    const [id, form, lemma, upos, xpos, feats, head, deprel, deps, misc] = columns;
+    const [id, form, lemma, upos, xpos, feats, head, deprel, _deps, misc] = columns;
     
     // Initialize sentence if needed
     if (!currentSentence) {

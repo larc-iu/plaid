@@ -58,7 +58,7 @@ export function collectClientErrors(page) {
     if (url.includes('/api/v1/')) {
       const entry = { method: resp.request().method(), status: resp.status(), url };
       if (resp.status() >= 400) {
-        try { entry.body = (await resp.text()).slice(0, 500); } catch {}
+        try { entry.body = (await resp.text()).slice(0, 500); } catch { /* body unavailable */ }
         failures.push(entry);
       }
       apiCalls.push(entry);

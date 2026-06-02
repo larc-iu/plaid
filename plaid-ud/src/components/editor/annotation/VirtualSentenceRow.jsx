@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SentenceRow } from './SentenceRow.jsx';
 
-const VirtualSentenceRow = ({ 
-  sentenceData, 
+export const VirtualSentenceRow = ({
+  sentenceData,
   onAnnotationUpdate, 
   onFeatureDelete,
   onRelationCreate,
@@ -84,5 +84,3 @@ const VirtualSentenceRow = ({
     </div>
   );
 };
-
-export { VirtualSentenceRow };
