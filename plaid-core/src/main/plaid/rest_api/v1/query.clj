@@ -5,8 +5,12 @@
   pipeline (the query only ever sees projects the caller can read — see
   `plaid.sql.query.resolve/effective-scope`), so there is no single project to
   gate on at the route. The body is the query AST in JSON form; `plaid.query.ast`
-  owns validation and throws `ex-info` with a `:code` we map to the HTTP status."
-  (:require [plaid.sql.query.exec :as qe]))
+  owns validation and throws `ex-info` with a `:code` we map to the HTTP status.
+  Author errors (`:code` 400) are returned verbatim; anything else (a compiler
+  invariant failure, a SQL/DB error) is logged server-side and returned as a
+  generic 500 so internal SQL/exception text never leaks to the caller."
+  (:require [clojure.tools.logging :as log]
+            [plaid.sql.query.exec :as qe]))
 
 (def query-routes
   [["/query"
@@ -20,5 +24,10 @@
                          {:status 200 :body (qe/run db user-id body)}
                          (catch clojure.lang.ExceptionInfo e
                            (let [code (or (:code (ex-data e)) 500)]
-                             {:status code
-                              :body {:error (ex-message e)}}))))}}]])
+                             (if (= code 400)
+                               {:status 400 :body {:error (ex-message e)}}
+                               (do (log/error e "Query failed for user" user-id)
+                                   {:status code :body {:error "Internal query error"}}))))
+                         (catch Exception e
+                           (log/error e "Query failed for user" user-id)
+                           {:status 500 :body {:error "Internal query error"}})))}}]])

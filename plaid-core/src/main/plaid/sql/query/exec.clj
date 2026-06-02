@@ -13,22 +13,26 @@
     :entities            — each cell is the full REST-shape entity map (the SAME
                            shape GET endpoints return, so the clients' generic
                            recursive case-transformers convert it for free).
-    :count               — a scalar count of distinct matches (ignores :limit).
+    :count               — a scalar count of distinct matches (ignores :limit;
+                           exact up to `count-cap`, then reports `:truncated`).
 
   Guardrails: id/entity results default to `default-limit` rows when no `:limit`
   is given and are hard-capped at `hard-cap`; the envelope carries `:truncated`
-  when the (effective) limit was reached. `:count` is exact and uncapped.
+  when the (effective) limit was reached. `:count` is capped at `count-cap`.
+  Every query's SQL execution is bounded by `*query-timeout-ms*` (408 on overrun).
 
   Errors propagate as `ex-info` with a `:code` (400 author error / 500 compiler
   bug) for the REST layer to map to an HTTP status."
-  (:require [plaid.query.ast :as ast]
+  (:require [next.jdbc :as jdbc]
+            [plaid.query.ast :as ast]
             [plaid.sql.common :as psc]
             [plaid.sql.query.compile :as qc]
             [plaid.sql.query.resolve :as qr]
             [plaid.sql.span :as span]
             [plaid.sql.token :as token]
             [plaid.sql.relation :as relation]
-            [plaid.sql.vocab-item :as vocab-item]))
+            [plaid.sql.vocab-item :as vocab-item])
+  (:import [org.sqlite SQLiteConnection]))
 
 (def ^:private default-limit
   "Rows returned when the query specifies no :limit."
@@ -51,6 +55,36 @@
   "Per-kind single-entity reader — the SAME fns the REST GET endpoints use, so
   hydrated entities are byte-for-byte the public wire shape."
   {:span span/get :token token/get :relation relation/get :vocab vocab-item/get})
+
+(def ^:dynamic *query-timeout-ms*
+  "Wall-clock ceiling for a single query's SQL execution. A query past this is
+  aborted (SQLite `interrupt()`) and reported as a 408. SQLite ignores JDBC
+  `setQueryTimeout` for CPU-bound work, so we use a watchdog + connection
+  interrupt, which IS reliable. Dynamic so tests/operators can rebind it."
+  30000)
+
+(defn- run-bounded
+  "Run `(f conn)` on a dedicated pooled connection, aborting via SQLite's
+  `interrupt()` if it overruns `query-timeout-ms`. Returns `(f conn)`'s value, or
+  throws a 408 `ex-info` on timeout. Any other SQL error propagates as its cause."
+  [db f]
+  (with-open [conn (jdbc/get-connection db)]
+    (let [ndb (.getDatabase (.unwrap conn SQLiteConnection))
+          done (atom false)
+          fut (future (try (f conn) (finally (reset! done true))))
+          watchdog (future (Thread/sleep *query-timeout-ms*)
+                           (when-not @done (.interrupt ndb)))]
+      (try
+        @fut
+        (catch java.util.concurrent.ExecutionException e
+          (let [cause (.getCause e)]
+            (if (and (instance? org.sqlite.SQLiteException cause)
+                     (re-find #"interrupt" (str (.getMessage cause))))
+              (throw (ex-info (str "Query exceeded the " (quot *query-timeout-ms* 1000)
+                                   "s time limit — narrow it with more selective clauses or a tighter :scope.")
+                              {:code 408 :query-error/stage :exec}))
+              (throw cause))))
+        (finally (future-cancel watchdog))))))
 
 (defn- find-cols
   "Column names for the result envelope: `:find` var names without the `?`."
@@ -112,13 +146,13 @@
         ;; :limit, then apply the effective limit once at assembly.
         hqs (mapv (fn [b] (qc/compile-query (qr/resolve-query db user-id (dissoc b :limit)))) branches)]
     (if (= return-type :count)
-      (let [n (:n (psc/q1 db (count-query hqs)))]
+      (let [n (:n (run-bounded db (fn [conn] (psc/q1 conn (count-query hqs)))))]
         {:return :count
          :count (min n count-cap)
          :truncated (> n count-cap)})
       (let [lim (effective-limit (:limit head))
             ;; fetch one extra row to detect truncation, then trim
-            rows (psc/q db (assemble hqs (inc lim)))
+            rows (run-bounded db (fn [conn] (psc/q conn (assemble hqs (inc lim)))))
             truncated? (> (count rows) lim)
             rows (vec (take lim rows))
             id-results (mapv (fn [row] (mapv #(get row %) col-kws)) rows)

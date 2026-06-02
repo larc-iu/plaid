@@ -181,6 +181,23 @@
   (testing "an unknown :return is rejected"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "kwic"}))))))
 
+(deftest find-rejects-duplicate-vars
+  (testing "a duplicate var in :find is a 400 (would emit a duplicate result column)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s" "?s"] "where" [["span" "?s" {}]]}))))))
+
+(deftest constraint-values-stay-literal
+  (testing "a constraint value that looks like a var is kept as a literal string"
+    (let [clause (first (:where (ast/parse {"find" ["?s"] "where" [["span" "?s" {"value" "?x"}]]})))
+          v (:value (nth clause 2))]
+      (is (= "?x" v))
+      (is (string? v) "value must NOT be coerced into a query symbol")))
+  (testing "inline relation :source/:target ARE var-ized"
+    (let [clause (first (:where (ast/parse {"find" ["?r"]
+                                            "where" [["relation" "?r" {"source" "?h" "target" "?d"}]]})))
+          cmap (nth clause 2)]
+      (is (= (symbol "?h") (:source cmap)))
+      (is (= (symbol "?d") (:target cmap))))))
+
 (deftest var-predicate
   (is (ast/var? (symbol "?s")))
   (is (not (ast/var? 's)))

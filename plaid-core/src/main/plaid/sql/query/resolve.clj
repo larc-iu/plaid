@@ -94,20 +94,32 @@
      rows)))
 
 (defn- resolve-ref
-  "Resolve one layer reference against a kind's index, in order:
+  "Resolve one scalar layer reference against a kind's index, in order:
   path (\"Project/Layer\") -> uuid (by id) -> bare string (alias, then name).
-  Returns a non-empty vector of layer-id strings or throws 400."
+  A scalar reference must identify EXACTLY ONE layer — names, paths, and aliases
+  are all non-unique (two projects can share a name, an alias is shared by
+  convention), so a reference matching several layers is an *ambiguous* 400, not
+  a silent `IN (…)` fan-out (which would be an implicit OR over layers). Returns
+  a one-element vector of layer-id strings. To match several layers on purpose,
+  list their ids or (future) bind a layer variable."
   [index kind ref]
   (let [s (str ref)
-        ids (cond
-              (str/includes? s "/") (get-in index [:by-path s])
-              (uuid-string? s)      (when (contains? (:by-id index) s) [s])
-              :else                 (seq (distinct (concat (get-in index [:by-alias s])
-                                                           (get-in index [:by-name s])))))]
-    (or (seq (distinct ids))
-        (err! (str "No " (clojure.core/name kind) " layer matching " (pr-str ref)
-                   " is visible in the queried project scope")
-              {:layer ref :kind kind}))))
+        ids (distinct
+             (cond
+               (str/includes? s "/") (get-in index [:by-path s])
+               (uuid-string? s)      (when (contains? (:by-id index) s) [s])
+               :else                 (concat (get-in index [:by-alias s])
+                                             (get-in index [:by-name s]))))]
+    (cond
+      (empty? ids)
+      (err! (str "No " (clojure.core/name kind) " layer matching " (pr-str ref)
+                 " is visible in the queried project scope")
+            {:layer ref :kind kind})
+      (> (count ids) 1)
+      (err! (str (clojure.core/name kind) " layer reference " (pr-str ref) " is ambiguous — it matches "
+                 (count ids) " layers in your scope. Qualify it with a layer id (or narrow :scope to one project).")
+            {:layer ref :kind kind :matches (vec ids)})
+      :else (vec ids))))
 
 ;; ---------------------------------------------------------------------------
 ;; Resolve the whole query

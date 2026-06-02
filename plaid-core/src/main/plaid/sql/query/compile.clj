@@ -71,14 +71,17 @@
 ;; ---------------------------------------------------------------------------
 
 (defn- collect-entity-constraints
-  "Map of var -> merged constraint map (with ::qr/layer-ids, :value, :doc, …)
-  drawn from its entity clause(s)."
+  "Map of var -> VECTOR of the constraint maps from its entity clause(s). Each
+  clause contributes its own map and the compiler ANDs them all: a var that
+  appears in two entity clauses must satisfy both. (Merging them last-wins would
+  silently drop the earlier constraint and return a wrong, larger result — e.g.
+  `value NOUN` AND `value VERB` must be unsatisfiable, not just `VERB`.)"
   [where]
   (reduce
    (fn [acc clause]
      (let [[head v cmap] clause]
        (if (contains? entity-table head)
-         (update acc v merge cmap)
+         (update acc v (fnil conj []) cmap)
          acc)))
    {} where))
 
@@ -88,7 +91,8 @@
 
 (defn- ensure-var!
   "Allocate (once) a table alias for var v, emit its base table, scope predicate,
-  and any value/doc/begin/end filters from its entity constraints. Idempotent."
+  and the value/doc/begin/end filters from ALL its entity constraint maps (ANDed).
+  `constraints` maps var -> vector of constraint maps. Idempotent."
   [st v constraints]
   (let [kind (get-in @st [:kinds v])]
     (when (nil? kind)
@@ -98,11 +102,13 @@
         (swap! st assoc-in [:var->alias v] a)
         (add-from! st [(entity-table kind) a])
         ;; --- scope predicate (THE ACL invariant) ---
-        (let [cs (get constraints v)
-              layer-ids (::qr/layer-ids cs)]
+        (let [cmaps (get constraints v)                 ; vector of constraint maps (may be nil)
+              layer-id-sets (keep ::qr/layer-ids cmaps)] ; one per layer-named clause
           (cond
-            (seq layer-ids)
-            (add-where! st [:in (col a (layer-fk kind)) (vec layer-ids)])
+            ;; a layer-named clause already pins scope; AND one IN per such clause
+            (seq layer-id-sets)
+            (doseq [ids layer-id-sets]
+              (add-where! st [:in (col a (layer-fk kind)) (vec ids)]))
             ;; vocab layers are global — scope via project_vocabs grants
             (= kind :vocab)
             (let [pv (next-alias! st "pv")]
@@ -111,22 +117,27 @@
               (add-where! st [:in (col pv :project_id) (:scope @st)]))
             ;; defense-in-depth: join the var's layer table, filter project_id IN scope
             :else
-            (let [lt (next-alias! st "lt")]
-              (add-from! st [(layer-tbl kind) lt])
+            (let [lt-table (or (layer-tbl kind)
+                               (err-500! (str "No layer table registered for kind " kind
+                                              " — keep entity-table/alias-prefix/layer-fk/layer-tbl in sync")
+                                         {:kind kind}))
+                  lt (next-alias! st "lt")]
+              (add-from! st [lt-table lt])
               (add-where! st [:= (col a (layer-fk kind)) (col lt :id)])
               (add-where! st [:in (col lt :project_id) (:scope @st)])))
           (swap! st update :scoped conj v)
-          ;; --- non-scope filters ---
-          (when (contains? cs :value)
-            (add-where! st [:= (col a :value) (psc/write-json (:value cs))]))
-          (when (contains? cs :form)            ; vocab_items.form — plain TEXT, not JSON
-            (add-where! st [:= (col a :form) (:form cs)]))
-          (when (contains? cs :doc)
-            (add-where! st [:= (col a :document_id) (str (:doc cs))]))
-          (when (contains? cs :begin)
-            (add-where! st [:= (col a :begin) (:begin cs)]))
-          (when (contains? cs :end)
-            (add-where! st [:= (col a :end_) (:end cs)])))))
+          ;; --- non-scope filters, ANDed across every clause on this var ---
+          (doseq [cs cmaps]
+            (when (contains? cs :value)
+              (add-where! st [:= (col a :value) (psc/write-json (:value cs))]))
+            (when (contains? cs :form)          ; vocab_items.form — plain TEXT, not JSON
+              (add-where! st [:= (col a :form) (:form cs)]))
+            (when (contains? cs :doc)
+              (add-where! st [:= (col a :document_id) (str (:doc cs))]))
+            (when (contains? cs :begin)
+              (add-where! st [:= (col a :begin) (:begin cs)]))
+            (when (contains? cs :end)
+              (add-where! st [:= (col a :end_) (:end cs)]))))))
     (get-in @st [:var->alias v])))
 
 ;; ---------------------------------------------------------------------------
@@ -137,7 +148,12 @@
   "Row-value for the canonical token order `(begin, precedence, end, id)` with
   precedence NULLS LAST. The NULLS-LAST rank is encoded as a leading null-flag
   column (0 = present, 1 = NULL) so the whole tuple is non-NULL and SQL row-value
-  comparison is well-defined; the `end`/`id` tail makes the order total."
+  comparison is well-defined; the `end`/`id` tail makes the order total.
+
+  LOCKSTEP: `successor-subquery`'s ORDER BY expresses this SAME order with native
+  `:asc-nulls-last`. The two encodings (this null-flag composite for the `>`
+  filter, that ORDER BY for the `LIMIT 1` pick) must stay equivalent or
+  `:precedes` selects the wrong successor — change them together."
   [a]
   [:composite
    (col a :begin)
@@ -265,7 +281,9 @@
   "Resolved AST -> HoneySQL map. Throws 500 only on internal invariant failures."
   [resolved]
   (let [scope (::qr/scope resolved)
-        kinds (ast/infer-kinds resolved)
+        ;; validate already inferred + attached the var-kinds; reuse it (fall back
+        ;; to re-inferring if a caller hands us an AST that skipped validate).
+        kinds (or (::ast/var-kinds resolved) (ast/infer-kinds resolved))
         st (new-state scope kinds)
         constraints (collect-entity-constraints (:where resolved))]
     ;; Pass B: every var (entity + relationship-introduced) gets a table + scope.

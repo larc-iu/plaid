@@ -34,10 +34,14 @@
      :verb1 (id (h/create-span admin-request sl [t1] "VERB"))
      :noun2 (id (h/create-span admin-request sl [t2] "NOUN"))}))
 
+;; Layer-LESS spans: the legitimate way to query across every readable project
+;; in one request. (A bare layer *name* shared by several projects is now an
+;; ambiguous 400 — see exec-review2-test — so cross-project queries either omit
+;; the layer, like here, or pin a unique id.)
 (def ^:private noun-verb-query
   {"find" ["?s1" "?s2"]
-   "where" [["span" "?s1" {"layer" "pos" "value" "NOUN"}]
-            ["span" "?s2" {"layer" "pos" "value" "VERB"}]
+   "where" [["span" "?s1" {"value" "NOUN"}]
+            ["span" "?s2" {"value" "VERB"}]
             ["covers" "?s1" "?t1"] ["covers" "?s2" "?t2"]
             ["precedes" "?t1" "?t2"]]})
 

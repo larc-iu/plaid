@@ -485,17 +485,20 @@
 (defn q
   "Run a read query. `db` may be a DataSource or a Connection (inside a tx).
   `query` may be a HoneySQL map or a [sql & params] vector.
-  Returned rows have TEXT `:id` / `*_id` columns coerced back to UUID."
-  [db query]
-  (let [sql-vec (if (map? query) (format-sql query) query)]
-    (with-slow-query-warn
-      sql-vec
-      (fn [] (mapv coerce-id-cols (jdbc/execute! db sql-vec jdbc-opts))))))
+  Returned rows have TEXT `:id` / `*_id` columns coerced back to UUID.
+  `opts` is merged into the next.jdbc options — notably `:timeout` (seconds),
+  which sets a JDBC statement timeout to bound a runaway query."
+  ([db query] (q db query nil))
+  ([db query opts]
+   (let [sql-vec (if (map? query) (format-sql query) query)]
+     (with-slow-query-warn
+       sql-vec
+       (fn [] (mapv coerce-id-cols (jdbc/execute! db sql-vec (merge jdbc-opts opts))))))))
 
 (defn q1
   "Run a read query and return the first row (coerced), or nil."
-  [db query]
-  (first (q db query)))
+  ([db query] (first (q db query)))
+  ([db query opts] (first (q db query opts))))
 
 (defn execute!
   "Run a write query (INSERT/UPDATE/DELETE). Returns the update count.

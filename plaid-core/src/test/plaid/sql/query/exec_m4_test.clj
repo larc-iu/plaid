@@ -87,6 +87,45 @@
         (is (= (set (map str span-ids)) (set (map (comp str :span/id) ents))))
         (is (every? #(= 1 (count (:span/tokens %))) ents))))))
 
+(deftest entities-hydrate-token-relation-vocab
+  (testing "hydration works for every entity kind, not just spans (each uses a different get fn)"
+    (let [pid  (h/create-test-project admin-request "EntKinds")
+          txtl (id (h/create-text-layer admin-request pid "text"))
+          tokl (id (h/create-token-layer admin-request txtl "words"))
+          sl   (id (h/create-span-layer admin-request tokl "pos"))
+          rl   (id (h/create-relation-layer admin-request sl "dep"))
+          doc  (h/create-test-document admin-request pid "d1")
+          text (id (h/create-text admin-request txtl doc "aa bb"))
+          t0 (id (h/create-token admin-request tokl text 0 2))
+          t1 (id (h/create-token admin-request tokl text 3 5))
+          s0 (id (h/create-span admin-request sl [t0] "NOUN"))
+          s1 (id (h/create-span admin-request sl [t1] "VERB"))
+          r0 (id (h/create-relation admin-request rl s1 s0 "nsubj"))
+          vl (id (h/create-vocab-layer admin-request "EntKinds-lex"))
+          _  (h/link-vocab-to-project admin-request pid vl)
+          kemal (id (h/create-vocab-item admin-request vl "Kemal"))
+          _  (h/create-vocab-link admin-request kemal [t0])]
+      (testing "token entity"
+        (let [e (-> (qe/run db "admin@example.com"
+                            {"find" ["?t"] "where" [["token" "?t" {"layer" "EntKinds/words" "begin" 0}]]
+                             "return" "entities"}) :results ffirst)]
+          (is (= (str t0) (str (:token/id e))))
+          (is (= 0 (:token/begin e)))))
+      (testing "relation entity carries source/target"
+        (let [e (-> (qe/run db "admin@example.com"
+                            {"find" ["?r"] "where" [["relation" "?r" {"layer" "EntKinds/dep" "value" "nsubj"}]]
+                             "return" "entities"}) :results ffirst)]
+          (is (= (str r0) (str (:relation/id e))))
+          (is (= "nsubj" (:relation/value e)))
+          (is (= (str s1) (str (:relation/source e))))
+          (is (= (str s0) (str (:relation/target e))))))
+      (testing "vocab-item entity carries form"
+        (let [e (-> (qe/run db "admin@example.com"
+                            {"find" ["?v"] "where" [["vocab" "?v" {"form" "Kemal"}]]
+                             "return" "entities"}) :results ffirst)]
+          (is (= (str kemal) (str (:vocab-item/id e))))
+          (is (= "Kemal" (:vocab-item/form e))))))))
+
 (deftest entities-respect-acl
   (testing ":entities is scoped like :ids — a reader sees only their project"
     (let [c1 (build-corpus! "EP1" 2)

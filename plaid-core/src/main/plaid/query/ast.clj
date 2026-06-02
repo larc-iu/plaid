@@ -97,12 +97,18 @@
     :else (err! :parse (str "Expected a keyword or string, got: " (pr-str x)))))
 
 (defn- normalize-constraints
-  "Constraint map: keyword-ize keys, var-ize values that look like vars
-  (so `:source ?h` works), leave scalar values alone."
+  "Constraint map: keyword-ize keys, and var-ize ONLY the keys whose values are
+  query variables — `:source`/`:target` (inline relation endpoints). Every other
+  value (`:value` `:form` `:layer` `:doc` `:begin` `:end`) is a literal and is
+  left untouched, so a value that merely looks like a var (a gloss `\"?\"`, a
+  literal string `\"?x\"`) is never silently coerced into a symbol."
   [m]
   (when-not (map? m)
     (err! :parse (str "Clause constraint must be a map, got: " (pr-str m))))
-  (reduce-kv (fn [acc k v] (assoc acc (->kw k) (->var v))) {} m))
+  (reduce-kv (fn [acc k v]
+               (let [k (->kw k)]
+                 (assoc acc k (if (#{:source :target} k) (->var v) v))))
+             {} m))
 
 ;; --- :seq sugar (CQP-style token sequences) --------------------------------
 ;; A :seq clause walks one token layer; each element is a span/token pattern
@@ -228,6 +234,9 @@
     (err! :validate ":find must be a non-empty list of vars"))
   (when-not (every? var? (:find ast))
     (err! :validate (str ":find may only contain vars, got: " (pr-str (remove var? (:find ast))))))
+  (when-not (apply distinct? (:find ast))
+    (err! :validate (str ":find has duplicate variables: "
+                         (pr-str (->> (:find ast) frequencies (keep (fn [[v n]] (when (> n 1) v))) vec)))))
   (when-not (vector? (:where ast))
     (err! :validate ":where must be a list of clauses"))
   (when (empty? (:where ast))
