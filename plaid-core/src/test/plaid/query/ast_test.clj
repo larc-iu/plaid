@@ -161,6 +161,14 @@
                                               ["relation" {"layer" "dep"} "as" "?s"]]]})))
         "non span/token seq element rejected")))
 
+(deftest return-shapes
+  (testing ":return defaults to :ids and accepts :entities / :count"
+    (is (= :ids (:return (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]]}))))
+    (is (= :entities (:return (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "entities"}))))
+    (is (= :count (:return (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "count"})))))
+  (testing "an unknown :return is rejected"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "kwic"}))))))
+
 (deftest var-predicate
   (is (ast/var? (symbol "?s")))
   (is (not (ast/var? 's)))

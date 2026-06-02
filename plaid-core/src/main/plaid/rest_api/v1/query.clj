@@ -10,7 +10,7 @@
 
 (def query-routes
   [["/query"
-    {:post {:summary "Run a query over all projects you can read. Returns id tuples."
+    {:post {:summary "Run a query over all projects you can read. Returns id tuples (or full entities / a count via :return)."
             :openapi {:security [{:auth []}]
                       :x-client-method "query"
                       :x-client-bundle "query"}

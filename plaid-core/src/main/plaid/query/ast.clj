@@ -238,8 +238,8 @@
     (when-not (and (integer? l) (pos? l))
       (err! :validate (str ":limit must be a positive integer, got: " (pr-str l)))))
   (when-let [r (:return ast)]
-    (when-not (= r :ids)
-      (err! :validate (str ":return " (pr-str r) " is not supported in v0 (only :ids)"))))
+    (when-not (#{:ids :entities :count} r)
+      (err! :validate (str ":return " (pr-str r) " is not supported (one of :ids, :entities, :count)"))))
   ast)
 
 (defn- validate-clause!
