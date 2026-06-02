@@ -80,6 +80,12 @@ export function createSSEConnection(client, projectId, onEvent) {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      // Event state persists across read chunks: an event's `event:` and
+      // `data:` lines may land in separate reads, so these are reset only
+      // after an event is dispatched (mirrors the Python client).
+      let eventType = '';
+      let data = '';
+
       while (true) {
         const { done, value } = await reader.read();
         if (done || isClosed) break;
@@ -88,10 +94,9 @@ export function createSSEConnection(client, projectId, onEvent) {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        let eventType = '';
-        let data = '';
-
-        for (const line of lines) {
+        for (const rawLine of lines) {
+          // Strip a trailing CR so CRLF-delimited streams parse cleanly.
+          const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
           if (line.startsWith('event: ')) {
             eventType = line.slice(7).trim();
           } else if (line.startsWith('data: ')) {

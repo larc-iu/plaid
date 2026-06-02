@@ -31,7 +31,7 @@ export function extractDocumentVersions(client, responseHeaders, responseBody = 
  * Create an enriched error from a failed HTTP response.
  */
 function makeHttpError(response, errorData, url, method) {
-  const serverMessage = errorData?.error || errorData?.message || response.statusText;
+  const serverMessage = errorData?.error || errorData?.message || response.statusText || 'Unknown error';
   const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
   error.status = response.status;
   error.statusText = response.statusText;
@@ -86,6 +86,9 @@ export async function makeRequest(client, method, path, options = {}) {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(queryParams)) {
       if (value !== undefined && value !== null) {
+        // URLSearchParams stringifies booleans to lowercase 'true'/'false',
+        // which the server's malli coercion requires (the Python client does
+        // this conversion explicitly).
         params.append(key, value);
       }
     }

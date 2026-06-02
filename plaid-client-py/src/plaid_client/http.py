@@ -8,15 +8,30 @@ logger = logging.getLogger(__name__)
 
 
 class PlaidAPIError(Exception):
-    def __init__(self, message, status=0, url='', method='', response_data=None):
+    """Enriched API error raised for failed HTTP responses and network errors.
+
+    Attributes:
+        status: HTTP status code (0 for network errors).
+        status_text: HTTP status reason phrase.
+        url: The request URL.
+        method: The HTTP method used.
+        response_data: Parsed error body returned by the server, if any.
+        original_error: The underlying exception for network errors, if any.
+    """
+
+    def __init__(self, message, status=0, url='', method='', response_data=None,
+                 status_text='', original_error=None):
         super().__init__(message)
         self.status = status
+        self.status_text = status_text
         self.url = url
         self.method = method
         self.response_data = response_data
+        self.original_error = original_error
 
 
 def extract_document_versions(client, response_headers, response_body=None):
+    """Extract and update document versions from response headers and body."""
     header = response_headers.get('X-Document-Versions')
     if header:
         try:
@@ -36,6 +51,23 @@ def extract_document_versions(client, response_headers, response_body=None):
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, skip_response_transform=False,
                  no_auth=False, binary_response=False):
+    """Generic request method handling all HTTP logic.
+
+    Args:
+        client: PlaidClient instance.
+        method: HTTP method.
+        path: Request path appended to the client base URL.
+        body: Object body, run through transform_request.
+        raw_body: Body value passed directly (no transform). Mutually
+            exclusive with body.
+        form_data: If True, body is multipart form data; skip Content-Type
+            header.
+        query_params: Dict of query param key/values to append.
+        no_batch: If True, raise when in batch mode.
+        skip_response_transform: Return raw parsed JSON (no transform_response).
+        no_auth: Skip Authorization header.
+        binary_response: Return raw bytes instead of JSON/text.
+    """
     url = f'{client.base_url}{path}'
 
     # Append query params
@@ -67,7 +99,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         doc_version = client.document_versions.get(doc_id)
         if doc_version:
             separator = '&' if '?' in url else '?'
-            url += f'{separator}document-version={quote(str(doc_version))}'
+            url += f'{separator}document-version={quote(str(doc_version), safe="")}'
 
     # Batch mode
     if client.is_batching:
@@ -103,19 +135,23 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     try:
         response = client.session.request(**kwargs)
     except Exception as e:
-        raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method)
+        raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method,
+                            original_error=e)
 
     if not response.ok:
         try:
             error_data = response.json()
         except Exception:
-            error_data = {'message': response.text}
+            try:
+                error_data = {'message': response.text}
+            except Exception:
+                error_data = {'message': 'Unable to read error response'}
         server_message = (error_data.get('error') or error_data.get('message')
                           or response.reason or 'Unknown error')
         raise PlaidAPIError(
             f'HTTP {response.status_code} {server_message} at {url}',
             status=response.status_code, url=url, method=method,
-            response_data=error_data,
+            response_data=error_data, status_text=response.reason or '',
         )
 
     # Binary response

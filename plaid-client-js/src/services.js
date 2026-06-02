@@ -90,7 +90,7 @@ export function discoverServices(client, listenFn, sendFn, projectId, timeout = 
  * @returns {Object} ServiceRegistration with .stop(), .isRunning(), .serviceInfo
  */
 export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServiceRequest, extras = {}) {
-  const { serviceId, serviceName, description } = serviceInfo;
+  const { serviceId, serviceName, description = '' } = serviceInfo;
   let connection = null;
   let isRunning = true;
 
@@ -132,8 +132,9 @@ export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServic
             });
             try { sendFn(projectId, ackMessage); } catch (_) { /* continue */ }
 
-            // Create response helper
+            // Create response helper passed to the request handler for replying
             const responseHelper = {
+              // Send a progress update for the in-flight request
               progress: (percent, msg) => {
                 const progressMessage = createServiceMessage('service_response', {
                   requestId: message.requestId,
@@ -144,6 +145,7 @@ export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServic
                   console.warn('Failed to send progress update:', error);
                 }
               },
+              // Send the final successful result for the request
               complete: (data) => {
                 const completionMessage = createServiceMessage('service_response', {
                   requestId: message.requestId,
@@ -154,6 +156,7 @@ export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServic
                   console.warn('Failed to send completion message:', error);
                 }
               },
+              // Send an error response for the request
               error: (error) => {
                 const errorMessage = createServiceMessage('service_response', {
                   requestId: message.requestId,

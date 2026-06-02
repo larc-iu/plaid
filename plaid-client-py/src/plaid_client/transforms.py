@@ -4,7 +4,11 @@ import re
 def key_to_snake(key):
     """Convert kebab-case/namespaced key to snake_case.
     'layer-id' -> 'layer_id'
+    'layer-2' -> 'layer_2' (every hyphen becomes an underscore)
     'relation/layer' -> 'layer' (namespace stripped)
+
+    The JS client uses camelCase, where the analogous key is 'layer2' -- the
+    local spelling differs by convention, but neither leaves a stray separator.
     """
     key = re.sub(r'^[^/]+/', '', key)
     return key.replace('-', '_')

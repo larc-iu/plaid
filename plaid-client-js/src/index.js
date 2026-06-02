@@ -41,7 +41,7 @@ class PlaidClient {
        * Create a new vocab link between tokens and a vocab item.
        * @param {string} vocabItem - The vocab item to link
        * @param {Array} tokens - The tokens to link
-       * @param {any} [metadata] - Metadata for the link
+       * @param {any} [metadata] - Metadata for the link. Omit to leave unset; pass null to send JSON null.
        */
       create: (vocabItem, tokens, metadata) =>
         this._request('POST', '/api/v1/vocab-links', {
@@ -221,12 +221,14 @@ class PlaidClient {
           body: bodyOf({ 'span-id': spanId }),
         }),
       /**
-       * Create a new relation.
+       * Create a new relation. A relation is a directed edge between two spans
+       * with a value, useful for expressing phenomena such as syntactic or
+       * semantic relations.
        * @param {string} layerId - The relation layer ID
        * @param {string} sourceId - The source span ID
        * @param {string} targetId - The target span ID
        * @param {any} value - The value
-       * @param {any} [metadata] - Metadata map
+       * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
       create: (layerId, sourceId, targetId, value, metadata) =>
         this._request('POST', '/api/v1/relations', {
@@ -302,7 +304,7 @@ class PlaidClient {
           body: bodyOf({ 'token-layer-id': tokenLayerId, name }),
         }),
       /**
-       * Shift a span layer's order.
+       * Shift a span layer's display order.
        * @param {string} spanLayerId - The span layer ID
        * @param {string} direction - The direction ("up" or "down")
        */
@@ -323,11 +325,12 @@ class PlaidClient {
           body: bodyOf({ tokens }),
         }),
       /**
-       * Create a new span.
+       * Create a new span. A span holds a primary atomic value and optional
+       * metadata, and must at all times be associated with one or more tokens.
        * @param {string} spanLayerId - The span layer ID
        * @param {Array} tokens - The tokens
        * @param {any} value - The value
-       * @param {any} [metadata] - Metadata map
+       * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
       create: (spanLayerId, tokens, value, metadata) =>
         this._request('POST', '/api/v1/spans', {
@@ -390,7 +393,8 @@ class PlaidClient {
 
     this.batch = {
       /**
-       * Execute multiple API operations atomically.
+       * Execute multiple API operations atomically. If any operation fails, all
+       * changes are rolled back.
        * @param {Array} body - The request body
        */
       submit: (body) =>
@@ -418,11 +422,12 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * Create a new text in a document's text layer.
+       * Create a new text in a document's text layer. A text is a container for
+       * one long string in `body` for a given layer.
        * @param {string} textLayerId - The text layer ID
        * @param {string} documentId - The document ID
        * @param {string} body - The request body
-       * @param {any} [metadata] - Metadata map
+       * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
       create: (textLayerId, documentId, body, metadata) =>
         this._request('POST', '/api/v1/texts', {
@@ -444,7 +449,9 @@ class PlaidClient {
       delete: (textId) =>
         this._request('DELETE', `/api/v1/texts/${textId}`),
       /**
-       * Update a text's body.
+       * Update a text's body. A diff is computed and token indices are updated
+       * so that tokens remain intact. Alternatively, `body` can be a list of
+       * edit directives.
        * @param {string} textId - The text ID
        * @param {any} body - The request body
        */
@@ -500,7 +507,9 @@ class PlaidClient {
       delete: (id) =>
         this._request('DELETE', `/api/v1/users/${id}`),
       /**
-       * Modify a user.
+       * Modify a user. Admins may change the username, password, and admin
+       * status of any user. All other users may only modify their own username
+       * or password.
        * @param {string} id - The resource ID
        * @param {string} [password] - New password
        * @param {string} [username] - New username
@@ -543,7 +552,7 @@ class PlaidClient {
 
     this.tokenLayers = {
       /**
-       * Shift a token layer's order.
+       * Shift a token layer's display order.
        * @param {string} tokenLayerId - The token layer ID
        * @param {string} direction - The direction ("up" or "down")
        */
@@ -611,7 +620,7 @@ class PlaidClient {
 
     this.documents = {
       /**
-       * Get information about a document lock
+       * Check the lock status of a document.
        * @param {string} documentId - The document ID
        * @param {string} [asOf] - Temporal query timestamp
        */
@@ -719,7 +728,7 @@ class PlaidClient {
        * Create a new document in a project.
        * @param {string} projectId - The project ID
        * @param {string} name - The name
-       * @param {any} [metadata] - Metadata map
+       * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
       create: (projectId, name, metadata) =>
         this._request('POST', '/api/v1/documents', {
@@ -906,7 +915,7 @@ class PlaidClient {
           body: bodyOf({ name }),
         }),
       /**
-       * Shift a text layer's order within the project.
+       * Shift a text layer's display order within the project.
        * @param {string} textLayerId - The text layer ID
        * @param {string} direction - The direction ("up" or "down")
        */
@@ -927,7 +936,9 @@ class PlaidClient {
 
     this.login = {
       /**
-       * Authenticate with a userId and password and get a JWT token.
+       * Authenticate with a userId and password and get a JWT token. Unlike the
+       * static PlaidClient.login (which returns a ready-to-use client), this
+       * returns the raw login response containing the token.
        * @param {string} userId - The user ID
        * @param {string} password - The password
        */
@@ -960,7 +971,7 @@ class PlaidClient {
        * Create a new vocab item
        * @param {string} vocabLayerId - The vocab layer ID
        * @param {string} form - The vocab item form
-       * @param {any} [metadata] - Metadata map
+       * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
       create: (vocabLayerId, form, metadata) =>
         this._request('POST', '/api/v1/vocab-items', {
@@ -994,7 +1005,7 @@ class PlaidClient {
 
     this.relationLayers = {
       /**
-       * Shift a relation layer's order.
+       * Shift a relation layer's display order.
        * @param {string} relationLayerId - The relation layer ID
        * @param {string} direction - The direction ("up" or "down")
        */
@@ -1060,13 +1071,16 @@ class PlaidClient {
 
     this.tokens = {
       /**
-       * Create a new token in a token layer.
+       * Create a new token in a token layer. Tokens define text substrings
+       * using begin and end offsets. Tokens may be zero-width and may overlap.
+       * For tokens sharing the same begin, precedence controls the linear
+       * ordering.
        * @param {string} tokenLayerId - The token layer ID
        * @param {string} text - The text ID
        * @param {number} begin - Start offset (inclusive)
        * @param {number} end - End offset (exclusive)
        * @param {number} [precedence] - Ordering precedence
-       * @param {any} [metadata] - Metadata map
+       * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
       create: (tokenLayerId, text, begin, end, precedence, metadata) =>
         this._request('POST', '/api/v1/tokens', {
@@ -1082,7 +1096,8 @@ class PlaidClient {
           queryParams: { 'as-of': asOf },
         }),
       /**
-       * Delete a token and remove it from any spans.
+       * Delete a token and remove it from any spans. If this causes a span to
+       * have no remaining tokens, the span will also be deleted.
        * @param {string} tokenId - The token ID
        */
       delete: (tokenId) =>
@@ -1249,7 +1264,8 @@ class PlaidClient {
   }
 
   /**
-   * Enter strict mode for a specific document.
+   * Enter strict mode for a specific document, requiring document version
+   * headers so that conflicting concurrent writes are rejected.
    * @param {string} documentId - The ID of the document to track versions for
    */
   enterStrictMode(documentId) {
@@ -1268,7 +1284,8 @@ class PlaidClient {
   }
 
   /**
-   * Submit all queued batch operations as a single batch request.
+   * Submit all queued batch operations as a single batch request, executed
+   * atomically. If any operation fails, all changes are rolled back.
    * @returns {Promise<Array>} Array of results corresponding to each operation
    */
   async submitBatch() {
@@ -1375,6 +1392,7 @@ class PlaidClient {
    * @returns {Promise<PlaidClient>} - Authenticated client instance
    */
   static async login(baseUrl, userId, password) {
+    baseUrl = baseUrl.replace(/\/$/, '');
     try {
       const response = await fetch(`${baseUrl}/api/v1/login`, {
         method: 'POST',

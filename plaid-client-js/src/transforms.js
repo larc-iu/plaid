@@ -2,9 +2,13 @@
  * Convert kebab-case/namespaced key to camelCase.
  * 'layer-id' -> 'layerId'
  * 'relation/layer' -> 'layer' (namespace stripped)
+ * Hyphens before a digit are also consumed ('layer-2' -> 'layer2') so no stray
+ * hyphen is ever left in the key. (The Python client uses snake_case, where the
+ * analogous key is 'layer_2' — the local spelling differs by convention, but
+ * neither leaves a separator that doesn't belong to the convention.)
  */
 export function transformKeyToCamel(key) {
-  return key.replace(/^[^/]+\//, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  return key.replace(/^[^/]+\//, '').replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 }
 
 /**

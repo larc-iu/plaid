@@ -11,6 +11,20 @@ logger = logging.getLogger(__name__)
 
 
 class SSEConnection:
+    """SSE connection to the listen endpoint using streaming requests.
+
+    Automatically handles heartbeat confirmations and event parsing. The
+    connection runs on a background daemon thread, started in the constructor.
+
+    Constructor args:
+        client: PlaidClient instance.
+        project_id: Project UUID.
+        on_event: Callback (event_type, data). Return True to stop.
+
+    The ``ready_state`` property mirrors the JS readyState values:
+    0 (CONNECTING), 1 (OPEN), 2 (CLOSED).
+    """
+
     def __init__(self, client, project_id, on_event):
         self._start_time = time.time()
         self._is_connected = False
@@ -30,9 +44,11 @@ class SSEConnection:
 
     @property
     def ready_state(self):
+        """Current connection state: 0 CONNECTING, 1 OPEN, 2 CLOSED."""
         return self._ready_state
 
     def close(self):
+        """Close the connection and abort the underlying stream."""
         if not self._is_closed:
             self._is_closed = True
             self._is_connected = False
@@ -42,6 +58,13 @@ class SSEConnection:
                 self._response.close()
 
     def get_stats(self):
+        """Return connection statistics.
+
+        Returns:
+            A dict with ``duration_seconds``, ``is_connected``, ``is_closed``,
+            ``client_id``, ``events`` (per-type event counts), and
+            ``ready_state``.
+        """
         return {
             'duration_seconds': time.time() - self._start_time,
             'is_connected': self._is_connected,

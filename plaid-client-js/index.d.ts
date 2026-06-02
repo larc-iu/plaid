@@ -116,7 +116,7 @@ interface ApiTokensBundle {
 
 interface TokenLayersBundle {
   shift(tokenLayerId: string, direction: string): Promise<any>;
-  create(textLayerId: string, name: string): Promise<any>;
+  create(textLayerId: string, name: string, overlapMode?: string, parentTokenLayerId?: string): Promise<any>;
   setConfig(tokenLayerId: string, namespace: string, configKey: string, configValue: any): Promise<any>;
   deleteConfig(tokenLayerId: string, namespace: string, configKey: string): Promise<any>;
   get(tokenLayerId: string, asOf?: string): Promise<any>;
@@ -141,7 +141,7 @@ interface DocumentsBundle {
 }
 
 interface MessagesBundle {
-  sendMessage(projectId: string, body: any): Promise<any>;
+  sendMessage(projectId: string, data: any): Promise<any>;
   listen(projectId: string, onEvent: (eventType: string, data: any) => void | boolean): SSEConnection;
   discoverServices(projectId: string, timeout?: number): Promise<DiscoveredService[]>;
   serve(projectId: string, serviceInfo: ServiceInfo, onServiceRequest: (data: any, responseHelper: ResponseHelper) => void, extras?: any): ServiceRegistration;
@@ -201,12 +201,15 @@ interface RelationLayersBundle {
 }
 
 interface TokensBundle {
-  create(tokenLayerId: string, text: string, begin: number, end: number, precedence?: number, metadata?: any): Promise<any>;
+  create(tokenLayerId: string, text: string, begin: number, end: number, precedence?: number | null, metadata?: any): Promise<any>;
   get(tokenId: string, asOf?: string): Promise<any>;
   delete(tokenId: string): Promise<any>;
-  update(tokenId: string, begin?: number, end?: number, precedence?: number): Promise<any>;
+  update(tokenId: string, begin?: number, end?: number, precedence?: number | null): Promise<any>;
   bulkCreate(body: any[]): Promise<any>;
   bulkDelete(body: any[]): Promise<any>;
+  split(tokenId: string, position: number): Promise<any>;
+  merge(tokenId: string, otherTokenId: string): Promise<any>;
+  shift(tokenId: string, begin?: number, end?: number): Promise<any>;
   setMetadata(tokenId: string, body: any): Promise<any>;
   deleteMetadata(tokenId: string): Promise<any>;
 }
