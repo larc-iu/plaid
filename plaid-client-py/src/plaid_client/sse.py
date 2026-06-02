@@ -1,5 +1,6 @@
 import json
 import logging
+import socket
 import threading
 import time
 
@@ -47,6 +48,32 @@ class SSEConnection:
         """Current connection state: 0 CONNECTING, 1 OPEN, 2 CLOSED."""
         return self._ready_state
 
+    def _abort_socket(self):
+        """Shut down the underlying TCP socket so a read blocked in the reader
+        thread's ``iter_lines()`` unblocks immediately.
+
+        ``requests.Response.close()`` does NOT reliably wake a ``recv()`` that
+        is blocked in another thread, so calling it while the reader sits idle
+        between SSE events can hang until the next byte arrives.
+        ``socket.shutdown()`` interrupts the blocked read at once. The socket's
+        location inside urllib3 varies by version, so probe the known shapes
+        and fall back silently."""
+        resp = self._response
+        raw = getattr(resp, 'raw', None)
+        if raw is None:
+            return
+        try:
+            conn = getattr(raw, '_connection', None)
+            sock = getattr(conn, 'sock', None) if conn is not None else None
+            if sock is None:
+                inner = getattr(getattr(raw, '_fp', None), 'fp', None)
+                sr = getattr(inner, 'raw', None)
+                sock = getattr(sr, '_sock', None) if sr is not None else None
+            if sock is not None:
+                sock.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+
     def close(self):
         """Close the connection and abort the underlying stream."""
         if not self._is_closed:
@@ -54,8 +81,15 @@ class SSEConnection:
             self._is_connected = False
             self._ready_state = 2  # CLOSED
             self._stop_event.set()
+            # Unblock the reader's iter_lines() first, then release the
+            # response — otherwise close() can hang waiting on the in-flight
+            # blocking read.
+            self._abort_socket()
             if self._response:
-                self._response.close()
+                try:
+                    self._response.close()
+                except Exception:
+                    pass
 
     def get_stats(self):
         """Return connection statistics.
