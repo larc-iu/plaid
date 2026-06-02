@@ -156,10 +156,15 @@
    [:< (token-key t1) (token-key t2)]])
 
 (defn- within-pred
-  "Offset containment: `child`'s extent sits inside `parent`'s, same text.
-  This is the token-hierarchy relation (derived purely from offsets)."
+  "Offset containment: `child`'s extent sits inside `parent`'s, same text, and
+  they are distinct tokens. This is the token-hierarchy relation (derived purely
+  from offsets). Containment is non-strict on the offsets so an equal-extent
+  child (e.g. a full-width morpheme) still counts as within its parent; the
+  `id <> id` guard keeps a token from being `within` (or `first-in`) itself when
+  child and parent resolve to the same layer."
   [child parent]
   [:and
+   [:<> (col child :id) (col parent :id)]
    [:= (col child :text_id) (col parent :text_id)]
    [:<= (col parent :begin) (col child :begin)]
    [:<= (col child :end_) (col parent :end_)]])

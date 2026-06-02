@@ -348,25 +348,28 @@
 (defn- fresh! [counter prefix] (symbol (str "?__" prefix (swap! counter inc))))
 
 (defn- atom->clauses
-  "Base clauses binding one atom-occurrence to a token in `seq-layer`.
-  Returns [clauses token-var]."
-  [atom seq-layer counter]
+  "Base clauses binding one atom-occurrence to a token in `seq-layer` (and, when
+  the seq config carries `:doc`, pinned to that document). Returns [clauses
+  token-var]."
+  [atom seq-layer seq-doc counter]
   (let [[head cmap & more] atom
-        named (when (= :as (first more)) (second more))]
+        named (when (= :as (first more)) (second more))
+        tok-cmap (fn [base] (cond-> base seq-doc (assoc :doc seq-doc)))]
     (case head
       :token (let [tv (or named (fresh! counter "seqt"))]
-               [[[:token tv (assoc cmap :layer seq-layer)]] tv])
+               [[[:token tv (tok-cmap (assoc cmap :layer seq-layer))]] tv])
       :span  (let [tv (fresh! counter "seqt")
                    sv (or named (fresh! counter "seqs"))]
-               [[[:span sv cmap] [:covers sv tv] [:token tv {:layer seq-layer}]] tv]))))
+               [[[:span sv cmap] [:covers sv tv] [:token tv (tok-cmap {:layer seq-layer})]] tv]))))
 
 (defn- seq-fragment
   "Desugar one seq clause under a chosen per-element count combo into base
   clauses: per-occurrence token binds (+ covering span) chained by :precedes."
   [config elements counts counter]
   (let [seq-layer (:layer config)
+        seq-doc (:doc config)
         atoms (mapcat (fn [elem cnt] (repeat cnt (seq-element-atom elem))) elements counts)
-        pairs (mapv #(atom->clauses % seq-layer counter) atoms)
+        pairs (mapv #(atom->clauses % seq-layer seq-doc counter) atoms)
         clauses (vec (mapcat first pairs))
         tvars (mapv second pairs)]
     (into clauses (map (fn [a b] [:precedes a b]) tvars (rest tvars)))))
@@ -384,6 +387,10 @@
                             (let [[_ config & elements] sc]
                               (when-not (:layer config)
                                 (err! :validate ":seq requires a :layer in its config map"))
+                              (let [bad (remove #{:layer :doc} (keys config))]
+                                (when (seq bad)
+                                  (err! :validate (str ":seq config has unknown key(s) " (vec bad)
+                                                       " (allowed: :layer, :doc)"))))
                               (when (empty? elements)
                                 (err! :validate ":seq needs at least one element"))
                               (doseq [e elements]

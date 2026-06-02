@@ -159,7 +159,19 @@
     (is (= 400 (code-of #(branches {"find" ["?s"]
                                     "where" [["seq" {"layer" "w"}
                                               ["relation" {"layer" "dep"} "as" "?s"]]]})))
-        "non span/token seq element rejected")))
+        "non span/token seq element rejected")
+    (is (= 400 (code-of #(branches {"find" ["?s"]
+                                    "where" [["seq" {"layer" "w" "bogus" 1}
+                                              ["span" {"layer" "pos"} "as" "?s"]]]})))
+        "unknown :seq config key rejected")))
+
+(deftest seq-config-doc-threads-into-token-binds
+  (testing ":seq config :doc pins every desugared token bind to that document"
+    (let [w (:where (first (branches {"find" ["?s"]
+                                      "where" [["seq" {"layer" "w" "doc" "d1"}
+                                                ["span" {"layer" "pos"} "as" "?s"]]]})))]
+      (is (some (fn [c] (and (= :token (first c)) (= "d1" (:doc (nth c 2))))) w)
+          "the desugared :token clause carries :doc \"d1\""))))
 
 (deftest return-shapes
   (testing ":return defaults to :ids and accepts :entities / :count"

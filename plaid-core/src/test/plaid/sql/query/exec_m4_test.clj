@@ -2,6 +2,8 @@
   "M4: result shapes (:return :entities / :count) and result-size guardrails
   (default limit, hard cap, :truncated flag)."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [clojure.string :as str]
+            [honey.sql :as hsql]
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
@@ -53,10 +55,20 @@
 (deftest count-is-exact-and-ignores-limit
   (build-corpus! "CountProj" 3)
   (testing ":count returns the true number of matches, unaffected by :limit"
-    (is (= {:return :count :count 3}
+    (is (= {:return :count :count 3 :truncated false}
            (qe/run db "admin@example.com" (assoc noun-q "return" "count"))))
     (is (= 3 (:count (qe/run db "admin@example.com"
                              (assoc noun-q "return" "count" "limit" 1)))))))
+
+(deftest count-query-is-bounded
+  (testing "the count query caps its inner subquery so a runaway cross-product can't materialize"
+    (let [cap @#'qe/count-cap
+          formatted (hsql/format (#'qe/count-query [{:select-distinct [[:t.id :x]] :from [[:tokens :t]]}]))
+          sql (first formatted)
+          params (rest formatted)]
+      (is (str/includes? (str/lower-case sql) "limit"))
+      (is (some #(= (inc cap) %) params)
+          (str "inner subquery limited to count-cap+1; got " formatted)))))
 
 ;; ---------------------------------------------------------------------------
 ;; :return :entities

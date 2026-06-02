@@ -74,6 +74,24 @@
         (is (= 2 (:count r)))
         (is (= #{(str m0) (str m1)} (set (map first (tuples r)))))))))
 
+(deftest within-excludes-self-and-reverse
+  (testing ":within over a single layer never matches a token with itself"
+    (let [pid  (h/create-test-project admin-request "WithinSelf")
+          txtl (id (h/create-text-layer admin-request pid "text"))
+          tokl (id (h/create-token-layer admin-request txtl "toks" "any"))
+          doc  (h/create-test-document admin-request pid "d1")
+          text (id (h/create-text admin-request txtl doc "abcd"))
+          outer (id (h/create-token admin-request tokl text 0 4))
+          inner (id (h/create-token admin-request tokl text 1 3))
+          r (qe/run db "admin@example.com"
+                    {"find" ["?c" "?p"]
+                     "where" [["token" "?c" {"layer" "toks"}]
+                              ["token" "?p" {"layer" "toks"}]
+                              ["within" "?c" "?p"]]})]
+      ;; only inner-within-outer; NOT (outer,outer)/(inner,inner) self, NOT (outer,inner)
+      (is (= 1 (:count r)))
+      (is (= [[(str inner) (str outer)]] (tuples r))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Vocab: :vocab + :vocab-link
 ;; ---------------------------------------------------------------------------

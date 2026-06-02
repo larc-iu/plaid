@@ -39,6 +39,14 @@
   above this is clamped down."
   1000)
 
+(def ^:private count-cap
+  "Upper bound on the work a :count query will do. The count is computed over an
+  inner subquery capped at this many rows, so a pathological cross-product count
+  (e.g. a bare :precedes* over a huge layer) stops early instead of materializing
+  millions of pairs. A count at the cap is reported as `count-cap` with
+  `:truncated true`; below it the count is exact."
+  100000)
+
 (def ^:private kind->get
   "Per-kind single-entity reader — the SAME fns the REST GET endpoints use, so
   hydrated entities are byte-for-byte the public wire shape."
@@ -60,11 +68,15 @@
     {:select [:*] :from [[{:union hqs} :_q]] :limit limit}))
 
 (defn- count-query
-  "COUNT(*) over the (distinct) union of branches — the exact number of distinct
-  matches, no row limit."
+  "COUNT(*) over the (distinct) union of branches, capped: the inner subquery is
+  limited to `count-cap + 1` rows so the count short-circuits instead of walking
+  an unbounded cross-product. Exact below the cap; `> count-cap` signals it was
+  hit."
   [hqs]
-  {:select [[:%count.* :n]]
-   :from [[(if (= 1 (count hqs)) (first hqs) {:union hqs}) :_c]]})
+  (let [base (if (= 1 (count hqs)) (first hqs) {:union hqs})
+        capped {:select [:*] :from [[base :_u]] :limit (inc count-cap)}]
+    {:select [[:%count.* :n]]
+     :from [[capped :_c]]}))
 
 (defn- hydrate
   "Replace each id cell in `id-results` with its full REST-shape entity map.
@@ -100,8 +112,10 @@
         ;; :limit, then apply the effective limit once at assembly.
         hqs (mapv (fn [b] (qc/compile-query (qr/resolve-query db user-id (dissoc b :limit)))) branches)]
     (if (= return-type :count)
-      {:return :count
-       :count (:n (psc/q1 db (count-query hqs)))}
+      (let [n (:n (psc/q1 db (count-query hqs)))]
+        {:return :count
+         :count (min n count-cap)
+         :truncated (> n count-cap)})
       (let [lim (effective-limit (:limit head))
             ;; fetch one extra row to detect truncation, then trim
             rows (psc/q db (assemble hqs (inc lim)))
