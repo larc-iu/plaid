@@ -42,12 +42,18 @@ export const ProjectList = () => {
       return;
     }
 
+    // Optimistic remove so the UI doesn't gate on the server round-trip.
+    // Snapshot for rollback if the server rejects.
+    const previousProjects = projects;
+    setProjects(prev => prev.filter(p => p.id !== projectId));
+    setError('');
+
     try {
       const client = getClient();
       await client.projects.delete(projectId);
-      await fetchProjects(); // Refresh the list
     } catch (err) {
-      setError('Failed to delete project');
+      setProjects(previousProjects);
+      setError('Failed to delete project: ' + (err.message || 'Unknown error'));
       console.error('Error deleting project:', err);
     }
   };
