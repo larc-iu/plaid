@@ -1092,7 +1092,10 @@ class PlaidClient {
        * @param {string} tokenId - The token ID
        * @param {number} [begin] - New start offset
        * @param {number} [end] - New end offset
-       * @param {number} [precedence] - Ordering precedence
+       * @param {?number} [precedence] - Ordering precedence. Omit (undefined)
+       *   to leave unchanged; pass a number to set; pass null explicitly to
+       *   CLEAR it (revert to no explicit ordering). bodyOf keeps null but
+       *   drops undefined, so the three cases map correctly to the server.
        */
       update: (tokenId, begin, end, precedence) =>
         this._request('PATCH', `/api/v1/tokens/${tokenId}`, {

@@ -15,6 +15,12 @@ def _body_of(**kwargs):
     return {k: v for k, v in kwargs.items() if v is not None}
 
 
+# Sentinel for "argument not supplied", used where ``None`` is a meaningful
+# value the caller may want to send explicitly (e.g. clearing a nullable field
+# like token ``precedence``) and must be distinguished from an omitted arg.
+_UNSET = object()
+
+
 class _Resource:
     def __init__(self, client: PlaidClient):
         self._client = client
@@ -704,10 +710,20 @@ class TokensResource(_Resource):
         return self._request('DELETE', f'/api/v1/tokens/{token_id}')
 
     def update(self, token_id: str, *, begin: int | None = None, end: int | None = None,
-               precedence: int | None = None) -> Any:
-        """Update a token's ``begin``, ``end``, or ``precedence``."""
-        return self._request('PATCH', f'/api/v1/tokens/{token_id}',
-                             body=_body_of(begin=begin, end=end, precedence=precedence))
+               precedence: Any = _UNSET) -> Any:
+        """Update a token's ``begin``, ``end``, or ``precedence``.
+
+        ``precedence`` distinguishes three cases: omit it to leave the value
+        unchanged; pass an int to set it; pass ``None`` explicitly to CLEAR it
+        (revert to no explicit ordering). ``begin``/``end`` are left unchanged
+        when omitted.
+        """
+        body = _body_of(begin=begin, end=end)
+        if precedence is not _UNSET:
+            # may be None -> sent as JSON null, which the server reads as an
+            # explicit clear (it checks key-presence, not non-nil-ness).
+            body['precedence'] = precedence
+        return self._request('PATCH', f'/api/v1/tokens/{token_id}', body=body)
 
     def create(self, token_layer_id: str, text: str, begin: int, end: int, *,
                precedence: int | None = None, metadata: Any = None) -> Any:
