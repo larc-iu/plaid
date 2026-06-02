@@ -109,8 +109,10 @@ for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
 Plaid offers a simple system for real-time communication on a per-project basis.
 This is intended to support two purposes:
 
-* Ad hoc client-to-client features which you will implement on top of this communication channel, such as chat between individual annotators or interaction with non-human clients such as AI models.
+* Ad hoc client-to-client features which you will implement on top of this communication channel, such as chat between individual annotators.
 * Audit log listening, allowing clients to receive immediate notice whenever a change has been made to any document in the project. (Note that these are sent automatically by Plaid.)
+
+NOTE: Messaging is a general-purpose medium. For the common case of plugging in an external tool--an NLP model, a tokenizer, an importer--that performs work on request, use <<Services>> below, which is purpose-built for that and addresses requests to a specific service rather than broadcasting them.
 
 This functionality is exposed in two simple functions in the client.
 The `send_message`/`sendMessage` function allows a client to broadcast a message to all clients in the project:
@@ -166,6 +168,112 @@ The listener's code above would print this:
 ----
 User user1@example.com performed operation `document:update` on document 35424d64-a077-4a29-8006-5a0c3b76aedb at 2025-07-09T20:27:59.616Z: 'Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to "New Document Name"'
 ----
+
+== Services
+
+A **service** is an external program that registers itself on a project and performs work on request.
+The motivating case is NLP: you might have a Python program that runs a parser, a tokenizer, or a large language model, and you want annotators to be able to invoke it from the editor with the click of a button.
+Because a service is just another client speaking to Plaid's REST API, it can be written in any language and run anywhere that can reach the server--it authenticates with an ordinary token (typically a named API token; see <<Clients>>) and needs **writer** access to the project.
+
+There are two sides to the system: a program that **serves** (offers to do work) and a client that **requests** work. The server sits in the middle: it tracks which services are currently connected, routes each request to the one service it names, and relays that service's replies back to the requester. Nothing is broadcast--a request reaches only its target service, and a reply reaches only the client that made the request.
+
+=== Offering a service
+
+A service calls `serve` with a handler that Plaid invokes once per incoming request.
+The handler receives the request's data and a **response helper** with three methods: `progress(percent, message)` to report intermediate progress, `complete(result)` to return a final result, and `error(message)` to signal failure.
+
+[,python]
+----
+def handle_request(data, response):
+    response.progress(10, "Starting…")
+    result = run_my_model(data["document_id"])   # whatever work the service does
+    response.complete({"status": "ok", "spans_created": result})
+
+# `service_id` is the stable identifier clients use to address this service;
+# `service_name` and `description` are human-readable. `serve` returns
+# immediately with a registration handle; the work happens on incoming requests.
+registration = client.messages.serve(
+    project_id,
+    {"service_id": "my-parser", "service_name": "My Parser",
+     "description": "Parses a document with my model"},
+    handle_request,
+)
+
+# The service stays available as long as the program is running and the
+# registration is live. Typically you now block until interrupted:
+try:
+    while registration.is_running():
+        time.sleep(1)
+except KeyboardInterrupt:
+    registration.stop()   # deregister cleanly
+----
+
+The same in JavaScript:
+
+[,javascript]
+----
+const registration = client.messages.serve(
+  projectId,
+  { serviceId: "my-parser", serviceName: "My Parser",
+    description: "Parses a document with my model" },
+  (data, response) => {
+    response.progress(10, "Starting…");
+    const result = runMyModel(data.documentId);
+    response.complete({ status: "ok", spansCreated: result });
+  },
+);
+// later: registration.stop();
+----
+
+=== Discovering and requesting
+
+A client first asks which services are currently available, then sends a request to one by its `service_id`.
+`discover_services`/`discoverServices` returns the services connected right now:
+
+[,python]
+----
+services = client.messages.discover_services(project_id)
+# [{"service_id": "my-parser", "service_name": "My Parser",
+#   "description": "Parses a document with my model", "extras": {}}]
+----
+
+`request_service`/`requestService` sends work to a named service and waits for its result.
+The data you pass is delivered verbatim to the service's handler, and the value the service passes to `complete` is what you get back.
+An optional progress callback fires for each `progress` update the service reports:
+
+[,python]
+----
+result = client.messages.request_service(
+    project_id,
+    "my-parser",
+    {"document_id": document_id},
+    timeout=60.0,
+    on_progress=lambda p: print(f'{p["percent"]}%: {p["message"]}'),
+)
+print("Service returned:", result)
+----
+
+[,javascript]
+----
+const result = await client.messages.requestService(
+  projectId,
+  "my-parser",
+  { documentId },
+  60000,                                  // timeout in ms (Python uses seconds)
+  (p) => console.log(`${p.percent}%: ${p.message}`),
+);
+console.log("Service returned:", result);
+----
+
+If the service reports an error, or the timeout elapses, the request fails with that error rather than returning a result.
+
+=== Ephemerality
+
+Services are tracked **only while connected**. There is no queue and no persistence: a service that isn't running at the moment of a request won't appear in discovery, and a request to a service that is absent (or that disconnects mid-request) fails immediately rather than waiting for the service to come back.
+This keeps the model simple and is a good fit for the typical setup, where a service is a long-running helper process that is either up or down.
+If you need a request to survive a service being briefly unavailable, you would build that durability yourself on top of Plaid (for instance, by recording pending work in your own layer and retrying).
+
+NOTE: Like real-time messaging, service activity is **not** recorded in the audit log--only the document changes a service makes through ordinary writes are. The writes a service performs are attributed to whatever token it authenticates with, so giving a service its own named API token makes its edits clearly identifiable in the audit history.
 
 = Layer Types
 
