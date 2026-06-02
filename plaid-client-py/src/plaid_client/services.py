@@ -35,61 +35,64 @@ def is_service_message(data):
 def discover_services(client, listen_fn, send_fn, project_id, timeout=3.0):
     """Discover available services in a project.
 
-    ``timeout`` is in seconds (the JS client uses milliseconds). Collects
-    service registrations for the full timeout window, then returns them.
+    Reads the server-side service registry synchronously (a single GET) — no
+    broadcast handshake, no waiting. ``timeout`` is unused and kept only for
+    signature back-compat.
     """
-    request_id = generate_request_id()
-    discovered = []
-    connection = None
-
-    def on_event(event_type, event_data):
-        if event_type == 'message' and isinstance(event_data.get('data'), dict):
-            message = event_data['data']
-            if is_service_message(message):
-                if message.get('type') == 'service_registration' and message.get('request_id') == request_id:
-                    discovered.append({
-                        'service_id': message.get('service_id'),
-                        'service_name': message.get('service_name'),
-                        'description': message.get('description'),
-                        'timestamp': message.get('timestamp'),
-                        'extras': message.get('extras', {}),
-                    })
-
-    try:
-        connection = listen_fn(project_id, on_event)
-    except Exception as e:
-        raise RuntimeError(f'Cannot establish SSE connection: {e}')
-
-    try:
-        discovery_message = create_service_message('service_discovery', request_id=request_id)
-        send_fn(project_id, discovery_message)
-    except Exception as e:
-        if connection:
-            connection.close()
-        raise RuntimeError(f'Failed to send discovery message: {e}')
-
-    time.sleep(timeout)
-    if connection:
-        connection.close()
-    return discovered
+    return client.messages.list_services(project_id)
 
 
 class ServiceRegistration:
     """Handle for a running service registration created by ``serve``.
+
+    Holds the long-lived SSE connection used for request/response RPC plus a
+    background heartbeat thread that keeps the service present in the
+    server-side registry (independent of the SSE channel-liveness heartbeat).
 
     Attributes:
         service_info: The registered service metadata
             (service_id, service_name, description, extras).
     """
 
-    def __init__(self, service_info, connection):
+    def __init__(self, service_info, connection, client=None, project_id=None,
+                 service_id=None):
         self.service_info = service_info
         self._connection = connection
+        self._client = client
+        self._project_id = project_id
+        self._service_id = service_id
         self._running = True
+        self._stop_event = threading.Event()
+        self._heartbeat_thread = None
+
+    def _start_heartbeat(self, interval_s):
+        """Spawn a daemon thread that re-registers every ``interval_s`` seconds
+        to keep the registry entry live."""
+        def loop():
+            # `wait` returns True when stopped, False on timeout — so the loop
+            # exits promptly on stop() instead of sleeping out the interval.
+            while not self._stop_event.wait(timeout=interval_s):
+                try:
+                    self._client.messages.register_service(
+                        self._project_id, self.service_info)
+                except Exception:
+                    logger.warning('Failed to send service heartbeat')
+
+        self._heartbeat_thread = threading.Thread(target=loop, daemon=True)
+        self._heartbeat_thread.start()
 
     def stop(self):
-        """Stop serving and close the underlying SSE connection."""
+        """Stop serving: halt heartbeats, unregister, and close the SSE
+        connection. Presence would also lapse on its own once the TTL elapses
+        without a heartbeat."""
         self._running = False
+        self._stop_event.set()
+        if self._client and self._project_id and self._service_id:
+            try:
+                self._client.messages.unregister_service(
+                    self._project_id, self._service_id)
+            except Exception:
+                logger.warning('Failed to unregister service')
         if self._connection:
             self._connection.close()
 
@@ -124,7 +127,8 @@ def serve(client, listen_fn, send_fn, project_id, service_info, on_service_reque
 
     full_info = {'service_id': service_id, 'service_name': service_name,
                  'description': description, 'extras': extras}
-    registration = ServiceRegistration(full_info, None)
+    registration = ServiceRegistration(full_info, None, client=client,
+                                       project_id=project_id, service_id=service_id)
 
     def on_event(event_type, event_data):
         if not registration._running:
@@ -136,21 +140,9 @@ def serve(client, listen_fn, send_fn, project_id, service_info, on_service_reque
         if not is_service_message(message):
             return
 
-        if message.get('type') == 'service_discovery':
-            reg_msg = create_service_message(
-                'service_registration',
-                request_id=message.get('request_id'),
-                service_id=service_id,
-                service_name=service_name,
-                description=description,
-                extras=extras,
-            )
-            try:
-                send_fn(project_id, reg_msg)
-            except Exception:
-                logger.warning('Failed to send discovery response')
-
-        elif message.get('type') == 'service_request' and message.get('service_id') == service_id:
+        # Discovery is served by the server-side registry (serve() registers +
+        # heartbeats below); this handler only fields actual work requests.
+        if message.get('type') == 'service_request' and message.get('service_id') == service_id:
             req_id = message.get('request_id')
             try:
                 # Send acknowledgment
@@ -210,6 +202,18 @@ def serve(client, listen_fn, send_fn, project_id, service_info, on_service_reque
         raise RuntimeError(f'Failed to start service: {e}')
 
     registration._connection = connection
+
+    # Announce presence in the server-side registry, then heartbeat on the
+    # server-advised interval so the service stays discoverable via
+    # list_services(). Falls back to 30s if the server doesn't advise one.
+    try:
+        res = client.messages.register_service(project_id, full_info)
+        interval_ms = (res or {}).get('heartbeat_interval_ms') or 30000
+    except Exception:
+        logger.warning('Failed to register service')
+        interval_ms = 30000
+    registration._start_heartbeat(interval_ms / 1000.0)
+
     return registration
 
 

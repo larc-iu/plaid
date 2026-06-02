@@ -21,7 +21,7 @@ export const useNlpService = (projectId, documentId) => {
     setIsDiscovering(true);
     
     try {
-      const services = await client.messages.discoverServices(projectId, 3000);
+      const services = await client.messages.discoverServices(projectId);
       setAvailableServices(services);
     } catch (error) {
       console.error('Failed to discover services:', error);

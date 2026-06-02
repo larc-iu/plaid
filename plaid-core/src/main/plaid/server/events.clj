@@ -37,6 +37,13 @@
        {:interval-ms            30000
         :max-consecutive-misses 2}))
 
+(defn service-registry-config []
+  "Get service-registry configuration from global config. `:ttl-ms` is how long
+  a registered service stays 'live' after its last register/heartbeat before it
+  is reaped on read."
+  (get config :plaid.server.events/service-registry
+       {:ttl-ms 90000}))
+
 ;; =============================================================================
 ;; Client Subscription Management
 ;; =============================================================================
@@ -59,6 +66,17 @@
 (defstate heartbeat-registry
   :start (atom {})
   :stop (reset! heartbeat-registry {}))
+
+;; Service registry maps project-id -> {service-id -> service-entry}, where a
+;; service-entry is {:service-id :service-name :description :extras :user-id
+;; :last-seen <ms>}. This is purely in-memory presence state for NLP/other
+;; services that have registered on a project (see register-service! below);
+;; it is deliberately NOT persisted and NOT audit-logged — there is no record
+;; of which service was active when. Entries go stale and are reaped lazily on
+;; read once they exceed the configured TTL (see list-live-services).
+(defstate service-registry
+  :start (atom {})
+  :stop (reset! service-registry {}))
 
 (defn register-client!
   "Register a client channel to receive events for a specific project.
@@ -151,6 +169,70 @@
       (catch Exception e
         (log/warn e "Error during channel cleanup")))
     (swap! channel-mappings dissoc http-channel)))
+
+;; =============================================================================
+;; Service Registry
+;; =============================================================================
+;;
+;; A lightweight, in-memory presence registry for services (e.g. an NLP parser)
+;; that have announced themselves on a project. It replaces the old
+;; "broadcast service_discovery and wait" discovery handshake: services POST to
+;; register (and periodically re-POST to stay alive), clients GET the live list
+;; synchronously. Mirrors the client/heartbeat registries above — no DB, no
+;; audit log. Expiry is lazy: stale entries are dropped when the registry is
+;; read, matching the no-background-sweeper style of this namespace.
+
+(defn- service-live?
+  "True if `entry`'s :last-seen is within `ttl-ms` of `now-ms`."
+  [entry now-ms ttl-ms]
+  (some-> (:last-seen entry) (#(< (- now-ms %) ttl-ms))))
+
+(defn register-service!
+  "Register a service on a project, or refresh its presence if already
+  registered (idempotent — re-registration doubles as a heartbeat). `info` is a
+  map of {:service-id :service-name :description :extras}. Stamps :last-seen so
+  the entry is considered live for the configured TTL."
+  [project-id service-id info user-id]
+  (let [entry (assoc (select-keys info [:service-id :service-name :description :extras])
+                     :service-id service-id
+                     :user-id user-id
+                     :last-seen (System/currentTimeMillis))]
+    (swap! service-registry assoc-in [project-id service-id] entry)
+    (log/debug "Registered service" service-id "on project" project-id)
+    entry))
+
+(defn unregister-service!
+  "Remove a service from a project's registry (clean shutdown). Drops the
+  project key entirely once its last service is gone."
+  [project-id service-id]
+  (swap! service-registry
+         (fn [reg]
+           (let [reg' (update reg project-id dissoc service-id)]
+             (if (empty? (get reg' project-id))
+               (dissoc reg' project-id)
+               reg'))))
+  (log/debug "Unregistered service" service-id "on project" project-id)
+  true)
+
+(defn list-live-services
+  "Return the live (non-expired) service entries for a project, reaping any
+  stale entries from the registry as a side effect. Returns a vector of entries
+  (ordered by service-id for stable output)."
+  [project-id]
+  (let [now-ms (System/currentTimeMillis)
+        ttl-ms (:ttl-ms (service-registry-config))
+        services (get @service-registry project-id {})
+        live (into {} (filter (fn [[_ entry]] (service-live? entry now-ms ttl-ms)) services))]
+    ;; Reap on read: write back the live subset (or drop the project key).
+    (when (not= (count live) (count services))
+      (swap! service-registry
+             (fn [reg]
+               (if (empty? live)
+                 (dissoc reg project-id)
+                 (assoc reg project-id live)))))
+    (->> (vals live)
+         (sort-by :service-id)
+         vec)))
 
 ;; =============================================================================
 ;; Helper Functions
@@ -364,4 +446,5 @@
   (reset! event-bus-drop-count 0)
   (try (reset! client-registry {}) (catch Exception _))
   (try (reset! channel-mappings {}) (catch Exception _))
-  (try (reset! heartbeat-registry {}) (catch Exception _)))
+  (try (reset! heartbeat-registry {}) (catch Exception _))
+  (try (reset! service-registry {}) (catch Exception _)))

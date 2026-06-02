@@ -26,55 +26,19 @@ export function isServiceMessage(data) {
 /**
  * Discover available services in a project.
  *
+ * Reads the server-side service registry synchronously (a single GET) — no
+ * broadcast handshake, no waiting. Services keep themselves listed by
+ * registering + heartbeating via `serve()`.
+ *
  * @param {Object} client - PlaidClient instance
- * @param {function} listenFn - Bound _messagesListen function
- * @param {function} sendFn - Bound _messagesSendMessage function
+ * @param {function} listenFn - Unused; kept for signature back-compat
+ * @param {function} sendFn - Unused; kept for signature back-compat
  * @param {string} projectId - Project UUID
- * @param {number} timeout - Timeout in ms (default 3000)
- * @returns {Promise<Array>} Discovered services
+ * @param {number} timeout - Unused; kept for signature back-compat
+ * @returns {Promise<Array>} Discovered services [{serviceId, serviceName, description, extras}]
  */
-export function discoverServices(client, listenFn, sendFn, projectId, timeout = 3000) {
-  return new Promise((resolve, reject) => {
-    const requestId = generateRequestId();
-    const discoveredServices = [];
-    let connection = null;
-
-    const timer = setTimeout(() => {
-      if (connection) connection.close();
-      resolve(discoveredServices);
-    }, timeout);
-
-    try {
-      connection = listenFn(projectId, (eventType, eventData) => {
-        if (eventType === 'message' && isServiceMessage(eventData.data)) {
-          const message = eventData.data;
-          if (message.type === 'service_registration' && message.requestId === requestId) {
-            discoveredServices.push({
-              serviceId: message.serviceId,
-              serviceName: message.serviceName,
-              description: message.description,
-              timestamp: message.timestamp,
-              extras: message.extras || {},
-            });
-          }
-        }
-      });
-
-      const discoveryMessage = createServiceMessage('service_discovery', { requestId });
-      try {
-        sendFn(projectId, discoveryMessage);
-      } catch (error) {
-        clearTimeout(timer);
-        if (connection) connection.close();
-        reject(new Error(`Failed to send discovery message: ${error.message}`));
-        return;
-      }
-    } catch (error) {
-      clearTimeout(timer);
-      if (connection) connection.close();
-      reject(new Error(`Cannot establish SSE connection: ${error.message}`));
-    }
-  });
+export function discoverServices(client, listenFn, sendFn, projectId, timeout) {
+  return client.messages.listServices(projectId);
 }
 
 /**
@@ -93,15 +57,43 @@ export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServic
   const { serviceId, serviceName, description = '' } = serviceInfo;
   let connection = null;
   let isRunning = true;
+  let heartbeatTimer = null;
 
   const serviceRegistration = {
     stop: () => {
       isRunning = false;
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+      // Best-effort clean removal from the registry; presence would also
+      // lapse on its own once the TTL elapses without a heartbeat.
+      client.messages.unregisterService(projectId, serviceId).catch(() => {});
       if (connection) connection.close();
     },
     isRunning: () => isRunning,
     serviceInfo: { serviceId, serviceName, description, extras },
   };
+
+  // Announce presence in the server-side registry, then re-register on the
+  // server-advised interval to stay live. This is what makes the service
+  // discoverable via a synchronous listServices() — independent of the SSE
+  // channel-liveness heartbeat handled inside the connection itself.
+  const registerOnce = () =>
+    client.messages
+      .registerService(projectId, { serviceId, serviceName, description, extras })
+      .catch((error) => {
+        console.warn('Failed to register service:', error.message || error);
+        return null;
+      });
+  registerOnce().then((res) => {
+    if (!isRunning) return;
+    const intervalMs = (res && res.heartbeatIntervalMs) || 30000;
+    heartbeatTimer = setInterval(() => {
+      if (!isRunning) return;
+      registerOnce();
+    }, intervalMs);
+  });
 
   try {
     connection = listenFn(projectId, (eventType, eventData) => {
@@ -110,20 +102,9 @@ export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServic
       if (eventType === 'message' && isServiceMessage(eventData.data)) {
         const message = eventData.data;
 
-        if (message.type === 'service_discovery') {
-          const registrationMessage = createServiceMessage('service_registration', {
-            requestId: message.requestId,
-            serviceId,
-            serviceName,
-            description,
-            extras,
-          });
-          try {
-            sendFn(projectId, registrationMessage);
-          } catch (error) {
-            console.warn('Failed to send discovery response:', error);
-          }
-        } else if (message.type === 'service_request' && message.serviceId === serviceId) {
+        // Discovery is served by the server-side registry (see registerOnce
+        // above); this handler only fields actual work requests over the bus.
+        if (message.type === 'service_request' && message.serviceId === serviceId) {
           try {
             // Send acknowledgment
             const ackMessage = createServiceMessage('service_response', {

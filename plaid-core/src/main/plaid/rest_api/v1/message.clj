@@ -143,4 +143,47 @@
                           :body {:success true
                                  :message "Message sent to subscribers"}}
                          {:status 500
-                          :body {:error "Failed to publish message"}}))}}]])
+                          :body {:error "Failed to publish message"}}))}}]
+
+   ;; Service registry: in-memory presence for services (e.g. NLP parsers) that
+   ;; announce themselves on a project. Not persisted, not audit-logged.
+   ["/services"
+    {;; List the services currently registered (and still live) on a project.
+     ;; Replaces the old broadcast-and-wait discovery handshake with a single
+     ;; synchronous read.
+     :get {:summary "List the services currently registered on a project."
+           :middleware [[pra/wrap-reader-required get-project-id]]
+           :handler (fn [{{{:keys [id]} :path} :parameters}]
+                      {:status 200
+                       :body (mapv #(select-keys % [:service-id :service-name :description :extras])
+                                   (events/list-live-services id))})}
+     ;; Register a service, or refresh its presence (idempotent — re-POSTing is
+     ;; how a service heartbeats). The response advises a re-registration
+     ;; interval so the service can keep itself live.
+     :post {:summary "Register a service on a project (re-POST to heartbeat)."
+            :middleware [[pra/wrap-writer-required get-project-id]]
+            :openapi {:x-client-method "register-service"}
+            :parameters {:body [:map
+                                [:service-id :string]
+                                [:service-name :string]
+                                [:description {:optional true} :string]
+                                [:extras {:optional true} any?]]}
+            :handler (fn [{{{:keys [id]} :path
+                            {:keys [service-id] :as info} :body} :parameters
+                           user-id :user/id}]
+                       (events/register-service! id service-id info user-id)
+                       (let [ttl-ms (:ttl-ms (events/service-registry-config))]
+                         {:status 200
+                          :body {:success true
+                                 :ttl-ms ttl-ms
+                                 :heartbeat-interval-ms (quot ttl-ms 3)}}))}}]
+
+   ["/services/:service-id"
+    {:parameters {:path [:map [:id :uuid] [:service-id :string]]}
+     :delete {:summary "Unregister a service from a project (clean shutdown)."
+              :middleware [[pra/wrap-writer-required get-project-id]]
+              :openapi {:x-client-method "unregister-service"}
+              :handler (fn [{{{:keys [id service-id]} :path} :parameters}]
+                         (events/unregister-service! id service-id)
+                         {:status 200
+                          :body {:success true}})}}]])
