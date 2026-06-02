@@ -137,9 +137,6 @@ export async function makeRequest(client, method, path, options = {}) {
   if (!formData) {
     headers['Content-Type'] = 'application/json';
   }
-  if (client.agentName) {
-    headers['X-Agent-Name'] = client.agentName;
-  }
 
   const fetchOptions = { method, headers };
   if (requestBody !== undefined) {

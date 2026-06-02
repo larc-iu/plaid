@@ -65,7 +65,6 @@ export function createSSEConnection(client, projectId, onEvent) {
           'Authorization': `Bearer ${client.token}`,
           'Accept': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          ...(client.agentName && { 'X-Agent-Name': client.agentName }),
         },
         signal: abortController.signal,
       });

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { authService } from '../../services/auth';
 
 export const ProjectManagement = () => {
   const { projectId } = useParams();
@@ -22,9 +21,6 @@ export const ProjectManagement = () => {
   });
   const [createUserError, setCreateUserError] = useState('');
   const [createUserLoading, setCreateUserLoading] = useState(false);
-  
-  // Token copy state
-  const [tokenCopied, setTokenCopied] = useState(false);
   
   // User editing state
   const [editingUser, setEditingUser] = useState(null);
@@ -240,21 +236,6 @@ export const ProjectManagement = () => {
     } catch (err) {
       console.error('Error deleting user:', err);
       setError('Failed to delete user: ' + (err.message || 'Unknown error'));
-    }
-  };
-
-  // Handle copying token to clipboard
-  const handleCopyToken = async () => {
-    try {
-      const token = authService.getToken();
-      if (token) {
-        await navigator.clipboard.writeText(token);
-        setTokenCopied(true);
-        setTimeout(() => setTokenCopied(false), 2000); // Reset after 2 seconds
-      }
-    } catch (err) {
-      console.error('Failed to copy token:', err);
-      setError('Failed to copy token to clipboard');
     }
   };
 
@@ -505,21 +486,19 @@ export const ProjectManagement = () => {
         </div>
         <div className="px-6 py-4">
           <p className="text-sm text-gray-600 mb-4">
-            Use your authentication token to access the API programmatically from external services like parsers or scripts.
+            To access the API programmatically from external services like parsers or scripts,
+            create a named API token. Unlike your login session, a named token can be revoked
+            individually and its name appears in the audit history, so machine-made changes are
+            distinguishable from yours.
           </p>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleCopyToken}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
-            >
-              {tokenCopied ? '✓ Copied!' : 'Copy Your Token'}
-            </button>
-            {tokenCopied && (
-              <span className="text-sm text-green-600">Token copied to clipboard</span>
-            )}
-          </div>
+          <Link
+            to="/profile"
+            className="inline-block px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+          >
+            Manage API Tokens
+          </Link>
           <p className="text-xs text-gray-500 mt-2">
-            Keep your token secure. You can use it to initialize a Python <pre style={{display: "inline"}}>PlaidClient</pre> instance.
+            Use a token to initialize a Python <pre style={{display: "inline"}}>PlaidClient</pre> instance.
           </p>
         </div>
       </div>

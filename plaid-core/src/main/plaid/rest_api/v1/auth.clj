@@ -4,6 +4,7 @@
             [buddy.sign.jwt :as jwt]
             [plaid.rest-api.v1.rate-limit :as rl]
             [plaid.server.config :refer [config]]
+            [plaid.sql.api-token :as api-token]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op]
             [plaid.sql.project :as prj]
@@ -42,6 +43,37 @@
              :version password-changes
              :exp (exp-seconds)}
             secret-key))
+
+(defn- sign-api-token
+  "Issue a JWT for a named API token. Unlike `sign-user-token` this carries:
+   - NO `:exp` — API tokens live until explicitly revoked (revocation is the
+     `api_tokens.revoked_at` check in `wrap-read-jwt`, not an expiry);
+   - NO `:version` — they deliberately survive the user's password changes
+     and /logout (both bump `password_changes`), so a machine service doesn't
+     break when the human re-authenticates.
+  The `:token/id` claim is what `wrap-read-jwt` keys on to take the API-token
+  validation branch; it equals `api_tokens.id`."
+  [secret-key user-id token-id]
+  (jwt/sign {:user/id user-id
+             :token/id token-id
+             :token/api? true}
+            secret-key))
+
+(defn issue-api-token!
+  "Mint + persist a named API token and return the signed JWT — the ONLY time
+  the signed credential is ever produced (show-once). `owner` is the user the
+  token belongs to; `acting-user-id` is who performed the mint (the owner, or
+  an admin acting on their behalf). Returns
+  `{:success true :id <token-id> :name <name> :token <jwt>}` on success, or
+  the underlying op's `{:success false :code :error}` on failure."
+  [db secret-key owner name acting-user-id]
+  (let [{:keys [success extra] :as result} (api-token/create! db owner name acting-user-id)]
+    (if success
+      {:success true
+       :id extra
+       :name name
+       :token (sign-api-token secret-key owner extra)}
+      result)))
 
 (def authentication-routes
   ["/login"
@@ -157,7 +189,33 @@
                           :else nil)
                   token-data (try (jwt/unsign token secret-key)
                                   (catch Exception e e))
-                  user (and (map? token-data) (user/get-internal db (:user/id token-data)))]
+                  ;; An API token carries a `:token/id` claim; a session token
+                  ;; does not. The two diverge on revocation: session tokens
+                  ;; ride `password_changes`, API tokens ride the
+                  ;; `api_tokens.revoked_at` row (and survive password changes).
+                  api-token-id (and (map? token-data) (:token/id token-data))
+                  user (and (map? token-data) (user/get-internal db (:user/id token-data)))
+                  proceed (fn []
+                            ;; Don't log the JWT itself (token-data carries the
+                            ;; claims). Don't log the raw `token` string either —
+                            ;; even a partial prefix is enough to weaken
+                            ;; signatures, and the JWT shows up in `request` shapes
+                            ;; that wrap-logging already redacts.
+                            (log/debug (str "Authenticated user " (:user/id token-data)
+                                            (when api-token-id (str " via API token " api-token-id))
+                                            " (source: "
+                                            (if (and auth-header (.startsWith auth-header "Bearer "))
+                                              "header" "query")
+                                            ")"))
+                            (handler (cond-> (assoc request
+                                                    :jwt-data token-data
+                                                    :user/id (:user/id token-data)
+                                                    :user/record (select-keys user [:user/id :user/username :user/is-admin]))
+                                       ;; Server-authoritative attribution: the
+                                       ;; validated claim, not client input.
+                                       ;; wrap-api-token-id binds this onto the
+                                       ;; operations row.
+                                       api-token-id (assoc :api-token/id api-token-id))))]
               (cond
                 (instance? Exception token-data)
                 (do (log/warn token-data "JWT validation error")
@@ -168,27 +226,23 @@
                 {:status 401
                  :body {:error (str "Token invalid because user does not exist.")}}
 
+                ;; API-token branch: revocation/existence is the only check.
+                ;; Skips the `password_changes` version check entirely so the
+                ;; token survives the owner's password rotation and /logout.
+                api-token-id
+                (if (api-token/active? db api-token-id)
+                  (proceed)
+                  {:status 401
+                   :body {:error (str "Token revoked or unknown.")}})
+
+                ;; Session-token branch: invalidated by any password_changes bump.
                 (not= (:version token-data)
                       (:user/password-changes user))
                 {:status 401
                  :body {:error (str "Token invalid because password has changed.")}}
 
                 :else
-                (do
-                  ;; Don't log the JWT itself (token-data carries the
-                  ;; claims). Don't log the raw `token` string either —
-                  ;; even a partial prefix is enough to weaken
-                  ;; signatures, and the JWT shows up in `request` shapes
-                  ;; that wrap-logging already redacts.
-                  (log/debug (str "Authenticated user " (:user/id token-data)
-                                  " (source: "
-                                  (if (and auth-header (.startsWith auth-header "Bearer "))
-                                    "header" "query")
-                                  ")"))
-                  (handler (assoc request
-                                  :jwt-data token-data
-                                  :user/id (:user/id token-data)
-                                  :user/record (select-keys user [:user/id :user/username :user/is-admin]))))))))))
+                (proceed)))))))
 
 (defn wrap-login-required [handler]
   (fn [request]

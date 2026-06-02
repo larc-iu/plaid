@@ -430,10 +430,13 @@
         :else
         (handler request)))))
 
-(defn wrap-user-agent
-  "Capture X-Agent-Name and bind it to `plaid.sql.operation/*user-agent*`."
+(defn wrap-api-token-id
+  "Bind the request's validated API-token id (set by `wrap-read-jwt` from the
+  `:token/id` JWT claim, nil for session logins) to
+  `plaid.sql.operation/*token-id*` so it lands on the operations row. Must run
+  INSIDE `wrap-read-jwt` — it depends on the `:api-token/id` that middleware
+  assoc's onto the request."
   [handler]
   (fn [request]
-    (let [user-agent (get-in request [:headers "x-agent-name"])]
-      (binding [op/*user-agent* user-agent]
-        (handler request)))))
+    (binding [op/*token-id* (:api-token/id request)]
+      (handler request))))

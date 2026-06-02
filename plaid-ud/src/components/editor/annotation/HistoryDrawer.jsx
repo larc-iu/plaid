@@ -148,7 +148,7 @@ export const HistoryDrawer = ({
                               </div>
                               {entry.user && (
                                 <div className="text-xs text-gray-400">
-                                  by {entry.user.username}{entry.userAgent ? ` (via ${entry.userAgent})` : ""}
+                                  by {entry.user.username}{entry.apiToken ? ` (via ${entry.apiToken.name})` : ""}
                                 </div>
                               )}
                             </div>

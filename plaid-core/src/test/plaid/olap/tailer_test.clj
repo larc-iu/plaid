@@ -57,8 +57,8 @@
 (defn- insert-operation! [ds op-id ts]
   (jdbc/execute!
    ds
-   ["INSERT INTO operations (id, op_type, project_id, document_id, description, batch_id, user_id, user_agent, ts)
-     VALUES (?, 'test/op', NULL, NULL, 'test', NULL, NULL, NULL, ?)"
+   ["INSERT INTO operations (id, op_type, project_id, document_id, description, batch_id, user_id, ts)
+     VALUES (?, 'test/op', NULL, NULL, 'test', NULL, NULL, ?)"
     op-id (canon-ts ts)]))
 
 (defn- insert-audit-rows!

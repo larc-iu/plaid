@@ -201,6 +201,7 @@
     "token-layer/create" "token-layer/delete" "token-layer/shift"
     "token-layer/update"
     "user/create" "user/delete" "user/update"
+    "api-token/create" "api-token/revoke"
     "vocab/add-maintainer" "vocab/create" "vocab/delete"
     "vocab/remove-maintainer" "vocab/update"
     "vocab-item/create" "vocab-item/delete" "vocab-item/delete-metadata"
@@ -229,7 +230,7 @@
 (def ^:private mirrored-tables
   #{"users" "projects" "documents" "text_layers" "token_layers" "span_layers"
     "relation_layers" "texts" "tokens" "spans" "relations" "vocab_layers"
-    "vocab_items" "vocab_links"})
+    "vocab_items" "vocab_links" "api_tokens"})
 
 (def ^:private handled-change-types
   #{"insert" "update" "delete" "doc-version-bump"})
@@ -274,6 +275,19 @@
             _ (assert-created (create-user! u-maint2 false))
             _ (assert-created (create-user! u-throw false))
             _ (assert-ok (update-user! u-throw))                    ; user/update
+
+            ;; ---- API tokens: mint + revoke (these are audited, so the OLAP
+            ;;      replayer must mirror the api_tokens table or the tailer
+            ;;      stalls — see mirrored-tables / replayer/table->spec) ----
+            fc-tok-resp (api-call admin-request
+                                  {:method :post
+                                   :path (str "/api/v1/users/" u-throw "/tokens")
+                                   :body {:name "FC API Token"}})
+            _ (assert-created fc-tok-resp)                          ; api-token/create
+            _ (assert-status 204 (api-call admin-request
+                                           {:method :delete
+                                            :path (str "/api/v1/users/" u-throw
+                                                       "/tokens/" (-> fc-tok-resp :body :id))})) ; api-token/revoke
 
             ;; ---- survivor project (parity target) ----
             proj (create-test-project admin-request "FC-Survivor")   ; project/create

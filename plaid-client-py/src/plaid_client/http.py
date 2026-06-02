@@ -88,8 +88,6 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         headers['Authorization'] = f'Bearer {client.token}'
     if not form_data:
         headers['Content-Type'] = 'application/json'
-    if client.agent_name:
-        headers['X-Agent-Name'] = client.agent_name
 
     kwargs = {'method': method, 'url': url, 'headers': headers}
 

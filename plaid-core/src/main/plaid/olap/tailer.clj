@@ -127,7 +127,7 @@
   cursor / system-time)."
   [:aw.* [:o.ts :op_ts]
    [:o.id :op_id_full] [:o.user_id :op_user_id]
-   [:o.user_agent :op_user_agent] [:o.op_type :op_type]
+   [:o.op_type :op_type]
    [:o.project_id :op_project_id] [:o.document_id :op_document_id]
    [:o.description :op_description] [:o.batch_id :op_batch_id]])
 

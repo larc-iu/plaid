@@ -15,6 +15,7 @@
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.auth :as pra :refer [authentication-routes logout-routes]]
             [plaid.rest-api.v1.user :refer [user-routes]]
+            [plaid.rest-api.v1.api-token :refer [api-token-routes]]
             [plaid.rest-api.v1.project :refer [project-routes]]
             [plaid.rest-api.v1.message :refer [message-routes]]
             [plaid.rest-api.v1.document :refer [document-routes]]
@@ -86,6 +87,7 @@
              {:middleware [prm/wrap-reject-as-of]}
              logout-routes
              user-routes
+             api-token-routes
              project-routes
              message-routes
              text-routes
@@ -160,7 +162,9 @@
                                        [prm/wrap-request-extras db secret-key]
                                        pra/wrap-read-jwt
                                        prm/wrap-logging
-                                       prm/wrap-user-agent
+                                       ;; Inside wrap-read-jwt: needs the
+                                       ;; :api-token/id it sets on the request.
+                                       prm/wrap-api-token-id
                                        openapi/openapi-feature]}})
                  (ring/create-default-handler))]
     ;; Wrap handler to inject itself into requests for bulk operations

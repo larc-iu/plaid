@@ -29,7 +29,6 @@ class PlaidClient {
   constructor(baseUrl, token) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.token = token;
-    this.agentName = null;
     this.isBatching = false;
     this.batchOperations = [];
     this.documentVersions = {};
@@ -511,6 +510,35 @@ class PlaidClient {
         this._request('PATCH', `/api/v1/users/${id}`, {
           body: bodyOf({ password, username, 'is-admin': isAdmin }),
         }),
+    };
+
+    this.apiTokens = {
+      /**
+       * List a user's named API tokens. Never includes the signed token
+       * string itself — that is only returned once, by create().
+       * @param {string} userId - The user ID who owns the tokens
+       */
+      list: (userId) =>
+        this._request('GET', `/api/v1/users/${userId}/tokens`),
+      /**
+       * Mint a named API token for a user. The returned `token` is the signed
+       * credential and is shown ONLY here — store it immediately. API tokens
+       * do not expire and survive password changes / logout; revoke to kill.
+       * @param {string} userId - The user ID who will own the token
+       * @param {string} name - A human label, e.g. "Stanza Parser"
+       * @returns {Promise<{id: string, name: string, token: string}>}
+       */
+      create: (userId, name) =>
+        this._request('POST', `/api/v1/users/${userId}/tokens`, {
+          body: bodyOf({ name }),
+        }),
+      /**
+       * Revoke a named API token (soft-revoke; idempotent).
+       * @param {string} userId - The user ID who owns the token
+       * @param {string} tokenId - The token ID to revoke
+       */
+      revoke: (userId, tokenId) =>
+        this._request('DELETE', `/api/v1/users/${userId}/tokens/${tokenId}`),
     };
 
     this.tokenLayers = {
@@ -1230,14 +1258,6 @@ class PlaidClient {
     this.strictModeDocumentId = null;
   }
 
-  /**
-   * Set the user agent name for audit logging.
-   * @param {string} agentName - Name to identify this client in audit logs
-   */
-  setAgentName(agentName) {
-    this.agentName = agentName;
-  }
-
   /** Begin a batch of operations. Subsequent API calls will be queued. */
   beginBatch() {
     this.isBatching = true;
@@ -1271,7 +1291,6 @@ class PlaidClient {
         headers: {
           'Authorization': `Bearer ${this.token}`,
           'Content-Type': 'application/json',
-          ...(this.agentName && { 'X-Agent-Name': this.agentName }),
         },
         body: JSON.stringify(body),
       };

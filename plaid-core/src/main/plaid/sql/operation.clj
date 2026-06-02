@@ -11,7 +11,7 @@
   The application-level coordinator from plaid.xtdb2 is gone: SQL
   transactions provide atomicity, and SQLite's single-writer model
   serializes concurrent batches naturally."
-  (:require [clojure.string :as str]
+  (:require [clojure.string]
             [plaid.olap.core :as olap]
             [plaid.sql.common :as psc]
             [plaid.server.events :as events]
@@ -20,37 +20,13 @@
   (:import [clojure.lang ExceptionInfo]
            [java.sql SQLException]))
 
-(def ^:const max-user-agent-length
-  "Hard cap on stored User-Agent strings. Real-world UA headers top out
-  around 200-300 chars; 500 gives plenty of margin without letting a
-  client wedge megabytes through into log files / the operations row."
-  500)
-
-(defn sanitize-user-agent
-  "Strip ALL ASCII control characters (0x00-0x1F + 0x7F DEL) from `ua` so
-  it can't smuggle log-injection sequences through `operations.user_agent`
-  into log lines, and truncate to `max-user-agent-length`. Returns nil
-  for nil input.
-
-  Task #119 extension of task #95: the original implementation stripped
-  only CR/LF, but other control bytes — backspace (0x08), ESC (0x1B,
-  the start of ANSI escape sequences), NUL (0x00), DEL (0x7F) — are
-  equally capable of corrupting terminal log output. ESC in particular
-  lets a client paint arbitrary terminal escapes onto an operator's
-  `tail -f`. The regex `[\\x00-\\x1F\\x7F]` covers C0 controls + DEL
-  without touching valid printable ASCII or any multibyte UTF-8 sequence
-  (UTF-8 continuation bytes start at 0x80 and so are outside the range)."
-  [ua]
-  (when (some? ua)
-    (let [s (str/replace (str ua) #"[\x00-\x1F\x7F]" "")]
-      (if (> (count s) max-user-agent-length)
-        (subs s 0 max-user-agent-length)
-        s))))
-
-(def ^:dynamic *user-agent*
-  "User-Agent string for the current HTTP request. Bound by the middleware
-  and persisted onto the operations row. Sanitized on the write path
-  (CR/LF stripped, truncated) — see `sanitize-user-agent`."
+(def ^:dynamic *token-id*
+  "Id of the named API token (`api_tokens.id`) that authenticated the current
+  request, or nil for a session login. Bound by `wrap-api-token-id` from the
+  VALIDATED JWT claim (never client input) and persisted onto the operations
+  row as `token_id` — server-authoritative attribution of which named
+  credential performed the action (the actor's token, not a spoofable
+  client-supplied label)."
   nil)
 
 (def ^:dynamic *current-batch-id*
@@ -60,7 +36,7 @@
   nil)
 
 (defn- insert-operation-row!
-  [tx {:keys [id type project document description user user-agent batch-id ts]}]
+  [tx {:keys [id type project document description user token-id batch-id ts]}]
   (psc/execute!
    tx
    {:insert-into :operations
@@ -71,7 +47,7 @@
               :description description
               :batch_id batch-id
               :user_id user
-              :user_agent user-agent
+              :token_id token-id
               :ts ts}]}))
 
 (defn- check-locks! [op-attrs]
@@ -264,12 +240,9 @@
                                          :id op-id
                                          :ts ts
                                          :batch-id (or (:batch-id op-attrs) *current-batch-id*)
-                                         ;; Task #95: sanitize at the write boundary so
-                                         ;; both the in-tx insert AND any downstream log
-                                         ;; line that re-reads `:user-agent` see the
-                                         ;; already-scrubbed value.
-                                         :user-agent (sanitize-user-agent
-                                                      (or (:user-agent op-attrs) *user-agent*)))]
+                                         ;; Server-authoritative: bound from the
+                                         ;; validated JWT claim by wrap-api-token-id.
+                                         :token-id (or (:token-id op-attrs) *token-id*))]
                     (vreset! op-record* op-record)
                     (insert-operation-row! tx op-record)
                     ;; In-tx OCC check (task #108). Before the body runs,

@@ -314,6 +314,31 @@ class UsersResource(_Resource):
                              query_params={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
 
 
+class ApiTokensResource(_Resource):
+    def list(self, user_id: str) -> Any:
+        """List a user's named API tokens.
+
+        Never includes the signed token string itself — that is only returned
+        once, by create().
+        """
+        return self._request('GET', f'/api/v1/users/{user_id}/tokens')
+
+    def create(self, user_id: str, name: str) -> Any:
+        """Mint a named API token for a user.
+
+        The returned ``token`` is the signed credential and is shown ONLY
+        here — store it immediately. API tokens do not expire and survive
+        password changes / logout; revoke to kill. Returns a dict with
+        ``id``, ``name`` and ``token``.
+        """
+        return self._request('POST', f'/api/v1/users/{user_id}/tokens',
+                             body=_body_of(name=name))
+
+    def revoke(self, user_id: str, token_id: str) -> Any:
+        """Revoke a named API token (soft-revoke; idempotent)."""
+        return self._request('DELETE', f'/api/v1/users/{user_id}/tokens/{token_id}')
+
+
 class TokenLayersResource(_Resource):
     def get(self, token_layer_id: str, *, as_of: str | None = None) -> Any:
         """Get a token layer by ID."""
@@ -751,7 +776,6 @@ class PlaidClient:
         """Create a new PlaidClient instance."""
         self.base_url = base_url.rstrip('/')
         self.token = token
-        self.agent_name = None
         self.is_batching = False
         self.batch_operations: list[dict] = []
         self.document_versions: dict[str, str] = {}
@@ -765,6 +789,7 @@ class PlaidClient:
         self.spans = SpansResource(self)
         self.texts = TextsResource(self)
         self.users = UsersResource(self)
+        self.api_tokens = ApiTokensResource(self)
         self.token_layers = TokenLayersResource(self)
         self.documents = DocumentsResource(self)
         self.messages = MessagesResource(self)
@@ -782,10 +807,6 @@ class PlaidClient:
     def exit_strict_mode(self) -> None:
         """Disable strict mode."""
         self.strict_mode_document_id = None
-
-    def set_agent_name(self, agent_name: str) -> None:
-        """Set the agent name sent in request headers."""
-        self.agent_name = agent_name
 
     def begin_batch(self) -> None:
         """Start collecting operations for a batch submission."""
@@ -817,8 +838,6 @@ class PlaidClient:
                 'Authorization': f'Bearer {self.token}',
                 'Content-Type': 'application/json',
             }
-            if self.agent_name:
-                headers['X-Agent-Name'] = self.agent_name
 
             response = self.session.post(url, headers=headers, data=json.dumps(body))
 

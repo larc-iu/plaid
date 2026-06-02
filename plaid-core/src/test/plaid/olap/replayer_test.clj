@@ -147,7 +147,7 @@
   ;; test stays green until you forget to register it in the replayer.
   (let [tables ["users" "projects" "documents" "text_layers" "token_layers"
                 "span_layers" "relation_layers" "texts" "tokens" "spans"
-                "relations" "vocab_layers" "vocab_items" "vocab_links"]]
+                "relations" "vocab_layers" "vocab_items" "vocab_links" "api_tokens"]]
     (doseq [t tables]
       (let [tid (uuid)
             ;; Minimum-viable post-image — every table has at least an `id`.

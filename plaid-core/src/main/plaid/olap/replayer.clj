@@ -102,7 +102,14 @@
                       :col-renames {:vocab_layer_id :vocab-item/layer}}
    "vocab_links"     {:ns "vocab-link"
                       :col-renames {:vocab_item_id :vocab-link/vocab-item
-                                    :document_id   :vocab-link/document}}})
+                                    :document_id   :vocab-link/document}}
+   ;; Named API tokens. Audited (create/revoke go through submit-operation!),
+   ;; so the invariant "every audited table is mirrored" requires a spec here —
+   ;; without it the tailer stalls on the first token mint. `user_id` is a TEXT
+   ;; FK to users.id (an email/username, not a UUID), kept as-is by coerce-fk's
+   ;; ->uuid-or-keep. Timestamps fall through the mechanical kebab-case rule.
+   "api_tokens"      {:ns "api-token"
+                      :col-renames {:user_id :api-token/user}}})
 
 (defn- table-spec [target-table]
   (or (get table->spec target-table)

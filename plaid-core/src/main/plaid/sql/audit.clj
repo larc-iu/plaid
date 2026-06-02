@@ -23,21 +23,29 @@
 (defn- select-user [u]  (when u {:user/id (:id u) :user/username (:username u)}))
 (defn- select-proj [p]  (when p {:project/id (:id p) :project/name (:name p)}))
 (defn- select-doc  [d]  (when d {:document/id (:id d) :document/name (:name d)}))
+(defn- select-token [t] (when t {:token/id (:id t) :token/name (:name t)}))
 
 (defn- enrich-ops
   "Project each operations row into a v2 audit-entry shape, enriching the
-  referenced user / project / document with names."
+  referenced user / project / document with names.
+
+  `:audit/api-token` is present iff the op was performed under a named API
+  token (`token_id` set) — server-authoritative proof of which credential
+  acted. Its absence marks session/human activity."
   [db op-rows]
   (let [user-ids (mapv :user_id op-rows)
         proj-ids (mapv :project_id op-rows)
         doc-ids  (mapv :document_id op-rows)
+        token-ids (mapv :token_id op-rows)
         users    (batch-fetch-by-ids db :users user-ids)
         projects (batch-fetch-by-ids db :projects proj-ids)
-        documents (batch-fetch-by-ids db :documents doc-ids)]
+        documents (batch-fetch-by-ids db :documents doc-ids)
+        tokens   (batch-fetch-by-ids db :api_tokens token-ids)]
     (mapv (fn [row]
             (let [proj (some-> (:project_id row) projects select-proj)
                   doc  (some-> (:document_id row) documents select-doc)
                   user (some-> (:user_id row) users select-user)
+                  token (some-> (:token_id row) tokens select-token)
                   op-summary (-> {:op/id (:id row)
                                   :op/type (some-> (:op_type row) keyword)
                                   :op/description (:description row)}
@@ -50,7 +58,7 @@
                        :audit/documents (if doc [doc] [])
                        :audit/ops [op-summary]}
                 (:batch_id row) (assoc :audit/batch-id (:batch_id row))
-                (:user_agent row) (assoc :audit/user-agent (:user_agent row)))))
+                token (assoc :audit/api-token token))))
           op-rows)))
 
 (defn- ts-where

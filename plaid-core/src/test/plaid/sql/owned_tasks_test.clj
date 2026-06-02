@@ -79,21 +79,6 @@
       (is (sequential? (:body resp))))))
 
 ;; ============================================================
-;; Task #95 — User-Agent sanitization
-;; ============================================================
-
-(deftest user-agent-sanitized-on-store
-  (testing "CR/LF stripped"
-    (is (= "User Agent injected" (op/sanitize-user-agent "User Agent\r\n injected")))
-    (is (= "abc" (op/sanitize-user-agent "abc"))))
-  (testing "Truncated to max-user-agent-length"
-    (let [long-ua (apply str (repeat 1000 "A"))
-          out (op/sanitize-user-agent long-ua)]
-      (is (= op/max-user-agent-length (count out)))))
-  (testing "nil passes through"
-    (is (nil? (op/sanitize-user-agent nil)))))
-
-;; ============================================================
 ;; /users list shape — bare array (pagination intentionally deferred)
 ;; ============================================================
 

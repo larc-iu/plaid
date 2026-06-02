@@ -75,8 +75,6 @@ class SSEConnection:
                 'Accept': 'text/event-stream',
                 'Cache-Control': 'no-cache',
             }
-            if self._client.agent_name:
-                headers['X-Agent-Name'] = self._client.agent_name
 
             self._response = requests.get(url, headers=headers, stream=True, timeout=None)
             self._response.raise_for_status()

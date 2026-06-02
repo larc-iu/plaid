@@ -108,6 +108,12 @@ interface UsersBundle {
   update(id: string, password?: string, username?: string, isAdmin?: boolean): Promise<any>;
 }
 
+interface ApiTokensBundle {
+  list(userId: string): Promise<any>;
+  create(userId: string, name: string): Promise<{ id: string; name: string; token: string }>;
+  revoke(userId: string, tokenId: string): Promise<any>;
+}
+
 interface TokenLayersBundle {
   shift(tokenLayerId: string, direction: string): Promise<any>;
   create(textLayerId: string, name: string): Promise<any>;
@@ -219,9 +225,6 @@ export declare class PlaidClient {
   enterStrictMode(documentId: string): void;
   exitStrictMode(): void;
 
-  // User agent methods
-  setAgentName(agentName: string): void;
-
   vocabLinks: VocabLinksBundle;
   vocabLayers: VocabLayersBundle;
   relations: RelationsBundle;
@@ -230,6 +233,7 @@ export declare class PlaidClient {
   batch: BatchBundle;
   texts: TextsBundle;
   users: UsersBundle;
+  apiTokens: ApiTokensBundle;
   tokenLayers: TokenLayersBundle;
   documents: DocumentsBundle;
   messages: MessagesBundle;

@@ -88,6 +88,9 @@
 (def ^:private tables-to-truncate
   ["audit_writes"
    "operations"
+   ;; api_tokens: after operations (operations.token_id → api_tokens) and
+   ;; before the users wipe below (api_tokens.user_id → users).
+   "api_tokens"
    "entity_metadata"
    "vocab_link_tokens"
    "vocab_links"
