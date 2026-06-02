@@ -64,13 +64,14 @@
       :any))
 
 (defn sort-token-records
-  "Pure helper: deterministically sort token records (task #101).
-  Ordering matches the SQL ORDER BY in get-with-layer-data and
-  plaid.sql.token/get-tokens:
+  "Pure helper: deterministically sort token records (task #101, revised
+  2026-06-02). Ordering matches the SQL ORDER BY in get-with-layer-data and
+  plaid.sql.token/get-tokens — the canonical token order, precedence OUTRANKS
+  extent (see plaid.sql.query.compile):
     1. :token/begin ASC
-    2. :token/end ASC (shorter token at the same begin first)
-    3. :token/precedence ASC, NULLS LAST (a nil precedence is treated
-       as ranking AFTER any integer precedence)
+    2. :token/precedence ASC, NULLS LAST (a nil precedence ranks AFTER any
+       integer precedence)
+    3. :token/end ASC (shorter token first, among equal begin+precedence)
     4. :token/id ASC (final deterministic tiebreaker)
 
   Used by document/get-with-layer-data after grouping the pre-ordered
@@ -80,12 +81,12 @@
   [tokens]
   (sort-by (fn [t]
              [(:token/begin t)
-              (:token/end t)
               ;; NULLS LAST: tag nil with 1, non-nil with 0, then compare
               ;; the precedence (using 0 as a placeholder for nil — its
               ;; partition is already separated by the leading tag).
               (if (nil? (:token/precedence t)) 1 0)
               (or (:token/precedence t) 0)
+              (:token/end t)
               (str (:token/id t))])
            tokens))
 

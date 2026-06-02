@@ -205,17 +205,18 @@
                                          [:= :document_id id]
                                          [:in :text_layer_id tl-ids]]}))
           ;; --- 3. All tokens for this doc — one query, group Clojure-side. ---
-          ;; ORDER BY (task #101): make :token/precedence load-bearing for
-          ;; same-extent tokens. begin ASC, end_ ASC, precedence ASC NULLS
-          ;; LAST, id ASC. The post-group sort via `sort-token-records`
-          ;; preserves this order (it's a stable sort whose keys are a
-          ;; prefix of the SQL key).
+          ;; ORDER BY: the canonical token order is (begin, precedence, end, id)
+          ;; with precedence NULLS LAST — precedence OUTRANKS extent (task #101,
+          ;; revised 2026-06-02 to match the query engine; see
+          ;; plaid.sql.query.compile). The post-group sort via
+          ;; `sort-token-records` preserves this order (its keys are a prefix of
+          ;; the SQL key).
           token-rows (psc/q db {:select [:*]
                                 :from [:tokens]
                                 :where [:= :document_id id]
                                 :order-by [[:begin :asc]
-                                           [:end_ :asc]
                                            [:precedence :asc-nulls-last]
+                                           [:end_ :asc]
                                            [:id :asc]]})
           ;; --- 4. All spans + their ordered token-id arrays, one query.
           ;; LEFT JOIN + FILTER keeps spans with no span_tokens rows

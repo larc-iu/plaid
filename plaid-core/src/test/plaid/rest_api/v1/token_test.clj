@@ -319,10 +319,10 @@
           (assert-not-found (get-token admin-request token-id)))))))
 
 (deftest token-precedence-ordering
-  ;; Task #101 — :token/precedence is load-bearing on the read side.
-  ;; Within a same (begin, end) extent, tokens come back ordered by
-  ;; precedence ASC NULLS LAST, then id ASC (deterministic
-  ;; tiebreaker). Across extents, begin/end take priority.
+  ;; Task #101 (revised 2026-06-02) — :token/precedence is load-bearing on
+  ;; the read side. Canonical order is (begin, precedence NULLS LAST, end,
+  ;; id): begin primary, then precedence (precedence OUTRANKS extent), then
+  ;; end, then id. Matches the query engine (plaid.sql.query.compile).
   (let [proj (create-test-project admin-request "TokenPrecOrderProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -376,6 +376,19 @@
           (is (= [[0 3] [0 5] [3 5]] extents)
               (str "Expected ordering by [begin end]; got " extents)))
         (doseq [tid [t05 t03 t35]]
+          (assert-no-content (delete-token admin-request tid)))))
+
+    (testing "Precedence OUTRANKS extent: same begin, different end, precedence flips order"
+      ;; P=(0,2) prec 1, Q=(0,5) prec 0. By extent alone P (narrower) would
+      ;; come first; precedence-first puts Q (prec 0) ahead of P (prec 1).
+      (let [p (-> (create-token admin-request tkl text-id 0 2 1) :body :id)
+            q (-> (create-token admin-request tkl text-id 0 5 0) :body :id)]
+        (let [extents (mapv (juxt :token/begin :token/end) (layer-tokens))
+              ids (mapv :token/id (layer-tokens))]
+          (is (= [[0 5] [0 2]] extents)
+              (str "Expected precedence to outrank extent ([[0 5] [0 2]]); got " extents))
+          (is (= [q p] ids)))
+        (doseq [tid [p q]]
           (assert-no-content (delete-token admin-request tid)))))))
 
 (deftest token-access-control

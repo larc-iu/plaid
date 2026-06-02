@@ -156,12 +156,12 @@
   :token/value (its substring of the text body). Empty when there
   are no tokens.
 
-  Ordering (task #101): tokens are returned by
+  Ordering — the canonical token order (task #101, revised 2026-06-02 to
+  match the query engine; see plaid.sql.query.compile):
     1. :begin ASC
-    2. :end_ ASC (shorter tokens at the same begin come first)
-    3. :precedence ASC NULLS LAST (load-bearing tiebreaker for tokens
-       sharing an extent — lower precedence first; nil precedence comes
-       AFTER any non-nil)
+    2. :precedence ASC NULLS LAST (lower precedence first; nil ranks AFTER
+       any non-nil). Precedence OUTRANKS extent.
+    3. :end_ ASC (shorter token first, among equal begin+precedence)
     4. :id ASC (final deterministic tiebreaker)"
   [db layer-id doc-id]
   (let [rows (psc/q db {:select [:*]
@@ -170,8 +170,8 @@
                                 [:= :token_layer_id layer-id]
                                 [:= :document_id doc-id]]
                         :order-by [[:begin :asc]
-                                   [:end_ :asc]
                                    [:precedence :asc-nulls-last]
+                                   [:end_ :asc]
                                    [:id :asc]]})
         tokens (mapv row->token rows)]
     (if (empty? tokens)
