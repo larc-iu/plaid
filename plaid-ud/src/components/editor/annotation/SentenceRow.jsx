@@ -7,7 +7,7 @@ import './SentenceRow.css';
 let lastGlobalTabPress = 0;
 
 // Editable cell component for annotation fields
-const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, columnWidth, onUpdate, isReadOnly }) => {
+const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm, tabIndex, columnWidth, onUpdate, onNavigate, isReadOnly }) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   const inputRef = useRef(null);
@@ -25,7 +25,7 @@ const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, c
   const handleBlur = (e) => {
     setIsEditing(false);
     const newValue = localValue.trim();
-    
+
     if (newValue !== (value || '')) {
       onUpdate(tokenId, field, newValue || null).catch(error => {
         console.error(`Failed to update ${field}:`, error);
@@ -48,15 +48,43 @@ const EditableCell = React.memo(({ value, tokenId, field, tokenForm, tabIndex, c
       }
       lastGlobalTabPress = now;
     }
-    
+
     if (e.key === 'Enter') {
       e.preventDefault();
       inputRef.current?.blur();
-    } else if (e.key === 'Escape') {
+      return;
+    }
+    if (e.key === 'Escape') {
       // Revert to original value
       setLocalValue(value || '');
       setIsEditing(false);
       inputRef.current?.blur();
+      return;
+    }
+
+    // Grid navigation. Up/Down always navigate (single-line inputs don't use
+    // them anyway). Left/Right navigate only at the edge of the input so
+    // they still move the caret within text.
+    if (e.key === 'ArrowUp') {
+      if (onNavigate?.(field, tokenIndex, 'up')) e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      if (onNavigate?.(field, tokenIndex, 'down')) e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowLeft') {
+      const input = inputRef.current;
+      const atStart = input && input.selectionStart === 0 && input.selectionEnd === 0;
+      if (atStart && onNavigate?.(field, tokenIndex, 'left')) e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      const input = inputRef.current;
+      const len = input?.value?.length ?? 0;
+      const atEnd = input && input.selectionStart === len && input.selectionEnd === len;
+      if (atEnd && onNavigate?.(field, tokenIndex, 'right')) e.preventDefault();
+      return;
     }
   };
 
@@ -193,11 +221,11 @@ const FeaturesCell = React.memo(({ features, spanIds, tokenId, columnWidth, onAn
 });
 
 // Token Column component
-const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnotationUpdate, onFeatureDelete, maxFeatures, tokenRefs, isReadOnly }) => {
+const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnotationUpdate, onFeatureDelete, onNavigate, maxFeatures, tokenRefs, isReadOnly }) => {
   return (
     <div className="token-column" style={{ width: `${columnWidth}px` }}>
       {/* Token form (baseline) */}
-      <div 
+      <div
         className="token-form"
         ref={(el) => {
           if (el) {
@@ -215,11 +243,13 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
         <EditableCell
           value={data.lemma?.value}
           tokenId={data.token.id}
+          tokenIndex={index}
           field="lemma"
           tokenForm={data.tokenForm}
           tabIndex={getTabIndex(index, 'lemma')}
           columnWidth={columnWidth}
           onUpdate={onAnnotationUpdate}
+          onNavigate={onNavigate}
           isReadOnly={isReadOnly}
         />
       </div>
@@ -229,11 +259,13 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
         <EditableCell
           value={data.xpos?.value}
           tokenId={data.token.id}
+          tokenIndex={index}
           field="xpos"
           tokenForm={data.tokenForm}
           tabIndex={getTabIndex(index, 'xpos')}
           columnWidth={columnWidth}
           onUpdate={onAnnotationUpdate}
+          onNavigate={onNavigate}
           isReadOnly={isReadOnly}
         />
       </div>
@@ -243,11 +275,13 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
         <EditableCell
           value={data.upos?.value}
           tokenId={data.token.id}
+          tokenIndex={index}
           field="upos"
           tokenForm={data.tokenForm}
           tabIndex={getTabIndex(index, 'upos')}
           columnWidth={columnWidth}
           onUpdate={onAnnotationUpdate}
+          onNavigate={onNavigate}
           isReadOnly={isReadOnly}
         />
       </div>
@@ -278,6 +312,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
     prevProps.maxFeatures === nextProps.maxFeatures &&
     prevProps.onAnnotationUpdate === nextProps.onAnnotationUpdate &&
     prevProps.onFeatureDelete === nextProps.onFeatureDelete &&
+    prevProps.onNavigate === nextProps.onNavigate &&
     prevProps.getTabIndex === nextProps.getTabIndex &&
     prevProps.isReadOnly === nextProps.isReadOnly
   );
@@ -355,16 +390,45 @@ export const SentenceRow = React.memo(({
   const getTabIndex = useCallback((tokenIndex, field) => {
     const fieldOrder = { lemma: 0, xpos: 1, upos: 2 };
     const tokensInSentence = tokenData.length;
-    
+
     // Calculate base index for this sentence (all previous sentences)
     const sentenceBaseIndex = totalTokensBefore * 3;
-    
+
     // Row-wise: field type determines row, token index determines position in row
     const rowIndex = fieldOrder[field];
     const positionInRow = tokenIndex;
-    
+
     return sentenceBaseIndex + (rowIndex * tokensInSentence) + positionInRow + 1;
   }, [tokenData.length, totalTokensBefore]);
+
+  // Arrow-key navigation within the sentence's annotation grid.
+  // Up/Down step through LEMMA → XPOS → UPOS for a fixed token column;
+  // Left/Right step through tokens at a fixed field. FEATS is omitted
+  // because its cell type is different (no editable text input to focus).
+  // Returns true on a successful focus shift so the caller can preventDefault.
+  const NAV_FIELDS = ['lemma', 'xpos', 'upos'];
+  const onNavigate = useCallback((field, tokenIndex, dir) => {
+    let nextField = field;
+    let nextTokenIdx = tokenIndex;
+    if (dir === 'up' || dir === 'down') {
+      const fi = NAV_FIELDS.indexOf(field);
+      const ni = fi + (dir === 'up' ? -1 : 1);
+      if (fi < 0 || ni < 0 || ni >= NAV_FIELDS.length) return false;
+      nextField = NAV_FIELDS[ni];
+    } else if (dir === 'left' || dir === 'right') {
+      const ni = tokenIndex + (dir === 'left' ? -1 : 1);
+      if (ni < 0 || ni >= tokenData.length) return false;
+      nextTokenIdx = ni;
+    } else {
+      return false;
+    }
+    const target = tokenData[nextTokenIdx];
+    if (!target) return false;
+    const el = document.getElementById(`${target.token.id}-${nextField}`);
+    if (!el) return false;
+    el.focus();
+    return true;
+  }, [tokenData]);
 
   return (
     <div className="sentence-container">
@@ -417,14 +481,15 @@ export const SentenceRow = React.memo(({
 
         {/* Token columns */}
         {tokenData.map((data, index) => (
-          <TokenColumn 
-            key={data.token.id} 
-            data={data} 
-            index={index} 
+          <TokenColumn
+            key={data.token.id}
+            data={data}
+            index={index}
             columnWidth={columnWidths[index]}
             getTabIndex={getTabIndex}
             onAnnotationUpdate={onAnnotationUpdate}
             onFeatureDelete={onFeatureDelete}
+            onNavigate={onNavigate}
             maxFeatures={maxFeatures}
             tokenRefs={tokenRefs}
             isReadOnly={isReadOnly}
@@ -433,6 +498,4 @@ export const SentenceRow = React.memo(({
       </div>
     </div>
   );
-}, (prevProps, nextProps) => {
-  return JSON.stringify(prevProps.sentenceData) === JSON.stringify(nextProps.sentenceData);
 });
