@@ -32,6 +32,7 @@
             [plaid.rest-api.v1.vocab-layer :refer [vocab-layer-routes]]
             [plaid.rest-api.v1.vocab-item :refer [vocab-item-routes]]
             [plaid.rest-api.v1.vocab-link :refer [vocab-link-routes]]
+            [plaid.rest-api.v1.query :refer [query-routes]]
             [plaid.rest-api.v1.health :refer [health-routes]]))
 
 (def coercion
@@ -102,7 +103,8 @@
              batch-routes
              vocab-layer-routes
              vocab-item-routes
-             vocab-link-routes]
+             vocab-link-routes
+             query-routes]
 
             [""
              {:middleware [prm/wrap-route-as-of]}
