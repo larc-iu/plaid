@@ -1203,9 +1203,41 @@ class PlaidClient {
         }),
 
       /**
+       * Register (or heartbeat) a service on a project's in-memory service
+       * registry. Re-calling refreshes the service's presence.
+       * @param {string} projectId - The UUID of the project
+       * @param {Object} serviceInfo - {serviceId, serviceName, description, extras}
+       * @returns {Promise<Object>} {success, ttlMs, heartbeatIntervalMs}
+       */
+      registerService: (projectId, serviceInfo) =>
+        this._request('POST', `/api/v1/projects/${projectId}/services`, {
+          body: serviceInfo,
+        }),
+
+      /**
+       * Unregister a service from a project (clean shutdown).
+       * @param {string} projectId - The UUID of the project
+       * @param {string} serviceId - The ID of the service to remove
+       * @returns {Promise<Object>} {success}
+       */
+      unregisterService: (projectId, serviceId) =>
+        this._request(
+          'DELETE',
+          `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}`,
+        ),
+
+      /**
+       * List the services currently registered (and still live) on a project.
+       * @param {string} projectId - The UUID of the project
+       * @returns {Promise<Array>} Array of {serviceId, serviceName, description, extras}
+       */
+      listServices: (projectId) =>
+        this._request('GET', `/api/v1/projects/${projectId}/services`),
+
+      /**
        * Discover available services in a project
        * @param {string} projectId - The UUID of the project to query
-       * @param {number} [timeout] - Timeout in milliseconds (default: 3000)
+       * @param {number} [timeout] - Unused; kept for signature back-compat
        * @returns {Promise<Array>} Array of discovered service information
        */
       discoverServices: (projectId, timeout) =>
@@ -1255,6 +1287,34 @@ class PlaidClient {
           timeout,
         ),
     };
+
+    /**
+     * Run a query over every project you can read.
+     *
+     * `body` is the query AST. Its keys follow the usual client convention
+     * (camelCase, e.g. `scope.projectIds`) and are converted to the wire
+     * format automatically; clause heads and variables are plain strings you
+     * write literally (e.g. `'span'`, `'?s1'`, `'vocab-link'`). Example:
+     *
+     *   await client.query({
+     *     find: ['?s1', '?s2'],
+     *     where: [
+     *       ['span', '?s1', { layer: 'pos', value: 'NOUN' }],
+     *       ['span', '?s2', { layer: 'pos', value: 'VERB' }],
+     *       ['covers', '?s1', '?t1'], ['covers', '?s2', '?t2'],
+     *       ['precedes', '?t1', '?t2'],
+     *     ],
+     *     return: 'entities',   // 'ids' (default) | 'entities' | 'count'
+     *     limit: 100,
+     *   });
+     *
+     * @param {Object} body - The query AST ({find, where, scope?, limit?, return?}).
+     * @returns {Promise<Object>} For 'ids'/'entities': {columns, results, count, truncated}.
+     *   For 'count': {return: 'count', count}. Entity cells are full entity objects
+     *   (same shape as the GET endpoints).
+     */
+    this.query = (body) =>
+      this._request('POST', '/api/v1/query', { body });
   }
 
   // --- Core methods ---

@@ -888,12 +888,54 @@ class MessagesResource(_Resource):
         return self._request('POST', f'/api/v1/projects/{project_id}/message',
                              body={'body': data})
 
+    def register_service(self, project_id: str, service_info: dict) -> Any:
+        """Register (or heartbeat) a service on a project's service registry.
+
+        Re-calling refreshes the service's presence.
+
+        Args:
+            project_id: The UUID of the project
+            service_info: {service_id, service_name, description, extras}
+
+        Returns:
+            {success, ttl_ms, heartbeat_interval_ms}
+        """
+        return self._request('POST', f'/api/v1/projects/{project_id}/services',
+                             body=service_info)
+
+    def unregister_service(self, project_id: str, service_id: str) -> Any:
+        """Unregister a service from a project (clean shutdown).
+
+        Args:
+            project_id: The UUID of the project
+            service_id: The ID of the service to remove
+
+        Returns:
+            {success}
+        """
+        return self._request(
+            'DELETE', f'/api/v1/projects/{project_id}/services/{service_id}')
+
+    def list_services(self, project_id: str) -> list:
+        """List the services currently registered (and still live) on a project.
+
+        Args:
+            project_id: The UUID of the project
+
+        Returns:
+            List of {service_id, service_name, description, extras}
+        """
+        return self._request('GET', f'/api/v1/projects/{project_id}/services')
+
     def discover_services(self, project_id: str, timeout: float = 3.0) -> list:
         """Discover available services in a project.
 
+        Reads the server-side service registry synchronously — no broadcast
+        handshake, no waiting.
+
         Args:
             project_id: The UUID of the project to query
-            timeout: Timeout in seconds (default: 3.0)
+            timeout: Unused; kept for signature back-compat
 
         Returns:
             List of discovered service information
@@ -1514,6 +1556,38 @@ class PlaidClient:
         self.tokens = TokensResource(self)
         self.batch = BatchResource(self)
         self.login = LoginResource(self)
+
+    def query(self, body: Any) -> Any:
+        """Run a query over every project you can read.
+
+        ``body`` is the query AST. Its keys follow the usual client convention
+        (snake_case, e.g. ``scope['project_ids']``) and are converted to the
+        wire format automatically; clause heads and variables are plain strings
+        you write literally (e.g. ``'span'``, ``'?s1'``, ``'vocab-link'``).
+
+        Example::
+
+            client.query({
+                'find': ['?s1', '?s2'],
+                'where': [
+                    ['span', '?s1', {'layer': 'pos', 'value': 'NOUN'}],
+                    ['span', '?s2', {'layer': 'pos', 'value': 'VERB'}],
+                    ['covers', '?s1', '?t1'], ['covers', '?s2', '?t2'],
+                    ['precedes', '?t1', '?t2'],
+                ],
+                'return': 'entities',   # 'ids' (default) | 'entities' | 'count'
+                'limit': 100,
+            })
+
+        Args:
+            body: The query AST ({find, where, scope?, limit?, return?}).
+
+        Returns:
+            For 'ids'/'entities': {columns, results, count, truncated}. For
+            'count': {return: 'count', count}. Entity cells are full entity
+            dicts (same shape as the GET endpoints).
+        """
+        return make_request(self, 'POST', '/api/v1/query', body=body)
 
     def enter_strict_mode(self, document_id: str) -> None:
         """Enter strict mode for a specific document.
