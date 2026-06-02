@@ -82,25 +82,19 @@ export const useNlpService = (projectId, documentId) => {
   }, [projectId, discoverServices]);
 
   return {
-    // Service discovery
-    availableServices,
+    // Status
     isDiscovering,
-    
-    // Status flags
     isParsing,
-    
-    // Parse status
     parseStatus,
     parseError,
-    
+
     // Actions
     discoverServices,
     requestParse,
     clearParseStatus,
-    
+
     // Computed flags
     canParse: availableServices.length > 0 && !isParsing,
-    hasParseResult: parseStatus === 'success' || parseStatus === 'error',
     hasServices: availableServices.length > 0
   };
 };
