@@ -14,10 +14,13 @@
        emitted without a scope predicate (asserted at the end; a miss is a 500).
     C. relationship clauses + inline relation source/target -> join predicates.
 
-  Token precedence is the canonical sort on `(begin, precedence)` (NULL precedence =
-  COALESCE 0). `:precedes*` is a row-value `<`; `:precedes` binds the right token to
-  the left's immediate successor via a correlated `ORDER BY … LIMIT 1` subquery —
-  ~30× faster than a `NOT EXISTS`-between guard and correct for the composite key."
+  Token precedence is the canonical total order on `(begin, precedence, end, id)`,
+  with `precedence` sorting NULLS LAST (precedence outranks extent). `:precedes*` is
+  a row-value `<` on that key; `:precedes` binds the right token to the left's
+  immediate successor via a correlated `ORDER BY … LIMIT 1` subquery — ~30× faster
+  than a `NOT EXISTS`-between guard and correct for the composite key. The `end`/`id`
+  tail makes the order total, so adjacency is well-defined even among tokens that
+  share a begin offset."
   (:require [clojure.set :as set]
             [plaid.query.ast :as ast]
             [plaid.sql.common :as psc]
@@ -131,10 +134,17 @@
 ;; ---------------------------------------------------------------------------
 
 (defn- token-key
-  "Row-value (begin, COALESCE(precedence,0)) for token alias a — the canonical
-  precedence sort key."
+  "Row-value for the canonical token order `(begin, precedence, end, id)` with
+  precedence NULLS LAST. The NULLS-LAST rank is encoded as a leading null-flag
+  column (0 = present, 1 = NULL) so the whole tuple is non-NULL and SQL row-value
+  comparison is well-defined; the `end`/`id` tail makes the order total."
   [a]
-  [:composite (col a :begin) [:coalesce (col a :precedence) 0]])
+  [:composite
+   (col a :begin)
+   [:case [:is (col a :precedence) nil] 1 :else 0]
+   [:coalesce (col a :precedence) 0]
+   (col a :end_)
+   (col a :id)])
 
 (defn- precedes*-pred
   "Row-value `<` on (begin, precedence) within the same text+layer: t1 is
@@ -165,7 +175,10 @@
              [:= (col pt :text_id) (col t1 :text_id)]
              [:= (col pt :token_layer_id) (col t1 :token_layer_id)]
              [:> (token-key pt) (token-key t1)]]
-     :order-by [(col pt :begin) [[:coalesce (col pt :precedence) 0]]]
+     :order-by [[(col pt :begin) :asc]
+                [(col pt :precedence) :asc-nulls-last]
+                [(col pt :end_) :asc]
+                [(col pt :id) :asc]]
      :limit 1}))
 
 (defn- first-in-subquery

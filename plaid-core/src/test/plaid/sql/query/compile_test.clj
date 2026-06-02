@@ -90,9 +90,11 @@
         ;; find the correlated subquery: a map with :order-by + :limit 1
         subq (some (fn [n] (and (map? n) (= 1 (:limit n)) (:order-by n) n)) (nodes hq))]
     (is (some? subq) "successor subquery present")
-    (testing "row-value comparison on (begin, COALESCE(precedence,0))"
-      (is (re-find #"\(.*begin.*COALESCE.*precedence.*\) > \(.*begin.*COALESCE.*precedence.*\)"
-                   (sql-of hq))))))
+    (testing "row-value compare + ORDER BY on the canonical (begin, precedence NULLS LAST, end, id) key"
+      (let [sql (sql-of hq)]
+        (is (re-find #"\(.*begin.*precedence.*end_.*id\) > \(.*begin.*precedence.*end_.*id\)" sql))
+        (is (re-find #"precedence ASC NULLS LAST" sql))
+        (is (re-find #"end_ ASC" sql))))))
 
 (deftest precedes-star-emits-row-value-compare
   (let [hq (qc/compile-query
@@ -102,9 +104,10 @@
                                 ["precedes*" "?t1" "?t2"]]}
                       #{"P1"} ["L1"]))
         sql (sql-of hq)]
-    ;; transitive: same text+layer guard + a row-value < (no LIMIT 1 subquery)
+    ;; transitive: same text+layer guard + a row-value < on the 4-key canonical
+    ;; order (no LIMIT 1 subquery)
     (is (re-find #"text_id = .*text_id" sql))
-    (is (re-find #"\(.*begin.*COALESCE.*precedence.*\) < \(.*begin.*COALESCE.*precedence.*\)" sql))))
+    (is (re-find #"\(.*begin.*precedence.*end_.*id\) < \(.*begin.*precedence.*end_.*id\)" sql))))
 
 (deftest relation-source-target
   (let [hq (qc/compile-query

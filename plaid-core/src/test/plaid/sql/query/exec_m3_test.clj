@@ -107,3 +107,51 @@
   (testing "a :limit applies once around the whole UNION"
     (let [r (qe/run db "admin@example.com" (assoc det-adj?-noun-query "limit" 1))]
       (is (= 1 (:count r))))))
+
+;; ---------------------------------------------------------------------------
+;; Canonical token order (begin, precedence NULLS LAST, end, id)
+;; ---------------------------------------------------------------------------
+
+(defn- build-precedence-corpus!
+  "One :any-overlap token layer over text 'abcd', with four tokens chosen to
+  pin every tiebreaker in the canonical order (begin, precedence, end, id):
+    A: begin 0, end 4, precedence 0   (WIDE, low precedence)
+    B: begin 0, end 2, precedence 1   (narrow, higher precedence)
+    C: begin 0, end 2, precedence 2
+    D: begin 2, end 4, precedence nil
+  Canonical order is A < B < C < D, which asserts:
+    - precedence OUTRANKS extent: A precedes B even though A is wider (end 4 > 2)
+    - precedence orders same-extent tokens: B < C (both end 2, prec 1 < 2)
+    - begin still dominates everything: D last (begin 2)."
+  []
+  (let [pid  (h/create-test-project admin-request "PrecProj")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "toks" "any"))
+        doc  (h/create-test-document admin-request pid "d1")
+        text (id (h/create-text admin-request txtl doc "abcd"))
+        a (id (h/create-token admin-request tokl text 0 4 0))
+        b (id (h/create-token admin-request tokl text 0 2 1))
+        c (id (h/create-token admin-request tokl text 0 2 2))
+        d (id (h/create-token admin-request tokl text 2 4 nil))]
+    {:a a :b b :c c :d d}))
+
+(deftest precedes-uses-canonical-total-order
+  (let [{:keys [a b c d]} (build-precedence-corpus!)]
+    (testing ":precedes immediate-successor chain is A->B->C->D (precedence outranks extent)"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?x" "?y"]
+                       "where" [["token" "?x" {"layer" "toks"}]
+                                ["token" "?y" {"layer" "toks"}]
+                                ["precedes" "?x" "?y"]]})]
+        (is (= #{[(str a) (str b)] [(str b) (str c)] [(str c) (str d)]}
+               (set (tuples r))))))))
+
+(deftest precedes-star-uses-canonical-total-order
+  (let [{:keys [a b c d]} (build-precedence-corpus!)]
+    (testing ":precedes* from A reaches B, C, D (transitive, same total order)"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?y"]
+                       "where" [["token" "?a" {"layer" "toks" "begin" 0 "end" 4}]
+                                ["token" "?y" {"layer" "toks"}]
+                                ["precedes*" "?a" "?y"]]})]
+        (is (= #{(str b) (str c) (str d)} (set (map first (tuples r)))))))))
