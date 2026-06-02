@@ -78,6 +78,25 @@
   :start (atom {})
   :stop (reset! service-registry {}))
 
+;; Service request channels: project-id -> {service-id -> http-kit-channel}.
+;; This is the SERVICE's open inbound SSE stream — the dedicated, addressed
+;; channel the server pushes work requests down. Distinct from the broadcast
+;; bus (client-registry / event-bus): a request is delivered to exactly one
+;; service, never fanned out. An open channel is the authoritative "reachable
+;; now" signal for routing (the registry TTL above only gates the discovery
+;; *listing*). Ephemeral, like every other map here.
+(defstate service-channels
+  :start (atom {})
+  :stop (reset! service-channels {}))
+
+;; In-flight server-mediated RPC requests: request-id -> {:requester <http-kit
+;; channel> :project-id :service-id}. Lets the server route a service's reply
+;; events (progress/result/error) back to ONLY the client that made the
+;; request. Cleared when the request resolves or either side disconnects.
+(defstate inflight-requests
+  :start (atom {})
+  :stop (reset! inflight-requests {}))
+
 (defn register-client!
   "Register a client channel to receive events for a specific project.
    Called when an SSE connection is established."
@@ -233,6 +252,74 @@
     (->> (vals live)
          (sort-by :service-id)
          vec)))
+
+;; =============================================================================
+;; Server-mediated RPC routing (addressed; off the broadcast bus)
+;; =============================================================================
+;;
+;; These manage the maps only — the actual SSE framing / http-kit send! / close
+;; lives in the route handlers (plaid.rest-api.v1.message), which own the json +
+;; transport concerns, mirroring how the audit distributor leaves framing to the
+;; /listen handler.
+
+(defn register-service-channel!
+  "Record a service's open inbound request channel (its SSE http-kit channel).
+  Returns nil."
+  [project-id service-id channel]
+  (swap! service-channels assoc-in [project-id service-id] channel)
+  (log/debug "Registered service channel" service-id "on project" project-id)
+  nil)
+
+(defn unregister-service-channel!
+  "Remove a service's request channel (only if it still maps to `channel`, so a
+  reconnect that replaced it isn't clobbered by the old connection's on-close).
+  Drops the project key when its last service channel is gone."
+  [project-id service-id channel]
+  (swap! service-channels
+         (fn [chans]
+           (if (= channel (get-in chans [project-id service-id]))
+             (let [chans' (update chans project-id dissoc service-id)]
+               (if (empty? (get chans' project-id))
+                 (dissoc chans' project-id)
+                 chans'))
+             chans)))
+  (log/debug "Unregistered service channel" service-id "on project" project-id)
+  nil)
+
+(defn get-service-channel
+  "The open inbound channel for a service, or nil if none is connected."
+  [project-id service-id]
+  (get-in @service-channels [project-id service-id]))
+
+(defn track-request!
+  "Record an in-flight RPC so the service's reply events can be routed back to
+  `requester-channel`."
+  [request-id requester-channel project-id service-id]
+  (swap! inflight-requests assoc request-id {:requester  requester-channel
+                                             :project-id project-id
+                                             :service-id service-id})
+  nil)
+
+(defn get-request
+  "The in-flight request entry for `request-id`, or nil."
+  [request-id]
+  (get @inflight-requests request-id))
+
+(defn resolve-request!
+  "Remove an in-flight request (it completed, errored, or its requester left).
+  Returns the removed entry, or nil if it was already gone."
+  [request-id]
+  (let [entry (get @inflight-requests request-id)]
+    (swap! inflight-requests dissoc request-id)
+    entry))
+
+(defn requests-for-service
+  "All in-flight [request-id entry] pairs routed to a given service — used to
+  fail them when that service's channel drops."
+  [project-id service-id]
+  (filter (fn [[_ {p :project-id s :service-id}]]
+            (and (= p project-id) (= s service-id)))
+          @inflight-requests))
 
 ;; =============================================================================
 ;; Helper Functions
@@ -447,4 +534,6 @@
   (try (reset! client-registry {}) (catch Exception _))
   (try (reset! channel-mappings {}) (catch Exception _))
   (try (reset! heartbeat-registry {}) (catch Exception _))
-  (try (reset! service-registry {}) (catch Exception _)))
+  (try (reset! service-registry {}) (catch Exception _))
+  (try (reset! service-channels {}) (catch Exception _))
+  (try (reset! inflight-requests {}) (catch Exception _)))

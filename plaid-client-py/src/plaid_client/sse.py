@@ -11,6 +11,33 @@ from plaid_client.transforms import transform_response
 logger = logging.getLogger(__name__)
 
 
+def abort_response(resp):
+    """Shut down the TCP socket under a streaming `requests` response so a
+    read blocked in another thread's ``iter_lines()`` unblocks immediately.
+
+    ``requests.Response.close()`` does NOT reliably wake a ``recv()`` blocked in
+    another thread, so closing a stream that is idle between events can hang
+    until the next byte arrives. ``socket.shutdown()`` interrupts it at once.
+    The socket's location inside urllib3 varies by version, so probe the known
+    shapes (``raw._connection.sock`` then ``raw._fp.fp.raw._sock``) and fall
+    back silently. Used by both SSEConnection.close() and the streaming
+    request_service() reader."""
+    raw = getattr(resp, 'raw', None)
+    if raw is None:
+        return
+    try:
+        conn = getattr(raw, '_connection', None)
+        sock = getattr(conn, 'sock', None) if conn is not None else None
+        if sock is None:
+            inner = getattr(getattr(raw, '_fp', None), 'fp', None)
+            sr = getattr(inner, 'raw', None)
+            sock = getattr(sr, '_sock', None) if sr is not None else None
+        if sock is not None:
+            sock.shutdown(socket.SHUT_RDWR)
+    except Exception:
+        pass
+
+
 class SSEConnection:
     """SSE connection to the listen endpoint using streaming requests.
 
@@ -26,7 +53,7 @@ class SSEConnection:
     0 (CONNECTING), 1 (OPEN), 2 (CLOSED).
     """
 
-    def __init__(self, client, project_id, on_event):
+    def __init__(self, client, project_id, on_event, path=None):
         self._start_time = time.time()
         self._is_connected = False
         self._is_closed = False
@@ -39,6 +66,11 @@ class SSEConnection:
         self._client = client
         self._project_id = project_id
         self._on_event = on_event
+        # Which stream to open. Defaults to the project audit/message bus
+        # (/listen); service request channels pass their own path. Only the
+        # /listen stream emits `heartbeat` events needing a POST confirmation —
+        # other streams keep themselves alive with ignored SSE comments.
+        self._path = path or f'/api/v1/projects/{project_id}/listen'
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -47,32 +79,6 @@ class SSEConnection:
     def ready_state(self):
         """Current connection state: 0 CONNECTING, 1 OPEN, 2 CLOSED."""
         return self._ready_state
-
-    def _abort_socket(self):
-        """Shut down the underlying TCP socket so a read blocked in the reader
-        thread's ``iter_lines()`` unblocks immediately.
-
-        ``requests.Response.close()`` does NOT reliably wake a ``recv()`` that
-        is blocked in another thread, so calling it while the reader sits idle
-        between SSE events can hang until the next byte arrives.
-        ``socket.shutdown()`` interrupts the blocked read at once. The socket's
-        location inside urllib3 varies by version, so probe the known shapes
-        and fall back silently."""
-        resp = self._response
-        raw = getattr(resp, 'raw', None)
-        if raw is None:
-            return
-        try:
-            conn = getattr(raw, '_connection', None)
-            sock = getattr(conn, 'sock', None) if conn is not None else None
-            if sock is None:
-                inner = getattr(getattr(raw, '_fp', None), 'fp', None)
-                sr = getattr(inner, 'raw', None)
-                sock = getattr(sr, '_sock', None) if sr is not None else None
-            if sock is not None:
-                sock.shutdown(socket.SHUT_RDWR)
-        except Exception:
-            pass
 
     def close(self):
         """Close the connection and abort the underlying stream."""
@@ -84,7 +90,7 @@ class SSEConnection:
             # Unblock the reader's iter_lines() first, then release the
             # response — otherwise close() can hang waiting on the in-flight
             # blocking read.
-            self._abort_socket()
+            abort_response(self._response)
             if self._response:
                 try:
                     self._response.close()
@@ -126,7 +132,7 @@ class SSEConnection:
 
     def _run(self):
         try:
-            url = f'{self._client.base_url}/api/v1/projects/{self._project_id}/listen'
+            url = f'{self._client.base_url}{self._path}'
             headers = {
                 'Authorization': f'Bearer {self._client.token}',
                 'Accept': 'text/event-stream',

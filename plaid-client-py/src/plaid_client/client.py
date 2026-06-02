@@ -862,18 +862,21 @@ class DocumentsResource(_Resource):
 
 
 class MessagesResource(_Resource):
-    def listen(self, project_id: str, on_event) -> SSEConnection:
-        """Listen for project events including service coordination messages.
+    def listen(self, project_id: str, on_event, path: str | None = None) -> SSEConnection:
+        """Open a Server-Sent Events stream for a project.
 
         Args:
             project_id: The UUID of the project to listen to
             on_event: Callback function that receives (event_type, data). If it
                 returns true, listening will stop.
+            path: Stream path under the base URL. Defaults to the project
+                /listen bus (audit-log + broadcast messages); service request
+                channels pass their own path.
 
         Returns:
             SSE connection object with .close() and .get_stats() methods
         """
-        return SSEConnection(self._client, project_id, on_event)
+        return SSEConnection(self._client, project_id, on_event, path=path)
 
     def send_message(self, project_id: str, data: Any) -> Any:
         """Send a message to project listeners.
@@ -940,42 +943,46 @@ class MessagesResource(_Resource):
         Returns:
             List of discovered service information
         """
-        return svc.discover_services(
-            self._client, self.listen, self.send_message, project_id, timeout)
+        return svc.discover_services(self._client, project_id, timeout)
 
     def serve(self, project_id: str, service_info: dict, on_service_request,
               extras: dict | None = None) -> svc.ServiceRegistration:
-        """Register as a service and handle incoming requests.
+        """Register as a service and handle incoming work requests.
+
+        Requests are delivered over the service's own addressed channel (not the
+        broadcast bus); replies stream back to the one requester.
 
         Args:
             project_id: The UUID of the project to serve
             service_info: Service information {service_id, service_name, description}
-            on_service_request: Callback to handle service requests
+            on_service_request: Callback (data, response_helper)
             extras: Optional additional service metadata
 
         Returns:
             Service registration object with .stop() method
         """
         return svc.serve(
-            self._client, self.listen, self.send_message, project_id,
-            service_info, on_service_request, extras)
+            self._client, project_id, service_info, on_service_request, extras)
 
     def request_service(self, project_id: str, service_id: str, data: Any,
-                        timeout: float = 10.0) -> Any:
-        """Request a service to perform work.
+                        timeout: float = 10.0, on_progress=None) -> Any:
+        """Request a service to perform work and await its result.
+
+        Streams the service's progress + result back over a single
+        server-mediated response. Raises if no service is connected.
 
         Args:
             project_id: The UUID of the project
             service_id: The ID of the service to request
             data: The request data
             timeout: Timeout in seconds (default: 10.0)
+            on_progress: Optional callback invoked with each progress payload
 
         Returns:
             Service response
         """
         return svc.request_service(
-            self._client, self.listen, self.send_message, project_id,
-            service_id, data, timeout)
+            self._client, project_id, service_id, data, timeout, on_progress)
 
 
 class ProjectsResource(_Resource):

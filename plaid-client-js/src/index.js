@@ -1183,13 +1183,14 @@ class PlaidClient {
 
     this.messages = {
       /**
-       * Listen for project events including service coordination messages
+       * Open a Server-Sent Events stream for a project.
        * @param {string} projectId - The UUID of the project to listen to
        * @param {function} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
+       * @param {string} [path] - Stream path under baseUrl (defaults to the project /listen bus; service channels pass their own).
        * @returns {Object} SSE connection object with .close() and .getStats() methods
        */
-      listen: (projectId, onEvent) =>
-        createSSEConnection(this, projectId, onEvent),
+      listen: (projectId, onEvent, path) =>
+        createSSEConnection(this, projectId, onEvent, path),
 
       /**
        * Send a message to project listeners
@@ -1235,57 +1236,36 @@ class PlaidClient {
         this._request('GET', `/api/v1/projects/${projectId}/services`),
 
       /**
-       * Discover available services in a project
+       * Discover available services in a project (synchronous registry read).
        * @param {string} projectId - The UUID of the project to query
-       * @param {number} [timeout] - Unused; kept for signature back-compat
+       * @param {number} [timeout] - Ignored; kept for back-compat
        * @returns {Promise<Array>} Array of discovered service information
        */
       discoverServices: (projectId, timeout) =>
-        discoverServices(
-          this,
-          this.messages.listen,
-          this.messages.sendMessage,
-          projectId,
-          timeout,
-        ),
+        discoverServices(this, projectId, timeout),
 
       /**
-       * Register as a service and handle incoming requests
+       * Register as a service and handle incoming work requests.
        * @param {string} projectId - The UUID of the project to serve
        * @param {Object} serviceInfo - Service information {serviceId, serviceName, description}
-       * @param {function} onServiceRequest - Callback to handle service requests
+       * @param {function} onServiceRequest - Callback (data, responseHelper)
        * @param {Object} [extras] - Optional additional service metadata
        * @returns {Object} Service registration object with .stop() method
        */
       serve: (projectId, serviceInfo, onServiceRequest, extras) =>
-        serve(
-          this,
-          this.messages.listen,
-          this.messages.sendMessage,
-          projectId,
-          serviceInfo,
-          onServiceRequest,
-          extras,
-        ),
+        serve(this, projectId, serviceInfo, onServiceRequest, extras),
 
       /**
-       * Request a service to perform work
+       * Request a service to perform work and await its result.
        * @param {string} projectId - The UUID of the project
        * @param {string} serviceId - The ID of the service to request
        * @param {any} data - The request data
        * @param {number} [timeout] - Timeout in milliseconds (default: 10000)
+       * @param {function} [onProgress] - Called with each progress payload {percent, message}
        * @returns {Promise<any>} Service response
        */
-      requestService: (projectId, serviceId, data, timeout) =>
-        requestService(
-          this,
-          this.messages.listen,
-          this.messages.sendMessage,
-          projectId,
-          serviceId,
-          data,
-          timeout,
-        ),
+      requestService: (projectId, serviceId, data, timeout, onProgress) =>
+        requestService(this, projectId, serviceId, data, timeout, onProgress),
     };
 
     /**

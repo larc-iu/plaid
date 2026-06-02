@@ -1,56 +1,47 @@
+"""Service coordination: discovery + server-mediated request/response RPC.
+
+All of this runs OFF the broadcast bus (`/listen` + `/message`). Discovery is a
+synchronous read of the server-side registry. Work requests are addressed: a
+service receives them on its own SSE channel and reports back via plain POSTs
+that the server relays to the one waiting requester.
+"""
+import json
 import logging
 import threading
-import time
-from datetime import datetime, timezone
+
+import requests
+
+from plaid_client.sse import abort_response
+from plaid_client.transforms import transform_request, transform_response
 
 logger = logging.getLogger(__name__)
 
-_counter = 0
-_counter_lock = threading.Lock()
 
-
-def generate_request_id():
-    """Generate a unique request ID for service coordination."""
-    global _counter
-    with _counter_lock:
-        _counter += 1
-        count = _counter
-    return f'req_{count}_{int(time.time() * 1000)}'
-
-
-def create_service_message(type_, **data):
-    """Create a service coordination message."""
-    return {
-        'type': type_,
-        'timestamp': datetime.now(timezone.utc).isoformat(),
-        **data,
-    }
-
-
-def is_service_message(data):
-    """Check if a message is a service coordination message."""
-    return isinstance(data, dict) and bool(data.get('type')) and bool(data.get('timestamp'))
-
-
-def discover_services(client, listen_fn, send_fn, project_id, timeout=3.0):
-    """Discover available services in a project.
-
-    Reads the server-side service registry synchronously (a single GET) — no
-    broadcast handshake, no waiting. ``timeout`` is unused and kept only for
-    signature back-compat.
+def discover_services(client, project_id, timeout=None):
+    """Discover available services in a project — a synchronous read of the
+    server-side registry. ``timeout`` is accepted for back-compat and ignored.
     """
     return client.messages.list_services(project_id)
+
+
+def _report_event(client, project_id, request_id, body):
+    """POST a progress/result/error event for an in-flight request; the server
+    relays it to the waiting requester."""
+    client.messages._request(
+        'POST',
+        f'/api/v1/projects/{project_id}/service-requests/{request_id}/events',
+        body=body)
 
 
 class ServiceRegistration:
     """Handle for a running service registration created by ``serve``.
 
-    Holds the long-lived SSE connection used for request/response RPC plus a
-    background heartbeat thread that keeps the service present in the
-    server-side registry (independent of the SSE channel-liveness heartbeat).
+    Holds the inbound request channel (SSE) the service receives work on, plus
+    a background thread that re-registers in the discovery registry so the
+    service stays listed by ``discover_services``.
 
     Attributes:
-        service_info: The registered service metadata
+        service_info: The registered metadata
             (service_id, service_name, description, extras).
     """
 
@@ -67,7 +58,7 @@ class ServiceRegistration:
 
     def _start_heartbeat(self, interval_s):
         """Spawn a daemon thread that re-registers every ``interval_s`` seconds
-        to keep the registry entry live."""
+        to keep the discovery-registry entry live."""
         def loop():
             # `wait` returns True when stopped, False on timeout — so the loop
             # exits promptly on stop() instead of sleeping out the interval.
@@ -82,9 +73,8 @@ class ServiceRegistration:
         self._heartbeat_thread.start()
 
     def stop(self):
-        """Stop serving: halt heartbeats, unregister, and close the SSE
-        connection. Presence would also lapse on its own once the TTL elapses
-        without a heartbeat."""
+        """Stop serving: halt heartbeats, unregister from the registry, and
+        close the request channel."""
         self._running = False
         self._stop_event.set()
         if self._client and self._project_id and self._service_id:
@@ -101,16 +91,18 @@ class ServiceRegistration:
         return self._running
 
 
-def serve(client, listen_fn, send_fn, project_id, service_info, on_service_request, extras=None):
-    """Register as a service and handle incoming requests.
+def serve(client, project_id, service_info, on_service_request, extras=None):
+    """Register a service and handle incoming work requests.
 
-    Note: timeouts elsewhere in this module are in seconds for the Python
-    client (the JS client uses milliseconds).
+    Registers in the discovery registry (so ``discover_services`` lists it) and
+    opens the service's dedicated request channel. For each request, runs
+    ``on_service_request(data, response_helper)`` where ``response_helper`` has
+    ``progress(percent, msg)`` / ``complete(data)`` / ``error(err)``. The
+    handler runs synchronously on the channel's reader thread (one request at a
+    time), matching the previous behavior.
 
     Args:
         client: PlaidClient instance.
-        listen_fn: Bound messages-listen function.
-        send_fn: Bound messages-send-message function.
         project_id: Project UUID.
         service_info: Dict with service_id, service_name, description.
         on_service_request: Handler callback (data, response_helper).
@@ -133,139 +125,157 @@ def serve(client, listen_fn, send_fn, project_id, service_info, on_service_reque
     def on_event(event_type, event_data):
         if not registration._running:
             return True
-
-        if event_type != 'message' or not isinstance(event_data.get('data'), dict):
+        # The channel only carries `connected` (ignored) and `service_request`.
+        if event_type != 'service_request' or not isinstance(event_data, dict):
             return
-        message = event_data['data']
-        if not is_service_message(message):
+        req_id = event_data.get('request_id')
+        if not req_id:
             return
+        req_data = event_data.get('data')
 
-        # Discovery is served by the server-side registry (serve() registers +
-        # heartbeats below); this handler only fields actual work requests.
-        if message.get('type') == 'service_request' and message.get('service_id') == service_id:
-            req_id = message.get('request_id')
-            try:
-                # Send acknowledgment
+        class ResponseHelper:
+            """Helper passed to the request handler for replying."""
+
+            def progress(self, percent, msg=''):
+                """Send a progress update for the in-flight request."""
                 try:
-                    send_fn(project_id, create_service_message(
-                        'service_response', request_id=req_id, status='received'))
+                    _report_event(client, project_id, req_id,
+                                  {'status': 'progress',
+                                   'progress': {'percent': percent, 'message': msg}})
                 except Exception:
-                    pass
+                    logger.warning('Failed to send progress update')
 
-                # Create response helper
-                class ResponseHelper:
-                    """Helper passed to the request handler for replying."""
-
-                    def progress(self, percent, msg=''):
-                        """Send a progress update for the in-flight request."""
-                        try:
-                            send_fn(project_id, create_service_message(
-                                'service_response', request_id=req_id, status='progress',
-                                progress={'percent': percent, 'message': msg}))
-                        except Exception:
-                            logger.warning('Failed to send progress update')
-
-                    def complete(self, data=None):
-                        """Send the final successful result for the request."""
-                        try:
-                            send_fn(project_id, create_service_message(
-                                'service_response', request_id=req_id, status='completed', data=data))
-                        except Exception:
-                            logger.warning('Failed to send completion message')
-
-                    def error(self, error):
-                        """Send an error response for the request."""
-                        error_str = str(error)
-                        try:
-                            send_fn(project_id, create_service_message(
-                                'service_response', request_id=req_id, status='error',
-                                data={'error': error_str}))
-                        except Exception:
-                            logger.warning('Failed to send error message')
-
-                helper = ResponseHelper()
+            def complete(self, data=None):
+                """Send the final successful result for the request."""
                 try:
-                    on_service_request(message.get('data'), helper)
-                except Exception as e:
-                    helper.error(str(e))
-            except Exception as e:
-                try:
-                    send_fn(project_id, create_service_message(
-                        'service_response', request_id=req_id, status='error',
-                        data={'error': str(e)}))
+                    _report_event(client, project_id, req_id,
+                                  {'status': 'completed', 'data': data})
                 except Exception:
-                    logger.warning('Failed to send error response')
+                    logger.warning('Failed to send completion message')
 
-    try:
-        connection = listen_fn(project_id, on_event)
-    except Exception as e:
-        raise RuntimeError(f'Failed to start service: {e}')
+            def error(self, error):
+                """Send an error response for the request."""
+                try:
+                    _report_event(client, project_id, req_id,
+                                  {'status': 'error', 'data': {'error': str(error)}})
+                except Exception:
+                    logger.warning('Failed to send error message')
 
-    registration._connection = connection
+        helper = ResponseHelper()
+        try:
+            on_service_request(req_data, helper)
+        except Exception as e:
+            helper.error(str(e))
 
-    # Announce presence in the server-side registry, then heartbeat on the
-    # server-advised interval so the service stays discoverable via
-    # list_services(). Falls back to 30s if the server doesn't advise one.
+    # Register for discovery, then open the dedicated inbound request channel.
     try:
         res = client.messages.register_service(project_id, full_info)
         interval_ms = (res or {}).get('heartbeat_interval_ms') or 30000
     except Exception:
         logger.warning('Failed to register service')
         interval_ms = 30000
-    registration._start_heartbeat(interval_ms / 1000.0)
 
+    channel_path = f'/api/v1/projects/{project_id}/services/{service_id}/requests'
+    try:
+        connection = client.messages.listen(project_id, on_event, path=channel_path)
+    except Exception as e:
+        raise RuntimeError(f'Failed to open service channel: {e}')
+
+    registration._connection = connection
+    registration._start_heartbeat(interval_ms / 1000.0)
     return registration
 
 
-def request_service(client, listen_fn, send_fn, project_id, service_id, data, timeout=10.0):
-    """Send a request to a service and await its response.
+def request_service(client, project_id, service_id, data, timeout=10.0, on_progress=None):
+    """Submit work to a service and await its result.
 
-    ``timeout`` is in seconds (the JS client uses milliseconds). Raises
-    ``TimeoutError`` if no response arrives in time, or ``RuntimeError`` if the
-    service responds with an error.
+    Streams the service's progress + result back over a single server-mediated
+    response (no broadcast). ``timeout`` is in seconds. Raises ``RuntimeError``
+    if no service is currently connected (503), if the service reports an error,
+    or if the stream ends without a result; ``TimeoutError`` on timeout.
+    ``on_progress``, if given, is called with each progress payload
+    (``{'percent', 'message'}``).
     """
-    request_id = generate_request_id()
-    connection = None
+    url = f'{client.base_url}/api/v1/projects/{project_id}/services/{service_id}/requests'
+    headers = {
+        'Authorization': f'Bearer {client.token}',
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+    }
+    body = transform_request(data) if data is not None else None
+    try:
+        resp = requests.post(url, headers=headers, json=body, stream=True, timeout=(10, None))
+    except Exception as e:
+        raise RuntimeError(f'Failed to submit service request: {e}')
+
+    if resp.status_code == 503:
+        resp.close()
+        raise RuntimeError(f"No live service '{service_id}' on this project")
+    if not resp.ok:
+        detail = ''
+        try:
+            detail = resp.text
+        except Exception:
+            pass
+        resp.close()
+        raise RuntimeError(f'Service request failed: HTTP {resp.status_code} {detail}')
+
     result = {'value': None, 'error': None, 'resolved': False}
     done = threading.Event()
 
-    def on_event(event_type, event_data):
-        if event_type == 'message' and isinstance(event_data.get('data'), dict):
-            message = event_data['data']
-            if (is_service_message(message)
-                    and message.get('type') == 'service_response'
-                    and message.get('request_id') == request_id):
-                if message.get('status') == 'completed':
-                    if not result['resolved']:
+    def reader():
+        event_type = ''
+        data_buf = ''
+        try:
+            for line in resp.iter_lines(decode_unicode=True):
+                if done.is_set():
+                    break
+                if line is None:
+                    continue
+                if line.startswith('event: '):
+                    event_type = line[7:].strip()
+                elif line.startswith('data: '):
+                    data_buf = line[6:]
+                elif line == '' and event_type and data_buf:
+                    payload = transform_response(json.loads(data_buf))
+                    if event_type == 'progress':
+                        if on_progress:
+                            try:
+                                on_progress(payload.get('progress'))
+                            except Exception:
+                                pass
+                    elif event_type == 'result':
+                        result['value'] = payload.get('data')
                         result['resolved'] = True
-                        result['value'] = message.get('data')
                         done.set()
-                elif message.get('status') == 'error':
-                    if not result['resolved']:
+                        return
+                    elif event_type == 'error':
+                        result['error'] = payload.get('error') or 'Service request failed'
                         result['resolved'] = True
-                        err = message.get('data', {})
-                        result['error'] = err.get('error', 'Service request failed') if isinstance(err, dict) else 'Service request failed'
                         done.set()
+                        return
+                    event_type = ''
+                    data_buf = ''
+            if not result['resolved']:
+                result['error'] = 'Service closed the connection without a result'
+                done.set()
+        except Exception as e:
+            if not result['resolved']:
+                result['error'] = f'Service request stream error: {e}'
+                done.set()
 
+    thread = threading.Thread(target=reader, daemon=True)
+    thread.start()
+
+    finished = done.wait(timeout=timeout)
+    # Tear down the stream (unblocks the reader's iter_lines immediately).
+    abort_response(resp)
     try:
-        connection = listen_fn(project_id, on_event)
-    except Exception as e:
-        raise RuntimeError(f'Cannot establish SSE connection: {e}')
+        resp.close()
+    except Exception:
+        pass
 
-    try:
-        req_msg = create_service_message('service_request',
-                                         request_id=request_id, service_id=service_id, data=data)
-        send_fn(project_id, req_msg)
-    except Exception as e:
-        if connection:
-            connection.close()
-        raise RuntimeError(f'Failed to send service request: {e}')
-
-    done.wait(timeout=timeout)
-    if connection:
-        connection.close()
-
-    if not result['resolved']:
+    if not finished:
         raise TimeoutError(f'Service request timed out after {timeout}s')
     if result['error']:
         raise RuntimeError(result['error'])

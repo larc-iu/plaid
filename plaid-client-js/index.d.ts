@@ -147,7 +147,7 @@ interface DocumentsBundle {
 
 interface MessagesBundle {
   sendMessage(projectId: string, data: any): Promise<any>;
-  listen(projectId: string, onEvent: (eventType: string, data: any) => void | boolean): SSEConnection;
+  listen(projectId: string, onEvent: (eventType: string, data: any) => void | boolean, path?: string): SSEConnection;
   /** Register (or heartbeat) a service in the project's service registry. */
   registerService(projectId: string, serviceInfo: ServiceInfo): Promise<ServiceRegistrationResult>;
   /** Remove a service from the registry (clean shutdown). */
@@ -157,7 +157,8 @@ interface MessagesBundle {
   /** Discover services via the registry. `timeout` is ignored (kept for back-compat). */
   discoverServices(projectId: string, timeout?: number): Promise<DiscoveredService[]>;
   serve(projectId: string, serviceInfo: ServiceInfo, onServiceRequest: (data: any, responseHelper: ResponseHelper) => void, extras?: any): ServiceRegistration;
-  requestService(projectId: string, serviceId: string, data: any, timeout?: number): Promise<any>;
+  /** Submit work to a service; streams progress to `onProgress`, resolves with the result. */
+  requestService(projectId: string, serviceId: string, data: any, timeout?: number, onProgress?: (progress: any) => void): Promise<any>;
 }
 
 interface ProjectsBundle {

@@ -102,6 +102,114 @@
                           (events/cleanup-channel! channel)
                           (log/debug "After cleanup - Total clients:" (events/get-client-count)))}))
 
+;; =============================================================================
+;; Server-mediated service RPC (addressed; off the broadcast bus)
+;; =============================================================================
+;;
+;; A client submits work to ONE specific service and the server relays that
+;; service's progress/result back to only that requester — no fan-out. This is
+;; deliberately separate from /listen + /message (which stay as a generic
+;; medium): the service receives requests on its own SSE stream, and replies
+;; via plain POSTs that the server routes to the waiting requester's stream.
+;; Ephemeral: if no service channel is open, submit fails fast (503); if a
+;; service drops mid-request, its in-flight requesters are errored.
+
+(def ^:private sse-response-headers
+  {"Content-Type"  "text/event-stream"
+   "Cache-Control" "no-cache"
+   "Connection"    "keep-alive"})
+
+(defn- sse-event
+  "Format a named SSE event carrying a JSON data payload."
+  [event-name data]
+  (str "event: " event-name "\n"
+       "data: " (json/write-str data) "\n\n"))
+
+(defn- start-keepalive!
+  "Periodically send an SSE comment so an idle stream stays open through
+  proxies; exits once the channel closes."
+  [channel]
+  (async/go-loop []
+    (async/<! (async/timeout 25000))
+    (when (and (http-kit/open? channel)
+               (http-kit/send! channel ": keepalive\n\n" false))
+      (recur))))
+
+(defn service-channel-handler
+  "SSE stream a service opens to RECEIVE work requests (server -> service).
+  Presence on this channel is what makes the service reachable for RPC."
+  [{{{:keys [id service-id]} :path} :parameters :as req}]
+  (http-kit/as-channel
+   req
+   {:on-open
+    (fn [channel]
+      (http-kit/send! channel {:status 200 :headers sse-response-headers} false)
+      (http-kit/send! channel (sse-event "connected" {:status "connected" :service-id service-id}) false)
+      (events/register-service-channel! id service-id channel)
+      (log/debug "Service channel opened for" service-id "on project" id)
+      (start-keepalive! channel))
+    :on-close
+    (fn [channel _]
+      (events/unregister-service-channel! id service-id channel)
+      ;; Fail any in-flight requests that were routed to this now-gone service.
+      (doseq [[request-id {:keys [requester]}] (events/requests-for-service id service-id)]
+        (when requester
+          (try (http-kit/send! requester (sse-event "error" {:error "Service disconnected"}) false)
+               (catch Exception _))
+          (try (http-kit/close requester) (catch Exception _)))
+        (events/resolve-request! request-id))
+      (log/debug "Service channel closed for" service-id "on project" id))}))
+
+(defn submit-request-handler
+  "Client POSTs work for a service; the response is an SSE stream of that
+  service's progress events ending in a result or error. 503 if no service is
+  currently connected."
+  [{{{:keys [id service-id]} :path
+     data :body} :parameters :as req}]
+  (if-not (events/get-service-channel id service-id)
+    {:status 503 :body {:error (str "No live service '" service-id "' on this project")}}
+    (let [request-id (str (java.util.UUID/randomUUID))]
+      (http-kit/as-channel
+       req
+       {:on-open
+        (fn [requester]
+          (http-kit/send! requester {:status 200 :headers sse-response-headers} false)
+          (events/track-request! request-id requester id service-id)
+          (start-keepalive! requester)
+          ;; Re-fetch the channel at push time — it may have dropped since the
+          ;; pre-check above.
+          (let [service-ch (events/get-service-channel id service-id)]
+            (when-not (and service-ch
+                           (http-kit/send! service-ch
+                                           (sse-event "service_request" {:request-id request-id :data data})
+                                           false))
+              (http-kit/send! requester (sse-event "error" {:error "Service unavailable"}) false)
+              (events/resolve-request! request-id)
+              (http-kit/close requester))))
+        :on-close
+        (fn [_ _]
+          (events/resolve-request! request-id))}))))
+
+(defn reply-handler
+  "Service POSTs progress/result/error for an in-flight request; the server
+  relays it to the waiting requester's stream, closing on a terminal status."
+  [{{{:keys [id request-id]} :path
+     {:keys [status progress data]} :body} :parameters :as req}]
+  (let [{:keys [requester project-id]} (events/get-request request-id)]
+    (if-not (and requester (= project-id id))
+      {:status 404 :body {:error "Unknown or already-completed request"}}
+      (do
+        (case status
+          "progress"  (http-kit/send! requester (sse-event "progress" {:progress progress}) false)
+          "completed" (do (http-kit/send! requester (sse-event "result" {:data data}) false)
+                          (events/resolve-request! request-id)
+                          (http-kit/close requester))
+          "error"     (do (http-kit/send! requester (sse-event "error" (if (map? data) data {:error data})) false)
+                          (events/resolve-request! request-id)
+                          (http-kit/close requester))
+          nil)
+        {:status 200 :body {:success true}}))))
+
 (def message-routes
   ["/projects/:id" {:parameters {:path [:map [:id :uuid]]}
                     :openapi {:x-client-bundle "messages"}}
@@ -186,4 +294,31 @@
               :handler (fn [{{{:keys [id service-id]} :path} :parameters}]
                          (events/unregister-service! id service-id)
                          {:status 200
-                          :body {:success true}})}}]])
+                          :body {:success true}})}}]
+
+   ;; Server-mediated RPC: the service's inbound request stream (GET) and the
+   ;; client's work-submission stream (POST). Addressed, not broadcast.
+   ["/services/:service-id/requests"
+    {:parameters {:path [:map [:id :uuid] [:service-id :string]]}
+     :get {:summary "Service: open the inbound work-request stream (SSE)."
+           :middleware [[pra/wrap-writer-required get-project-id]]
+           :openapi {:x-client-method "serve-channel"}
+           :handler service-channel-handler}
+     :post {:summary "Client: submit work to a service; streams progress + result (SSE)."
+            :middleware [[pra/wrap-writer-required get-project-id]]
+            :openapi {:x-client-method "submit-request"}
+            :parameters {:body any?}
+            :handler submit-request-handler}}]
+
+   ;; Service reports progress/result/error for an in-flight request; the server
+   ;; relays it to the waiting requester.
+   ["/service-requests/:request-id/events"
+    {:parameters {:path [:map [:id :uuid] [:request-id :string]]}
+     :post {:summary "Service: report progress/result/error for an in-flight request."
+            :middleware [[pra/wrap-writer-required get-project-id]]
+            :openapi {:x-client-method "report-request-event"}
+            :parameters {:body [:map
+                                [:status [:enum "progress" "completed" "error"]]
+                                [:progress {:optional true} any?]
+                                [:data {:optional true} any?]]}
+            :handler reply-handler}}]])

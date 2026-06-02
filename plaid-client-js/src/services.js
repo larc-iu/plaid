@@ -1,63 +1,54 @@
 /**
- * Generate a unique request ID for service coordination.
- */
-export function generateRequestId() {
-  return 'req_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-}
-
-/**
- * Create a service coordination message.
- */
-export function createServiceMessage(type, data = {}) {
-  return {
-    type,
-    timestamp: new Date().toISOString(),
-    ...data,
-  };
-}
-
-/**
- * Check if a message is a service coordination message.
- */
-export function isServiceMessage(data) {
-  return data && data.type && data.timestamp;
-}
-
-/**
- * Discover available services in a project.
+ * Service coordination: discovery + server-mediated request/response RPC.
  *
- * Reads the server-side service registry synchronously (a single GET) — no
- * broadcast handshake, no waiting. Services keep themselves listed by
- * registering + heartbeating via `serve()`.
+ * All of this runs OFF the broadcast bus (`/listen` + `/message`). Discovery is
+ * a synchronous read of the server-side registry. Work requests are addressed:
+ * a service receives them on its own SSE channel and reports back via plain
+ * POSTs that the server relays to the one waiting requester.
+ */
+import { transformRequest, transformResponse } from './transforms.js';
+
+/**
+ * Discover available services in a project — a synchronous read of the
+ * server-side registry. `timeout` is accepted for back-compat and ignored.
  *
  * @param {Object} client - PlaidClient instance
- * @param {function} listenFn - Unused; kept for signature back-compat
- * @param {function} sendFn - Unused; kept for signature back-compat
  * @param {string} projectId - Project UUID
- * @param {number} timeout - Unused; kept for signature back-compat
- * @returns {Promise<Array>} Discovered services [{serviceId, serviceName, description, extras}]
+ * @param {number} [timeout] - Ignored
+ * @returns {Promise<Array>} [{serviceId, serviceName, description, extras}]
  */
-export function discoverServices(client, listenFn, sendFn, projectId, timeout) {
+export function discoverServices(client, projectId, timeout) {
   return client.messages.listServices(projectId);
 }
 
 /**
- * Register as a service and handle incoming requests.
+ * Register a service and handle incoming work requests.
+ *
+ * Registers in the discovery registry (so `discoverServices` lists it) and
+ * opens the service's dedicated request channel. For each request, runs
+ * `onServiceRequest(data, responseHelper)` where `responseHelper` has
+ * `progress(percent, msg)` / `complete(data)` / `error(err)`.
  *
  * @param {Object} client - PlaidClient instance
- * @param {function} listenFn - Bound _messagesListen function
- * @param {function} sendFn - Bound _messagesSendMessage function
  * @param {string} projectId - Project UUID
  * @param {Object} serviceInfo - {serviceId, serviceName, description}
- * @param {function} onServiceRequest - Handler callback
+ * @param {function} onServiceRequest - Handler callback (data, responseHelper)
  * @param {Object} extras - Optional additional metadata
  * @returns {Object} ServiceRegistration with .stop(), .isRunning(), .serviceInfo
  */
-export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServiceRequest, extras = {}) {
+export function serve(client, projectId, serviceInfo, onServiceRequest, extras = {}) {
   const { serviceId, serviceName, description = '' } = serviceInfo;
   let connection = null;
   let isRunning = true;
   let heartbeatTimer = null;
+
+  const reportEvent = (requestId, body) =>
+    client
+      ._request('POST', `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}/events`, { body })
+      .catch((error) => {
+        // 404 just means the requester already went away; nothing to do.
+        console.warn('Failed to report request event:', error.message || error);
+      });
 
   const serviceRegistration = {
     stop: () => {
@@ -66,8 +57,6 @@ export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServic
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
       }
-      // Best-effort clean removal from the registry; presence would also
-      // lapse on its own once the TTL elapses without a heartbeat.
       client.messages.unregisterService(projectId, serviceId).catch(() => {});
       if (connection) connection.close();
     },
@@ -75,10 +64,8 @@ export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServic
     serviceInfo: { serviceId, serviceName, description, extras },
   };
 
-  // Announce presence in the server-side registry, then re-register on the
-  // server-advised interval to stay live. This is what makes the service
-  // discoverable via a synchronous listServices() — independent of the SSE
-  // channel-liveness heartbeat handled inside the connection itself.
+  // Register for discovery, then re-register on the server-advised interval so
+  // the service stays listed by discoverServices().
   const registerOnce = () =>
     client.messages
       .registerService(projectId, { serviceId, serviceName, description, extras })
@@ -90,84 +77,35 @@ export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServic
     if (!isRunning) return;
     const intervalMs = (res && res.heartbeatIntervalMs) || 30000;
     heartbeatTimer = setInterval(() => {
-      if (!isRunning) return;
-      registerOnce();
+      if (isRunning) registerOnce();
     }, intervalMs);
   });
 
+  // Open the dedicated inbound request channel (server -> service). The channel
+  // only carries `connected` (ignored) and `service_request` events.
+  const channelPath = `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests`;
   try {
-    connection = listenFn(projectId, (eventType, eventData) => {
+    connection = client.messages.listen(projectId, (eventType, payload) => {
       if (!isRunning) return true;
+      if (eventType !== 'service_request' || !payload) return;
+      const requestId = payload.requestId;
+      if (!requestId) return;
 
-      if (eventType === 'message' && isServiceMessage(eventData.data)) {
-        const message = eventData.data;
+      const responseHelper = {
+        progress: (percent, msg) =>
+          reportEvent(requestId, { status: 'progress', progress: { percent, message: msg } }),
+        complete: (data) =>
+          reportEvent(requestId, { status: 'completed', data }),
+        error: (error) =>
+          reportEvent(requestId, { status: 'error', data: { error: error?.message || error } }),
+      };
 
-        // Discovery is served by the server-side registry (see registerOnce
-        // above); this handler only fields actual work requests over the bus.
-        if (message.type === 'service_request' && message.serviceId === serviceId) {
-          try {
-            // Send acknowledgment
-            const ackMessage = createServiceMessage('service_response', {
-              requestId: message.requestId,
-              status: 'received',
-            });
-            try { sendFn(projectId, ackMessage); } catch (_) { /* continue */ }
-
-            // Create response helper passed to the request handler for replying
-            const responseHelper = {
-              // Send a progress update for the in-flight request
-              progress: (percent, msg) => {
-                const progressMessage = createServiceMessage('service_response', {
-                  requestId: message.requestId,
-                  status: 'progress',
-                  progress: { percent, message: msg },
-                });
-                try { sendFn(projectId, progressMessage); } catch (error) {
-                  console.warn('Failed to send progress update:', error);
-                }
-              },
-              // Send the final successful result for the request
-              complete: (data) => {
-                const completionMessage = createServiceMessage('service_response', {
-                  requestId: message.requestId,
-                  status: 'completed',
-                  data,
-                });
-                try { sendFn(projectId, completionMessage); } catch (error) {
-                  console.warn('Failed to send completion message:', error);
-                }
-              },
-              // Send an error response for the request
-              error: (error) => {
-                const errorMessage = createServiceMessage('service_response', {
-                  requestId: message.requestId,
-                  status: 'error',
-                  data: { error: error.message || error },
-                });
-                try { sendFn(projectId, errorMessage); } catch (error) {
-                  console.warn('Failed to send error message:', error);
-                }
-              },
-            };
-
-            try {
-              onServiceRequest(message.data, responseHelper);
-            } catch (error) {
-              responseHelper.error(error.message || error);
-            }
-          } catch (error) {
-            const errorMessage = createServiceMessage('service_response', {
-              requestId: message.requestId,
-              status: 'error',
-              data: { error: error.message || error },
-            });
-            try { sendFn(projectId, errorMessage); } catch (sendError) {
-              console.warn('Failed to send error response:', sendError);
-            }
-          }
-        }
+      try {
+        onServiceRequest(payload.data, responseHelper);
+      } catch (error) {
+        responseHelper.error(error?.message || error);
       }
-    });
+    }, channelPath);
   } catch (error) {
     throw new Error(`Failed to start service: ${error.message}`);
   }
@@ -176,77 +114,105 @@ export function serve(client, listenFn, sendFn, projectId, serviceInfo, onServic
 }
 
 /**
- * Request a service to perform work.
+ * Submit work to a service and await its result.
+ *
+ * Streams the service's progress + result back over a single server-mediated
+ * response (no broadcast). Rejects if no service is connected (503), if the
+ * service reports an error, or on timeout.
  *
  * @param {Object} client - PlaidClient instance
- * @param {function} listenFn - Bound _messagesListen function
- * @param {function} sendFn - Bound _messagesSendMessage function
  * @param {string} projectId - Project UUID
  * @param {string} serviceId - Service ID to request
  * @param {any} data - Request payload
- * @param {number} timeout - Timeout in ms (default 10000)
- * @returns {Promise<any>} Service response
+ * @param {number} [timeout=10000] - Timeout in ms
+ * @param {function} [onProgress] - Called with each progress payload {percent, message}
+ * @returns {Promise<any>} The service's result
  */
-export function requestService(client, listenFn, sendFn, projectId, serviceId, data, timeout = 10000) {
+export function requestService(client, projectId, serviceId, data, timeout = 10000, onProgress) {
   return new Promise((resolve, reject) => {
-    const requestId = generateRequestId();
-    let connection = null;
-    let isResolved = false;
+    const abortController = new AbortController();
+    let settled = false;
+    const finish = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      abortController.abort();
+      fn(arg);
+    };
+    const timer = setTimeout(
+      () => finish(reject, new Error(`Service request timed out after ${timeout}ms`)),
+      timeout,
+    );
 
-    const timer = setTimeout(() => {
-      if (!isResolved) {
-        isResolved = true;
-        if (connection) connection.close();
-        reject(new Error(`Service request timed out after ${timeout}ms`));
+    (async () => {
+      let response;
+      try {
+        response = await fetch(
+          `${client.baseUrl}/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${client.token}`,
+              'Content-Type': 'application/json',
+              'Accept': 'text/event-stream',
+            },
+            body: JSON.stringify(data === undefined ? null : transformRequest(data)),
+            signal: abortController.signal,
+          },
+        );
+      } catch (error) {
+        if (error.name !== 'AbortError') finish(reject, new Error(`Failed to submit service request: ${error.message}`));
+        return;
       }
-    }, timeout);
 
-    try {
-      connection = listenFn(projectId, (eventType, eventData) => {
-        if (eventType === 'message' && isServiceMessage(eventData.data)) {
-          const message = eventData.data;
-          if (message.type === 'service_response' && message.requestId === requestId) {
-            if (message.status === 'completed') {
-              if (!isResolved) {
-                isResolved = true;
-                clearTimeout(timer);
-                connection.close();
-                resolve(message.data);
+      if (response.status === 503) {
+        finish(reject, new Error(`No live service '${serviceId}' on this project`));
+        return;
+      }
+      if (!response.ok) {
+        finish(reject, new Error(`Service request failed: HTTP ${response.status} ${response.statusText}`));
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let eventType = '';
+      let dataLine = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done || settled) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const rawLine of lines) {
+            const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              dataLine = line.slice(6);
+            } else if (line === '' && eventType && dataLine) {
+              const payload = transformResponse(JSON.parse(dataLine));
+              if (eventType === 'progress') {
+                if (onProgress) { try { onProgress(payload.progress); } catch (_) { /* ignore */ } }
+              } else if (eventType === 'result') {
+                finish(resolve, payload.data);
+                return;
+              } else if (eventType === 'error') {
+                finish(reject, new Error(payload?.error || 'Service request failed'));
+                return;
               }
-            } else if (message.status === 'error') {
-              if (!isResolved) {
-                isResolved = true;
-                clearTimeout(timer);
-                connection.close();
-                reject(new Error(message.data?.error || 'Service request failed'));
-              }
+              eventType = '';
+              dataLine = '';
             }
           }
         }
-      });
-
-      const requestMessage = createServiceMessage('service_request', {
-        requestId,
-        serviceId,
-        data,
-      });
-      try {
-        sendFn(projectId, requestMessage);
+        finish(reject, new Error('Service closed the connection without a result'));
       } catch (error) {
-        if (!isResolved) {
-          isResolved = true;
-          clearTimeout(timer);
-          if (connection) connection.close();
-          reject(new Error(`Failed to send service request: ${error.message}`));
-        }
+        if (error.name !== 'AbortError') finish(reject, new Error(`Service request stream error: ${error.message}`));
       }
-    } catch (error) {
-      if (!isResolved) {
-        isResolved = true;
-        clearTimeout(timer);
-        if (connection) connection.close();
-        reject(new Error(`Cannot establish SSE connection: ${error.message}`));
-      }
-    }
+    })();
   });
 }

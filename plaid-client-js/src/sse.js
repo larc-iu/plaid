@@ -7,9 +7,14 @@ import { transformResponse } from './transforms.js';
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
  * @param {function} onEvent - Callback (eventType, data). Return true to stop.
+ * @param {string} [path] - Stream path under baseUrl. Defaults to the project
+ *   /listen bus; service request channels pass their own. Only /listen emits
+ *   `heartbeat` events needing a POST confirmation — other streams keep
+ *   themselves alive with ignored SSE comments.
  * @returns {Object} SSE connection with .close(), .getStats(), .readyState
  */
-export function createSSEConnection(client, projectId, onEvent) {
+export function createSSEConnection(client, projectId, onEvent, path) {
+  const streamPath = path || `/api/v1/projects/${projectId}/listen`;
   const startTime = Date.now();
   let isConnected = false;
   let isClosed = false;
@@ -58,7 +63,7 @@ export function createSSEConnection(client, projectId, onEvent) {
   // Start the streaming connection
   (async () => {
     try {
-      const url = `${client.baseUrl}/api/v1/projects/${projectId}/listen`;
+      const url = `${client.baseUrl}${streamPath}`;
       const response = await fetch(url, {
         method: 'GET',
         headers: {
