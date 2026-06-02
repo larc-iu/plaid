@@ -52,21 +52,25 @@
 (def ^:private entity-clauses
   {:span     #{:layer :value :doc}
    :token    #{:layer :doc :begin :end}
-   :relation #{:layer :value :doc :source :target}})
+   :relation #{:layer :value :doc :source :target}
+   :vocab    #{:layer :form}})
 
 ;; Relationship clauses and their arity (number of var args after the head).
 (def ^:private rel-clauses
-  {:covers    2     ; [:covers ?span ?token]
-   :precedes  2     ; [:precedes ?t1 ?t2]    immediate
-   :precedes* 2     ; [:precedes* ?t1 ?t2]   transitive
-   :source    2     ; [:source ?rel ?span]
-   :target    2})   ; [:target ?rel ?span]
+  {:covers     2     ; [:covers ?span ?token]
+   :precedes   2     ; [:precedes ?t1 ?t2]      immediate
+   :precedes*  2     ; [:precedes* ?t1 ?t2]     transitive
+   :source     2     ; [:source ?rel ?span]
+   :target     2     ; [:target ?rel ?span]
+   :within     2     ; [:within ?child ?parent] offset containment
+   :first-in   2     ; [:first-in ?token ?container]
+   :vocab-link 2})   ; [:vocab-link ?token ?vocab]
 
 ;; Clause heads accepted by the grammar but not implemented until a later
 ;; milestone. Rejected by validate with a "not yet supported" message rather
 ;; than an "unknown clause" one, so the surface stays forward-compatible.
 (def ^:private deferred-clauses
-  #{:within :first-in :vocab :vocab-link :seq})
+  #{:seq})
 
 ;; ---------------------------------------------------------------------------
 ;; Errors
@@ -156,11 +160,14 @@
                     kk))
                 kinds [:source :target]))
 
-      (= head :covers)   (-> kinds (assoc-kind (first args) :span)  (assoc-kind (second args) :token))
-      (= head :precedes)  (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
-      (= head :precedes*) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
-      (= head :source)   (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
-      (= head :target)   (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
+      (= head :covers)     (-> kinds (assoc-kind (first args) :span)  (assoc-kind (second args) :token))
+      (= head :precedes)   (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
+      (= head :precedes*)  (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
+      (= head :within)     (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
+      (= head :first-in)   (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
+      (= head :source)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
+      (= head :target)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
+      (= head :vocab-link) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :vocab))
       :else kinds)))
 
 (defn infer-kinds

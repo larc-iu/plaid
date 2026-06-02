@@ -52,8 +52,8 @@
         "kind conflict: span used as token")
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layr" "pos"}]]})))
         "unknown constraint key")
-    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["within" "?t" "?w"]]})))
-        "deferred clause :within")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["seq" "?t"]]})))
+        "deferred clause :seq")
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?a"] "where" [["precedes" "?a"]]})))
         "bad rel arity")
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?a"] "where" []})))
@@ -64,6 +64,28 @@
         "non-positive limit")
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["frobnicate" "?s"]]})))
         "unknown clause head")))
+
+(deftest m2-clauses-infer-kinds
+  (testing ":within / :first-in bind tokens; :vocab + :vocab-link bind vocab/token"
+    (let [k (::ast/var-kinds
+             (ast/parse+validate
+              {"find" ["?m"]
+               "where" [["token" "?m" {"layer" "morphemes"}]
+                        ["within" "?m" "?w"] ["token" "?w" {"layer" "words"}]
+                        ["first-in" "?w" "?s"] ["token" "?s" {"layer" "sentences"}]]}))]
+      (is (= :token (k (symbol "?m"))))
+      (is (= :token (k (symbol "?w"))))
+      (is (= :token (k (symbol "?s")))))
+    (let [k (::ast/var-kinds
+             (ast/parse+validate
+              {"find" ["?t"]
+               "where" [["vocab" "?v" {"form" "Kemal"}] ["vocab-link" "?t" "?v"]]}))]
+      (is (= :vocab (k (symbol "?v"))))
+      (is (= :token (k (symbol "?t"))))))
+  (testing "a var used as both token and vocab is a kind conflict"
+    (is (= 400 (code-of #(ast/parse+validate
+                          {"find" ["?x"]
+                           "where" [["vocab" "?x" {}] ["covers" "?x" "?y"]]}))))))
 
 (deftest var-predicate
   (is (ast/var? (symbol "?s")))

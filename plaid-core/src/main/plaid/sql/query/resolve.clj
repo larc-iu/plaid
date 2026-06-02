@@ -64,13 +64,21 @@
 (defn- build-index
   "Build a lookup index for one layer kind over the in-scope projects.
   Returns {:by-id #{id} :by-name {name [ids]} :by-alias {alias [ids]}
-           :by-path {\"Project/Layer\" [ids]}}."
+           :by-path {\"Project/Layer\" [ids]}}.
+
+  Vocab layers are global (no project_id column); they are scoped by the
+  `project_vocabs` grants of the in-scope projects, so a vocab layer is
+  visible iff some in-scope project has been granted it."
   [db scope kind proj-id->name]
-  (let [table (layer-table kind)
-        rows (when (seq scope)
-               (psc/q db {:select [:id :name :project_id :config]
-                          :from [table]
-                          :where [:in :project_id (vec scope)]}))]
+  (let [rows (when (seq scope)
+               (if (= kind :vocab)
+                 (psc/q db {:select-distinct [:vl.id :vl.name :vl.config [:pv.project_id :project_id]]
+                            :from [[:vocab_layers :vl]]
+                            :join [[:project_vocabs :pv] [:= :pv.vocab_layer_id :vl.id]]
+                            :where [:in :pv.project_id (vec scope)]})
+                 (psc/q db {:select [:id :name :project_id :config]
+                            :from [(layer-table kind)]
+                            :where [:in :project_id (vec scope)]})))]
     (reduce
      (fn [ix {:keys [id name project_id config]}]
        (let [id (str id)
@@ -122,10 +130,11 @@
                         (let [ix (build-index db scope kind proj-id->name)]
                           (swap! index-cache assoc kind ix)
                           ix)))
+        layer-named? #{:span :token :relation :vocab}
         resolve-clause
         (fn [clause]
           (let [[head v cmap] clause]
-            (if (and (contains? layer-table head) (contains? cmap :layer))
+            (if (and (layer-named? head) (map? cmap) (contains? cmap :layer))
               (let [ids (resolve-ref (get-index head) head (:layer cmap))]
                 [head v (assoc cmap ::layer-ids (vec ids))])
               clause)))]

@@ -24,13 +24,13 @@
             [plaid.sql.query.resolve :as qr]))
 
 (def ^:private entity-table
-  {:span :spans :token :tokens :relation :relations})
+  {:span :spans :token :tokens :relation :relations :vocab :vocab_items})
 
 (def ^:private alias-prefix
-  {:span "s" :token "t" :relation "r"})
+  {:span "s" :token "t" :relation "r" :vocab "v"})
 
 (def ^:private layer-fk
-  {:span :span_layer_id :token :token_layer_id :relation :relation_layer_id})
+  {:span :span_layer_id :token :token_layer_id :relation :relation_layer_id :vocab :vocab_layer_id})
 
 (def ^:private layer-tbl
   {:span :span_layers :token :token_layers :relation :relation_layers})
@@ -97,9 +97,17 @@
         ;; --- scope predicate (THE ACL invariant) ---
         (let [cs (get constraints v)
               layer-ids (::qr/layer-ids cs)]
-          (if (seq layer-ids)
+          (cond
+            (seq layer-ids)
             (add-where! st [:in (col a (layer-fk kind)) (vec layer-ids)])
+            ;; vocab layers are global — scope via project_vocabs grants
+            (= kind :vocab)
+            (let [pv (next-alias! st "pv")]
+              (add-from! st [:project_vocabs pv])
+              (add-where! st [:= (col a :vocab_layer_id) (col pv :vocab_layer_id)])
+              (add-where! st [:in (col pv :project_id) (:scope @st)]))
             ;; defense-in-depth: join the var's layer table, filter project_id IN scope
+            :else
             (let [lt (next-alias! st "lt")]
               (add-from! st [(layer-tbl kind) lt])
               (add-where! st [:= (col a (layer-fk kind)) (col lt :id)])
@@ -108,6 +116,8 @@
           ;; --- non-scope filters ---
           (when (contains? cs :value)
             (add-where! st [:= (col a :value) (psc/write-json (:value cs))]))
+          (when (contains? cs :form)            ; vocab_items.form — plain TEXT, not JSON
+            (add-where! st [:= (col a :form) (:form cs)]))
           (when (contains? cs :doc)
             (add-where! st [:= (col a :document_id) (str (:doc cs))]))
           (when (contains? cs :begin)
@@ -126,6 +136,24 @@
   [a]
   [:composite (col a :begin) [:coalesce (col a :precedence) 0]])
 
+(defn- precedes*-pred
+  "Row-value `<` on (begin, precedence) within the same text+layer: t1 is
+  strictly earlier than t2 in canonical token order."
+  [t1 t2]
+  [:and
+   [:= (col t1 :text_id) (col t2 :text_id)]
+   [:= (col t1 :token_layer_id) (col t2 :token_layer_id)]
+   [:< (token-key t1) (token-key t2)]])
+
+(defn- within-pred
+  "Offset containment: `child`'s extent sits inside `parent`'s, same text.
+  This is the token-hierarchy relation (derived purely from offsets)."
+  [child parent]
+  [:and
+   [:= (col child :text_id) (col parent :text_id)]
+   [:<= (col parent :begin) (col child :begin)]
+   [:<= (col child :end_) (col parent :end_)]])
+
 (defn- successor-subquery
   "Correlated subquery returning the id of the token immediately after `t1` in
   (begin, precedence) order within the same text+layer."
@@ -140,6 +168,18 @@
      :order-by [(col pt :begin) [[:coalesce (col pt :precedence) 0]]]
      :limit 1}))
 
+(defn- first-in-subquery
+  "Correlated EXISTS body: a token of `t`'s own layer that is also within
+  `container` and strictly precedes `t`. `:first-in` asserts NOT EXISTS of this."
+  [st t container]
+  (let [fi (next-alias! st "fi")]
+    {:select [1]
+     :from [[:tokens fi]]
+     :where [:and
+             [:= (col fi :token_layer_id) (col t :token_layer_id)]
+             (within-pred fi container)
+             (precedes*-pred fi t)]}))
+
 (defn- compile-rel!
   [st constraints clause]
   (let [[head a b] clause
@@ -153,14 +193,24 @@
       :precedes  (let [t1 (av a) t2 (av b)]
                    (add-where! st [:= (col t2 :id) (successor-subquery st t1)]))
       :precedes* (let [t1 (av a) t2 (av b)]
-                   (add-where! st [:and
-                                   [:= (col t1 :text_id) (col t2 :text_id)]
-                                   [:= (col t1 :token_layer_id) (col t2 :token_layer_id)]
-                                   [:< (token-key t1) (token-key t2)]]))
+                   (add-where! st (precedes*-pred t1 t2)))
+      :within    (let [c (av a) p (av b)]
+                   (add-where! st (within-pred c p)))
+      :first-in  (let [t (av a) cont (av b)]
+                   (add-where! st (within-pred t cont))
+                   (add-where! st [:not [:exists (first-in-subquery st t cont)]]))
       :source   (let [r (av a) s (av b)]
                   (add-where! st [:= (col r :source_span_id) (col s :id)]))
       :target   (let [r (av a) s (av b)]
                   (add-where! st [:= (col r :target_span_id) (col s :id)]))
+      :vocab-link (let [t (av a) v (av b)
+                        vl (next-alias! st "vl")
+                        vlt (next-alias! st "vlt")]
+                    (add-from! st [:vocab_links vl])
+                    (add-from! st [:vocab_link_tokens vlt])
+                    (add-where! st [:= (col vlt :token_id) (col t :id)])
+                    (add-where! st [:= (col vlt :vocab_link_id) (col vl :id)])
+                    (add-where! st [:= (col vl :vocab_item_id) (col v :id)]))
       (err-500! (str "Compiler reached unknown relationship clause :" (name head)) {:clause clause}))))
 
 (defn- compile-relation-inline!
