@@ -119,6 +119,23 @@
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/projects/layers/" layer-id "/config/" editor "/" key)}))
 
+(deftest creator-registered-as-maintainer
+  ;; Regression: the SQL port's project/create dropped the
+  ;; :project/maintainers grant, so a non-admin who created a project was
+  ;; NOT made its maintainer and got 403 adding layers to their own
+  ;; project. Existing tests missed it because they build via admin
+  ;; (admin bypasses ACL). The route summary promises "also registers the
+  ;; user as a maintainer".
+  (testing "a non-admin creator becomes maintainer and can add layers"
+    (let [pid (create-test-project user1-request "User1OwnedProject")]
+      (testing "creator can create a text layer in their own project (was 403)"
+        (assert-created (create-text-layer user1-request pid "TL")))
+      (testing "project reports the creator as a maintainer"
+        (let [proj (prj/get fix/db pid)]
+          (is (contains? (set (:project/maintainers proj)) "user1@example.com"))
+          (is (empty? (:project/readers proj)))
+          (is (empty? (:project/writers proj))))))))
+
 (deftest project-crud-operations
   (testing "Project creation and retrieval"
     (testing "Create project succeeds"

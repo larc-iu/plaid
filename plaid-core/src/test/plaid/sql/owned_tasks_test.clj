@@ -112,9 +112,9 @@
 
 (deftest cannot-remove-last-project-maintainer
   (testing "Removing the only maintainer is rejected with 400"
-    (let [proj (create-test-project admin-request "LastMaintainerProj")]
-      ;; add user1 as the only maintainer
-      (assert-no-content (add-maintainer* admin-request proj "user1@example.com"))
+    ;; user1 creates the project, so user1 is its sole maintainer
+    ;; (project/create now registers the creator as maintainer).
+    (let [proj (create-test-project user1-request "LastMaintainerProj")]
       (assert-status 400 (remove-maintainer* admin-request proj "user1@example.com"))
       ;; Adding a second maintainer makes the removal succeed.
       (assert-no-content (add-maintainer* admin-request proj "user2@example.com"))
@@ -138,11 +138,15 @@
   (testing "Deleting a user who is the only maintainer of any project is
             rejected with 400, with the affected project ids surfaced."
     ;; Make a fresh non-admin user whose ONLY role anywhere is sole
-    ;; maintainer of one project.
+    ;; maintainer of one project. admin creates the project (so admin is
+    ;; its maintainer too), we grant sole-maint, then drop admin so
+    ;; sole-maint is genuinely the ONLY maintainer.
     (let [_ (user/create db "sole-maint@example.com" false "password")
           proj (create-test-project admin-request "SoleMaintProj")
           _ (assert-no-content (add-maintainer* admin-request proj
                                                 "sole-maint@example.com"))
+          _ (assert-no-content (remove-maintainer* admin-request proj
+                                                   "admin@example.com"))
           resp (api-call admin-request {:method :delete
                                         :path "/api/v1/users/sole-maint@example.com"})]
       (assert-status 400 resp))))

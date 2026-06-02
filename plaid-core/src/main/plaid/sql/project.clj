@@ -355,11 +355,25 @@
 ;; Mutations: create / merge / delete
 ;; ============================================================
 
+;; `create` folds the creator's maintainer grant into the project's :insert
+;; audit image; the ACL snapshot helper is defined further down this file.
+(declare fetch-project-acl-snapshot)
+
 (defn create
-  "Create a new project. `attrs` includes :project/name (required) and
-  optionally :config. Returns {:success true :extra <new-id>}."
+  "Create a new project. `attrs` includes :project/name (required), optional
+  :config, and optional :project/maintainers (a vector of user-ids to grant the
+  maintainer role — the REST handler passes the creating user). Returns
+  {:success true :extra <new-id>}.
+
+  Audit shape: ONE audit_writes row against `:projects` with change_type
+  :insert, whose post-image is the projects row augmented with the
+  :readers/:writers/:maintainers role vectors (unnamespaced — the audit
+  \"extras\" shape; see `fetch-project-acl-snapshot`). Manual insert + folded
+  audit (vs. `psc/insert!`) so the maintainer grant rides the SAME audit row —
+  otherwise the project_users grant would be invisible to OLAP replay and the
+  creator wouldn't be reconstructed as a maintainer."
   [db attrs user-id]
-  (let [{:project/keys [name]} attrs
+  (let [{:project/keys [name maintainers]} attrs
         new-id (psc/new-uuid)
         config (clojure.core/get attrs :config {})]
     (submit-operation! [tx db {:type :project/create
@@ -370,10 +384,23 @@
                        ;; Validation inside the body so submit-operation*'s
                        ;; outer catch surfaces a structured 4xx (task #47).
                        (psc/valid-name? name)
-                       (psc/insert! tx :projects
-                                    {:id new-id
-                                     :name name
-                                     :config (psc/serialize-config config)})
+                       (psc/execute! tx {:insert-into :projects
+                                         :values [{:id new-id
+                                                   :name name
+                                                   :config (psc/serialize-config config)}]})
+                       ;; Grant the maintainer role to the creator (and any
+                       ;; other requested maintainers). Without this, a
+                       ;; non-admin creator can't add layers to their own
+                       ;; project (403). project_users rows are unaudited;
+                       ;; their state is folded into the :insert image below.
+                       (doseq [uid (distinct maintainers)]
+                         (when (nil? (psc/fetch-by-id tx :users uid))
+                           (throw (ex-info (str "Not a valid user ID: " uid) {:id uid :code 400})))
+                         (psc/add-join! tx :project_users
+                                        {:project_id new-id :user_id uid :role "maintainer"}))
+                       (let [proj-row (psc/fetch-by-id tx :projects new-id)
+                             post-image (clojure.core/merge proj-row (fetch-project-acl-snapshot tx new-id))]
+                         (psc/record-audit-write! tx :projects new-id :insert nil post-image))
                        new-id)))
 
 (defn merge
