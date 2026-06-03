@@ -113,6 +113,8 @@ filters it.
 | `"token"` | `layer`, `doc`, `begin`, `end` | `begin`/`end` are character offsets. |
 | `"relation"` | `layer`, `value`, `doc`, `source`, `target` | `source`/`target` may be inline variables (see §4). |
 | `"vocab"` | `layer`, `form` | Vocab items are global; scoped via project grants (§8). `form` is plain text. |
+| `"document"` | `name`, `id` | A document. `name` is plain text (supports regex / lists). |
+| `"text"` | `body`, `doc` | A document's text content. `body` is the raw text (supports regex). |
 
 All constraints are optional, but a layer-less entity is still scoped to your
 readable projects (§8). A few examples:
@@ -160,6 +162,17 @@ readable projects (§8). A few examples:
 > and read its value). Note the explicit `{"var": …}` wrapper: a plain string
 > value is **always** a literal, so a real annotation value like `"?x"` is never
 > mistaken for a variable.
+
+> **Filtering by document.** An annotation's `doc` is its document's id. To select
+> by document *name* (or any document property), bind the annotation's `doc` to a
+> value variable and equate it to a `document` clause:
+> ```python
+> ["span", "?s", {"layer": "POS", "doc": {"var": "?dv"}}],
+> ["document", "?d", {"name": {"regex": "^interview-"}}],
+> ["=", "?dv", "?d"]      # the span's document_id equals this document's id
+> ```
+> The same `doc` value variable shared by two annotations also means "in the same
+> document" without a `document` clause at all.
 
 ---
 

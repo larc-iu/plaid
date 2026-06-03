@@ -31,7 +31,9 @@
             [plaid.sql.span :as span]
             [plaid.sql.token :as token]
             [plaid.sql.relation :as relation]
-            [plaid.sql.vocab-item :as vocab-item])
+            [plaid.sql.vocab-item :as vocab-item]
+            [plaid.sql.document :as document]
+            [plaid.sql.text :as text])
   (:import [org.sqlite SQLiteConnection Function]
            [java.lang.reflect Method]
            [java.util.regex Pattern]
@@ -121,7 +123,8 @@
 (def ^:private kind->get
   "Per-kind single-entity reader — the SAME fns the REST GET endpoints use, so
   hydrated entities are byte-for-byte the public wire shape."
-  {:span span/get :token token/get :relation relation/get :vocab vocab-item/get})
+  {:span span/get :token token/get :relation relation/get :vocab vocab-item/get
+   :document document/get :text text/get})
 
 (def ^:dynamic *query-timeout-ms*
   "Wall-clock ceiling for a single query's SQL execution. A query past this is

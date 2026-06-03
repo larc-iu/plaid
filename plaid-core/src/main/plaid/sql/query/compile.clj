@@ -28,10 +28,11 @@
             [plaid.sql.query.resolve :as qr]))
 
 (def ^:private entity-table
-  {:span :spans :token :tokens :relation :relations :vocab :vocab_items})
+  {:span :spans :token :tokens :relation :relations :vocab :vocab_items
+   :document :documents :text :texts})
 
 (def ^:private alias-prefix
-  {:span "s" :token "t" :relation "r" :vocab "v"})
+  {:span "s" :token "t" :relation "r" :vocab "v" :document "d" :text "tx"})
 
 (def ^:private layer-fk
   {:span :span_layer_id :token :token_layer_id :relation :relation_layer_id :vocab :vocab_layer_id})
@@ -177,7 +178,11 @@
     (emit-field! st (col a :form) (:form cmap) identity (col a :form)))
   (when (contains? cmap :doc)   (emit-field! st (col a :document_id) (:doc cmap) str (col a :document_id)))
   (when (contains? cmap :begin) (emit-field! st (col a :begin) (:begin cmap) identity (col a :begin)))
-  (when (contains? cmap :end)   (emit-field! st (col a :end_) (:end cmap) identity (col a :end_))))
+  (when (contains? cmap :end)   (emit-field! st (col a :end_) (:end cmap) identity (col a :end_)))
+  ;; document name / text body (plain TEXT — regex runs on the column directly), id
+  (when (contains? cmap :name)  (emit-field! st (col a :name) (:name cmap) identity (col a :name)))
+  (when (contains? cmap :body)  (emit-field! st (col a :body) (:body cmap) identity (col a :body)))
+  (when (contains? cmap :id)    (emit-field! st (col a :id) (:id cmap) str (col a :id))))
 
 (defn- ensure-layer-var!
   "Allocate a layer-table alias for a LAYER variable `v` of `kind`, emit its scope
@@ -242,6 +247,15 @@
                 (add-from! st [:project_vocabs pv])
                 (add-where! st [:= (col a :vocab_layer_id) (col pv :vocab_layer_id)])
                 (add-where! st [:in (col pv :project_id) (:scope @st)]))
+              ;; a document carries project_id directly
+              (= kind :document)
+              (add-where! st [:in (col a :project_id) (:scope @st)])
+              ;; a text is scoped through its document
+              (= kind :text)
+              (let [d (next-alias! st "txd")]
+                (add-from! st [:documents d])
+                (add-where! st [:= (col a :document_id) (col d :id)])
+                (add-where! st [:in (col d :project_id) (:scope @st)]))
               ;; defense-in-depth: join the var's layer table, filter project_id IN scope
               :else
               (let [lt-table (or (layer-tbl kind)

@@ -53,16 +53,18 @@
   {:span     #{:layer :value :doc}
    :token    #{:layer :doc :begin :end}
    :relation #{:layer :value :doc :source :target}
-   :vocab    #{:layer :form}})
+   :vocab    #{:layer :form}
+   :document #{:name :id}
+   :text     #{:body :doc}})
 
 ;; Constraint keys whose value may be a vector = "one of" (compiles to IN). The
 ;; literal-match keys only — NOT :layer (multi-layer is unique-or-400 / future
 ;; layer vars) or :source/:target (vars).
-(def ^:private alternation-keys #{:value :form :doc :begin :end})
+(def ^:private alternation-keys #{:value :form :doc :begin :end :name :body :id})
 
 ;; Constraint keys whose value may be a regex spec `{:regex "..." :flags "i"?}`
 ;; (compiles to a REGEXP match). Text-valued keys only.
-(def ^:private regex-keys #{:value :form})
+(def ^:private regex-keys #{:value :form :name :body})
 (def ^:private regex-max-len 512)
 
 ;; Constraint keys whose value may be a SCALAR VARIABLE: `{:value "?v"}` binds

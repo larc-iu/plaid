@@ -862,9 +862,22 @@ The first sort describes one entity and gives it a name. You write it as `[kind,
 * a `span` has a `layer`, a `value`, and the `doc` it belongs to;
 * a `token` has a `layer`, a `doc`, and its `begin` and `end` character offsets;
 * a `relation` has a `layer`, a `value`, a `doc`, and its `source` and `target` spans;
-* a `vocab` item has a `layer` and a `form`.
+* a `vocab` item has a `layer` and a `form`;
+* a `document` has a `name` (and an `id`);
+* a `text` has a `body`--the document's raw text--which you can match with a pattern to search content.
 
 You may give as many or as few of these conditions as you like, or none at all.
+
+To narrow a search to particular documents--say, only the interviews--name the document and tie your annotations to it through their `doc`:
+
+[,javascript]
+----
+where: [
+  ["span", "?s", { layer: "pos", doc: { var: "?dv" } }],   // remember which document the span is in
+  ["document", "?d", { name: { regex: "^interview-" } }],
+  ["=", "?dv", "?d"],                                       // and require it to be one of those
+]
+----
 
 A `value` (on a span or relation) or a `form` (on a vocabulary item) can be matched in three ways.
 Give it a plain string for an exact match; give it a list, like `value: ["NOUN", "PROPN"]`, to mean "any of these"; or give it a pattern to match part of the text:
