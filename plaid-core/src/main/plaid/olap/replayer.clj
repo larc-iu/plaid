@@ -381,8 +381,11 @@
   of whatever `KNOWN_JUNCTION_KEYS` are present (empty if the entity is
   absent)."
   [node table-kw id]
-  (let [row (first (xt/q node [(str "SELECT * FROM olap." (name table-kw)
-                                    " WHERE _id = ?") id]))]
+  (let [row (olap/plan-retrying
+             3
+             (fn []
+               (first (xt/q node [(str "SELECT * FROM olap." (name table-kw)
+                                       " WHERE _id = ?") id]))))]
     (select-keys row (vec KNOWN_JUNCTION_KEYS))))
 
 (defn- resolve-nullable-patch

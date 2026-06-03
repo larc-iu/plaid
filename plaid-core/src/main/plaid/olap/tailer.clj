@@ -245,9 +245,12 @@
   — it's the canonical high-water-mark on the OLAP's system-time
   axis."
   ^Instant [node]
-  (let [rows (xt/q node
-                   '(-> (from :olap/meta [{:xt/id id :xt/system-from sf}])
-                        (where (= id :cursor))))]
+  (let [rows (olap/plan-retrying
+              3
+              (fn []
+                (xt/q node
+                      '(-> (from :olap/meta [{:xt/id id :xt/system-from sf}])
+                           (where (= id :cursor))))))]
     (some-> rows first :sf olap/->instant)))
 
 (defn- guard-monotonic

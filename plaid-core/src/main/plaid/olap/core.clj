@@ -35,6 +35,7 @@
   (→ stall), never surfaced to REST callers directly."
   (:require [clojure.core.async :as async]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [mount.core :refer [defstate]]
             [plaid.server.config :refer [config]]
             [plaid.sql.common :as psc]
@@ -151,16 +152,59 @@
 
 (def cursor-id :cursor)
 
+;; ------------------------------------------------------------------
+;; Stale-cached-plan retry
+;;
+;; XTDB caches prepared query plans, baking in a RESULT TYPE per projected
+;; column. An :olap/* table's projected types evolve as data lands — a column
+;; that was nil-stripped (e.g. `stall-reason`) first appears, cold-start columns
+;; populate, an annotation gives `value` a new type — and a cached plan is then
+;; invalidated with a `:prepared-query-out-of-date` conflict ("cached plan must
+;; not change result type"). That is XTDB's signal to re-prepare: simply re-run
+;; and it re-plans against the current schema. Without this, `cursor-read` (and
+;; the document reads) can throw on the first schema shift — the root of an
+;; intermittent OLAP test failure AND a latent production hazard on the first
+;; real tailer stall or a column's first type change.
+
+(defn- prepared-query-out-of-date?
+  "True if `e` (or any cause) is XTDB's stale-cached-plan conflict."
+  [e]
+  (boolean
+   (loop [e e]
+     (when e
+       (or (= :prepared-query-out-of-date (:xtdb.error/code (ex-data e)))
+           (some-> (ex-message e) (str/includes? "cached plan must not change result type"))
+           (recur (.getCause e)))))))
+
+(defn plan-retrying
+  "Run XTDB read thunk `f`, retrying up to `max-retries` times on the
+   `:prepared-query-out-of-date` conflict (re-running re-prepares the plan).
+   Any other throwable propagates unchanged."
+  [max-retries f]
+  (loop [attempt 0]
+    (let [result (try {:value (f)}
+                      (catch Exception e
+                        (if (and (< attempt max-retries) (prepared-query-out-of-date? e))
+                          (do (log/debug "OLAP cached plan out of date — re-planning (attempt"
+                                         (inc attempt) "of" max-retries ")")
+                              ::retry)
+                          (throw e))))]
+      (if (= result ::retry)
+        (recur (inc attempt))
+        (:value result)))))
+
 (defn cursor-read
   "Read the OLAP tailer's cursor. Returns nil if no cursor has been
    written yet (cold-start case)."
   [node]
-  (first
-   (xt/q node
-         '(-> (from :olap/meta [{:xt/id id}
-                                last-op-ts last-op-id last-seq
-                                tailer-status stall-reason])
-              (where (= id :cursor))))))
+  (plan-retrying 3
+                 (fn []
+                   (first
+                    (xt/q node
+                          '(-> (from :olap/meta [{:xt/id id}
+                                                 last-op-ts last-op-id last-seq
+                                                 tailer-status stall-reason])
+                               (where (= id :cursor))))))))
 
 (defn cursor->tx-op
   "Build a `[:put-docs :olap/meta {:xt/id :cursor ...}]` tx-op carrying

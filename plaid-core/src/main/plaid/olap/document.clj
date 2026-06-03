@@ -229,9 +229,10 @@
 (defn- q
   "Pin `:snapshot-time ts` on every SQL query — XTDB's coherence is
   per-query, so the entire deep read uses the same `ts` for the same
-  bitemporal slice."
+  bitemporal slice. Retries XTDB's stale-cached-plan conflict (the olap.*
+  result types evolve as annotations land — see `olap/plan-retrying`)."
   [node ts sql-vec]
-  (xt/q node sql-vec {:snapshot-time ts}))
+  (olap/plan-retrying 3 (fn [] (xt/q node sql-vec {:snapshot-time ts}))))
 
 (defn- attach-media-url
   "Mirror of `plaid.sql.document/get`'s media-url attach. Media files
@@ -773,12 +774,15 @@
         ;; Walk the bitemporal history of the document row via SQL's
         ;; FOR ALL SYSTEM_TIME — every put-docs at a new system-time
         ;; emits a row here.
-        rows (xt/q node
-                   [(str "SELECT "
-                         (col-as :document/version :version) ", "
-                         "_system_from "
-                         "FROM olap.documents FOR ALL SYSTEM_TIME "
-                         "WHERE _id = ?") doc-id])
+        rows (olap/plan-retrying
+              3
+              (fn []
+                (xt/q node
+                      [(str "SELECT "
+                            (col-as :document/version :version) ", "
+                            "_system_from "
+                            "FROM olap.documents FOR ALL SYSTEM_TIME "
+                            "WHERE _id = ?") doc-id])))
         prepped (->> rows
                      (keep (fn [r]
                              (when-let [sf (:xt/system-from r)]
