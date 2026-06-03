@@ -1,7 +1,7 @@
-(ns plaid.olap.document
-  "Time-travel read API over the XTDB v2 OLAP replica.
+(ns plaid.history.document
+  "Time-travel read API over the XTDB v2 history replica.
 
-  The OLAP store mirrors OLTP document state at every committed
+  The history store mirrors OLTP document state at every committed
   operation's wall-clock time. Each read here queries XTDB with
   `:snapshot-time = ts`, so the entire deep-read assembled by
   `get-with-layer-data-at` is coherent at a single logical point in
@@ -11,16 +11,16 @@
   Read shape is the contract of `plaid.sql.document/get` /
   `get-with-layer-data` — REST consumers depend on the exact key set.
   When the replayer doc shape doesn't match the SQL read shape (e.g.
-  OLAP stores `:document/created-at`, SQL returns `:document/time-created`),
+  history stores `:document/created-at`, SQL returns `:document/time-created`),
   reshaping happens HERE so the replayer can stay close to the audit
   post-image and the caller stays oblivious to the storage layout.
 
   Anti-features (DO NOT add): no arbitrary search, no analytics, no
-  writes, no historical-ACL — see `plaid.olap.core` docstring."
+  writes, no historical-ACL — see `plaid.history.core` docstring."
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
             [plaid.media.storage :as media]
-            [plaid.olap.core :as olap]
+            [plaid.history.core :as history]
             [plaid.sql.common :as psc]
             [plaid.sql.token-layer :as token-layer]
             [taoensso.timbre :as log]
@@ -30,7 +30,7 @@
 ;; OLTP stores `spans.value` / `relations.value` as JSON-encoded scalars
 ;; (so the column can hold string | number | bool | null with a single
 ;; type). The OLTP read path decodes via `psc/read-json` before returning
-;; — so the OLAP read path must too, or `:span/value` / `:relation/value`
+;; — so the history read path must too, or `:span/value` / `:relation/value`
 ;; diverge between live and historical reads ("\"GREETING\"" vs "GREETING").
 ;;
 ;; Defensive on input shape: `read-json` throws on non-strings (the audit
@@ -70,7 +70,7 @@
   "Coerce caller-supplied `ts` (Instant, ISO-8601 string, or Date) to
   java.time.Instant. Delegated to the core helper."
   ^java.time.Instant [ts]
-  (olap/->instant ts))
+  (history/->instant ts))
 
 (defn- cursor-instant
   "Pull the cursor's `:last-op-ts` as an Instant, or nil if no cursor
@@ -80,22 +80,22 @@
 
 (defn- check-staleness!
   "Throws if the tailer is stalled or the requested `ts` is past the
-  cursor. The thrown ex-info's `:type` is `:olap/stalled` or
-  `:olap/not-caught-up` for REST mapping (503 / 425).
+  cursor. The thrown ex-info's `:type` is `:history/stalled` or
+  `:history/not-caught-up` for REST mapping (503 / 425).
 
   Cold-start (no cursor doc) is treated as not-caught-up — there is
   literally no state to serve."
   [node ts-inst]
-  (let [cursor (olap/cursor-read node)]
+  (let [cursor (history/cursor-read node)]
     (when (= :stalled (:tailer-status cursor))
-      (throw (ex-info "olap tailer stalled"
-                      {:type :olap/stalled
+      (throw (ex-info "history tailer stalled"
+                      {:type :history/stalled
                        :stall-reason (:stall-reason cursor)})))
     (let [last (cursor-instant cursor)]
       (when (or (nil? last) (.isAfter ts-inst last))
-        (throw (ex-info "olap not caught up"
-                        {:type :olap/not-caught-up
-                         :olap-cursor cursor
+        (throw (ex-info "history not caught up"
+                        {:type :history/not-caught-up
+                         :history-cursor cursor
                          :requested-ts (str ts-inst)}))))))
 
 ;; ============================================================
@@ -126,13 +126,13 @@
       ;; would let a bad blob vanish without any signal. Log at :warn
       ;; naming the offending value, then return nil.
       (catch Exception e
-        (log/warn e "OLAP decode-metadata: failed to parse metadata JSON, dropping it"
+        (log/warn e "history decode-metadata: failed to parse metadata JSON, dropping it"
                   {:value v})
         nil))
     :else nil))
 
 (defn- attach-meta
-  "Patch `:metadata` into the assembled entity map iff the OLAP doc
+  "Patch `:metadata` into the assembled entity map iff the history doc
   carried one. Mirrors `plaid.sql.document/attach-meta` — `:metadata`
   is absent on the result map when there is no metadata for this
   entity (NOT present as nil), matching what the SQL deep-read does."
@@ -156,7 +156,7 @@
          ;; a corrupt config blob falls back to {} rather than 500ing the
          ;; read, but we log :warn so the corruption isn't silent.
          (catch Exception e
-           (log/warn e "OLAP decode-config: failed to parse config JSON, defaulting to {}"
+           (log/warn e "history decode-config: failed to parse config JSON, defaulting to {}"
                      {:value v})
            {}))
     :else {}))
@@ -176,8 +176,8 @@
 ;; side (see `q` in plaid.sql.common). Also `SELECT *` works in SQL
 ;; whereas XTQL's `*` returns empty maps (a v2 oddity).
 ;;
-;; SCHEMA NAMING: a stored table `:olap/documents` is exposed in SQL
-;; as `olap.documents` (XTDB v2 maps the keyword namespace to a SQL
+;; SCHEMA NAMING: a stored table `:history/documents` is exposed in SQL
+;; as `history.documents` (XTDB v2 maps the keyword namespace to a SQL
 ;; schema). The `_id` column is the entity id; we alias to `id` for
 ;; consistency with the SQL-port row shape.
 ;;
@@ -207,7 +207,7 @@
 
   Namespace is lowercased; dashes in the namespace become underscores
   (matching how XTDB lowercases nested column names — see the
-  per-table specs in `plaid.olap.replayer/table->spec`)."
+  per-table specs in `plaid.history.replayer/table->spec`)."
   [k]
   (let [local (-> (name k) (str/replace \- \_) str/lower-case)]
     (if-let [ns* (namespace k)]
@@ -229,10 +229,10 @@
 (defn- q
   "Pin `:snapshot-time ts` on every SQL query — XTDB's coherence is
   per-query, so the entire deep read uses the same `ts` for the same
-  bitemporal slice. Retries XTDB's stale-cached-plan conflict (the olap.*
-  result types evolve as annotations land — see `olap/plan-retrying`)."
+  bitemporal slice. Retries XTDB's stale-cached-plan conflict (the history.*
+  result types evolve as annotations land — see `history/plan-retrying`)."
   [node ts sql-vec]
-  (olap/plan-retrying 3 (fn [] (xt/q node sql-vec {:snapshot-time ts}))))
+  (history/plan-retrying 3 (fn [] (xt/q node sql-vec {:snapshot-time ts}))))
 
 (defn- attach-media-url
   "Mirror of `plaid.sql.document/get`'s media-url attach. Media files
@@ -259,7 +259,7 @@
       (assoc :document/media-url (str "/api/v1/documents/" doc-id "/media")))))
 
 (defn- fetch-document-row
-  "Pull the bare `:olap/documents` row for `doc-id` at `ts`, or nil if
+  "Pull the bare `:history/documents` row for `doc-id` at `ts`, or nil if
   the document didn't exist at that snapshot. The storage-shape
   attributes are reshaped to the SQL read shape (`:document/time-created`
   / `:document/time-modified`) here so callers always see the SQL
@@ -278,7 +278,7 @@
                       (col-as :document/time-created :time_created) ", "
                       (col-as :document/time-modified :time_modified) ", "
                       "metadata "
-                      "FROM olap.documents WHERE _id = ?") doc-id]))]
+                      "FROM history.documents WHERE _id = ?") doc-id]))]
     (when row
       (-> {:document/id (:id row)
            :document/name (:name row)
@@ -295,7 +295,7 @@
 
   `:document/media-url` matches OLTP shape: present iff a media file
   exists on disk RIGHT NOW for this doc-id (media isn't versioned in
-  either OLTP or OLAP, so neither side probes bitemporally). When
+  either OLTP or history, so neither side probes bitemporally). When
   `:oltp-db` is supplied and the doc is currently absent from OLTP
   (deleted), the URL is omitted because the media route would 403/404
   on it — see `attach-media-url`."
@@ -315,7 +315,7 @@
     (boolean
      (first
       (q node ts
-         ["SELECT _id FROM olap.documents WHERE _id = ? LIMIT 1" doc-id])))))
+         ["SELECT _id FROM history.documents WHERE _id = ? LIMIT 1" doc-id])))))
 
 ;; ============================================================
 ;; Deep read — the `get-with-layer-data` shape
@@ -352,7 +352,7 @@
                   (col-as :text-layer/project :project) ", "
                   (col-as :text-layer/order-idx :order_idx) ", "
                   "config "
-                  "FROM olap.text_layers "
+                  "FROM history.text_layers "
                   "WHERE " (attr->col :text-layer/project) " = ? "
                   "ORDER BY " order-col) prj-id])
          vec)))
@@ -372,7 +372,7 @@
                           (col-as :token-layer/parent-token-layer :parent_token_layer) ", "
                           (col-as :token-layer/order-idx :order_idx) ", "
                           "config "
-                          "FROM olap.token_layers "
+                          "FROM history.token_layers "
                           "WHERE " fk-col " IN "
                           (in-placeholders (count tl-ids))
                           " ORDER BY " order-col)]
@@ -392,7 +392,7 @@
                           (col-as :span-layer/project :project) ", "
                           (col-as :span-layer/order-idx :order_idx) ", "
                           "config "
-                          "FROM olap.span_layers "
+                          "FROM history.span_layers "
                           "WHERE " fk-col " IN "
                           (in-placeholders (count tokl-ids))
                           " ORDER BY " order-col)]
@@ -412,7 +412,7 @@
                           (col-as :relation-layer/project :project) ", "
                           (col-as :relation-layer/order-idx :order_idx) ", "
                           "config "
-                          "FROM olap.relation_layers "
+                          "FROM history.relation_layers "
                           "WHERE " fk-col " IN "
                           (in-placeholders (count sl-ids))
                           " ORDER BY " order-col)]
@@ -427,7 +427,7 @@
            (col-as :text/layer :text_layer) ", "
            (col-as :text/body :body) ", "
            "metadata "
-           "FROM olap.texts "
+           "FROM history.texts "
            "WHERE " (attr->col :text/document) " = ?") doc-id]))
 
 (defn- q-tokens
@@ -441,12 +441,12 @@
            (col-as :token/end :end_) ", "
            (col-as :token/precedence :precedence) ", "
            "metadata "
-           "FROM olap.tokens "
+           "FROM history.tokens "
            "WHERE " (attr->col :token/document) " = ?") doc-id]))
 
 (defn- q-spans
   [node doc-id ts]
-  ;; ORDER BY _id: deterministic ordering so the OLTP↔OLAP parity test
+  ;; ORDER BY _id: deterministic ordering so the OLTP↔history parity test
   ;; doesn't rely on coincidental row order matching across backends.
   ;; SQLite has no inherent row order without an ORDER BY, and XTDB v2
   ;; gives no guarantee either — pinning both sides to id keeps the
@@ -457,7 +457,7 @@
            (col-as :span/layer :layer) ", "
            (col-as :span/value :value) ", "
            "tokens, metadata "
-           "FROM olap.spans "
+           "FROM history.spans "
            "WHERE " (attr->col :span/document) " = ? "
            "ORDER BY _id") doc-id]))
 
@@ -471,7 +471,7 @@
            (col-as :relation/target :target) ", "
            (col-as :relation/value :value) ", "
            "metadata "
-           "FROM olap.relations "
+           "FROM history.relations "
            "WHERE " (attr->col :relation/document) " = ? "
            "ORDER BY _id") doc-id]))
 
@@ -482,7 +482,7 @@
            (col-as :vocab-link/document :document) ", "
            (col-as :vocab-link/vocab-item :vocab_item) ", "
            "tokens, metadata "
-           "FROM olap.vocab_links "
+           "FROM history.vocab_links "
            "WHERE " (attr->col :vocab-link/document) " = ?") doc-id]))
 
 (defn- q-vocab-items
@@ -494,7 +494,7 @@
                    (col-as :vocab-item/layer :layer) ", "
                    (col-as :vocab-item/form :form) ", "
                    "metadata "
-                   "FROM olap.vocab_items WHERE _id IN "
+                   "FROM history.vocab_items WHERE _id IN "
                    (in-placeholders (count vi-ids)))]
              vi-ids))))
 
@@ -506,7 +506,7 @@
        (into [(str "SELECT _id AS id, "
                    (col-as :vocab/name :name) ", "
                    "config, maintainers "
-                   "FROM olap.vocab_layers WHERE _id IN "
+                   "FROM history.vocab_layers WHERE _id IN "
                    (in-placeholders (count vl-ids)))]
              vl-ids))))
 
@@ -516,7 +516,7 @@
   nested layer-tree, same junction folding.
 
   Returns nil if the document didn't exist at `ts`. Throws on stale or
-  stalled OLAP — REST middleware converts these to 425 / 503.
+  stalled history — REST middleware converts these to 425 / 503.
 
   Coherence: every sub-query pins `:snapshot-time ts`, so the entire
   reassembled tree reflects state at the same logical moment — even if
@@ -634,7 +634,7 @@
                               (when-let [vl (vlayer-by-id vlayer-id)]
                                 {:vocab/id vlayer-id
                                  :vocab/name (:name vl)
-                                 ;; Sort maintainers by id so OLAP matches
+                                 ;; Sort maintainers by id so history matches
                                  ;; the OLTP read (which ORDER BYs the
                                  ;; vocab_maintainers join on user_id).
                                  ;; Without this the folded list could come
@@ -703,7 +703,7 @@
 ;; Version history
 ;; ============================================================
 ;;
-;; Each `:put-docs :olap/documents` at a new system-time produces a
+;; Each `:put-docs :history/documents` at a new system-time produces a
 ;; new version row in XTDB's `_system_from` history axis. Driving
 ;; `list-versions` off the document's own history (rather than the
 ;; full ops touching its sub-entities) is a deliberate simplification
@@ -724,17 +724,17 @@
     (max 1 (min n max-limit))))
 
 (defn- ->instant-maybe
-  "Nilable variant of `olap/->instant`. Delegated so the two coercion
-  helpers cannot drift — see the docstring of `olap/->instant` for the
+  "Nilable variant of `history/->instant`. Delegated so the two coercion
+  helpers cannot drift — see the docstring of `history/->instant` for the
   accepted input types."
   [v]
   (when (some? v)
-    (olap/->instant v)))
+    (history/->instant v)))
 
 (defn list-versions
   "Return a vector of `{:ts :version}` maps — one entry per operation
   that touched `doc-id`. Driven off XTDB's bitemporal history on
-  `:olap/documents` (every op bumps the document's `:document/version`,
+  `:history/documents` (every op bumps the document's `:document/version`,
   so the doc's system-time axis IS the per-op touch list).
 
   `:op-id` is intentionally omitted: an op that touches only a sub-
@@ -754,12 +754,12 @@
   ;; status — version history is meaningful at any cursor position
   ;; ("what versions do you know about?"), so we deliberately skip the
   ;; "ts past cursor" branch of `check-staleness!`. A stalled tailer
-  ;; still throws :olap/stalled because the history would silently
+  ;; still throws :history/stalled because the history would silently
   ;; drift from OLTP otherwise.
-  (let [cur (olap/cursor-read node)]
+  (let [cur (history/cursor-read node)]
     (when (= :stalled (:tailer-status cur))
-      (throw (ex-info "olap tailer stalled"
-                      {:type :olap/stalled
+      (throw (ex-info "history tailer stalled"
+                      {:type :history/stalled
                        :stall-reason (:stall-reason cur)}))))
   (let [lim (clamp-limit limit)
         to-cursor (some-> cursor ->instant)
@@ -774,14 +774,14 @@
         ;; Walk the bitemporal history of the document row via SQL's
         ;; FOR ALL SYSTEM_TIME — every put-docs at a new system-time
         ;; emits a row here.
-        rows (olap/plan-retrying
+        rows (history/plan-retrying
               3
               (fn []
                 (xt/q node
                       [(str "SELECT "
                             (col-as :document/version :version) ", "
                             "_system_from "
-                            "FROM olap.documents FOR ALL SYSTEM_TIME "
+                            "FROM history.documents FOR ALL SYSTEM_TIME "
                             "WHERE _id = ?") doc-id])))
         prepped (->> rows
                      (keep (fn [r]
@@ -802,12 +802,12 @@
 ;; Cursor accessor (public passthrough)
 ;; ============================================================
 
-(defn olap-cursor
-  "Return the OLAP tailer's cursor as a plain map for /health and
+(defn history-cursor
+  "Return the history tailer's cursor as a plain map for /health and
   staleness diagnostics. Returns `nil` if no cursor exists yet (the
   pre-cold-replay state)."
   [node]
-  (when-let [cur (olap/cursor-read node)]
+  (when-let [cur (history/cursor-read node)]
     {:ts (:last-op-ts cur)
      :op-id (:last-op-id cur)
      :seq (:last-seq cur)

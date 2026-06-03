@@ -225,7 +225,7 @@
           ;;   array_agg(st.token_id ORDER BY st.order_idx)
           ;;     FILTER (WHERE st.token_id IS NOT NULL)
           ;; (or json_agg(...)). ---
-          ;; ORDER BY s.id: deterministic ordering so the OLTP↔OLAP
+          ;; ORDER BY s.id: deterministic ordering so the OLTP↔history
           ;; parity test doesn't rely on coincidental row order matching
           ;; across SQLite and XTDB v2 (neither guarantees one without
           ;; an explicit ORDER BY).
@@ -271,8 +271,8 @@
                                    :where [:in :id vlayer-ids]}))
           ;; ORDER BY user_id so the per-vlayer maintainers list
           ;; (`maintainers-by-vlayer` appends in row order) is
-          ;; deterministically ordered and matches the OLAP read ordering
-          ;; — without it OLTP↔OLAP parity diverges run-to-run (task #13).
+          ;; deterministically ordered and matches the history read ordering
+          ;; — without it OLTP↔history parity diverges run-to-run (task #13).
           vm-rows (if (empty? vlayer-ids)
                     []
                     (psc/q db {:select [:vocab_layer_id :user_id]

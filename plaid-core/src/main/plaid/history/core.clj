@@ -1,5 +1,5 @@
-(ns plaid.olap.core
-  "XTDB v2 OLAP replica — read-only time-travel store fed by an in-process
+(ns plaid.history.core
+  "XTDB v2 history replica — read-only time-travel store fed by an in-process
   tailer from the OLTP `audit_writes` table.
 
   Anti-features (DO NOT add):
@@ -14,23 +14,23 @@
   writes each audit row at `:system-time = op.ts`, so a query with
   `{:snapshot-time ts}` returns the state as it was committed at `ts`.
 
-  Error-type taxonomy (ex-info `:type` keys across the OLAP namespaces,
+  Error-type taxonomy (ex-info `:type` keys across the history namespaces,
   and how the REST layer maps each):
-    :olap/not-caught-up   — read ts is past the tailer cursor.   → 425
-    :olap/stalled         — tailer halted on a bad row.          → 503
-    :olap/read-timeout    — OLAP read exceeded its deadline.     → 503
-    :olap/invalid-timestamp — a ts coercer hit nil/garbage. On the apply
+    :history/not-caught-up   — read ts is past the tailer cursor.   → 425
+    :history/stalled         — tailer halted on a bad row.          → 503
+    :history/read-timeout    — history read exceeded its deadline.     → 503
+    :history/invalid-timestamp — a ts coercer hit nil/garbage. On the apply
                               path the tailer loop catches it (→ stall);
                               on the read path it falls through to the
                               503 default in `wrap-route-as-of`.
-    (OLAP disabled / node not started are returned directly as 503 by
+    (history disabled / node not started are returned directly as 503 by
      `wrap-route-as-of` without an ex-info.)
     :replayer/malformed-row    — an audit row the replayer can't
                                  translate (carries :op-id + :seq so the
                                  stall record names the offending row).
     :tailer/cursor-not-advanced — XTDB silently dropped the apply tx.
     :tailer/op-too-large        — one op's audit rows exceed the batch cap.
-    :tailer/not-enabled         — resume! called with OLAP disabled.
+    :tailer/not-enabled         — resume! called with history disabled.
   The `:replayer/*` and `:tailer/*` types are caught by the tailer loop
   (→ stall), never surfaced to REST callers directly."
   (:require [clojure.core.async :as async]
@@ -50,8 +50,8 @@
 
 (def ^:private default-config
   {:enabled? false
-   :storage-path "data/olap-storage"
-   :log-path "data/olap-log"
+   :storage-path "data/history-storage"
+   :log-path "data/history-log"
    :cold-replay-on-empty? true
    ;; `:poll-interval-ms` is the tailer's heartbeat — the upper bound
    ;; on apply latency when the commit-side nudge is unavailable
@@ -65,20 +65,20 @@
             :max-lag-warn-ms 60000
             :max-disk-warn-mb 5000}})
 
-(defn olap-config
-  "Resolve the merged :plaid.olap/config map, applying defaults for any
+(defn history-config
+  "Resolve the merged :plaid.history/config map, applying defaults for any
    keys the operator didn't set."
   []
-  (let [user-cfg (get config :plaid.olap/config {})
+  (let [user-cfg (get config :plaid.history/config {})
         ;; Shallow merge for top-level, then deep-merge the :tailer submap.
         merged (merge default-config user-cfg)]
     (assoc merged :tailer (merge (:tailer default-config)
                                  (:tailer user-cfg)))))
 
 (defn enabled?
-  "True if the operator has opted into the OLAP replica."
+  "True if the operator has opted into the history replica."
   []
-  (boolean (:enabled? (olap-config))))
+  (boolean (:enabled? (history-config))))
 
 ;; ============================================================
 ;; Commit-nudge channel
@@ -99,7 +99,7 @@
 (defn nudge!
   "Wake the tailer immediately rather than waiting for the next heartbeat
    interval. Non-blocking; safe to call from any thread including inside
-   a SQL tx. No-op when OLAP is disabled."
+   a SQL tx. No-op when history is disabled."
   []
   (when (enabled?)
     (async/put! nudge-chan :nudge)))
@@ -120,7 +120,7 @@
    pgwire + Flight SQL servers are left at their defaults — XTDB v2.2's
    `xt/submit-tx` and `xt/q` route through a JDBC connection, and disabling
    pgwire breaks them. Both bind to random localhost ports; the followup
-   to pin them (or move OLAP to a separate process) is tracked in the
+   to pin them (or move history to a separate process) is tracked in the
    plan's open questions."
   [{:keys [storage-path log-path] :as cfg}]
   (ensure-dirs! cfg)
@@ -129,26 +129,26 @@
     :log [:local {:path log-path}]}))
 
 (defstate node
-  :start (let [cfg (olap-config)]
+  :start (let [cfg (history-config)]
            (if (:enabled? cfg)
              (do
-               (log/info "Starting OLAP XTDB node:" (select-keys cfg [:storage-path :log-path]))
+               (log/info "Starting history XTDB node:" (select-keys cfg [:storage-path :log-path]))
                (start-xtdb-node cfg))
              (do
-               (log/info "OLAP disabled (:plaid.olap/config :enabled? = false); skipping XTDB node")
+               (log/info "history disabled (:plaid.history/config :enabled? = false); skipping XTDB node")
                nil)))
   :stop (when node
-          (log/info "Closing OLAP XTDB node")
+          (log/info "Closing history XTDB node")
           (.close ^java.lang.AutoCloseable node)))
 
 ;; ============================================================
-;; Cursor (persisted as an :olap/meta doc)
+;; Cursor (persisted as an :history/meta doc)
 ;; ============================================================
 ;;
 ;; The cursor lives inside XTDB itself so its advance is atomic with the
 ;; corresponding op apply (one xt/submit-tx writes both). On startup, if
 ;; absent, the tailer seeds it to the epoch and replays from the start
-;; of audit_writes (see plaid.olap.tailer).
+;; of audit_writes (see plaid.history.tailer).
 
 (def cursor-id :cursor)
 
@@ -156,14 +156,14 @@
 ;; Stale-cached-plan retry
 ;;
 ;; XTDB caches prepared query plans, baking in a RESULT TYPE per projected
-;; column. An :olap/* table's projected types evolve as data lands — a column
+;; column. An :history/* table's projected types evolve as data lands — a column
 ;; that was nil-stripped (e.g. `stall-reason`) first appears, cold-start columns
 ;; populate, an annotation gives `value` a new type — and a cached plan is then
 ;; invalidated with a `:prepared-query-out-of-date` conflict ("cached plan must
 ;; not change result type"). That is XTDB's signal to re-prepare: simply re-run
 ;; and it re-plans against the current schema. Without this, `cursor-read` (and
 ;; the document reads) can throw on the first schema shift — the root of an
-;; intermittent OLAP test failure AND a latent production hazard on the first
+;; intermittent history test failure AND a latent production hazard on the first
 ;; real tailer stall or a column's first type change.
 
 (defn- prepared-query-out-of-date?
@@ -185,7 +185,7 @@
     (let [result (try {:value (f)}
                       (catch Exception e
                         (if (and (< attempt max-retries) (prepared-query-out-of-date? e))
-                          (do (log/debug "OLAP cached plan out of date — re-planning (attempt"
+                          (do (log/debug "history cached plan out of date — re-planning (attempt"
                                          (inc attempt) "of" max-retries ")")
                               ::retry)
                           (throw e))))]
@@ -194,26 +194,26 @@
         (:value result)))))
 
 (defn cursor-read
-  "Read the OLAP tailer's cursor. Returns nil if no cursor has been
+  "Read the history tailer's cursor. Returns nil if no cursor has been
    written yet (cold-start case)."
   [node]
   (plan-retrying 3
                  (fn []
                    (first
                     (xt/q node
-                          '(-> (from :olap/meta [{:xt/id id}
-                                                 last-op-ts last-op-id last-seq
-                                                 tailer-status stall-reason])
+                          '(-> (from :history/meta [{:xt/id id}
+                                                    last-op-ts last-op-id last-seq
+                                                    tailer-status stall-reason])
                                (where (= id :cursor))))))))
 
 (defn cursor->tx-op
-  "Build a `[:put-docs :olap/meta {:xt/id :cursor ...}]` tx-op carrying
+  "Build a `[:put-docs :history/meta {:xt/id :cursor ...}]` tx-op carrying
    the supplied cursor fields. Pass to xt/submit-tx in the same vector
    as the op's other tx-ops so the cursor advance is atomic with the
    apply."
   [{:keys [last-op-ts last-op-id last-seq tailer-status stall-reason]
     :or {tailer-status :running stall-reason nil}}]
-  [:put-docs :olap/meta
+  [:put-docs :history/meta
    {:xt/id cursor-id
     :last-op-ts last-op-ts
     :last-op-id last-op-id
@@ -224,7 +224,7 @@
 (defn set-stalled!
   "Halt the tailer by writing :tailer-status :stalled into the cursor doc.
    Called by the tailer when it hits a malformed audit row; operator
-   resumes via plaid.olap.tailer/resume! once the upstream bug is fixed."
+   resumes via plaid.history.tailer/resume! once the upstream bug is fixed."
   [node {:keys [op-id seq reason]}]
   (let [cur (or (cursor-read node) {})
         next-cur (assoc cur
@@ -262,7 +262,7 @@
   "Coerce a value to java.time.Instant. Accepts Instant, ISO-8601 string,
    java.util.Date, or java.time.ZonedDateTime. ZonedDateTime appears when
    XTDB v2 round-trips a `java.util.Date` we wrote to a column —
-   `cursor-instant` (in olap.document) calls this on `:last-op-ts`, so a
+   `cursor-instant` (in history.document) calls this on `:last-op-ts`, so a
    future replayer/tailer change that stores Date there must not break the
    staleness guard."
   [x]
@@ -273,12 +273,12 @@
     (instance? java.time.ZonedDateTime x) (.toInstant ^java.time.ZonedDateTime x)
     ;; Typed (not bare) so a nil/garbage ts produces a named, mappable
     ;; failure instead of an opaque "Cannot coerce" that the tailer's
-    ;; catch-all turns into an unidentifiable stall. :olap/invalid-timestamp
+    ;; catch-all turns into an unidentifiable stall. :history/invalid-timestamp
     ;; is caught by the tailer loop (→ stall) and mapped to 503 on the read
     ;; path — see this ns's error-taxonomy docstring.
     :else (throw (ex-info (str "Cannot coerce to Instant: "
                                (if (nil? x) "nil" (.getName (class x))))
-                          {:type :olap/invalid-timestamp :value x}))))
+                          {:type :history/invalid-timestamp :value x}))))
 
 (defn ^java.util.Date ->date
   "Coerce any supported ts representation to java.util.Date (XTDB
@@ -301,10 +301,10 @@
   (psc/instant->iso (->instant x)))
 
 (defn disk-bytes
-  "Sum of file sizes under the OLAP storage + log paths (best-effort).
+  "Sum of file sizes under the history storage + log paths (best-effort).
    Used by the /health endpoint to surface disk usage."
   []
-  (let [{:keys [storage-path log-path]} (olap-config)]
+  (let [{:keys [storage-path log-path]} (history-config)]
     (->> [storage-path log-path]
          (mapcat (fn [p] (when-let [d (io/file p)]
                            (file-seq d))))
@@ -317,8 +317,8 @@
 ;; ============================================================
 ;;
 ;; The tailer's status snapshot and the /health endpoint both need to
-;; know how far behind the OLAP is. These live HERE (one copy) rather
-;; than duplicated in plaid.olap.tailer + plaid.server.middleware, so a
+;; know how far behind the history is. These live HERE (one copy) rather
+;; than duplicated in plaid.history.tailer + plaid.server.middleware, so a
 ;; schema change (rename a column, add a lex key) can't make the two
 ;; surfaces silently disagree.
 
@@ -333,7 +333,7 @@
 
 (defn lag-rows
   "Count audit_writes rows past the cursor — i.e. not yet replicated to
-  OLAP. A nil cursor (cold start) means everything is unreplicated."
+  history. A nil cursor (cold start) means everything is unreplicated."
   [ds cursor-ts cursor-op-id]
   (-> (if (or (nil? cursor-ts) (nil? cursor-op-id))
         (psc/q1 ds {:select [[[:count :*] :n]] :from [:audit_writes]})

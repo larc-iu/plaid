@@ -1,5 +1,5 @@
-(ns plaid.olap.replayer-test
-  "Unit tests for plaid.olap.replayer.
+(ns plaid.history.replayer-test
+  "Unit tests for plaid.history.replayer.
 
   Hand-rolled audit-row sequences are fed into `audit-row->tx-op` and
   `apply-op!` to verify:
@@ -7,18 +7,18 @@
       is translated to the right XTDB tx-op shape,
     - every OLTP entity table has a corresponding replayer spec (column
       renames + namespace) that round-trips an audit post-image into a
-      well-shaped OLAP doc,
+      well-shaped history doc,
     - junction-fold keys (`:tokens`, `:metadata`, `:readers`, etc.) are
       preserved through the round-trip — these are the unqualified-key
-      contract the OLAP read API depends on,
+      contract the history read API depends on,
     - malformed input throws `ex-info` with the right `:type` for the
       tailer's stall logic, and
     - `apply-op!` writes the cursor doc atomically with the op's
       tx-ops (one xt/submit-tx)."
   (:require [clojure.data.json :as json]
             [clojure.test :refer :all]
-            [plaid.olap.core :as olap-core]
-            [plaid.olap.replayer :as replayer]
+            [plaid.history.core :as history-core]
+            [plaid.history.replayer :as replayer]
             [xtdb.api :as xt]
             [xtdb.node :as xtn])
   (:import (java.time Instant)
@@ -83,7 +83,7 @@
               :modified_at "2026-05-28T09:00:00Z"}
         [op-kw tbl-kw doc] (replayer/audit-row->tx-op (audit-row "documents" doc-id post))]
     (is (= :put-docs op-kw))
-    (is (= :olap/documents tbl-kw))
+    (is (= :history/documents tbl-kw))
     (is (= doc-id (:xt/id doc)))
     (is (= "Doc 1" (:document/name doc)))
     (is (= "2026-05-28T09:00:00Z" (:document/time-created doc)))
@@ -107,7 +107,7 @@
         [op-kw tbl-kw doc] (replayer/audit-row->tx-op
                             (audit-row "spans" span-id post :change-type :update))]
     (is (= :patch-docs op-kw))
-    (is (= :olap/spans tbl-kw))
+    (is (= :history/spans tbl-kw))
     (is (= span-id (:xt/id doc)))
     (is (= "GREETING" (:span/value doc)))
     (is (= layer-id (:span/layer doc)))
@@ -121,7 +121,7 @@
         row (audit-row "spans" span-id nil :change-type :delete)
         [op-kw tbl-kw id] (replayer/audit-row->tx-op row)]
     (is (= :delete-docs op-kw))
-    (is (= :olap/spans tbl-kw))
+    (is (= :history/spans tbl-kw))
     (is (= span-id id))))
 
 (deftest doc-version-bump-row->patch-docs
@@ -138,7 +138,7 @@
     (is (= :patch-docs op-kw)
         "Version bump replays as a patch-docs (key-merge) so it can't strip
          :metadata folded by an earlier op carrying the doc")
-    (is (= :olap/documents tbl-kw))
+    (is (= :history/documents tbl-kw))
     (is (= 2 (:document/version doc)))))
 
 (deftest each-entity-table-has-a-spec
@@ -154,7 +154,7 @@
             row (audit-row t tid {:id (str tid)})
             [op tbl doc] (replayer/audit-row->tx-op row)]
         (is (= :put-docs op) (str "table: " t))
-        (is (= (keyword "olap" t) tbl))
+        (is (= (keyword "history" t) tbl))
         (is (= tid (:xt/id doc)))))))
 
 ;; ============================================================
@@ -206,7 +206,7 @@
 (deftest span-tokens-junction-preserved
   ;; The span's `:tokens` list is folded into the parent's post-image
   ;; unqualified. The replayer must preserve the key as-is AND coerce
-  ;; the stringified UUIDs back to UUIDs so OLAP reads filtering by
+  ;; the stringified UUIDs back to UUIDs so history reads filtering by
   ;; token-id work.
   (let [span-id (uuid)
         t1 (uuid) t2 (uuid)
@@ -222,7 +222,7 @@
 
 (deftest entity-metadata-folds-into-parent-as-json-string
   ;; entity-metadata is special: the JSON map is stored as an opaque
-  ;; STRING on the OLAP doc to dodge XTDB v2's nested-key lowercasing.
+  ;; STRING on the history doc to dodge XTDB v2's nested-key lowercasing.
   ;; (see xtdb-nil-stripping memo + decode-metadata on the read side)
   (let [tok-id (uuid)
         meta {"GlossKey" "value"}
@@ -399,12 +399,12 @@
         op (op-record ts)
         rows [(audit-row "spans" span-id post)]]
     (replayer/apply-op! *node* op rows)
-    (let [cursor (olap-core/cursor-read *node*)]
+    (let [cursor (history-core/cursor-read *node*)]
       (is (some? cursor))
       (is (= (:op/id op) (:last-op-id cursor)))
       (is (= 0 (:last-seq cursor)))
       (is (= :running (:tailer-status cursor))))
-    ;; The cursor is :olap/meta — and the entity is in :olap/spans.
+    ;; The cursor is :history/meta — and the entity is in :history/spans.
     ;; Both were written in the same submit-tx, so a snapshot at op.ts
     ;; sees them together. We use XTQL with xt/template here so the
     ;; namespaced `:span/value` attr is addressed directly (storage
@@ -412,7 +412,7 @@
     ;; `SELECT value` doesn't pick it up).
     (let [rows (xt/q *node*
                      (xt/template
-                      (-> (from :olap/spans [{:xt/id id} span/value])
+                      (-> (from :history/spans [{:xt/id id} span/value])
                           (where (= id ~span-id))))
                      {:snapshot-time ts})]
       (is (= 1 (count rows)))
@@ -433,9 +433,9 @@
                                      :document_id (str (uuid))
                                      :value "B"} :seq 1)]]
     (replayer/apply-op! *node* op rows)
-    (is (= 1 (:last-seq (olap-core/cursor-read *node*))))
+    (is (= 1 (:last-seq (history-core/cursor-read *node*))))
     (is (= 2 (count (xt/q *node*
-                          '(from :olap/spans [{:xt/id id}])
+                          '(from :history/spans [{:xt/id id}])
                           {:snapshot-time ts}))))))
 
 (deftest apply-op-merges-metadata-fold-with-doc-version-bump
@@ -446,7 +446,7 @@
   ;;          post-image is the bare doc row (NO :metadata key)
   ;; Applied as two separate put-docs at the same :system-time, XTDB v2's
   ;; put-docs (a REPLACEMENT, not a merge) lets seq 1 strip :metadata
-  ;; folded by seq 0 — the OLAP doc would have NO :metadata. The replayer
+  ;; folded by seq 0 — the history doc would have NO :metadata. The replayer
   ;; merges same-id rows within one op so :metadata survives.
   (let [doc-id (uuid)
         prj-id (uuid)
@@ -476,10 +476,10 @@
     (replayer/apply-op! *node* op rows)
     (let [doc (first (xt/q *node*
                            (xt/template
-                            (-> (from :olap/documents [{:xt/id id}
-                                                       document/name
-                                                       document/version
-                                                       metadata])
+                            (-> (from :history/documents [{:xt/id id}
+                                                          document/name
+                                                          document/version
+                                                          metadata])
                                 (where (= id ~doc-id))))
                            {:snapshot-time ts}))]
       (is (some? doc))
@@ -517,8 +517,8 @@
     (replayer/apply-op! *node* op rows)
     (let [doc (first (xt/q *node*
                            (xt/template
-                            (-> (from :olap/documents [{:xt/id id}
-                                                       document/name])
+                            (-> (from :history/documents [{:xt/id id}
+                                                          document/name])
                                 (where (= id ~doc-id))))
                            {:snapshot-time ts}))]
       (is (some? doc) "entity exists after delete-then-put — the later put wins")
@@ -569,7 +569,7 @@
     ;; so `(:tks span)` being nil is the proof that :tokens didn't leak.
     (let [span (first (xt/q *node*
                             (xt/template
-                             (-> (from :olap/spans [{:xt/id id :span/value v :tokens tks}])
+                             (-> (from :history/spans [{:xt/id id :span/value v :tokens tks}])
                                  (where (= id ~span-id))))
                             {:snapshot-time t2}))]
       (is (some? span) "recreated span exists at t2")
@@ -600,7 +600,7 @@
     (replayer/apply-op! *node* op rows)
     (let [hits (xt/q *node*
                      (xt/template
-                      (-> (from :olap/documents [{:xt/id id}])
+                      (-> (from :history/documents [{:xt/id id}])
                           (where (= id ~doc-id))))
                      {:snapshot-time ts})]
       (is (empty? hits) "entity is gone after delete-wins merge"))))
@@ -609,7 +609,7 @@
   ;; Regression: clearing a nullable intrinsic column (tokens.precedence)
   ;; via an :update emits a post-image with precedence=null. `:patch-docs`
   ;; SILENTLY STRIPS nil-valued keys, so a naive patch would leave the
-  ;; stale prior value (7) in the OLAP read. The replayer must rewrite
+  ;; stale prior value (7) in the history read. The replayer must rewrite
   ;; such a patch into a junction-preserving put so (a) precedence reads
   ;; back nil and (b) the token's folded :metadata is NOT wiped.
   (let [tok (uuid)
@@ -648,8 +648,8 @@
                                     :seq 0)])
     (let [token (first (xt/q *node*
                              (xt/template
-                              (-> (from :olap/tokens [{:xt/id id :token/begin b
-                                                       :token/precedence p :metadata m}])
+                              (-> (from :history/tokens [{:xt/id id :token/begin b
+                                                          :token/precedence p :metadata m}])
                                   (where (= id ~tok))))
                              {:snapshot-time t2}))]
       (is (some? token) "token exists at t2")
@@ -676,8 +676,8 @@
     (replayer/apply-op! *node* op rows)
     (let [doc (first (xt/q *node*
                            (xt/template
-                            (-> (from :olap/users [{:xt/id id}
-                                                   user/username])
+                            (-> (from :history/users [{:xt/id id}
+                                                      user/username])
                                 (where (= id ~email))))
                            {:snapshot-time ts}))]
       (is (some? doc) "user audit row applies without stalling")
@@ -686,7 +686,7 @@
 (deftest apply-op-delete-closes-entity-validity
   ;; Insert at t1, delete at t2. A snapshot at t1 still sees the entity;
   ;; a snapshot at t2 sees the entity gone. That's the bitemporal
-  ;; contract the OLAP read API depends on.
+  ;; contract the history read API depends on.
   (let [span-id (uuid)
         post {:id (str span-id)
               :span_layer_id (str (uuid))
@@ -700,12 +700,12 @@
     (replayer/apply-op! *node* op2 [(audit-row "spans" span-id nil :change-type :delete)])
     (let [at-t1 (xt/q *node*
                       (xt/template
-                       (-> (from :olap/spans [{:xt/id id} span/value])
+                       (-> (from :history/spans [{:xt/id id} span/value])
                            (where (= id ~span-id))))
                       {:snapshot-time t1})
           at-t2 (xt/q *node*
                       (xt/template
-                       (-> (from :olap/spans [{:xt/id id} span/value])
+                       (-> (from :history/spans [{:xt/id id} span/value])
                            (where (= id ~span-id))))
                       {:snapshot-time t2})]
       (is (= 1 (count at-t1)) "entity present at t1")
@@ -742,7 +742,7 @@
     (replayer/apply-op! *node* op rows)
     (let [span (first (xt/q *node*
                             (xt/template
-                             (-> (from :olap/spans [{:xt/id id} span/value])
+                             (-> (from :history/spans [{:xt/id id} span/value])
                                  (where (= id ~span-id))))
                             {:snapshot-time ts}))]
       (is (some? span) "span exists after the two-put merge")

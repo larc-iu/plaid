@@ -1,10 +1,10 @@
 (ns plaid.rest-api.v1.wrap-route-as-of-test
   "Unit-level coverage of `plaid.rest-api.v1.middleware/wrap-route-as-of`.
 
-  The integration suite in `plaid.olap.integration-test` covers the
+  The integration suite in `plaid.history.integration-test` covers the
   REST-wired happy path (200 OK at-time GET) and a handful of error
   branches (425 future-ts, 400 malformed, 503 disabled). This namespace
-  isolates the middleware itself: mock requests + redefs for the OLAP
+  isolates the middleware itself: mock requests + redefs for the history
   state + a stub handler, so every branch (parse error, sub-route
   reject, method reject, disabled, node-nil, not-caught-up, stalled,
   Throwable swallow) gets a direct assertion without standing up a real
@@ -15,7 +15,7 @@
   integration suite because the catch-all returns 400/503 through a
   different path. These tests pin the EXACT response for each branch."
   (:require [clojure.test :refer :all]
-            [plaid.olap.core :as olap]
+            [plaid.history.core :as history]
             [plaid.rest-api.v1.middleware :as mw])
   (:import (java.time Instant)))
 
@@ -45,7 +45,7 @@
 
 (defn- throwing-handler
   "Stub downstream that throws the given ex-info. Used to verify how
-  the middleware maps `:olap/not-caught-up` / `:olap/stalled` /
+  the middleware maps `:history/not-caught-up` / `:history/stalled` /
   unexpected throws to HTTP statuses."
   [ex]
   (fn [_req] (throw ex)))
@@ -113,8 +113,8 @@
   ;; exactly like GET. The handler produces a body; ring's HEAD-handling
   ;; downstream strips it. We verify here that the middleware injects
   ;; :as-of-node + :as-of-ts and DOESN'T 400 the HEAD itself.
-  (with-redefs [olap/enabled? (constantly true)
-                olap/node ::stub-node]
+  (with-redefs [history/enabled? (constantly true)
+                history/node ::stub-node]
     (let [handler (mw/wrap-route-as-of echo-handler)
           resp (handler (mock-req :head valid-doc-uri (str "as-of=" valid-ts)))]
       (is (= 200 (:status resp)) "HEAD routes through the wrapped handler, no 400")
@@ -134,8 +134,8 @@
   ;; otherwise strip the undeclared param); if it doesn't percent-decode,
   ;; `Instant/parse` chokes on the `%3A` and every real-client time-travel
   ;; GET 400s. These pin the decode behavior.
-  (with-redefs [olap/enabled? (constantly true)
-                olap/node ::stub-node]
+  (with-redefs [history/enabled? (constantly true)
+                history/node ::stub-node]
     (let [handler (mw/wrap-route-as-of echo-handler)]
       (testing "%3A-encoded colons (UTC Z) decode to the same instant"
         (let [resp (handler (mock-req :get valid-doc-uri
@@ -162,31 +162,31 @@
                  (-> resp :body :as-of-ts))))))))
 
 ;; ============================================================
-;; OLAP disabled → 503
+;; history disabled → 503
 ;; ============================================================
 
-(deftest as-of-with-olap-disabled-returns-503-olap-disabled
-  (with-redefs [olap/enabled? (constantly false)]
+(deftest as-of-with-history-disabled-returns-503-history-disabled
+  (with-redefs [history/enabled? (constantly false)]
     (let [handler (mw/wrap-route-as-of echo-handler)
           resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))]
       (is (= 503 (:status resp)))
-      (is (= "olap disabled" (-> resp :body :error))
+      (is (= "history disabled" (-> resp :body :error))
           "operators need to see this exact string so the dashboard can map it"))))
 
 ;; ============================================================
-;; OLAP enabled but node nil → 503 (startup race)
+;; history enabled but node nil → 503 (startup race)
 ;; ============================================================
 
-(deftest as-of-with-nil-olap-node-returns-503-olap-not-ready
+(deftest as-of-with-nil-history-node-returns-503-history-not-ready
   ;; The node defstate can legitimately be nil during a startup race —
   ;; enabled? is true but the defstate hasn't reached :start yet. We
-  ;; surface this as 503 "olap not ready" rather than crashing.
-  (with-redefs [olap/enabled? (constantly true)
-                olap/node nil]
+  ;; surface this as 503 "history not ready" rather than crashing.
+  (with-redefs [history/enabled? (constantly true)
+                history/node nil]
     (let [handler (mw/wrap-route-as-of echo-handler)
           resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))]
       (is (= 503 (:status resp)))
-      (is (= "olap not ready" (-> resp :body :error))))))
+      (is (= "history not ready" (-> resp :body :error))))))
 
 ;; ============================================================
 ;; Happy path: handler receives :as-of-node + :as-of-ts
@@ -194,35 +194,35 @@
 
 (deftest as-of-happy-path-injects-node-and-parsed-ts
   ;; Both :as-of-node and :as-of-ts must reach the handler — the handler
-  ;; dispatches on :as-of-node to route through the OLAP read API, and
+  ;; dispatches on :as-of-node to route through the history read API, and
   ;; uses :as-of-ts as the snapshot anchor.
-  (with-redefs [olap/enabled? (constantly true)
-                olap/node ::stub-node]
+  (with-redefs [history/enabled? (constantly true)
+                history/node ::stub-node]
     (let [handler (mw/wrap-route-as-of echo-handler)
           resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))]
       (is (= 200 (:status resp)))
       (is (= ::stub-node (-> resp :body :as-of-node))
-          "the live olap/node var is forwarded so the handler can query it")
+          "the live history/node var is forwarded so the handler can query it")
       (is (= (Instant/parse valid-ts) (-> resp :body :as-of-ts))
           ":as-of-ts is parsed once, in the middleware — handler gets an Instant"))))
 
 ;; ============================================================
-;; Handler throws :olap/not-caught-up → 425
+;; Handler throws :history/not-caught-up → 425
 ;; ============================================================
 
 (deftest handler-not-caught-up-maps-to-425-with-cursor
-  (let [ex (ex-info "olap not caught up"
-                    {:type :olap/not-caught-up
-                     :olap-cursor {:last-op-ts "2026-05-28T09:00:00Z"
-                                   :last-op-id (random-uuid)}
+  (let [ex (ex-info "history not caught up"
+                    {:type :history/not-caught-up
+                     :history-cursor {:last-op-ts "2026-05-28T09:00:00Z"
+                                      :last-op-id (random-uuid)}
                      :requested-ts "2026-05-28T10:00:00Z"})]
-    (with-redefs [olap/enabled? (constantly true)
-                  olap/node ::stub-node]
+    (with-redefs [history/enabled? (constantly true)
+                  history/node ::stub-node]
       (let [handler (mw/wrap-route-as-of (throwing-handler ex))
             resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))]
         (is (= 425 (:status resp)) "425 Too Early is the canonical response for not-caught-up")
-        (is (= "olap not caught up" (-> resp :body :error)))
-        (is (= "2026-05-28T09:00:00Z" (-> resp :body :olap-cursor))
+        (is (= "history not caught up" (-> resp :body :error)))
+        (is (= "2026-05-28T09:00:00Z" (-> resp :body :history-cursor))
             "cursor's last-op-ts is exposed so the caller knows when to retry")
         (is (some? (-> resp :body :requested-ts))
             "requested-ts is echoed so the caller can correlate")))))
@@ -231,130 +231,130 @@
 ;; 425 body-shape contract pin
 ;; ============================================================
 ;;
-;; The 425 body has `:error` / `:olap-cursor` / `:requested-ts`. These
+;; The 425 body has `:error` / `:history-cursor` / `:requested-ts`. These
 ;; are part of the wire contract — frontends/dashboards parse them. Two
 ;; pins below cover the FULL ex-data shape and the MINIMAL shape (just
 ;; `:type`), to lock the contract for both cases.
 ;;
-;; Convention chosen: when ex-data is missing `:olap-cursor` /
+;; Convention chosen: when ex-data is missing `:history-cursor` /
 ;; `:requested-ts`, the response keys are PRESENT-AS-NIL rather than
-;; absent. Reason: callers writing `(:olap-cursor body)` then comparing
+;; absent. Reason: callers writing `(:history-cursor body)` then comparing
 ;; against nil already work; flipping to absent would require them to
 ;; `contains?`-check first. Cheaper to make the shape constant.
 
 (deftest not-caught-up-body-shape-with-full-ex-data-pins-all-fields
   ;; Full ex-data → all three contract keys populated. This pins the
-  ;; happy 425 case so a refactor that drops one of `:olap-cursor` /
+  ;; happy 425 case so a refactor that drops one of `:history-cursor` /
   ;; `:requested-ts` fails loud.
   (let [cursor-ts "2026-05-28T09:00:00Z"
         requested-ts "2026-05-28T10:00:00Z"
-        ex (ex-info "olap not caught up"
-                    {:type :olap/not-caught-up
-                     :olap-cursor {:last-op-ts cursor-ts
-                                   :last-op-id (random-uuid)
-                                   :last-seq 42}
+        ex (ex-info "history not caught up"
+                    {:type :history/not-caught-up
+                     :history-cursor {:last-op-ts cursor-ts
+                                      :last-op-id (random-uuid)
+                                      :last-seq 42}
                      :requested-ts requested-ts})]
-    (with-redefs [olap/enabled? (constantly true)
-                  olap/node ::stub-node]
+    (with-redefs [history/enabled? (constantly true)
+                  history/node ::stub-node]
       (let [handler (mw/wrap-route-as-of (throwing-handler ex))
             resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))
             body (:body resp)]
         (is (= 425 (:status resp)))
-        (is (= "olap not caught up" (:error body)))
-        (is (= cursor-ts (:olap-cursor body))
-            ":olap-cursor extracts the cursor's :last-op-ts as a string")
+        (is (= "history not caught up" (:error body)))
+        (is (= cursor-ts (:history-cursor body))
+            ":history-cursor extracts the cursor's :last-op-ts as a string")
         (is (= requested-ts (:requested-ts body))
             ":requested-ts is echoed verbatim from ex-data")
-        (is (= #{:error :olap-cursor :requested-ts} (set (keys body)))
+        (is (= #{:error :history-cursor :requested-ts} (set (keys body)))
             "exactly these three keys on the 425 body — no more, no less")))))
 
 (deftest not-caught-up-body-shape-with-minimal-ex-data-keys-present-as-nil
   ;; Minimal ex-data (only `:type`) → contract keys are PRESENT-AS-NIL
   ;; rather than absent. See the convention note above the previous
-  ;; test. A producer that forgets to attach `:olap-cursor` /
+  ;; test. A producer that forgets to attach `:history-cursor` /
   ;; `:requested-ts` still mints a 425 with the canonical key set, so
   ;; consumer code stays simple.
-  (let [ex (ex-info "olap not caught up" {:type :olap/not-caught-up})]
-    (with-redefs [olap/enabled? (constantly true)
-                  olap/node ::stub-node]
+  (let [ex (ex-info "history not caught up" {:type :history/not-caught-up})]
+    (with-redefs [history/enabled? (constantly true)
+                  history/node ::stub-node]
       (let [handler (mw/wrap-route-as-of (throwing-handler ex))
             resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))
             body (:body resp)]
         (is (= 425 (:status resp)))
-        (is (= "olap not caught up" (:error body)))
-        (is (contains? body :olap-cursor)
-            ":olap-cursor key is PRESENT (as nil) when ex-data omits it")
-        (is (nil? (:olap-cursor body)))
+        (is (= "history not caught up" (:error body)))
+        (is (contains? body :history-cursor)
+            ":history-cursor key is PRESENT (as nil) when ex-data omits it")
+        (is (nil? (:history-cursor body)))
         (is (contains? body :requested-ts)
             ":requested-ts key is PRESENT (as nil) when ex-data omits it")
         (is (nil? (:requested-ts body)))
-        (is (= #{:error :olap-cursor :requested-ts} (set (keys body)))
+        (is (= #{:error :history-cursor :requested-ts} (set (keys body)))
             "same three-key shape regardless of ex-data completeness")))))
 
 (deftest not-caught-up-cursor-string-passes-through-as-canonical-iso
-  ;; Fix #14: the 425 body's `:olap-cursor` must be a canonical ISO-8601
+  ;; Fix #14: the 425 body's `:history-cursor` must be a canonical ISO-8601
   ;; string. The common case — cursor stores `:last-op-ts` as an ISO
   ;; string already — must pass through verbatim (no re-formatting, no
   ;; precision loss).
   (let [cursor-ts "2026-05-28T09:00:00Z"
-        ex (ex-info "olap not caught up"
-                    {:type :olap/not-caught-up
-                     :olap-cursor {:last-op-ts cursor-ts
-                                   :last-op-id (random-uuid)}
+        ex (ex-info "history not caught up"
+                    {:type :history/not-caught-up
+                     :history-cursor {:last-op-ts cursor-ts
+                                      :last-op-id (random-uuid)}
                      :requested-ts "2026-05-28T10:00:00Z"})]
-    (with-redefs [olap/enabled? (constantly true)
-                  olap/node ::stub-node]
+    (with-redefs [history/enabled? (constantly true)
+                  history/node ::stub-node]
       (let [handler (mw/wrap-route-as-of (throwing-handler ex))
             resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))
             body (:body resp)]
         (is (= 425 (:status resp)))
-        (is (= cursor-ts (:olap-cursor body))
+        (is (= cursor-ts (:history-cursor body))
             "string cursor passes through verbatim as canonical ISO-8601")
-        (is (string? (:olap-cursor body)))))))
+        (is (string? (:history-cursor body)))))))
 
 (deftest not-caught-up-cursor-non-string-coerced-to-canonical-iso
   ;; Fix #14: if a future code path stores `:last-op-ts` as a non-string
   ;; (Instant / Date / ZonedDateTime), the body must still be canonical
   ;; ISO-8601 — NOT a bare `(str instant)` that happens to match for
-  ;; Instant but emits garbage for Date. We coerce via olap/->instant
+  ;; Instant but emits garbage for Date. We coerce via history/->instant
   ;; then .toString. Verify with an Instant and a java.util.Date that
   ;; both render to the same canonical string.
   (let [iso "2026-05-28T09:00:00Z"
         inst (Instant/parse iso)
         date (java.util.Date/from inst)]
     (doseq [[label cursor-val] [["Instant" inst] ["Date" date]]]
-      (let [ex (ex-info "olap not caught up"
-                        {:type :olap/not-caught-up
-                         :olap-cursor {:last-op-ts cursor-val}
+      (let [ex (ex-info "history not caught up"
+                        {:type :history/not-caught-up
+                         :history-cursor {:last-op-ts cursor-val}
                          :requested-ts iso})]
-        (with-redefs [olap/enabled? (constantly true)
-                      olap/node ::stub-node]
+        (with-redefs [history/enabled? (constantly true)
+                      history/node ::stub-node]
           (let [handler (mw/wrap-route-as-of (throwing-handler ex))
                 resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))
                 body (:body resp)]
             (is (= 425 (:status resp)) label)
-            (is (= iso (:olap-cursor body))
+            (is (= iso (:history-cursor body))
                 (str label " cursor coerces to canonical ISO-8601, not (str ...)"))))))))
 
 ;; ============================================================
-;; Handler throws :olap/read-timeout → 503 (Fix #16)
+;; Handler throws :history/read-timeout → 503 (Fix #16)
 ;; ============================================================
 
 (deftest handler-read-timeout-maps-to-503-with-timeout-ms
   ;; Fix #16: a hung XTDB read is bounded by the handler's per-read
-  ;; timeout, which throws `{:type :olap/read-timeout :timeout-ms N}`.
+  ;; timeout, which throws `{:type :history/read-timeout :timeout-ms N}`.
   ;; The middleware must map it to a 503 in the same family as
-  ;; :olap/stalled — a dedicated error string + the timeout value, NOT
+  ;; :history/stalled — a dedicated error string + the timeout value, NOT
   ;; the generic correlation-id 503 (so operators can tell a timeout
   ;; apart from an arbitrary failure).
-  (let [ex (ex-info "olap read timed out"
-                    {:type :olap/read-timeout :timeout-ms 30000})]
-    (with-redefs [olap/enabled? (constantly true)
-                  olap/node ::stub-node]
+  (let [ex (ex-info "history read timed out"
+                    {:type :history/read-timeout :timeout-ms 30000})]
+    (with-redefs [history/enabled? (constantly true)
+                  history/node ::stub-node]
       (let [handler (mw/wrap-route-as-of (throwing-handler ex))
             resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))]
         (is (= 503 (:status resp)))
-        (is (= "olap read timed out" (-> resp :body :error))
+        (is (= "history read timed out" (-> resp :body :error))
             "dedicated error string, not the generic correlation-id 503")
         (is (= 30000 (-> resp :body :timeout-ms))
             "timeout-ms is surfaced so operators can confirm the cap")
@@ -362,19 +362,19 @@
             "read-timeout is a KNOWN type — no correlation-id fallthrough")))))
 
 ;; ============================================================
-;; Handler throws :olap/stalled → 503 with stall reason
+;; Handler throws :history/stalled → 503 with stall reason
 ;; ============================================================
 
 (deftest handler-stalled-maps-to-503-with-stall-reason
-  (let [ex (ex-info "olap tailer stalled"
-                    {:type :olap/stalled
+  (let [ex (ex-info "history tailer stalled"
+                    {:type :history/stalled
                      :stall-reason "malformed audit row (at op-id=abc, seq=3)"})]
-    (with-redefs [olap/enabled? (constantly true)
-                  olap/node ::stub-node]
+    (with-redefs [history/enabled? (constantly true)
+                  history/node ::stub-node]
       (let [handler (mw/wrap-route-as-of (throwing-handler ex))
             resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))]
         (is (= 503 (:status resp)))
-        (is (= "olap tailer stalled" (-> resp :body :error)))
+        (is (= "history tailer stalled" (-> resp :body :error)))
         (is (re-find #"malformed" (-> resp :body :stall-reason))
             "stall-reason propagates to the client so operators can grep it")))))
 
@@ -383,20 +383,20 @@
 ;; ============================================================
 
 (deftest handler-unexpected-throwable-maps-to-503-no-stack-leak
-  ;; Defensive: the OLAP read stack could throw anything (XTDB driver
+  ;; Defensive: the history read stack could throw anything (XTDB driver
   ;; exception, NPE on a malformed cursor, JDBC blip). We must NOT
   ;; leak the stack trace or the bare exception message — instead,
   ;; return a stable error string + a correlation id so the operator
   ;; can grep the log without the client ever seeing internals.
-  (with-redefs [olap/enabled? (constantly true)
-                olap/node ::stub-node]
+  (with-redefs [history/enabled? (constantly true)
+                history/node ::stub-node]
     (let [handler (mw/wrap-route-as-of (throwing-handler
                                         (RuntimeException. "internal-detail-do-not-leak")))
           resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))]
       (is (= 503 (:status resp)))
-      (is (= "olap read failed" (-> resp :body :error))
+      (is (= "history read failed" (-> resp :body :error))
           "exception message is NOT leaked — fixed string only")
-      (is (re-matches #"olap-[0-9a-f]+" (-> resp :body :correlation-id))
+      (is (re-matches #"history-[0-9a-f]+" (-> resp :body :correlation-id))
           "correlation-id format pins the log grep contract"))))
 
 (deftest handler-typed-ex-info-other-than-known-cases-maps-to-503
@@ -405,15 +405,15 @@
   ;; The single-Throwable-catch shape routes them to the same
   ;; 503/correlation-id response as any other unexpected error.
   (let [ex (ex-info "some-other-error-with-private-detail" {:type :totally-unknown})]
-    (with-redefs [olap/enabled? (constantly true)
-                  olap/node ::stub-node]
+    (with-redefs [history/enabled? (constantly true)
+                  history/node ::stub-node]
       (let [handler (mw/wrap-route-as-of (throwing-handler ex))
             resp (handler (mock-req :get valid-doc-uri (str "as-of=" valid-ts)))]
         (is (= 503 (:status resp))
             "unknown typed ex-info maps to the generic 503, not propagated")
-        (is (= "olap read failed" (-> resp :body :error))
+        (is (= "history read failed" (-> resp :body :error))
             "response body uses the generic error string, not the ex-info's message")
-        (is (re-matches #"olap-[0-9a-f]+" (-> resp :body :correlation-id))
+        (is (re-matches #"history-[0-9a-f]+" (-> resp :body :correlation-id))
             "correlation-id is included for log grep")
         (is (not (re-find #"private-detail" (str (:body resp))))
             "the ex-info's private message is not leaked anywhere in the body")))))

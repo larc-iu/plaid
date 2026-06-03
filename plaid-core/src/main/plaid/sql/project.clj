@@ -398,7 +398,7 @@
   :readers/:writers/:maintainers role vectors (unnamespaced — the audit
   \"extras\" shape; see `fetch-project-acl-snapshot`). Manual insert + folded
   audit (vs. `psc/insert!`) so the maintainer grant rides the SAME audit row —
-  otherwise the project_users grant would be invisible to OLAP replay and the
+  otherwise the project_users grant would be invisible to history replay and the
   creator wouldn't be reconstructed as a maintainer."
   [db attrs user-id]
   (let [{:project/keys [name maintainers]} attrs
@@ -529,7 +529,7 @@
   (let [;; ORDER BY user_id so each role list is deterministically ordered
         ;; (the `by-role` reduce appends in row order). Without it, the
         ;; folded audit image order can vary run-to-run after DELETE+INSERT
-        ;; churn, producing spurious OLAP "changes" / OLTP↔OLAP divergence
+        ;; churn, producing spurious history "changes" / OLTP↔history divergence
         ;; (task #13).
         rows (psc/q tx {:select [:user_id :role]
                         :from [:project_users]

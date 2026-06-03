@@ -79,14 +79,14 @@
  ;; restrict surface area on hardened deployments.
  :plaid.api {:expose-openapi? true}
 
- ;; OLAP — XTDB v2 read-only time-travel replica fed from audit_writes.
+ ;; history — XTDB v2 read-only time-travel replica fed from audit_writes.
  ;; Defaults to disabled; operators opt in once they want time travel.
  ;; When enabled, an in-process tailer polls audit_writes and replays
  ;; into the XTDB node at :storage-path / :log-path. REST clients reach
  ;; the replica via ?as-of=<ISO-8601> on document GET endpoints.
- :plaid.olap/config {:enabled? false
-                     :storage-path "data/olap-storage"
-                     :log-path "data/olap-log"
+ :plaid.history/config {:enabled? false
+                     :storage-path "data/history-storage"
+                     :log-path "data/history-log"
                      :cold-replay-on-empty? true
                      :tailer {:poll-interval-ms 5000
                               :batch-size 500

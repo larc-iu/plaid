@@ -7,7 +7,7 @@
             [plaid.server.config :refer [config]]
             [plaid.server.sql :refer [datasource]]
             [plaid.sql.common :as psc]
-            [plaid.olap.core :as olap]
+            [plaid.history.core :as history]
             [plaid.rest-api.v1.core :refer [rest-handler]]
             [clojure.data.json :as json]
             [clojure.edn :as edn]
@@ -99,11 +99,11 @@
   "Binary MB (1024*1024). Reported as `store_size_mb` in /health."
   (* 1024 1024))
 
-;; lag-rows + max-unreplicated-op-ts live in plaid.olap.core (single
+;; lag-rows + max-unreplicated-op-ts live in plaid.history.core (single
 ;; copy shared with the tailer's status snapshot — a schema change must
 ;; not make /health and the tailer disagree).
-(def ^:private lag-rows olap/lag-rows)
-(def ^:private max-unreplicated-op-ts olap/max-unreplicated-op-ts)
+(def ^:private lag-rows history/lag-rows)
+(def ^:private max-unreplicated-op-ts history/max-unreplicated-op-ts)
 
 (defn- cursor-id->str
   "UUIDs in the cursor come back from XTDB already as UUID instances; render
@@ -122,22 +122,22 @@
   (when (string? s)
     (try (Instant/parse s) (catch Exception _ nil))))
 
-(defn- olap-block
-  "Build the /health :olap block. Returns nil when OLAP is disabled
+(defn- history-block
+  "Build the /health :history block. Returns nil when history is disabled
    (caller omits the key entirely).
 
-   Defensive: any read against the OLAP node can fail (node startup
+   Defensive: any read against the history node can fail (node startup
    race, malformed cursor doc, JDBC blip on the OLTP count query). We
    degrade to {:enabled true :ready false :error \"...\"} rather than
    tanking the entire /health response."
   [ds]
-  (when (olap/enabled?)
+  (when (history/enabled?)
     (try
-      (let [node olap/node
+      (let [node history/node
             ;; Node defstate may legitimately be nil during a startup race —
-            ;; the OLAP node hasn't reached :start yet even though enabled?
+            ;; the history node hasn't reached :start yet even though enabled?
             ;; is already true. Surface as ready=false, not as an error.
-            cursor (when node (olap/cursor-read node))
+            cursor (when node (history/cursor-read node))
             cursor-ts (:last-op-ts cursor)
             cursor-op-id (:last-op-id cursor)
             lag-rows-n (lag-rows ds cursor-ts cursor-op-id)
@@ -145,7 +145,7 @@
             cursor-ts-inst (safe-parse-instant cursor-ts)
             cursor-age-ms (when cursor-ts-inst
                             (- (System/currentTimeMillis) (.toEpochMilli cursor-ts-inst)))
-            ;; `lag_ms` is the OLTP-OLAP op-ts gap: how far behind the
+            ;; `lag_ms` is the OLTP-history op-ts gap: how far behind the
             ;; tailer is in wall-clock terms. Zero when caught up
             ;; (nothing past the cursor), regardless of how long ago
             ;; the cursor was written. `cursor_age_ms` measures the
@@ -172,7 +172,7 @@
                          0))
             tailer-status (or (some-> (:tailer-status cursor) name)
                               "running")
-            store-bytes (try (olap/disk-bytes) (catch Exception _ 0))
+            store-bytes (try (history/disk-bytes) (catch Exception _ 0))
             store-mb (long (Math/round (double (/ store-bytes bytes-per-mb))))]
         (cond-> {:enabled true
                  :ready ready?
@@ -185,7 +185,7 @@
                  :store_size_mb store-mb}
           (:stall-reason cursor) (assoc :stall_reason (:stall-reason cursor))))
       (catch Throwable t
-        (log/warn t "OLAP /health probe failed")
+        (log/warn t "history /health probe failed")
         {:enabled true
          :ready false
          :error (or (.getMessage t) (.. t getClass getSimpleName))}))))
@@ -194,8 +194,8 @@
   (let [base {:ok true
               :version health-version
               :uptime-ms (- (System/currentTimeMillis) start-time-ms)}]
-    (if-let [olap (olap-block ds)]
-      (assoc base :olap olap)
+    (if-let [history (history-block ds)]
+      (assoc base :history history)
       base)))
 
 (defn- health-response

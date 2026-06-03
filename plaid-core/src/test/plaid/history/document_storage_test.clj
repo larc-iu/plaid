@@ -1,9 +1,9 @@
-(ns plaid.olap.document-storage-test
-  "Round-trip smoke test for plaid.olap.document's SQL queries against
+(ns plaid.history.document-storage-test
+  "Round-trip smoke test for plaid.history.document's SQL queries against
   XTDB v2's actual storage column naming.
 
   Why this exists: XTDB v2 stores `:document/name` under SQL column
-  `document$name`, not `name`. A `SELECT name FROM olap.documents` is
+  `document$name`, not `name`. A `SELECT name FROM history.documents` is
   syntactically valid but the column doesn't exist — XTDB returns a
   row with every selected attribute NULL. The replayer-test suite
   uses XTQL with `xt/template` (which addresses the namespaced attr
@@ -18,9 +18,9 @@
   (:require [clojure.data.json :as json]
             [clojure.test :refer :all]
             [plaid.media.storage :as media]
-            [plaid.olap.core :as olap-core]
-            [plaid.olap.document :as olap-doc]
-            [plaid.olap.replayer :as replayer]
+            [plaid.history.core :as history-core]
+            [plaid.history.document :as history-doc]
+            [plaid.history.replayer :as replayer]
             [plaid.sql.common]
             [xtdb.api :as xt]
             [xtdb.node :as xtn])
@@ -71,7 +71,7 @@
         ;; Cursor `:last-op-ts` is written as an ISO string in production
         ;; (the tailer reads `operations.ts` straight from SQLite, which
         ;; comes back as a TEXT). `check-staleness!` parses it via
-        ;; `olap-core/->instant`. The helper now also handles
+        ;; `history-core/->instant`. The helper now also handles
         ;; ZonedDateTime (extended in Group C of the round-3 fixes), so a
         ;; future tailer change that wrote `:last-op-ts` as a Date would
         ;; round-trip correctly — but the production tailer continues to
@@ -87,12 +87,12 @@
         op (op-record ts)]
     (replayer/apply-op! *node* op [(audit-row "documents" doc-id post)])
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
-    (let [got (olap-doc/get-at *node* doc-id ts)]
+    (let [got (history-doc/get-at *node* doc-id ts)]
       (is (some? got) "doc found")
       (is (= doc-id (:document/id got))                    ":document/id")
       (is (= "Hello Doc" (:document/name got))             ":document/name (was nil pre-fix)")
@@ -119,13 +119,13 @@
                         (op-record ts)
                         [(audit-row "documents" doc-id post)])
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
-    (is (true? (olap-doc/exists-at? *node* doc-id ts)))
-    (is (false? (olap-doc/exists-at? *node* (uuid) ts))
+    (is (true? (history-doc/exists-at? *node* doc-id ts)))
+    (is (false? (history-doc/exists-at? *node* (uuid) ts))
         "absent id reads as false, not nil")))
 
 ;; ============================================================
@@ -228,7 +228,7 @@
                           :span_layer_id (str sl-id)
                           ;; OLTP stores `spans.value` as a JSON-encoded scalar
                           ;; (so the column can hold string|number|bool|null
-                          ;; uniformly). The OLAP read path decodes via
+                          ;; uniformly). The history read path decodes via
                           ;; `psc/read-json`, so this test post-image must
                           ;; carry the JSON-encoded form.
                           :value "\"GREETING\""
@@ -236,12 +236,12 @@
                          :seq 8)]]
     (replayer/apply-op! *node* op rows)
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 8
                      :tailer-status :running})])
-    (let [doc (olap-doc/get-with-layer-data-at *node* doc-id ts)]
+    (let [doc (history-doc/get-with-layer-data-at *node* doc-id ts)]
       ;; --- Top-level doc ---
       (is (some? doc))
       (is (= "Doc" (:document/name doc)))
@@ -300,7 +300,7 @@
 ;; ============================================================
 ;;
 ;; The OLTP write path JSON-encodes scalars before storing, so a
-;; well-formed replayed row will always carry a string. But the OLAP
+;; well-formed replayed row will always carry a string. But the history
 ;; SQL read path used to call `(psc/read-json v)` unconditionally,
 ;; which throws ClassCastException on a non-string value — a single
 ;; replayer change that pre-decoded values would have 500'd the entire
@@ -313,7 +313,7 @@
 
 (defn- replay-span-with-value
   "Helper: write a doc + minimal layer chain + one span with the given
-  raw `:value` payload (as it would land in the OLAP after replay).
+  raw `:value` payload (as it would land in the history after replay).
   Returns the assembled `(get-with-layer-data-at ...)` doc."
   [v]
   (let [doc-id (uuid)
@@ -359,12 +359,12 @@
                           :tokens [(str tok-id)]} :seq 6)]]
     (replayer/apply-op! *node* op rows)
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 6
                      :tailer-status :running})])
-    {:doc (olap-doc/get-with-layer-data-at *node* doc-id ts)
+    {:doc (history-doc/get-with-layer-data-at *node* doc-id ts)
      :sl-id sl-id
      :tkl-id tkl-id
      :tl-id tl-id}))
@@ -397,7 +397,7 @@
        ~@body)))
 
 (deftest decode-value-passes-through-non-string-scalars
-  ;; Numbers, booleans, and pre-decoded nil must not throw. The OLAP
+  ;; Numbers, booleans, and pre-decoded nil must not throw. The history
   ;; read path used to die with ClassCastException on these.
   (testing "long passes through unchanged"
     (with-isolated-node
@@ -449,7 +449,7 @@
 ;; ============================================================
 ;;
 ;; OLTP `plaid.sql.document/get` attaches `:document/media-url` iff
-;; `media/media-exists?` is true. The OLAP at-time read must match —
+;; `media/media-exists?` is true. The history at-time read must match —
 ;; media isn't versioned in either backend, so we probe the live
 ;; filesystem (same as v2 did pre-port). Without this, an `?as-of=`
 ;; read of a doc with media silently drops the URL and a client
@@ -469,21 +469,21 @@
     (replayer/apply-op! *node* (op-record ts)
                         [(audit-row "documents" doc-id post)])
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
     ;; Redef rather than touching the real media dir — keeps the test
-    ;; hermetic and matches how the rest of the OLAP tests dodge filesystem
+    ;; hermetic and matches how the rest of the history tests dodge filesystem
     ;; assumptions.
     (with-redefs [media/media-exists? (constantly true)]
-      (let [got (olap-doc/get-at *node* doc-id ts)]
+      (let [got (history-doc/get-at *node* doc-id ts)]
         (is (= (str "/api/v1/documents/" doc-id "/media")
                (:document/media-url got))
             "media-url attached when media-exists? is true")))
     (with-redefs [media/media-exists? (constantly false)]
-      (let [got (olap-doc/get-at *node* doc-id ts)]
+      (let [got (history-doc/get-at *node* doc-id ts)]
         (is (not (contains? got :document/media-url))
             "media-url omitted when media-exists? is false (key absent, not nil)")))))
 
@@ -504,13 +504,13 @@
     (replayer/apply-op! *node* (op-record ts)
                         [(audit-row "documents" doc-id post)])
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
     (with-redefs [media/media-exists? (constantly true)]
-      (let [got (olap-doc/get-with-layer-data-at *node* doc-id ts)]
+      (let [got (history-doc/get-with-layer-data-at *node* doc-id ts)]
         (is (= (str "/api/v1/documents/" doc-id "/media")
                (:document/media-url got)))))))
 
@@ -527,7 +527,7 @@
 ;; list-versions — pagination + filtering
 ;; ============================================================
 ;;
-;; `plaid.olap.document/list-versions` drives off XTDB's bitemporal
+;; `plaid.history.document/list-versions` drives off XTDB's bitemporal
 ;; history on the document row — every doc-version-bump emits a new
 ;; system_from row, and a `FOR ALL SYSTEM_TIME` query returns the full
 ;; history newest-first. The :from / :to / :limit / :cursor knobs let
@@ -568,12 +568,12 @@
     ;; called by list-versions today, but we set it anyway so a future
     ;; staleness guard wouldn't trip on this test).
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts "2026-05-28T10:05:00Z"
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
-    (let [versions (olap-doc/list-versions *node* doc-id {})]
+    (let [versions (history-doc/list-versions *node* doc-id {})]
       (is (= 5 (count versions)) "all 5 versions returned by default")
       (is (apply > (map :version versions))
           "newest-first: version numbers strictly decreasing")
@@ -590,7 +590,7 @@
                   (Instant/parse "2026-05-28T11:04:00Z")]]
     (doseq [[v t] (map vector (range 1 6) instants)]
       (replay-doc-at-version doc-id prj-id t v))
-    (let [versions (olap-doc/list-versions *node* doc-id {:limit 2})]
+    (let [versions (history-doc/list-versions *node* doc-id {:limit 2})]
       (is (= 2 (count versions)) ":limit 2 caps the page")
       (is (= [5 4] (mapv :version versions))
           "the newest two come back when limited"))))
@@ -607,7 +607,7 @@
         ts3 (nth instants 2)]
     (doseq [[v t] (map vector (range 1 6) instants)]
       (replay-doc-at-version doc-id prj-id t v))
-    (let [versions (olap-doc/list-versions *node* doc-id {:from (.toString ts3)})]
+    (let [versions (history-doc/list-versions *node* doc-id {:from (.toString ts3)})]
       (is (= 3 (count versions))
           ":from inclusive — versions 3/4/5 (ts >= ts3) returned")
       (is (every? (fn [v] (>= (:version v) 3)) versions)
@@ -625,7 +625,7 @@
         ts3 (nth instants 2)]
     (doseq [[v t] (map vector (range 1 6) instants)]
       (replay-doc-at-version doc-id prj-id t v))
-    (let [versions (olap-doc/list-versions *node* doc-id {:to (.toString ts3)})]
+    (let [versions (history-doc/list-versions *node* doc-id {:to (.toString ts3)})]
       (is (= 2 (count versions))
           ":to exclusive — versions 1/2 (ts < ts3) returned, not version 3 at ts3 itself")
       (is (every? (fn [v] (< (:version v) 3)) versions)
@@ -645,10 +645,10 @@
                   (Instant/parse "2026-05-28T14:04:00Z")]]
     (doseq [[v t] (map vector (range 1 6) instants)]
       (replay-doc-at-version doc-id prj-id t v))
-    (let [page1 (olap-doc/list-versions *node* doc-id {:limit 2})
+    (let [page1 (history-doc/list-versions *node* doc-id {:limit 2})
           page1-oldest-ts (:ts (last page1))
-          page2 (olap-doc/list-versions *node* doc-id
-                                        {:limit 2 :cursor page1-oldest-ts})]
+          page2 (history-doc/list-versions *node* doc-id
+                                           {:limit 2 :cursor page1-oldest-ts})]
       (is (= [5 4] (mapv :version page1)))
       ;; cursor is EXCLUSIVE — page2 starts at v3, not v4 (which was at
       ;; ts equal to cursor). This matches the docstring: "cursor
@@ -661,7 +661,7 @@
   ;; No doc-version-bumps yet → no history → []. Defensive: many callers
   ;; will assume vector shape regardless of presence.
   (let [doc-id (uuid)
-        versions (olap-doc/list-versions *node* doc-id {})]
+        versions (history-doc/list-versions *node* doc-id {})]
     (is (vector? versions))
     (is (empty? versions))))
 
@@ -695,13 +695,13 @@
     (replay-doc-at-version doc-id prj-id ts 1)
     (replay-doc-at-version doc-id prj-id ts 2)
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts "2026-05-28T01:01:00Z"
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
-    (let [page-a (olap-doc/list-versions *node* doc-id {})
-          page-b (olap-doc/list-versions *node* doc-id {})]
+    (let [page-a (history-doc/list-versions *node* doc-id {})
+          page-b (history-doc/list-versions *node* doc-id {})]
       ;; Per the bitemporal contract, only the latest version at a given
       ;; system-time is visible — the second put-docs replaces the first
       ;; rather than appending a second history row. We don't assert a
@@ -728,14 +728,14 @@
     (doseq [[v t] (map vector (range 1 4) instants)]
       (replay-doc-at-version doc-id prj-id t v))
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts "2026-05-28T02:03:00Z"
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
-    (let [all (olap-doc/list-versions *node* doc-id {})
+    (let [all (history-doc/list-versions *node* doc-id {})
           oldest-ts (:ts (last all))
-          next-page (olap-doc/list-versions *node* doc-id {:cursor oldest-ts})]
+          next-page (history-doc/list-versions *node* doc-id {:cursor oldest-ts})]
       (is (= 3 (count all)))
       (is (empty? next-page)
           ":cursor at the oldest entry's ts → no entries strictly older → empty page"))))
@@ -756,18 +756,18 @@
     (doseq [[v t] (map vector (range 1 4) instants)]
       (replay-doc-at-version doc-id prj-id t v))
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts "2026-05-28T03:03:00Z"
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
-    (let [versions (olap-doc/list-versions *node* doc-id {:limit 1000})]
+    (let [versions (history-doc/list-versions *node* doc-id {:limit 1000})]
       (is (= 3 (count versions))
           "all 3 returned (clamp doesn't truncate below actual count)"))
     ;; Direct unit test of the clamp boundary — verifies 1000 clamps to 500
     ;; without needing to actually build 500 entries (impractical for an
     ;; in-memory deftest).
-    (let [clamp @#'olap-doc/clamp-limit]
+    (let [clamp @#'history-doc/clamp-limit]
       (is (= 500 (clamp 1000)) "1000 clamps to 500 (max-limit)")
       (is (= 500 (clamp 10000)) "any huge value clamps to 500"))))
 
@@ -777,7 +777,7 @@
   ;; refactor that flips the clamp to `(max 0 …)` (off-by-one) would fail
   ;; loudly — empty-results-on-negative-limit is a footgun for clients
   ;; that loop "while results, fetch more".
-  (let [clamp @#'olap-doc/clamp-limit]
+  (let [clamp @#'history-doc/clamp-limit]
     (is (= 1 (clamp 0)) "0 clamps up to 1")
     (is (= 1 (clamp -5)) "negative clamps up to 1")
     (is (= 50 (clamp nil)) "nil falls back to default-limit (50)")
@@ -785,14 +785,14 @@
     (is (= 7 (clamp "7")) "numeric string parses through")))
 
 ;; ============================================================
-;; olap-cursor accessor — shape coverage
+;; history-cursor accessor — shape coverage
 ;; ============================================================
 ;;
 ;; The integration test surfaces this indirectly via 425 / /health.
 ;; Direct shape coverage catches refactors that change the exposed key
 ;; set without flipping a REST status — operator dashboards consume it.
 
-(deftest olap-cursor-returns-canonical-shape-after-apply
+(deftest history-cursor-returns-canonical-shape-after-apply
   (let [doc-id (uuid)
         prj-id (uuid)
         ts (Instant/parse "2026-05-28T15:00:00Z")
@@ -806,35 +806,35 @@
     (replayer/apply-op! *node* (op-record ts)
                         [(audit-row "documents" doc-id post)])
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 7
                      :tailer-status :running})])
-    (let [c (olap-doc/olap-cursor *node*)]
+    (let [c (history-doc/history-cursor *node*)]
       (is (some? c))
       (is (= cursor-ts-iso (:ts c)) ":ts maps to cursor's last-op-ts")
       (is (some? (:op-id c)) ":op-id present")
       (is (= 7 (:seq c)) ":seq maps to cursor's last-seq")
       (is (= :running (:status c)) ":status defaults to :running"))))
 
-(deftest olap-cursor-returns-nil-with-no-cursor-doc
+(deftest history-cursor-returns-nil-with-no-cursor-doc
   ;; Cold-start case: no apply has happened, no cursor written. The
   ;; accessor returns nil rather than throwing — the /health code path
   ;; treats nil as "not ready" without a 500.
-  (is (nil? (olap-doc/olap-cursor *node*))
+  (is (nil? (history-doc/history-cursor *node*))
       "fresh node returns nil instead of throwing"))
 
 ;; ============================================================
-;; olap-core/->instant — unified coercion helper
+;; history-core/->instant — unified coercion helper
 ;; ============================================================
 ;;
-;; `olap-core/->instant` accepts Instant / String / Date / ZDT. The
-;; ZDT branch was added because `cursor-instant` (in olap.document)
+;; `history-core/->instant` accepts Instant / String / Date / ZDT. The
+;; ZDT branch was added because `cursor-instant` (in history.document)
 ;; calls this on `:last-op-ts`, and a future replayer/tailer change
 ;; that stores `Date` there would have XTDB round-trip it as a
 ;; ZonedDateTime — without the ZDT branch, the staleness check would
-;; throw on every read. `olap.document/->instant-maybe` now delegates
+;; throw on every read. `history.document/->instant-maybe` now delegates
 ;; here so the two helpers cannot drift.
 
 (deftest ->instant-round-trips-zoned-date-time
@@ -844,10 +844,10 @@
         inst (Instant/parse iso)
         date (Date/from inst)
         zdt (.atZone inst (java.time.ZoneOffset/UTC))]
-    (is (= inst (olap-core/->instant inst)) "Instant passes through")
-    (is (= inst (olap-core/->instant iso)) "ISO-8601 string parses")
-    (is (= inst (olap-core/->instant date)) "java.util.Date converts")
-    (is (= inst (olap-core/->instant zdt))
+    (is (= inst (history-core/->instant inst)) "Instant passes through")
+    (is (= inst (history-core/->instant iso)) "ISO-8601 string parses")
+    (is (= inst (history-core/->instant date)) "java.util.Date converts")
+    (is (= inst (history-core/->instant zdt))
         (str "ZonedDateTime converts (regression: prior fn rejected ZDT, which broke "
              "cursor reads after XTDB round-trips a stored Date as ZDT)"))))
 
@@ -861,20 +861,20 @@
 ;; branch of check-staleness! is deliberately skipped — version history
 ;; is meaningful at any cursor position).
 
-(deftest list-versions-throws-olap-stalled-when-tailer-stalled
+(deftest list-versions-throws-history-stalled-when-tailer-stalled
   (let [doc-id (uuid)
         prj-id (uuid)
         ts (Instant/parse "2026-05-28T10:00:00Z")]
     (replay-doc-at-version doc-id prj-id ts 1)
     ;; Stall the tailer by setting :tailer-status :stalled on the cursor.
-    (olap-core/set-stalled! *node*
-                            {:op-id (uuid) :seq 0 :reason "synthetic test stall"})
+    (history-core/set-stalled! *node*
+                               {:op-id (uuid) :seq 0 :reason "synthetic test stall"})
     (let [thrown (try
-                   (olap-doc/list-versions *node* doc-id {})
+                   (history-doc/list-versions *node* doc-id {})
                    nil
                    (catch clojure.lang.ExceptionInfo e e))]
       (is (some? thrown) "list-versions throws when tailer is stalled")
-      (is (= :olap/stalled (:type (ex-data thrown)))
+      (is (= :history/stalled (:type (ex-data thrown)))
           ":type matches the contract so wrap-route-as-of can map to 503")
       (is (re-find #"synthetic test stall" (:stall-reason (ex-data thrown)))
           ":stall-reason propagates from the cursor doc"))))
@@ -883,7 +883,7 @@
 ;; get-at media-url omission for deleted docs (option B, task #138 fix #7)
 ;; ============================================================
 ;;
-;; The auth chain falls through to OLAP at-time reads for docs deleted
+;; The auth chain falls through to history at-time reads for docs deleted
 ;; from OLTP. Without this guard, `:document/media-url` would be
 ;; attached to the response, but the media route's auth lookup uses
 ;; OLTP only — clicking the URL would 403/404. Option B: omit the URL
@@ -907,13 +907,13 @@
               :created_at "2026-05-28T16:00:00Z"
               :modified_at "2026-05-28T16:00:00Z"}
         ;; Mock OLTP that NEVER finds this doc — simulates the
-        ;; deleted-doc case where the OLAP at-time read still
+        ;; deleted-doc case where the history at-time read still
         ;; surfaces the doc but OLTP no longer has the row.
         empty-oltp-db (reify java.lang.AutoCloseable (close [_]))]
     (replayer/apply-op! *node* (op-record ts)
                         [(audit-row "documents" doc-id post)])
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 0
@@ -922,8 +922,8 @@
                   ;; Bypass the real fetch-by-id and force "doc absent in OLTP"
                   ;; without standing up a real SQLite tx — keeps this hermetic.
                   plaid.sql.common/fetch-by-id (constantly nil)]
-      (let [got (olap-doc/get-at *node* doc-id ts {:oltp-db empty-oltp-db})]
-        (is (some? got) "doc is still readable from OLAP at ts")
+      (let [got (history-doc/get-at *node* doc-id ts {:oltp-db empty-oltp-db})]
+        (is (some? got) "doc is still readable from history at ts")
         (is (not (contains? got :document/media-url))
             "media-url omitted for deleted-doc at-time read (option B)")))))
 
@@ -943,14 +943,14 @@
     (replayer/apply-op! *node* (op-record ts)
                         [(audit-row "documents" doc-id post)])
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
     (with-redefs [media/media-exists? (constantly true)
                   plaid.sql.common/fetch-by-id (constantly {:id doc-id})]
-      (let [got (olap-doc/get-at *node* doc-id ts {:oltp-db present-oltp-db})]
+      (let [got (history-doc/get-at *node* doc-id ts {:oltp-db present-oltp-db})]
         (is (some? (:document/media-url got))
             "media-url present when OLTP still has the doc")))))
 
@@ -970,11 +970,11 @@
     (replayer/apply-op! *node* (op-record ts)
                         [(audit-row "documents" doc-id post)])
     (xt/submit-tx *node*
-                  [(olap-core/cursor->tx-op
+                  [(history-core/cursor->tx-op
                     {:last-op-ts cursor-ts-iso
                      :last-op-id (uuid)
                      :last-seq 0
                      :tailer-status :running})])
     (with-redefs [media/media-exists? (constantly false)]
-      (is (not (contains? (olap-doc/get-at *node* doc-id ts) :document/media-url))
+      (is (not (contains? (history-doc/get-at *node* doc-id ts) :document/media-url))
           "3-arity drops media-url when the file isn't on disk — unchanged from before"))))

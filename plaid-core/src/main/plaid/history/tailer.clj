@@ -1,14 +1,14 @@
-(ns plaid.olap.tailer
+(ns plaid.history.tailer
   "Background ETL loop that drains `audit_writes` from the OLTP SQLite
-  datasource and applies the operations to the XTDB v2 OLAP node via
-  `plaid.olap.replayer/apply-op!`.
+  datasource and applies the operations to the XTDB v2 history node via
+  `plaid.history.replayer/apply-op!`.
 
   Mount lifecycle:
-    :start — when `(olap/enabled?)` is true, spawns a `core.async` go-
-             loop that consumes `plaid.olap.core/nudge-chan` (woken
+    :start — when `(history/enabled?)` is true, spawns a `core.async` go-
+             loop that consumes `plaid.history.core/nudge-chan` (woken
              from `submit-operation*` on commit) and falls back to a
              heartbeat timeout of `:poll-interval-ms` as a safety net.
-             When OLAP is disabled, :start is a no-op (the var holds nil).
+             When history is disabled, :start is a no-op (the var holds nil).
     :stop  — signals the loop via `stop-chan` and waits for it to
              complete its current iteration.
 
@@ -18,7 +18,7 @@
   The tailer enforces non-decreasing :system-time across submit-tx
   calls in two ways:
     1. Before applying an op, compute the latest `:xt/system-from`
-       across `:olap/meta` rows. If `op.ts < latest + 1ms`, advance
+       across `:history/meta` rows. If `op.ts < latest + 1ms`, advance
        the apply's effective system-time to `latest + 1ms` and warn.
        Real OLTP write order should never trigger this — operations
        are stamped server-side and `ts` is monotonic for ordinary
@@ -42,7 +42,7 @@
 
   A TRANSIENT throw — a SQLITE_BUSY / locked error from the audit-log
   read under contention — does NOT stall. It can only come from the
-  read side (`fetch-batch`); the apply path writes to the XTDB OLAP
+  read side (`fetch-batch`); the apply path writes to the XTDB history
   node, never SQLite, so the cursor hasn't moved and nothing partial
   landed. The loop logs a warning, backs off one poll interval, and
   retries the same cursor. `busy_timeout` on the shared pool absorbs
@@ -53,8 +53,8 @@
             [mount.core :refer [defstate]]
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
-            [plaid.olap.core :as olap]
-            [plaid.olap.replayer :as replayer]
+            [plaid.history.core :as history]
+            [plaid.history.replayer :as replayer]
             [plaid.server.sql :refer [datasource]]
             [plaid.sql.common :as psc]
             [taoensso.timbre :as log]
@@ -215,7 +215,7 @@
           ;; All multipliers exhausted: a single op's audit rows exceed
           ;; even the cap. Stall the tailer so an operator can inspect
           ;; rather than load arbitrarily many rows into the heap.
-          (throw (ex-info "OLAP tailer audit batch exceeded fetch cap (single op too large)"
+          (throw (ex-info "history tailer audit batch exceeded fetch cap (single op too large)"
                           {:type :tailer/op-too-large
                            :cursor-ts cursor-ts
                            :cursor-op-id cursor-op-id
@@ -236,22 +236,22 @@
 ;; ============================================================
 
 (defn- latest-system-from
-  "Return the most recent `:xt/system-from` across `:olap/meta` rows
+  "Return the most recent `:xt/system-from` across `:history/meta` rows
   (the cursor doc is the only meta entry today). Nil on a fresh node.
 
-  We probe `:olap/meta` rather than every entity table because the
+  We probe `:history/meta` rather than every entity table because the
   cursor is written on every apply-op! AND on every operator-driven
   cursor advance (`set-stalled!`, `set-running!`, `resume! :skip…?`)
-  — it's the canonical high-water-mark on the OLAP's system-time
+  — it's the canonical high-water-mark on the history's system-time
   axis."
   ^Instant [node]
-  (let [rows (olap/plan-retrying
+  (let [rows (history/plan-retrying
               3
               (fn []
                 (xt/q node
-                      '(-> (from :olap/meta [{:xt/id id :xt/system-from sf}])
+                      '(-> (from :history/meta [{:xt/id id :xt/system-from sf}])
                            (where (= id :cursor))))))]
-    (some-> rows first :sf olap/->instant)))
+    (some-> rows first :sf history/->instant)))
 
 (defn- guard-monotonic
   "Return a `:system-time` Date that is guaranteed non-decreasing
@@ -269,7 +269,7 @@
           (not (.isBefore (.toInstant op-ts) latest)))
     op-ts
     (let [advanced (.plusMillis latest 1)]
-      (log/warn "OLAP tailer advancing system-time"
+      (log/warn "history tailer advancing system-time"
                 {:op-ts (.toString (.toInstant op-ts))
                  :latest-system-from (.toString latest)
                  :advanced-to (.toString advanced)})
@@ -284,7 +284,7 @@
   verify the cursor advanced afterwards. Throws ex-info on a dropped
   write so the caller stalls.
 
-  When `guard-monotonic` advances the OLAP system-time (clock skew,
+  When `guard-monotonic` advances the history system-time (clock skew,
   retroactive backfill), we pass the adjusted Date as `apply-op!`'s
   explicit `system-time` arg WITHOUT mutating `op-record`'s `:op/ts`.
   Otherwise the cursor's `:last-op-ts` would diverge from the OLTP
@@ -296,12 +296,12 @@
   [node op-record audit-rows]
   (let [latest (latest-system-from node)
         original (try
-                   (olap/->date (:op/ts op-record))
+                   (history/->date (:op/ts op-record))
                    (catch Exception e
                      ;; Re-throw with op context so a bad op.ts produces a
                      ;; stall record that NAMES the offending op rather than
                      ;; the coercer's contextless :value.
-                     (throw (ex-info (str "OLAP op has uncoercible ts: " (ex-message e))
+                     (throw (ex-info (str "history op has uncoercible ts: " (ex-message e))
                                      {:type :replayer/malformed-row
                                       :op-id (:op/id op-record)
                                       :seq (:seq (first audit-rows))}
@@ -313,10 +313,10 @@
     ;; Re-read the cursor immediately to confirm the write landed —
     ;; XTDB v2 returns {:tx-id n} for dropped writes too, so the
     ;; submit-tx return value can't be trusted.
-    (let [cursor (olap/cursor-read node)]
+    (let [cursor (history/cursor-read node)]
       (when (or (nil? cursor)
                 (not= (:last-op-id cursor) (:op/id op-record)))
-        (throw (ex-info "OLAP submit-tx appears to have been dropped (cursor did not advance)"
+        (throw (ex-info "history submit-tx appears to have been dropped (cursor did not advance)"
                         {:type :tailer/cursor-not-advanced
                          :op-id (:op/id op-record)
                          :op-ts (:op/ts op-record)
@@ -329,8 +329,8 @@
 
 (def ^:private lag-rows
   "Count audit_writes rows past the cursor (status snapshot; not for the
-  tight inner loop). Shared with /health via plaid.olap.core."
-  olap/lag-rows)
+  tight inner loop). Shared with /health via plaid.history.core."
+  history/lag-rows)
 
 ;; ============================================================
 ;; Seed cursor on cold start
@@ -412,22 +412,22 @@
    timeout. Intended for tests + REPL.
 
    Implementation: snapshot the latest (op_ts, op_id, seq) tuple in
-   audit_writes, then poll the OLAP cursor every ~10ms until it has
+   audit_writes, then poll the history cursor every ~10ms until it has
    reached or passed that tuple. If the audit log is empty at snapshot
    time, returns true immediately."
   ([] (await-drained! 5000))
   ([timeout-ms]
-   (await-drained! datasource olap/node timeout-ms))
+   (await-drained! datasource history/node timeout-ms))
   ([ds node timeout-ms]
    (when-not node
-     (throw (ex-info "OLAP node is nil — is :enabled? true in :plaid.olap/config?"
+     (throw (ex-info "history node is nil — is :enabled? true in :plaid.history/config?"
                      {:type :tailer/not-enabled})))
    (let [target (latest-audit-tuple ds)]
      (if (nil? target)
        true
        (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
          (loop []
-           (let [cursor (olap/cursor-read node)]
+           (let [cursor (history/cursor-read node)]
              (cond
                (cursor-reached? cursor target) true
                (>= (System/currentTimeMillis) deadline) false
@@ -442,7 +442,7 @@
 (defn poll-once!
   "Run a single pass of the tailer loop. Visible for tests and the REPL
   `resume!` helper. Returns `{:applied-ops N :rows-consumed M :cursor c}`.
-  Throws if `(olap/enabled?)` is false — there's no node to apply
+  Throws if `(history/enabled?)` is false — there's no node to apply
   against.
 
   NOT mutually-exclusive with the mounted go-loop: calling this from the
@@ -452,14 +452,14 @@
   duplicate work. Prefer `resume!` (which won't spawn a second loop) over a
   bare `poll-once!` while the tailer is live."
   ([]
-   (poll-once! datasource olap/node))
+   (poll-once! datasource history/node))
   ([ds node]
    (when-not node
-     (throw (ex-info "OLAP node is nil — is :enabled? true in :plaid.olap/config?"
+     (throw (ex-info "history node is nil — is :enabled? true in :plaid.history/config?"
                      {:type :tailer/not-enabled})))
-   (let [cfg (olap/olap-config)
+   (let [cfg (history/history-config)
          batch-size (or (-> cfg :tailer :batch-size) 500)
-         existing-cursor (olap/cursor-read node)
+         existing-cursor (history/cursor-read node)
          cursor (or existing-cursor (seed-cursor ds cfg))
          rows (fetch-batch-with-grow ds (:last-op-ts cursor)
                                      (:last-op-id cursor) batch-size)
@@ -481,8 +481,8 @@
      ;; write a cursor — otherwise we'd risk advancing system-time
      ;; ahead of pending replay rows and tripping guard-monotonic.
      (when (and (nil? existing-cursor) (zero? @applied))
-       (xt/execute-tx node [(olap/cursor->tx-op cursor)])
-       (reset! final-cursor (or (olap/cursor-read node) cursor)))
+       (xt/execute-tx node [(history/cursor->tx-op cursor)])
+       (reset! final-cursor (or (history/cursor-read node) cursor)))
      (update-status! ds node @final-cursor)
      {:applied-ops @applied
       :rows-consumed (count rows)
@@ -518,7 +518,7 @@
           milestone (* cold-replay-log-stride (quot total cold-replay-log-stride))]
       (when (> milestone prev)
         (reset! last-progress-logged-at milestone)
-        (log/info "OLAP tailer replay progress"
+        (log/info "history tailer replay progress"
                   {:rows-applied total
                    :cursor-ts (:last-op-ts cursor)
                    :cursor-op-id (str (:last-op-id cursor))})))))
@@ -533,7 +533,7 @@
     (zero? lag-rows-n)
     (when @was-lagging?
       (reset! was-lagging? false)
-      (log/info "OLAP tailer caught up"
+      (log/info "history tailer caught up"
                 {:cursor-ts (:last-op-ts cursor)
                  :cursor-op-id (str (:last-op-id cursor))}))
     :else (reset! was-lagging? true)))
@@ -554,7 +554,7 @@
         true))))
 
 (defn- check-max-lag-warn!
-  "Compute the current OLTP-OLAP op-ts gap (true lag, not cursor age)
+  "Compute the current OLTP-history op-ts gap (true lag, not cursor age)
   and emit a rate-limited `:warn` when it exceeds `:max-lag-warn-ms`.
   Returns nil. No-op when the knob is unset / 0 or when the OLTP has
   no rows past the cursor."
@@ -565,8 +565,8 @@
             cursor-op-id (:last-op-id cursor)
             ;; Same true-lag (op-ts gap) computation /health uses — nil
             ;; when caught up (no rows past the cursor). Shared via
-            ;; plaid.olap.core so the two surfaces can't drift.
-            max-ts (olap/max-unreplicated-op-ts ds cursor-ts cursor-op-id)]
+            ;; plaid.history.core so the two surfaces can't drift.
+            max-ts (history/max-unreplicated-op-ts ds cursor-ts cursor-op-id)]
         (when (and max-ts cursor-ts)
           (try
             (let [lag-ms (- (.toEpochMilli (Instant/parse ^String max-ts))
@@ -574,7 +574,7 @@
               (when (> lag-ms (long max-ms))
                 (warn-rate-limited!
                  last-lag-warn-at
-                 "OLAP tailer lag exceeds :max-lag-warn-ms"
+                 "history tailer lag exceeds :max-lag-warn-ms"
                  {:lag-ms lag-ms
                   :max-lag-warn-ms max-ms
                   :cursor-ts cursor-ts
@@ -585,10 +585,10 @@
               nil)))))))
 
 (defn- check-max-disk-warn!
-  "Sample OLAP on-disk size every `disk-check-stride` polls and emit a
+  "Sample history on-disk size every `disk-check-stride` polls and emit a
   rate-limited `:warn` when it exceeds `:max-disk-warn-mb`. We sample
   on a stride (rather than every poll) because `file-seq` + per-file
-  `.length` walks every column file under the OLAP storage tree — on
+  `.length` walks every column file under the history storage tree — on
   a multi-GB store this is non-trivial."
   [cfg]
   (when-let [max-mb (-> cfg :tailer :max-disk-warn-mb)]
@@ -596,12 +596,12 @@
       (let [n (swap! poll-counter inc)]
         (when (zero? (mod n disk-check-stride))
           (try
-            (let [bytes (olap/disk-bytes)
+            (let [bytes (history/disk-bytes)
                   mb (long (Math/round (double (/ bytes (* 1024 1024)))))]
               (when (> mb (long max-mb))
                 (warn-rate-limited!
                  last-disk-warn-at
-                 "OLAP store size exceeds :max-disk-warn-mb"
+                 "history store size exceeds :max-disk-warn-mb"
                  {:store-mb mb
                   :max-disk-warn-mb max-mb})))
             (catch Throwable _
@@ -635,7 +635,7 @@
   outlast `:stop`'s 5s wait, get abandoned, and leave an orphan loop that
   a subsequent start could double up."
   [ds node stop]
-  (let [cfg (olap/olap-config)]
+  (let [cfg (history/history-config)]
     (loop []
       (let [{:keys [rows-consumed cursor]} (poll-once! ds node)]
         (maybe-log-progress! cursor rows-consumed)
@@ -667,7 +667,7 @@
   "True when `t` (or any cause in its chain) is a transient SQLite
   contention error — SQLITE_BUSY / SQLITE_LOCKED / \"database is
   locked\". These can ONLY originate from the audit-log READ
-  (`fetch-batch`); the apply path writes to the XTDB OLAP node, never
+  (`fetch-batch`); the apply path writes to the XTDB history node, never
   SQLite, so a busy/locked here means the cursor never moved and nothing
   partial landed. Such errors are operational, not data defects, and
   MUST NOT latch the tailer into a permanent `:stalled` state (that
@@ -714,7 +714,7 @@
   [ds node cfg]
   (let [stop (async/chan)
         done (async/promise-chan)
-        nudge olap/nudge-chan
+        nudge history/nudge-chan
         heartbeat-ms (or (-> cfg :tailer :poll-interval-ms) 5000)
         signal-done! (fn [] (async/put! done ::exited) (async/close! done))]
     (reset-loop-instance-state!)
@@ -722,10 +722,10 @@
     (reset! done-chan done)
     (async/go-loop []
       (let [running? (try
-                       (let [cur (olap/cursor-read node)]
+                       (let [cur (history/cursor-read node)]
                          (not= :stalled (:tailer-status cur)))
                        (catch Throwable t
-                         (log/error t "OLAP tailer cursor read failed")
+                         (log/error t "history tailer cursor read failed")
                          false))
             keep-going? (when running?
                           (try
@@ -743,7 +743,7 @@
                                 ;; fall through to the normal poll wait and retry
                                 ;; the same cursor next iteration.
                                 (transient-db-error? t)
-                                (do (log/warn t "OLAP tailer hit transient DB contention; retrying next poll:"
+                                (do (log/warn t "history tailer hit transient DB contention; retrying next poll:"
                                               (or (ex-message t) (str t)))
                                     true)
 
@@ -754,7 +754,7 @@
                                 ;; persisted stall here would make every restart
                                 ;; come up dead until a manual resume!.)
                                 (shutdown-db-error? t)
-                                (do (log/info "OLAP tailer: datasource closed (shutting down); exiting cleanly")
+                                (do (log/info "history tailer: datasource closed (shutting down); exiting cleanly")
                                     false)
 
                                 ;; Structural / data defect: stall so an operator
@@ -765,23 +765,23 @@
                                 :else
                                 (let [data (ex-data t)
                                       reason (or (ex-message t) (str t))]
-                                  (log/error t "OLAP tailer stalled:" reason)
+                                  (log/error t "history tailer stalled:" reason)
                                   (try
-                                    (olap/set-stalled! node
-                                                       {:op-id (:op-id data)
-                                                        :seq (:seq data)
-                                                        :reason reason})
+                                    (history/set-stalled! node
+                                                          {:op-id (:op-id data)
+                                                           :seq (:seq data)
+                                                           :reason reason})
                                     (catch Throwable t2
-                                      (log/error t2 "OLAP tailer failed to record stall")))
+                                      (log/error t2 "history tailer failed to record stall")))
                                   false)))))]
         (if (and running? keep-going?)
           (let [[_ port] (async/alts! [stop nudge (async/timeout heartbeat-ms)])]
             (if (= port stop)
-              (do (log/info "OLAP tailer stop requested; exiting loop")
+              (do (log/info "history tailer stop requested; exiting loop")
                   (signal-done!))
               (recur)))
           (do (when-not running?
-                (log/info "OLAP tailer not running (stalled or shutting down)"))
+                (log/info "history tailer not running (stalled or shutting down)"))
               (signal-done!)))))
     done))
 
@@ -803,27 +803,27 @@
   a WARN trail here naming what we retried. (Skipping a bad row is still
   the deliberate, operator-only `resume! {:skip-current-row? true}`.)"
   [node]
-  (let [cur (olap/cursor-read node)]
+  (let [cur (history/cursor-read node)]
     (when (= :stalled (:tailer-status cur))
-      (log/warn "OLAP tailer came up stalled; clearing flag and retrying (cursor unchanged). Prior stall reason:"
+      (log/warn "history tailer came up stalled; clearing flag and retrying (cursor unchanged). Prior stall reason:"
                 (:stall-reason cur))
-      (olap/set-running! node))))
+      (history/set-running! node))))
 
 (defstate tailer
-  :start (let [cfg (olap/olap-config)]
-           (if (and (:enabled? cfg) olap/node)
+  :start (let [cfg (history/history-config)]
+           (if (and (:enabled? cfg) history/node)
              (do
-               (log/info "Starting OLAP tailer"
+               (log/info "Starting history tailer"
                          (select-keys (:tailer cfg)
                                       [:poll-interval-ms :batch-size]))
-               (clear-stale-stall-on-start! olap/node)
-               (run-loop! datasource olap/node cfg))
+               (clear-stale-stall-on-start! history/node)
+               (run-loop! datasource history/node cfg))
              (do
-               (log/info "OLAP tailer disabled (:plaid.olap/config :enabled? = false); skipping")
+               (log/info "history tailer disabled (:plaid.history/config :enabled? = false); skipping")
                nil)))
   :stop (do
           (when-let [stop @stop-chan]
-            (log/info "Signalling OLAP tailer to stop")
+            (log/info "Signalling history tailer to stop")
             (async/close! stop))
           (when-let [done @done-chan]
             ;; Bounded wait — :stop must not hang the JVM on a stuck
@@ -832,7 +832,7 @@
             ;; submit-tx per iteration.
             (async/alt!!
               done :done
-              (async/timeout 5000) (log/warn "OLAP tailer did not stop within 5s; abandoning")))
+              (async/timeout 5000) (log/warn "history tailer did not stop within 5s; abandoning")))
           (reset! stop-chan nil)
           (reset! done-chan nil)
           (reset! last-status {:running? false :cursor nil :lag-rows 0})
@@ -861,7 +861,7 @@
   Returns the new cursor doc, or nil if there's nothing past the
   current cursor to skip to."
   [ds node]
-  (let [cursor (olap/cursor-read node)
+  (let [cursor (history/cursor-read node)
         cur-ts (:last-op-ts cursor)
         cur-id (:last-op-id cursor)
         cur-seq (or (:last-seq cursor) -1)
@@ -889,7 +889,7 @@
                         ;; cursor write so `:last-op-ts` keeps the canonical
                         ;; fixed-width shape the lex-compared keyset depends
                         ;; on — don't trust the raw JDBC value here.
-                        :last-op-ts (olap/->iso-string (:op_ts next-row))
+                        :last-op-ts (history/->iso-string (:op_ts next-row))
                         :last-op-id (:op_id_full next-row)
                         :last-seq (:seq next-row)
                         :tailer-status :running
@@ -898,9 +898,9 @@
         ;; even if the put-docs throws. `:skip-current-row? true` is a
         ;; destructive operator action — the offending audit row is
         ;; never replayed — so the trail matters for postmortems.
-        (log/warn "OLAP tailer skipping audit row"
+        (log/warn "history tailer skipping audit row"
                   {:from-cursor cursor :to-cursor new-cursor})
-        (xt/execute-tx node [(olap/cursor->tx-op new-cursor)])
+        (xt/execute-tx node [(history/cursor->tx-op new-cursor)])
         new-cursor))))
 
 (defn resume!
@@ -914,17 +914,17 @@
 
   3-arity (ds node opts) is for tests that haven't started the mount
   defstates; the 0/1-arity REPL forms read the mounted `datasource` +
-  `olap/node` (both are mount-bound to their values, not deref'd).
+  `history/node` (both are mount-bound to their values, not deref'd).
 
   Returns the new cursor record."
   ([] (resume! {}))
-  ([opts] (resume! datasource olap/node opts))
+  ([opts] (resume! datasource history/node opts))
   ([ds node {:keys [skip-current-row?]}]
    (when-not node
-     (throw (ex-info "OLAP node is nil — cannot resume" {:type :tailer/not-enabled})))
+     (throw (ex-info "history node is nil — cannot resume" {:type :tailer/not-enabled})))
    (when skip-current-row?
      (skip-row-by-advancing-cursor! ds node))
-   (olap/set-running! node)
+   (history/set-running! node)
    ;; Spawn a fresh loop iff the prior one has exited (or never ran).
    ;; `done` is a promise-channel that buffers `::exited` exactly
    ;; once at loop exit, so `poll!` returns the sentinel iff the
@@ -934,8 +934,8 @@
    ;; permanently dead after a stall.
    (when (or (nil? @done-chan)
              (some? (async/poll! @done-chan)))
-     (run-loop! ds node (olap/olap-config)))
-   (olap/cursor-read node)))
+     (run-loop! ds node (history/history-config)))
+   (history/cursor-read node)))
 
 (defn simulate-stall!
   "DEV-ONLY: force the tailer into `:stalled` without an actual bad row.
@@ -950,10 +950,10 @@
 
   Recover with `(resume!)` (no skip needed — the cursor never moved).
 
-  0-arity reads the mounted `olap/node`; 1-arity takes an explicit node
+  0-arity reads the mounted `history/node`; 1-arity takes an explicit node
   for tests that haven't started the mount defstates."
-  ([] (simulate-stall! olap/node))
+  ([] (simulate-stall! history/node))
   ([node]
    (when-not node
-     (throw (ex-info "OLAP node is nil — cannot stall" {:type :tailer/not-enabled})))
-   (olap/set-stalled! node {:op-id nil :seq nil :reason "simulated dev stall"})))
+     (throw (ex-info "history node is nil — cannot stall" {:type :tailer/not-enabled})))
+   (history/set-stalled! node {:op-id nil :seq nil :reason "simulated dev stall"})))

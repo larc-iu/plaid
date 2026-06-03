@@ -280,7 +280,7 @@
   (fn [{db :db :as request}]
     (let [user-id (->user-id request)
           ;; Forward :as-of-node / :as-of-ts so doc-scoped `get-project-id`
-          ;; resolvers can fall through to the OLAP replica when the doc
+          ;; resolvers can fall through to the history replica when the doc
           ;; has been deleted from OLTP but existed at `ts`. ACL membership
           ;; is still resolved from CURRENT OLTP (`prj/get db id` below) —
           ;; historical-ACL is explicitly out of scope; only the doc→project

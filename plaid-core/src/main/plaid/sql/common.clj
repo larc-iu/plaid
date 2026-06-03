@@ -194,7 +194,7 @@
   part on an exact-second instant and varies the digit count otherwise,
   so its output does NOT lexicographically sort in temporal order —
   `\"...:00Z\"` (no fraction) sorts AFTER `\"...:00.999Z\"` because 'Z'
-  (90) > '.' (46). The OLAP tailer's keyset pagination and cursor
+  (90) > '.' (46). The history tailer's keyset pagination and cursor
   comparisons compare these strings as SQLite TEXT, so a non-monotonic
   lex order would skip rows. Fixed-width fractional digits make lex
   order == temporal order."
@@ -204,7 +204,7 @@
 
 (defn instant->iso
   "Render an Instant as a fixed-width 9-digit ISO-8601 string. The
-  canonical timestamp format for OLTP columns + the OLAP cursor — fixed
+  canonical timestamp format for OLTP columns + the history cursor — fixed
   width so SQLite TEXT lex order matches temporal order (see
   `iso-instant-9`)."
   ^String [^Instant inst]
@@ -242,11 +242,11 @@
   MUST be called from inside a write transaction (after `BEGIN
   IMMEDIATE` acquires the RESERVED lock), so that the in-process
   high-water mark advances in the same order writes commit. This is the
-  load-bearing fix for the OLAP-desync bug: `ts` used to be stamped
+  load-bearing fix for the history-desync bug: `ts` used to be stamped
   BEFORE the write lock, so two concurrent writers could stamp ts out of
   commit order — a lower-ts op committing AFTER a higher-ts op was then
   permanently skipped by the tailer's `WHERE (o.ts,o.id) > cursor`
-  keyset, and the OLAP monotonic-system-time guard would also mis-time
+  keyset, and the history monotonic-system-time guard would also mis-time
   it. Stamping under the lock + strict monotonicity makes commit order ==
   ts order, so neither can happen.
 

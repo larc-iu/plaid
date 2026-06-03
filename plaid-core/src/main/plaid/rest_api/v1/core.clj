@@ -78,9 +78,9 @@
              :middleware [pra/wrap-login-required]}
 
             ;; `?as-of=` is only meaningful on document-scoped GETs (the
-            ;; OLAP replica only mirrors document state). Everything else
+            ;; history replica only mirrors document state). Everything else
             ;; rejects it with 400 via `wrap-reject-as-of`; document
-            ;; routes route through OLAP via `wrap-route-as-of`. These
+            ;; routes route through history via `wrap-route-as-of`. These
             ;; can't live in the global middleware stack — reitit applies
             ;; global middleware outermost, which means a global reject
             ;; would fire before a per-route router could intercept.

@@ -406,7 +406,7 @@
   entity's `:delete` audit row (just emitted via `psc/delete-by-id!`)
   signals the entity is gone, and metadata is treated by the ETL
   replayer as parent-owned state (any metadata key whose entity row
-  is absent must also be absent in the OLAP replica). Auditing each
+  is absent must also be absent in the history replica). Auditing each
   metadata DELETE individually would be high-volume noise without
   adding information ETL can't already derive.
 
@@ -447,7 +447,7 @@
   metadata for each cascaded entity type (relations, spans, vocab_links,
   tokens) AFTER the audited parent delete. The sweeps themselves are
   unaudited; the parent entity's :delete audit row signals the metadata
-  going away in the OLAP replica."
+  going away in the history replica."
   [tx eids]
   (when (seq eids)
     (let [eids (vec eids)

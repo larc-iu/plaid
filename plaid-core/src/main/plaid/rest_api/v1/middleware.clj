@@ -2,7 +2,7 @@
   (:require [plaid.sql.common :as psc]
             [plaid.sql.document :as doc]
             [plaid.sql.operation :as op]
-            [plaid.olap.core :as olap]
+            [plaid.history.core :as history]
             [taoensso.timbre :as log]
             [clojure.string :as str]
             [clojure.data.json :as json])
@@ -186,7 +186,7 @@
 
 (defn wrap-reject-as-of
   "Reject `?as-of=` with 400. Applied to every non-document route — the
-  OLAP replica only mirrors document-scoped state, so a time-travel
+  history replica only mirrors document-scoped state, so a time-travel
   query against `/projects`, `/users`, `/audit-log`, etc. has no
   defined semantics.
 
@@ -205,14 +205,14 @@
   pass-through. But if a future code path ever stores a Date / Instant /
   ZonedDateTime there, a bare `(str ...)` would emit a non-canonical,
   non-ISO shape (e.g. `Fri May 28 ...` for a Date) into the wire body.
-  Coerce non-strings through `olap/->instant` (which knows all those
+  Coerce non-strings through `history/->instant` (which knows all those
   shapes) then `.toString` so the body is always canonical ISO-8601.
   Returns nil for nil."
   [last-op-ts]
   (cond
     (nil? last-op-ts) nil
     (string? last-op-ts) last-op-ts
-    :else (.toString (olap/->instant last-op-ts))))
+    :else (.toString (history/->instant last-op-ts))))
 
 (def ^:private bare-doc-get-path-regex
   ;; `?as-of=` is only meaningful on the top-level doc GET
@@ -227,12 +227,12 @@
 
 (defn wrap-route-as-of
   "Document-route variant of as-of handling. When `?as-of=<ISO-8601>`
-  is present, parse it and route the handler call through the OLAP
+  is present, parse it and route the handler call through the history
   replica by injecting `:as-of-node` and `:as-of-ts` on the request.
   Downstream handlers dispatch on `:as-of-node` and call
-  `plaid.olap.document/...-at` instead of `plaid.sql.document/...`.
+  `plaid.history.document/...-at` instead of `plaid.sql.document/...`.
 
-  Resolves the OLAP node via the `plaid.olap.core/node` defstate so we
+  Resolves the history node via the `plaid.history.core/node` defstate so we
   match the other middleware that read from mount (e.g. db).
 
   `?as-of=` on a doc SUB-route (lock/media/metadata) is rejected with
@@ -242,10 +242,10 @@
   Error mapping:
    * malformed ISO-8601                       → 400
    * as-of on non-top-level doc route         → 400
-   * OLAP disabled (node is nil)              → 503 `olap disabled`
-   * handler throws `:olap/not-caught-up`     → 425 + cursor in body
-   * handler throws `:olap/stalled`           → 503 + stall reason
-   * any other exception                      → 503 `olap read failed`
+   * history disabled (node is nil)              → 503 `history disabled`
+   * handler throws `:history/not-caught-up`     → 425 + cursor in body
+   * handler throws `:history/stalled`           → 503 + stall reason
+   * any other exception                      → 503 `history read failed`
      (logged with a correlation id; no message leaked to the client)"
   [handler]
   (fn [request]
@@ -276,20 +276,20 @@
           {:status 400
            :body {:error "as-of query parameter is only allowed with GET or HEAD requests."}}
 
-          ;; `olap/enabled?` reads config, not mount state — answers the
+          ;; `history/enabled?` reads config, not mount state — answers the
           ;; "should this even work?" question without tripping on mount
-          ;; not-started in tests (where `olap/node` is a DerefableState
+          ;; not-started in tests (where `history/node` is a DerefableState
           ;; placeholder, not nil). We then separately tolerate `node` =
           ;; nil for the startup race window where enabled? is true but
           ;; the defstate hasn't reached :start yet, mirroring how
-          ;; `plaid.server.middleware/olap-block` treats it.
-          (not (olap/enabled?))
+          ;; `plaid.server.middleware/history-block` treats it.
+          (not (history/enabled?))
           {:status 503
-           :body {:error "olap disabled"}}
+           :body {:error "history disabled"}}
 
-          (nil? olap/node)
+          (nil? history/node)
           {:status 503
-           :body {:error "olap not ready"}}
+           :body {:error "history not ready"}}
 
           :else
           ;; Single Throwable catch so unknown-typed ex-infos can't escape
@@ -299,41 +299,41 @@
           ;; default 500 handler). Type-route inside the catch body.
           (try
             (handler (assoc request
-                            :as-of-node olap/node
+                            :as-of-node history/node
                             :as-of-ts parsed))
             (catch Throwable t
               (let [d (when (instance? clojure.lang.ExceptionInfo t)
                         (ex-data t))]
                 (case (:type d)
-                  :olap/not-caught-up
+                  :history/not-caught-up
                   {:status 425
-                   :body {:error "olap not caught up"
-                          :olap-cursor (cursor-ts->iso (some-> d :olap-cursor :last-op-ts))
+                   :body {:error "history not caught up"
+                          :history-cursor (cursor-ts->iso (some-> d :history-cursor :last-op-ts))
                           :requested-ts (:requested-ts d)}}
-                  :olap/stalled
+                  :history/stalled
                   {:status 503
-                   :body {:error "olap tailer stalled"
+                   :body {:error "history tailer stalled"
                           :stall-reason (:stall-reason d)}}
                   ;; A hung XTDB read was bounded by the handler's
-                  ;; per-read timeout (see `with-olap-timeout` in
+                  ;; per-read timeout (see `with-history-timeout` in
                   ;; rest_api.v1.document). Surface it as 503 — same
-                  ;; "OLAP can't serve right now, retry later" family as
-                  ;; :olap/stalled — rather than a generic correlation-id
+                  ;; "history can't serve right now, retry later" family as
+                  ;; :history/stalled — rather than a generic correlation-id
                   ;; 503, so operators can distinguish a timeout from an
                   ;; arbitrary error.
-                  :olap/read-timeout
+                  :history/read-timeout
                   {:status 503
-                   :body {:error "olap read timed out"
+                   :body {:error "history read timed out"
                           :timeout-ms (:timeout-ms d)}}
                   ;; Anything else (unknown typed ex-info or any other
                   ;; Throwable) → 503 with a correlation id, no message /
                   ;; stack leaked to the caller.
-                  (let [cid (format "olap-%08x"
+                  (let [cid (format "history-%08x"
                                     (bit-and 0xFFFFFFFF
                                              (hash [(.getName (class t)) (.getMessage t)])))]
-                    (log/error t (str "OLAP at-time read failed [" cid "] uri=" (:uri request)))
+                    (log/error t (str "history at-time read failed [" cid "] uri=" (:uri request)))
                     {:status 503
-                     :body {:error "olap read failed"
+                     :body {:error "history read failed"
                             :correlation-id cid}})))))))
       (handler request))))
 

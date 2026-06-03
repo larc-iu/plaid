@@ -1,7 +1,7 @@
-(ns plaid.olap.full-coverage-test
-  "Exhaustive audit-log → OLAP coverage.
+(ns plaid.history.full-coverage-test
+  "Exhaustive audit-log → history coverage.
 
-  The OLAP replica is fed ENTIRELY from `audit_writes`, and the replayer
+  The history replica is fed ENTIRELY from `audit_writes`, and the replayer
   dispatches on (target_table, change_type). The risk surface is therefore
   every distinct OPERATION TYPE (the `:type` passed to `submit-operation!`),
   because each one produces a particular set of audit rows. This namespace
@@ -13,9 +13,9 @@
     - Mechanically prove coverage: `SELECT DISTINCT op_type FROM operations`
       must equal the known set (any miss is named; any NEW op type the source
       grows without updating this test also fails — a deliberate guard that
-      forces the author to consider OLAP replay for new ops).
+      forces the author to consider history replay for new ops).
     - Prove the tailer never stalled and drained fully.
-    - Prove OLTP == OLAP (`?as-of=`) deep-read for the richly-populated
+    - Prove OLTP == history (`?as-of=`) deep-read for the richly-populated
       survivor document — one reconciliation that validates the cumulative
       replay of all those op types working together.
 
@@ -40,9 +40,9 @@
                                     admin-request api-call assert-created assert-ok
                                     assert-status assert-no-content
                                     with-admin with-test-users with-clean-db]]
-            [plaid.olap.core :as olap]
-            [plaid.olap.replayer :as replayer]
-            [plaid.olap.tailer :as tailer]
+            [plaid.history.core :as history]
+            [plaid.history.replayer :as replayer]
+            [plaid.history.tailer :as tailer]
             [plaid.sql.project :as sql-project]
             [plaid.sql.user :as sql-user]
             [plaid.sql.vocab-layer :as sql-vocab]
@@ -51,18 +51,18 @@
             [xtdb.node :as xtn]))
 
 ;; ============================================================
-;; Per-test OLAP node + tailer (mirrors integration-test harness)
+;; Per-test history node + tailer (mirrors integration-test harness)
 ;; ============================================================
 
-(def ^:dynamic ^:private *olap-node* nil)
+(def ^:dynamic ^:private *history-node* nil)
 
-(defn- with-test-olap-node [f]
-  (async/poll! olap/nudge-chan)
+(defn- with-test-history-node [f]
+  (async/poll! history/nudge-chan)
   (with-open [node (xtn/start-node {})]
-    (binding [*olap-node* node]
-      (with-redefs [olap/enabled? (constantly true)
-                    olap/node node]
-        (let [done (#'tailer/run-loop! plaid.fixtures/db node (olap/olap-config))]
+    (binding [*history-node* node]
+      (with-redefs [history/enabled? (constantly true)
+                    history/node node]
+        (let [done (#'tailer/run-loop! plaid.fixtures/db node (history/history-config))]
           (try
             (f)
             (finally
@@ -74,7 +74,7 @@
 (use-fixtures :each with-clean-db)
 
 (defn- drain! []
-  (or (tailer/await-drained! plaid.fixtures/db *olap-node* 8000)
+  (or (tailer/await-drained! plaid.fixtures/db *history-node* 8000)
       (throw (ex-info "tailer drain timed out" {}))))
 
 (defn- latest-op-ts []
@@ -106,7 +106,7 @@
                          (when include-body? "&include-body=true"))})))
 
 (defn- tailer-running? []
-  (= :running (:tailer-status (olap/cursor-read *olap-node*))))
+  (= :running (:tailer-status (history/cursor-read *history-node*))))
 
 (defn- created-id
   "Assert a create response is 201 and return its :id. Guards setup so a
@@ -265,7 +265,7 @@
 ;; ============================================================
 
 (deftest ^:integration exhaustive-op-type-coverage-and-parity
-  (with-test-olap-node
+  (with-test-history-node
     (fn []
       ;; ---- throwaway user for ACL + user lifecycle ----
       (let [u-acl (str "fc-acl-" (random-uuid) "@example.com")
@@ -276,7 +276,7 @@
             _ (assert-created (create-user! u-throw false))
             _ (assert-ok (update-user! u-throw))                    ; user/update
 
-            ;; ---- API tokens: mint + revoke (these are audited, so the OLAP
+            ;; ---- API tokens: mint + revoke (these are audited, so the history
             ;;      replayer must mirror the api_tokens table or the tailer
             ;;      stalls — see mirrored-tables / replayer/table->spec) ----
             fc-tok-resp (api-call admin-request
@@ -453,9 +453,9 @@
             _ (drain!)]
 
         ;; NOTE: this is an OLTP-side fact — `operations` rows exist for every
-        ;; op type. It proves we EXERCISED each op, not that OLAP replayed it
+        ;; op type. It proves we EXERCISED each op, not that history replayed it
         ;; correctly. The replay-correctness bridge is the "tailer not stalled"
-        ;; + "audit shapes handled" + "OLTP==OLAP parity" assertions below; this
+        ;; + "audit shapes handled" + "OLTP==history parity" assertions below; this
         ;; one only guarantees the breadth of what those then validate.
         (testing "every REST-reachable operation type was exercised (OLTP-side breadth)"
           (let [actual (distinct-op-types)
@@ -465,7 +465,7 @@
                 (str "operation types expected but NOT exercised by this test: " missing))
             (is (empty? unexpected)
                 (str "operation types exercised but NOT in known-op-types — source grew a new "
-                     "op type; confirm OLAP replay handles it, then add it here: " unexpected))))
+                     "op type; confirm history replay handles it, then add it here: " unexpected))))
 
         (testing "every emitted audit shape is one the replayer handles"
           (doseq [[table change] (distinct-audit-shapes)]
@@ -477,16 +477,16 @@
         (testing "tailer applied everything without stalling"
           (is (tailer-running?) "tailer status is :running after replaying every op type"))
 
-        (testing "OLTP == OLAP deep-read for the fully-populated survivor doc"
+        (testing "OLTP == history deep-read for the fully-populated survivor doc"
           (let [oltp (-> (api-call admin-request
                                    {:method :get
                                     :path (str "/api/v1/documents/" doc "?include-body=true")})
                          :body normalize-for-compare)
-                olap (-> (get-doc-as-of doc ts true) :body normalize-for-compare)]
-            (is (= oltp olap)
-                "survivor document reconstructs identically through OLAP after every op type fired")))
+                history (-> (get-doc-as-of doc ts true) :body normalize-for-compare)]
+            (is (= oltp history)
+                "survivor document reconstructs identically through history after every op type fired")))
 
-        (testing "deleted throwaway doc is absent from both OLTP and OLAP at latest ts"
+        (testing "deleted throwaway doc is absent from both OLTP and history at latest ts"
           (is (= 404 (:status (api-call admin-request
                                         {:method :get
                                          :path (str "/api/v1/documents/" doc-throw)}))))
@@ -497,7 +497,7 @@
 ;; ============================================================
 
 (deftest ^:integration depth-metadata-clear-cycle-time-travels
-  (with-test-olap-node
+  (with-test-history-node
     (fn []
       (let [proj (create-test-project admin-request "FC-MetaProj")
             doc (create-test-document admin-request proj "D")
@@ -530,7 +530,7 @@
 ;; ============================================================
 
 (deftest ^:integration depth-precedence-clear-cycle-time-travels
-  (with-test-olap-node
+  (with-test-history-node
     (fn []
       (let [proj (create-test-project admin-request "FC-PrecProj")
             doc (create-test-document admin-request proj "D")
@@ -558,7 +558,7 @@
 ;; ============================================================
 
 (deftest ^:integration depth-cascade-delete-token-layer-time-travels
-  (with-test-olap-node
+  (with-test-history-node
     (fn []
       (let [proj (create-test-project admin-request "FC-CascadeProj")
             doc (create-test-document admin-request proj "D")
@@ -600,7 +600,7 @@
 ;; ============================================================
 
 (deftest ^:integration depth-token-split-merge-time-travels
-  (with-test-olap-node
+  (with-test-history-node
     (fn []
       (let [proj (create-test-project admin-request "FC-SplitProj")
             doc (create-test-document admin-request proj "D")
@@ -643,7 +643,7 @@
 ;; ============================================================
 
 (deftest ^:integration depth-span-tokens-shrink-to-empty-time-travels
-  (with-test-olap-node
+  (with-test-history-node
     (fn []
       (let [proj (create-test-project admin-request "FC-ShrinkProj")
             doc (create-test-document admin-request proj "D")
@@ -676,29 +676,29 @@
           (is (tailer-running?)))))))
 
 ;; ============================================================
-;; GAP 1: non-document entity rows reconcile OLTP <-> OLAP
+;; GAP 1: non-document entity rows reconcile OLTP <-> history
 ;; ============================================================
 ;;
 ;; Every parity test elsewhere reconciles a DOCUMENT deep-read. Projects
 ;; (intrinsic cols + folded :readers/:writers/:maintainers + :config),
 ;; users (:is-admin, :password-changes), and vocab-layers (folded
-;; :maintainers + :config) are replayed into OLAP but their stored rows
+;; :maintainers + :config) are replayed into history but their stored rows
 ;; were never compared to OLTP — a wrong col-rename, dropped ACL fold, or
 ;; mis-coerced :is-admin would sit silently wrong. This reads the raw
-;; olap.* rows and compares to the OLTP getters.
+;; history.* rows and compares to the OLTP getters.
 
-(defn- olap-row [node sql params]
+(defn- history-row [node sql params]
   (first (xt/q node (into [sql] params))))
 
 (defn- truthy-flag [v]
-  ;; OLAP may store SQLite is_admin as 0/1 (int) or true/false; normalize.
+  ;; history may store SQLite is_admin as 0/1 (int) or true/false; normalize.
   (boolean (or (true? v) (= 1 v) (= 1N v))))
 
-(deftest ^:integration olap-entity-row-parity-projects-users-vocab
-  (with-test-olap-node
+(deftest ^:integration history-entity-row-parity-projects-users-vocab
+  (with-test-history-node
     (fn []
       (let [db plaid.fixtures/db
-            node *olap-node*
+            node *history-node*
             ;; Distinct user per role: project roles are one-per-user, so
             ;; granting the same user two roles just moves it (leaving a role
             ;; empty). ua is is-admin TRUE so the is-admin truthy branch is
@@ -723,27 +723,27 @@
             _ (drain!)]
         (testing "project: name + folded ACLs + config reconcile"
           (let [oltp (sql-project/get db proj)
-                olap (olap-row node (str "SELECT _id AS id, project$name AS name, "
-                                         "readers, writers, maintainers, config "
-                                         "FROM olap.projects WHERE _id = ?") [proj])]
-            (is (some? olap) "project row present in OLAP")
-            (is (= (:project/name oltp) (:name olap)))
+                history (history-row node (str "SELECT _id AS id, project$name AS name, "
+                                               "readers, writers, maintainers, config "
+                                               "FROM history.projects WHERE _id = ?") [proj])]
+            (is (some? history) "project row present in history")
+            (is (= (:project/name oltp) (:name history)))
             ;; non-empty guards: a silently-dropped grant/config would make a
             ;; side empty and these assertions vacuous; pin them non-empty first.
             (is (seq (:project/readers oltp)) "readers actually granted (not vacuously empty)")
             (is (seq (:project/maintainers oltp)) "maintainers actually granted")
-            (is (seq (json/read-str (:config olap))) "config actually set (not {} both sides)")
-            (is (= (set (:project/readers oltp)) (set (:readers olap))) "readers fold")
-            (is (= (set (:project/writers oltp)) (set (:writers olap))) "writers fold")
-            (is (= (set (:project/maintainers oltp)) (set (:maintainers olap))) "maintainers fold")
-            (is (= (:config oltp) (json/read-str (:config olap))) "project config round-trips")))
+            (is (seq (json/read-str (:config history))) "config actually set (not {} both sides)")
+            (is (= (set (:project/readers oltp)) (set (:readers history))) "readers fold")
+            (is (= (set (:project/writers oltp)) (set (:writers history))) "writers fold")
+            (is (= (set (:project/maintainers oltp)) (set (:maintainers history))) "maintainers fold")
+            (is (= (:config oltp) (json/read-str (:config history))) "project config round-trips")))
         (testing "vocab-layer: name + folded maintainers reconcile"
           (let [oltp (sql-vocab/get db vS)
-                olap (olap-row node (str "SELECT _id AS id, vocab$name AS name, "
-                                         "maintainers, config FROM olap.vocab_layers WHERE _id = ?") [vS])]
-            (is (some? olap) "vocab-layer row present in OLAP")
-            (is (= (:vocab/name oltp) (:name olap)))
-            (is (= (set (:vocab/maintainers oltp)) (set (:maintainers olap))) "vocab maintainers fold")))
+                history (history-row node (str "SELECT _id AS id, vocab$name AS name, "
+                                               "maintainers, config FROM history.vocab_layers WHERE _id = ?") [vS])]
+            (is (some? history) "vocab-layer row present in history")
+            (is (= (:vocab/name oltp) (:name history)))
+            (is (= (set (:vocab/maintainers oltp)) (set (:maintainers history))) "vocab maintainers fold")))
         (testing "user: username + is-admin + password-changes reconcile (both polarities)"
           ;; Aliases are underscore-free: xt/q kebab-cases result keys, so
           ;; `AS is_admin` would surface as `:is-admin` (a casing trap that made
@@ -751,30 +751,30 @@
           ;; the key stable.
           (let [sel (str "SELECT _id AS id, user$username AS username, "
                          "user$is_admin AS isadmin, user$password_changes AS pwchanges "
-                         "FROM olap.users WHERE _id = ?")]
+                         "FROM history.users WHERE _id = ?")]
             (doseq [uid [ur ua]]
               (let [oltp (sql-user/get db uid)
-                    olap (olap-row node sel [uid])]
-                (is (some? olap) (str "user row present in OLAP: " uid))
-                (is (= (:user/username oltp) (:username olap)))
-                (is (= (boolean (:user/is-admin oltp)) (truthy-flag (:isadmin olap)))
+                    history (history-row node sel [uid])]
+                (is (some? history) (str "user row present in history: " uid))
+                (is (= (:user/username oltp) (:username history)))
+                (is (= (boolean (:user/is-admin oltp)) (truthy-flag (:isadmin history)))
                     (str "is-admin coerces equal for " uid))
-                ;; nil (OLTP getter omits a zero counter) and 0 (OLAP stores the
+                ;; nil (OLTP getter omits a zero counter) and 0 (history stores the
                 ;; column) both mean "no password changes" — normalize.
-                (is (= (or (:user/password-changes oltp) 0) (or (:pwchanges olap) 0))
+                (is (= (or (:user/password-changes oltp) 0) (or (:pwchanges history) 0))
                     "password-changes reconciles")))
             ;; Pin BOTH polarities so the comparison can't pass by the falsy
             ;; default alone (a dropped is_admin column would read nil->false
             ;; and silently match the non-admin user — exactly the original bug).
-            (is (false? (truthy-flag (:isadmin (olap-row node sel [ur])))) "non-admin reads false")
-            (is (true? (truthy-flag (:isadmin (olap-row node sel [ua])))) "admin reads true")))))))
+            (is (false? (truthy-flag (:isadmin (history-row node sel [ur])))) "non-admin reads false")
+            (is (true? (truthy-flag (:isadmin (history-row node sel [ua])))) "admin reads true")))))))
 
 ;; ============================================================
 ;; GAP 2: atomic batch — committed replays whole; rolled-back is invisible
 ;; ============================================================
 
-(deftest ^:integration olap-batch-commits-all-ops
-  (with-test-olap-node
+(deftest ^:integration history-batch-commits-all-ops
+  (with-test-history-node
     (fn []
       (let [proj (create-test-project admin-request "BatchOkProj")
             tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -789,16 +789,16 @@
             _ (assert-ok res)
             ts (latest-op-ts)
             _ (drain!)]
-        (testing "both batched tokens replayed; doc reconciles OLTP==OLAP"
+        (testing "both batched tokens replayed; doc reconciles OLTP==history"
           (is (= 2 (count (tokens-from-body (-> (get-doc-as-of doc ts) :body)))))
           (let [oltp (-> (api-call admin-request {:method :get
                                                   :path (str "/api/v1/documents/" doc "?include-body=true")})
                          :body normalize-for-compare)
-                olap (-> (get-doc-as-of doc ts true) :body normalize-for-compare)]
-            (is (= oltp olap))))))))
+                history (-> (get-doc-as-of doc ts true) :body normalize-for-compare)]
+            (is (= oltp history))))))))
 
-(deftest ^:integration olap-batch-rollback-leaves-olap-untouched
-  (with-test-olap-node
+(deftest ^:integration history-batch-rollback-leaves-history-untouched
+  (with-test-history-node
     (fn []
       (let [proj (create-test-project admin-request "BatchRollbackProj")
             tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -820,12 +820,12 @@
         (testing "no operations row was committed by the rolled-back batch"
           (is (= ts-before (latest-op-ts))
               "operations high-water mark unchanged — rollback wrote nothing"))
-        (testing "neither OLTP nor OLAP shows any token from the batch"
+        (testing "neither OLTP nor history shows any token from the batch"
           (let [oltp-doc (api-call admin-request {:method :get
                                                   :path (str "/api/v1/documents/" doc "?include-body=true")})]
             (is (zero? (count (tokens-from-body (:body oltp-doc)))) "OLTP has no tokens"))
           (is (zero? (count (tokens-from-body (-> (get-doc-as-of doc ts-before) :body))))
-              "OLAP has no tokens at the pre-batch ts (and there is no later ts)"))))))
+              "history has no tokens at the pre-batch ts (and there is no later ts)"))))))
 
 ;; ============================================================
 ;; GAP 3: schema-drift canary — replayer renames must match live schema
@@ -896,13 +896,13 @@
 ;; ============================================================
 ;;
 ;; Every other parity-reconciled span is single-token; the re-point in the
-;; survivor doc is undone by end-state. Here we deep-compare OLTP==OLAP at
+;; survivor doc is undone by end-state. Here we deep-compare OLTP==history at
 ;; the ts RIGHT AFTER the re-point, with a 3-token-deep nested hierarchy and
 ;; a span carrying multiple tokens AND metadata — the exact surface where a
 ;; token-ordering / UUID-coercion / metadata-fold divergence would hide.
 
-(deftest ^:integration oltp-vs-olap-parity-multitoken-span-and-repointed-relation
-  (with-test-olap-node
+(deftest ^:integration oltp-vs-history-parity-multitoken-span-and-repointed-relation
+  (with-test-history-node
     (fn []
       (let [proj (create-test-project admin-request "MultiTokParityProj")
             doc (create-test-document admin-request proj "D")
@@ -936,7 +936,7 @@
             oltp (-> (api-call admin-request {:method :get
                                               :path (str "/api/v1/documents/" doc "?include-body=true")})
                      :body)
-            olap (-> (get-doc-as-of doc ts true) :body)
+            history (-> (get-doc-as-of doc ts true) :body)
             token-layers (->> oltp :document/text-layers (mapcat :text-layer/token-layers))
             tl-by-id (into {} (map (juxt :token-layer/id identity)) token-layers)
             spans (spans-from-body oltp)
@@ -959,8 +959,8 @@
         (testing "the relation was re-pointed onto the multi-token span"
           (is (= 1 (count relations)))
           (is (= s-multi (:relation/target (first relations)))))
-        (testing "deep-read reconciles OLTP==OLAP at the post-re-point ts"
-          (is (= (normalize-for-compare oltp) (normalize-for-compare olap))
+        (testing "deep-read reconciles OLTP==history at the post-re-point ts"
+          (is (= (normalize-for-compare oltp) (normalize-for-compare history))
               "multi-token span + metadata + re-pointed relation + 3-level hierarchy round-trip identically"))))))
 
 ;; ============================================================
@@ -968,7 +968,7 @@
 ;; ============================================================
 
 (deftest ^:integration stalled-tailer-returns-503-on-doc-get
-  (with-test-olap-node
+  (with-test-history-node
     (fn []
       (let [proj (create-test-project admin-request "StallProj")
             doc (create-test-document admin-request proj "D")
@@ -976,8 +976,8 @@
             _ (drain!)
             ;; Force a stall directly on the cursor, then issue a real
             ;; document as-of GET through wrap-route-as-of.
-            _ (olap/set-stalled! *olap-node* {:op-id (random-uuid) :seq 0
-                                              :reason "test-induced stall"})
+            _ (history/set-stalled! *history-node* {:op-id (random-uuid) :seq 0
+                                                    :reason "test-induced stall"})
             res (get-doc-as-of doc ts)]
         (testing "503 with the stall surfaced (not a generic error)"
           (is (= 503 (:status res)))
@@ -1019,32 +1019,32 @@
 ;; GAP 7 (round 3): HISTORICAL as_of for NON-document entities
 ;; ============================================================
 ;;
-;; `olap-entity-row-parity-projects-users-vocab` reconciles project / user /
-;; vocab OLAP rows against OLTP, but ONLY at the LATEST snapshot. Document
+;; `history-entity-row-parity-projects-users-vocab` reconciles project / user /
+;; vocab history rows against OLTP, but ONLY at the LATEST snapshot. Document
 ;; reads have rich intermediate-ts coverage (the depth-* tests); non-doc
 ;; entities had none. A replay bug that wrote the RIGHT end-state but the
 ;; WRONG intermediate value (e.g. a rename mis-ordered against an ACL grant,
 ;; or a bitemporal close-out that retroactively clobbers history) would be
-;; invisible to a latest-only check. This pins the OLAP at several
+;; invisible to a latest-only check. This pins the history at several
 ;; `{:snapshot-time ts_k}` instants and asserts each historical row matches
 ;; what OLTP held at that exact step.
 ;;
 ;; OLTP has no time-travel, so "what OLTP held at ts_k" is the value we just
 ;; wrote at step k — captured in-line as the mutation sequence runs.
 
-(defn- olap-row-at
-  "Like `olap-row`, but pins the OLAP read to a historical snapshot via XTDB
+(defn- history-row-at
+  "Like `history-row`, but pins the history read to a historical snapshot via XTDB
   v2's `:snapshot-time` axis. `ts` is an ISO string (an `operations.ts`); we
-  coerce it to the Date XTDB wants through the same `olap/->date` the tailer
+  coerce it to the Date XTDB wants through the same `history/->date` the tailer
   uses, so the snapshot lands exactly on the committed system-time of that op."
   [node sql params ts]
-  (first (xt/q node (into [sql] params) {:snapshot-time (olap/->date ts)})))
+  (first (xt/q node (into [sql] params) {:snapshot-time (history/->date ts)})))
 
-(deftest ^:integration olap-nondoc-entity-row-parity-at-intermediate-ts
-  (with-test-olap-node
+(deftest ^:integration history-nondoc-entity-row-parity-at-intermediate-ts
+  (with-test-history-node
     (fn []
       (let [db plaid.fixtures/db
-            node *olap-node*
+            node *history-node*
             ;; A reader we grant then revoke, so the folded ACL has a
             ;; non-trivial mid-history presence-then-absence to catch.
             ur (str "hist-r-" (random-uuid) "@example.com")
@@ -1069,9 +1069,9 @@
             _ (drain!)
             ts-revoked (latest-op-ts)
             proj-sql (str "SELECT _id AS id, project$name AS name, readers "
-                          "FROM olap.projects WHERE _id = ?")
-            name-at (fn [ts] (:name (olap-row-at node proj-sql [proj] ts)))
-            readers-at (fn [ts] (set (:readers (olap-row-at node proj-sql [proj] ts))))]
+                          "FROM history.projects WHERE _id = ?")
+            name-at (fn [ts] (:name (history-row-at node proj-sql [proj] ts)))
+            readers-at (fn [ts] (set (:readers (history-row-at node proj-sql [proj] ts))))]
         ;; Guard: the LATEST OLTP state is what we expect, so a degenerate
         ;; replay can't make the historical asserts vacuous by coincidence.
         (testing "OLTP end-state is the post-revoke shape (setup guard)"
@@ -1102,8 +1102,8 @@
               _ (drain!)
               vts2 (latest-op-ts)
               vocab-sql (str "SELECT _id AS id, vocab$name AS name "
-                             "FROM olap.vocab_layers WHERE _id = ?")
-              vname-at (fn [ts] (:name (olap-row-at node vocab-sql [vS] ts)))]
+                             "FROM history.vocab_layers WHERE _id = ?")
+              vname-at (fn [ts] (:name (history-row-at node vocab-sql [vS] ts)))]
           (testing "vocab-layer name reconstructs at each historical ts"
             (is (= "HistVocab-v1" (vname-at vts1)) "vocab name at creation ts")
             (is (= "HistVocab-v2" (vname-at vts2)) "vocab name after rename")
@@ -1118,16 +1118,16 @@
 ;; can mix a project rename (non-doc), a token create (doc-scoped), and a
 ;; document set-metadata (doc-scoped) in ONE transaction that commits (or rolls
 ;; back) as a unit. This asserts the whole mixed batch replays, the document
-;; reconciles OLTP==OLAP after it, AND that an as_of pinned JUST BEFORE the
+;; reconciles OLTP==history after it, AND that an as_of pinned JUST BEFORE the
 ;; batch differs correctly from one JUST AFTER (project name old→new, token
 ;; absent→present, doc metadata absent→present) — i.e. the batch's effects all
-;; land at the same system-time, atomically, in OLAP too.
+;; land at the same system-time, atomically, in history too.
 
-(deftest ^:integration olap-mixed-doc-and-nondoc-batch-time-travels
-  (with-test-olap-node
+(deftest ^:integration history-mixed-doc-and-nondoc-batch-time-travels
+  (with-test-history-node
     (fn []
       (let [db plaid.fixtures/db
-            node *olap-node*
+            node *history-node*
             proj (create-test-project admin-request "MixedBatchProj-old")
             tl (-> (create-text-layer admin-request proj "TL") :body :id)
             tkl (-> (create-token-layer admin-request tl "TKL" "any") :body :id)
@@ -1147,8 +1147,8 @@
             _ (assert-ok res)
             _ (drain!)
             ts-after (latest-op-ts)
-            proj-sql (str "SELECT _id AS id, project$name AS name FROM olap.projects WHERE _id = ?")
-            name-at (fn [ts] (:name (olap-row-at node proj-sql [proj] ts)))]
+            proj-sql (str "SELECT _id AS id, project$name AS name FROM history.projects WHERE _id = ?")
+            name-at (fn [ts] (:name (history-row-at node proj-sql [proj] ts)))]
         ;; Guard: the batch actually changed all three things in OLTP.
         (testing "OLTP reflects all three mixed-batch effects (setup guard)"
           (is (= "MixedBatchProj-new" (:project/name (sql-project/get db proj))))
@@ -1158,13 +1158,13 @@
                              :body)]
             (is (= 1 (count (tokens-from-body doc-body))) "one token created by the batch")
             (is (= {"reviewed" "yes"} (:metadata doc-body)) "doc metadata set by the batch")))
-        (testing "the whole batch reconciles OLTP==OLAP at the post-batch ts"
+        (testing "the whole batch reconciles OLTP==history at the post-batch ts"
           (let [oltp (-> (api-call admin-request
                                    {:method :get
                                     :path (str "/api/v1/documents/" doc "?include-body=true")})
                          :body normalize-for-compare)
-                olap (-> (get-doc-as-of doc ts-after true) :body normalize-for-compare)]
-            (is (= oltp olap)
+                history (-> (get-doc-as-of doc ts-after true) :body normalize-for-compare)]
+            (is (= oltp history)
                 "mixed doc+non-doc batch replays as a unit; doc deep-read matches")))
         (testing "non-doc effect (project name) time-travels across the batch boundary"
           (is (= "MixedBatchProj-old" (name-at ts-before)) "project name OLD just before the batch")
@@ -1193,10 +1193,10 @@
 ;; operator recovery story end-to-end.
 
 (deftest ^:integration stalled-tailer-recovers-via-resume-end-to-end
-  (with-test-olap-node
+  (with-test-history-node
     (fn []
       (let [db plaid.fixtures/db
-            node *olap-node*
+            node *history-node*
             proj (create-test-project admin-request "ResumeProj")
             doc (create-test-document admin-request proj "ResumeDoc")
             tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -1213,8 +1213,8 @@
               "baseline body carries the created token (non-vacuous target)"))
         ;; Induce a stall directly on the cursor (mirrors what the run-loop's
         ;; catch does on a malformed row), then confirm reads 503.
-        (olap/set-stalled! node {:op-id (random-uuid) :seq 0
-                                 :reason "test-induced stall for resume recovery"})
+        (history/set-stalled! node {:op-id (random-uuid) :seq 0
+                                    :reason "test-induced stall for resume recovery"})
         (testing "while stalled, the as_of doc GET returns 503"
           (let [res (get-doc-as-of doc ts)]
             (is (= 503 (:status res)))

@@ -1,8 +1,8 @@
-(ns plaid.olap.rebuild-test
-  "Rebuild-equivalence test for the OLAP replica.
+(ns plaid.history.rebuild-test
+  "Rebuild-equivalence test for the history replica.
 
-  The operator-facing claim is that `rm -rf data/olap-*; restart`
-  reconstructs the OLAP from the OLTP audit log and produces identical
+  The operator-facing claim is that `rm -rf data/history-*; restart`
+  reconstructs the history from the OLTP audit log and produces identical
   state to the incremental tailer that's been running all along. This
   test exercises that path:
 
@@ -32,8 +32,8 @@
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     admin-request assert-ok assert-status
                                     with-admin with-test-users with-clean-db]]
-            [plaid.olap.core :as olap]
-            [plaid.olap.tailer :as tailer]
+            [plaid.history.core :as history]
+            [plaid.history.tailer :as tailer]
             [plaid.test-helpers :refer :all]
             [xtdb.api :as xt]
             [xtdb.node :as xtn]))
@@ -82,7 +82,7 @@
            :else (recur (inc i))))))))
 
 ;; ============================================================
-;; OLAP-state snapshot helpers — capture every entity table into a
+;; history-state snapshot helpers — capture every entity table into a
 ;; structure we can compare across runs by value.
 ;; ============================================================
 
@@ -93,12 +93,12 @@
    "vocab_layers" "vocab_items" "vocab_links"])
 
 (defn- snapshot-table
-  "Pull every row of `:olap/<table>` at the current snapshot (no
+  "Pull every row of `:history/<table>` at the current snapshot (no
    :snapshot-time pin — `now()` returns the latest visible state).
    Sort by :xt/id so two snapshots taken on different nodes compare
    equal by value."
   [node table]
-  (let [tbl-kw (keyword "olap" table)
+  (let [tbl-kw (keyword "history" table)
         rows (xt/q node
                    (list '-> (list 'from tbl-kw '[*])))]
     (->> rows
@@ -146,7 +146,7 @@
 ;; ============================================================
 ;;
 ;; Real rebuild-equivalence: the operator's recovery story is "stop the
-;; tailer, wipe the OLAP store, restart". In an in-memory test we
+;; tailer, wipe the history store, restart". In an in-memory test we
 ;; simulate this by:
 ;;   1. Run workload + drain into node-A (incremental tailer over a
 ;;      growing audit log — the production path).
@@ -168,7 +168,7 @@
         _ (run-workload!)
         snapshot-a (with-open [a-node (xtn/start-node {})]
                      (drain-tailer! ds a-node)
-                     (let [cursor (olap/cursor-read a-node)]
+                     (let [cursor (history/cursor-read a-node)]
                        (is (some? cursor) "tailer wrote a cursor after pass 1")
                        (is (= :running (:tailer-status cursor))
                            "incremental tail finished cleanly, no stall"))
@@ -180,10 +180,10 @@
         snapshot-b (with-open [b-node (xtn/start-node {})]
                      ;; node-B's cursor doc is nil — cold-start seed
                      ;; from epoch replays every audit row.
-                     (is (nil? (olap/cursor-read b-node))
+                     (is (nil? (history/cursor-read b-node))
                          "fresh node has no cursor — cold-replay path is active")
                      (drain-tailer! ds b-node)
-                     (let [cursor (olap/cursor-read b-node)]
+                     (let [cursor (history/cursor-read b-node)]
                        (is (some? cursor) "cold replay wrote a cursor"))
                      (full-snapshot b-node))]
     (testing "snapshot A and snapshot B are byte-for-byte equal"
@@ -193,7 +193,7 @@
       ;; one big map equality would print a wall of EDN on failure.
       (doseq [t snapshot-tables]
         (is (= (get snapshot-a t) (get snapshot-b t))
-            (str "OLAP table `" t "` diverges between incremental and cold-replay"))))
+            (str "history table `" t "` diverges between incremental and cold-replay"))))
 
     (testing "snapshots are non-trivial — the workload actually wrote data"
       (is (pos? (count (get snapshot-a "documents")))
@@ -216,16 +216,16 @@
 ;; same-id writes recovering only ~2 after reopen). There is no public
 ;; flush/checkpoint API to force durability.
 ;;
-;; This is NOT data loss for the OLAP, because the OLAP is DERIVED: the
+;; This is NOT data loss for the history, because the history is DERIVED: the
 ;; cursor and entity docs regress TOGETHER (same execute-tx), so on
 ;; restart the tailer reads the regressed cursor and RE-TAILS the OLTP
 ;; audit log forward (idempotent). The replica SELF-HEALS to the correct
 ;; state. This test pins exactly that property — convergence after
 ;; close/reopen/re-tail — NOT exact cursor persistence (which XTDB does
-;; not guarantee). See the OLAP operations notes §12.7.
+;; not guarantee). See the history operations notes §12.7.
 
 (defn- start-disk-node
-  "Start an on-disk XTDB node mirroring `plaid.olap.core/start-xtdb-node`
+  "Start an on-disk XTDB node mirroring `plaid.history.core/start-xtdb-node`
   (local storage + log)."
   [storage-path log-path]
   (.mkdirs (io/file storage-path))
@@ -242,7 +242,7 @@
 
 (deftest on-disk-node-self-heals-after-restart
   (let [ds plaid.fixtures/db
-        base (str (System/getProperty "java.io.tmpdir") "/olap-resume-" (random-uuid))
+        base (str (System/getProperty "java.io.tmpdir") "/history-resume-" (random-uuid))
         storage (str base "/storage")
         logp (str base "/log")]
     (try
@@ -251,7 +251,7 @@
       (let [{:keys [proj]} (run-workload!)
             snapshot-a (with-open [node-a (start-disk-node storage logp)]
                          (drain-tailer! ds node-a)
-                         (let [c (olap/cursor-read node-a)]
+                         (let [c (history/cursor-read node-a)]
                            (is (some? c) "pass-1 drain wrote a cursor")
                            (is (= :running (:tailer-status c)) "pass-1 finished cleanly, no stall"))
                          (full-snapshot node-a))]
@@ -263,15 +263,15 @@
         (with-open [node-b (start-disk-node storage logp)]
           ;; Reopen must NOT be a cold-start-from-epoch (that would mean
           ;; nothing persisted at all). Some durable state survived.
-          (is (some? (olap/cursor-read node-b))
+          (is (some? (history/cursor-read node-b))
               "a cursor survived close/reopen (on-disk persistence is partial, not total loss)")
           (drain-tailer! ds node-b)
           (let [snapshot-b (full-snapshot node-b)
-                cursor-b (olap/cursor-read node-b)]
+                cursor-b (history/cursor-read node-b)]
             (testing "re-tail after restart converges to the same state (self-healing)"
               (doseq [t snapshot-tables]
                 (is (= (get snapshot-a t) (get snapshot-b t))
-                    (str "OLAP table `" t "` diverges after restart+re-tail"))))
+                    (str "history table `" t "` diverges after restart+re-tail"))))
             (is (= :running (:tailer-status cursor-b))
                 "caught up cleanly after re-tail, no stall")
 
@@ -338,14 +338,14 @@
         ;; Pass 1: incremental tail into node-A, snapshot every table.
         snapshot-a (with-open [a-node (xtn/start-node {})]
                      (drain-tailer! ds a-node)
-                     (let [cursor (olap/cursor-read a-node)]
+                     (let [cursor (history/cursor-read a-node)]
                        (is (some? cursor) "incremental tail wrote a cursor")
                        (is (= :running (:tailer-status cursor)) "no stall in pass 1"))
                      (full-snapshot a-node))]
     ;; Pass 2: cold-replay into a FRESH node (the wipe+restart recovery path),
     ;; then assert VALUES on the cold node directly.
     (with-open [b-node (xtn/start-node {})]
-      (is (nil? (olap/cursor-read b-node))
+      (is (nil? (history/cursor-read b-node))
           "fresh node has no cursor — cold-replay path is active")
       (drain-tailer! ds b-node)
       (let [snapshot-b (full-snapshot b-node)
@@ -361,7 +361,7 @@
         (testing "cold-replay reproduces the same per-table state as incremental (A≡B)"
           (doseq [t snapshot-tables]
             (is (= (get snapshot-a t) (get snapshot-b t))
-                (str "OLAP table `" t "` diverges between incremental and cold-replay"))))
+                (str "history table `" t "` diverges between incremental and cold-replay"))))
         (testing "setup was non-trivial (guards against vacuous value asserts)"
           (is (= 3 (count (get snapshot-b "token_layers"))) "three token layers cold-replayed")
           (is (= 4 (count (get snapshot-b "tokens"))) "four tokens cold-replayed")
@@ -395,7 +395,7 @@
                    (set (map str (:tokens sm))))
                 (str "multi-token span carries both tokens; row=" (pr-str sm)))
             ;; `:span/value` is stored JSON-encoded ("\"MULTI\"") on the raw
-            ;; OLAP doc; the document read path decodes it. Assert the decoded
+            ;; history doc; the document read path decodes it. Assert the decoded
             ;; VALUE so the check pins the logical span value, not the encoding.
             (is (= "MULTI" (json/read-str (:span/value sm)))
                 (str "span value cold-replayed; row=" (pr-str sm)))

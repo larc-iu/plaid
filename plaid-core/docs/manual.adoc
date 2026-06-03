@@ -116,7 +116,7 @@ Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are availab
 == Audit Log
 
 Every write to the database is recorded in an append-only **audit log** which provides an account of who performed every change.
-Audit history is retained indefinitely (see the retention policy in `OPERATIONS.md` §11 and `docs/sql-port-review-2026-05-27.md` §8); operators monitor disk and prune only after the planned downstream OLAP replica is built and caught up.
+Audit history is retained indefinitely (see the retention policy in `OPERATIONS.md` §11 and `docs/sql-port-review-2026-05-27.md` §8); operators monitor disk and prune only after the planned downstream history replica is built and caught up.
 
 The log can be queried like so:
 

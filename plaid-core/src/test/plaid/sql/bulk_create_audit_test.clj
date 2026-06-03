@@ -3,17 +3,17 @@
   rows whose post_image folds the `span_tokens` junction state under
   `:tokens` (matching single-row span/create).
 
-  Because the OLAP replayer treats an :insert as a full put (replace),
+  Because the history replayer treats an :insert as a full put (replace),
   a bulk-created span that is never subsequently updated would land in
-  the OLAP with NO tokens if the :insert audit row didn't carry them —
+  the history with NO tokens if the :insert audit row didn't carry them —
   even though the OLTP `span_tokens` table has them. This test drives
   the real REST bulk-create path, inspects the emitted audit rows, and
-  feeds them through the replayer to confirm the resulting OLAP doc
-  carries `:tokens` (the unqualified junction key the OLAP read API
+  feeds them through the replayer to confirm the resulting history doc
+  carries `:tokens` (the unqualified junction key the history read API
   depends on)."
   (:require [clojure.test :refer :all]
             [plaid.sql.common :as psc]
-            [plaid.olap.replayer :as replayer]
+            [plaid.history.replayer :as replayer]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request assert-created assert-ok with-admin with-clean-db]]
             [plaid.test-helpers :refer :all]))
@@ -47,7 +47,7 @@
         sl   (-> (create-span-layer admin-request tkl "BSL") :body :id)
         ;; Two single-token spans + one multi-token span. None of these
         ;; is ever updated afterwards, so the :insert audit row is the
-        ;; ONLY record the OLAP will ever see for them.
+        ;; ONLY record the history will ever see for them.
         spans [{:span-layer-id sl :tokens [t1] :value "A"}
                {:span-layer-id sl :tokens [t2 t3] :value "BC"}
                {:span-layer-id sl :tokens [t4] :value "D" :metadata {"k" "v"}}]
@@ -79,7 +79,7 @@
           (is (= {:k "v"} (:metadata meta-post))
               "metadata folded into the :insert post_image"))))
 
-    (testing "replaying the :insert audit row yields an OLAP doc with :tokens"
+    (testing "replaying the :insert audit row yields an history doc with :tokens"
       (let [by-id (insert-audit-rows-for-spans ids)
             id    (second ids) ; multi-token span
             row   (clojure.core/get by-id id)
@@ -87,5 +87,5 @@
         (is (= :put-docs op-kw) ":insert replays as a full put-docs")
         ;; Junction key passes through unqualified, coerced to UUIDs.
         (is (= [t2 t3] (:tokens doc-out))
-            "replayed OLAP doc carries the ordered :tokens vector")
+            "replayed history doc carries the ordered :tokens vector")
         (is (= id (:xt/id doc-out)))))))

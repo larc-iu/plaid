@@ -12,7 +12,7 @@
   by design."
   (:require [clojure.test :refer :all]
             [plaid.fixtures :refer [db with-db with-mount-states with-clean-db]]
-            [plaid.olap.core :as olap]
+            [plaid.history.core :as history]
             [plaid.sql.operation :as op]))
 
 (use-fixtures :once with-db with-mount-states)
@@ -70,9 +70,9 @@
   ;; not turn a successful OLTP commit into a 5xx response. The OLTP
   ;; write is already durable by the time we get here; the most we can
   ;; do is log + continue.
-  (with-redefs [olap/nudge! (fn []
-                              (throw (ex-info "simulated nudge failure"
-                                              {:type :test/nudge-broke})))]
+  (with-redefs [history/nudge! (fn []
+                                 (throw (ex-info "simulated nudge failure"
+                                                 {:type :test/nudge-broke})))]
     (let [result (op/submit-operation*
                   db
                   {:type :test/regression
@@ -89,8 +89,8 @@
   ;; catch back to `(catch Exception …)` — `ExceptionInfo` is itself an
   ;; Exception. Pin the Throwable contract by throwing a java.lang.Error
   ;; (NOT an Exception subclass) and asserting the commit still wins.
-  (with-redefs [olap/nudge! (fn []
-                              (throw (Error. "boom — simulated JVM Error from nudge")))]
+  (with-redefs [history/nudge! (fn []
+                                 (throw (Error. "boom — simulated JVM Error from nudge")))]
     (let [result (op/submit-operation*
                   db
                   {:type :test/regression

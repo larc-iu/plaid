@@ -1,9 +1,9 @@
-(ns plaid.olap.replayer
+(ns plaid.history.replayer
   "Translate OLTP `audit_writes` rows into XTDB v2 tx-ops.
 
   Single job: take audit rows + their parent op record and submit one
   `xt/submit-tx` whose `:system-time` equals `op.ts`. After the
-  submit, the OLAP node at `{:snapshot-time op.ts}` reproduces the
+  submit, the history node at `{:snapshot-time op.ts}` reproduces the
   OLTP state as it was at that moment.
 
   Boundary contract:
@@ -16,7 +16,7 @@
     is the read-side contract baked into the synthetic-image emit sites
     (`plaid.sql.project/audit-project-acl-change!`, `span/set-tokens`,
     `metadata/emit-parent-audit!`, etc.). Re-namespacing would defeat
-    `plaid.olap.document`'s deep reads, which read junction state
+    `plaid.history.document`'s deep reads, which read junction state
     directly off each entity doc under these unqualified keys.
   - On `:delete`, the synthetic-parent-row asymmetry (see
     `plaid.sql.metadata`'s top docstring) means the pre-image carries
@@ -30,13 +30,13 @@
   (:require [camel-snake-kebab.core :as csk]
             [clojure.data.json :as json]
             [clojure.string :as str]
-            [plaid.olap.core :as olap]
+            [plaid.history.core :as history]
             [xtdb.api :as xt]))
 
 (def KNOWN_JUNCTION_KEYS
   "Unqualified keys produced by `clojure.data.json`'s namespace
   stripping at the synthetic-image emit sites. The replayer preserves
-  these as-is on the OLAP doc; downstream reads use them under the
+  these as-is on the history doc; downstream reads use them under the
   same names."
   #{:tokens :metadata :readers :writers :maintainers :vocabs})
 
@@ -44,7 +44,7 @@
 ;; Per-table entity-namespace map
 ;;
 ;; The `:ns` is the namespace under which intrinsic columns get keyed
-;; on the OLAP doc. `:col-renames` is the explicit column → attr map
+;; on the history doc. `:col-renames` is the explicit column → attr map
 ;; for cases where the v2 attr name doesn't match a mechanical
 ;; "strip _id + kebab-case" of the SQL column name (e.g. spans:
 ;; span_layer_id → :span/layer, not :span/span-layer-id). Columns not
@@ -141,8 +141,8 @@
                           {:type :replayer/malformed-row
                            :value x}))))
 
-(defn- olap-table-kw [target-table]
-  (keyword "olap" target-table))
+(defn- history-table-kw [target-table]
+  (keyword "history" target-table))
 
 (defn parse-image
   "Parse an audit `pre_image`/`post_image` JSON string into a Clojure
@@ -172,7 +172,7 @@
 (defn- coerce-fk
   "FK columns (`*_id` in the schema) live in `audit_writes.post_image`
   as JSON strings — `clojure.data.json` renders the OLTP-side
-  `java.util.UUID` values as strings on write. Coerce back so OLAP
+  `java.util.UUID` values as strings on write. Coerce back so history
   queries filtering by `:span/document = <uuid>` work."
   [col-kw v]
   (if (and (string? v) (str/ends-with? (name col-kw) "_id"))
@@ -182,7 +182,7 @@
 (defn- coerce-junction
   "Junction-state values folded into the parent's synthetic image come
   back from JSON as plain strings/vectors/maps. Coerce to the shape the
-  OLAP read API expects:
+  history read API expects:
   - `:tokens` / `:readers` / `:writers` / `:maintainers` / `:vocabs`:
     vector of UUID strings → vector of UUIDs.
   - `:metadata`: Clojure map → JSON string, per
@@ -197,7 +197,7 @@
     v))
 
 (defn- post-image->doc
-  "Turn a parsed `post_image` map into the OLAP doc to put. Intrinsic
+  "Turn a parsed `post_image` map into the history doc to put. Intrinsic
   columns are re-keyed under the table's entity namespace; junction
   keys pass through unqualified; `:xt/id` is set to the entity's id."
   [target-id post-image {:keys [ns col-renames]}]
@@ -213,10 +213,10 @@
 (defn audit-row->tx-op
   "Translate a single audit row map into a single XTDB tx-op vector:
 
-   - `:insert`             → `[:put-docs :olap/<table> doc]` (fresh doc)
-   - `:update`             → `[:patch-docs :olap/<table> doc]` (key-merge)
-   - `:doc-version-bump`   → `[:patch-docs :olap/<table> doc]` (key-merge)
-   - `:delete`             → `[:delete-docs :olap/<table> id]`
+   - `:insert`             → `[:put-docs :history/<table> doc]` (fresh doc)
+   - `:update`             → `[:patch-docs :history/<table> doc]` (key-merge)
+   - `:doc-version-bump`   → `[:patch-docs :history/<table> doc]` (key-merge)
+   - `:delete`             → `[:delete-docs :history/<table> id]`
 
   `:update` / `:doc-version-bump` use `:patch-docs` (key-level merge into
   the existing doc) rather than `:put-docs` (full replacement). This is
@@ -247,7 +247,7 @@
       (throw (ex-info "audit row missing required column"
                       {:type :replayer/malformed-row :row row})))
     (let [spec (table-spec target_table)
-          table-kw (olap-table-kw target_table)
+          table-kw (history-table-kw target_table)
           ct (cond-> change_type (string? change_type) keyword)]
       (case ct
         :delete
@@ -281,12 +281,12 @@
 (defn- cursor-from-op
   "Build the cursor record advanced to the last audit row of `op-record`.
   `:last-op-ts` is normalized to a canonical ISO string (via
-  `olap/->iso-string`) so it stays lexicographically comparable against
+  `history/->iso-string`) so it stays lexicographically comparable against
   `operations.ts` in `fetch-batch`. `last-seq` is the max `:seq` across
   the op's rows (order-independent)."
   [op-record audit-rows]
   (let [last-seq (->> audit-rows (map :seq) (reduce max -1))]
-    {:last-op-ts (olap/->iso-string (:op/ts op-record))
+    {:last-op-ts (history/->iso-string (:op/ts op-record))
      :last-op-id (:op/id op-record)
      :last-seq last-seq
      :tailer-status :running
@@ -299,7 +299,7 @@
 ;; pair (both patches, same op, same tx) would lose the folded metadata
 ;; unless we pre-merge them into a single tx-op here. (Cross-op key
 ;; preservation is handled by `:patch-docs` merging against the existing
-;; OLAP doc in a SEPARATE tx; this function only addresses the
+;; history doc in a SEPARATE tx; this function only addresses the
 ;; within-op, same-tx collapse.)
 (defn- merge-same-id-tx-ops
   "Collapse tx-ops within one op that target the same `[table id]` into a
@@ -310,7 +310,7 @@
                      from later same-id ops.
    - `:patch-docs` — key-merge; if the id is only ever patched in this op
                      the result stays a patch, so the cross-op merge
-                     against the existing OLAP doc is preserved.
+                     against the existing history doc is preserved.
    - `:delete-docs` — resets accumulated state; a later put/patch in the
                      same op recreates the entity as a FULL-replace put
                      (the patch image is a full row, and we must not
@@ -365,7 +365,7 @@
 (defn- intrinsic-null?
   "True if `doc` explicitly maps an intrinsic (namespaced, non-junction)
   column to nil. `:patch-docs` SILENTLY STRIPS nil-valued keys, so such a
-  column would keep its stale prior value in the OLAP doc instead of
+  column would keep its stale prior value in the history doc instead of
   being cleared. Junction keys (`KNOWN_JUNCTION_KEYS`) are unqualified;
   `:xt/id` is namespaced but never nil — so a nil-valued namespaced key
   is always an intrinsic column being nulled. Reachable today via
@@ -375,16 +375,16 @@
 
 (defn- fetch-current-junction
   "Read the entity's CURRENT (latest committed) junction-state keys from
-  the OLAP node. Uses SQL `SELECT *` because XTQL `[*]` returns empty
+  the history node. Uses SQL `SELECT *` because XTQL `[*]` returns empty
   maps; NO `:snapshot-time`, so it reads the latest version — which is
   the pre-op state, since this op hasn't been applied yet. Returns a map
   of whatever `KNOWN_JUNCTION_KEYS` are present (empty if the entity is
   absent)."
   [node table-kw id]
-  (let [row (olap/plan-retrying
+  (let [row (history/plan-retrying
              3
              (fn []
-               (first (xt/q node [(str "SELECT * FROM olap." (name table-kw)
+               (first (xt/q node [(str "SELECT * FROM history." (name table-kw)
                                        " WHERE _id = ?") id]))))]
     (select-keys row (vec KNOWN_JUNCTION_KEYS))))
 
@@ -394,7 +394,7 @@
 
   Why: `:patch-docs` can't null a column (XTDB strips nil-valued keys),
   so e.g. clearing `tokens.precedence` would leave the stale value in the
-  OLAP historical read. A `:put-docs` correctly drops the column (read
+  history historical read. A `:put-docs` correctly drops the column (read
   back as nil), but would also wipe junction keys (`:tokens`/`:metadata`/
   ACLs) absent from this update's full-row image — so we merge the
   current doc's junction keys back in, letting the image win where it
@@ -410,7 +410,7 @@
 
 (defn apply-op!
   "Translate every row in `audit-rows` into a tx-op, append a
-  cursor-advance tx-op (`plaid.olap.core/cursor->tx-op`), and submit
+  cursor-advance tx-op (`plaid.history.core/cursor->tx-op`), and submit
   the batch via `xt/submit-tx`.
 
   `op-record` is the parent `operations` row in the shape produced by
@@ -422,7 +422,7 @@
    - The CURSOR stores `(:op/ts op-record)` verbatim — this is the
      OLTP-axis identifier that `fetch-batch` orders by against
      `operations.ts`. Must be the OLTP op's wall-clock time.
-   - The XTDB `:system-time` governs bitemporal monotonicity in OLAP
+   - The XTDB `:system-time` governs bitemporal monotonicity in history
      storage. Defaults to the op's ts, but the tailer's monotonic
      guard can override it (clock skew / retroactive backfill) without
      disturbing the cursor's OLTP-axis value.
@@ -440,7 +440,7 @@
   `apply-op!` directly to re-apply onto a populated node; from-epoch
   replay onto a FRESH node is fine (system-times only increase)."
   ([node op-record audit-rows]
-   (apply-op! node op-record audit-rows (olap/->date (:op/ts op-record))))
+   (apply-op! node op-record audit-rows (history/->date (:op/ts op-record))))
   ([node op-record audit-rows system-time]
    (let [base (-> (mapv audit-row->tx-op audit-rows)
                   (merge-same-id-tx-ops))
@@ -448,7 +448,7 @@
          ;; junction-preserving put (XTDB patch can't null a key).
          resolved (mapv #(resolve-nullable-patch node %) base)
          tx-ops (conj resolved
-                      (olap/cursor->tx-op (cursor-from-op op-record audit-rows)))]
+                      (history/cursor->tx-op (cursor-from-op op-record audit-rows)))]
      ;; execute-tx is synchronous (returns a TxKey only after indexing).
      ;; submit-tx returned immediately with just {:tx-id n}, leaving the
      ;; tailer's post-apply cursor read racing the indexer on slow nodes.

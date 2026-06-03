@@ -3,5 +3,5 @@
 -- provide authoritative, non-spoofable machine attribution, superseding the
 -- free-text, client-controlled user_agent label. See the api-tokens migration
 -- 20260601120000. The column carried only a display string (never entity
--- state, never mirrored to OLAP), so dropping it is safe for the audit/CDC log.
+-- state, never mirrored to history), so dropping it is safe for the audit/CDC log.
 ALTER TABLE operations DROP COLUMN user_agent;

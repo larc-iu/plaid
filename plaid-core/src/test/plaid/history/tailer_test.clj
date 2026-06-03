@@ -1,5 +1,5 @@
-(ns plaid.olap.tailer-test
-  "Targeted regression tests for `plaid.olap.tailer`. The integration
+(ns plaid.history.tailer-test
+  "Targeted regression tests for `plaid.history.tailer`. The integration
   test in `integration_test.clj` covers the happy-path REST surface;
   this namespace pins specific failure modes that previously slipped
   through to production:
@@ -19,26 +19,26 @@
             [next.jdbc :as jdbc]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     with-admin with-test-users with-clean-db]]
-            [plaid.olap.core :as olap]
-            [plaid.olap.document :as olap-doc]
-            [plaid.olap.tailer :as tailer]
+            [plaid.history.core :as history]
+            [plaid.history.document :as history-doc]
+            [plaid.history.tailer :as tailer]
             [plaid.sql.common :as psc]
             [xtdb.api :as xt]
             [xtdb.node :as xtn])
   (:import (java.time Instant)
            (java.util UUID)))
 
-(def ^:dynamic ^:private *olap-node* nil)
+(def ^:dynamic ^:private *history-node* nil)
 
-(defn- with-olap-node [f]
+(defn- with-history-node [f]
   (with-open [node (xtn/start-node {})]
-    (binding [*olap-node* node]
-      (with-redefs [olap/enabled? (constantly true)
-                    olap/node node]
+    (binding [*history-node* node]
+      (with-redefs [history/enabled? (constantly true)
+                    history/node node]
         (f)))))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
-(use-fixtures :each with-clean-db with-olap-node)
+(use-fixtures :each with-clean-db with-history-node)
 
 ;; ============================================================
 ;; Direct OLTP fixture builders
@@ -63,8 +63,8 @@
 
 (defn- insert-audit-rows!
   "Insert `n` audit rows for `op-id`, all targeting an arbitrary
-  `:olap/spans` doc. Each row gets a distinct entity-id so applying them
-  to the OLAP node won't merge-collapse via `merge-same-id-tx-ops`."
+  `:history/spans` doc. Each row gets a distinct entity-id so applying them
+  to the history node won't merge-collapse via `merge-same-id-tx-ops`."
   [ds op-id ts n]
   (let [doc-id (str (UUID/randomUUID))
         layer-id (str (UUID/randomUUID))]
@@ -111,9 +111,9 @@
         rows-in-op (+ batch-size 3)] ; comfortably > batch-size
     (insert-operation! plaid.fixtures/db op-id ts)
     (insert-audit-rows! plaid.fixtures/db op-id ts rows-in-op)
-    (with-redefs [olap/olap-config (constantly (cfg batch-size))]
+    (with-redefs [history/history-config (constantly (cfg batch-size))]
       (let [{:keys [applied-ops rows-consumed cursor]}
-            (tailer/poll-once! plaid.fixtures/db *olap-node*)]
+            (tailer/poll-once! plaid.fixtures/db *history-node*)]
         (is (= 1 applied-ops)
             "the oversized op applies as one apply call, not zero")
         (is (= rows-in-op rows-consumed)
@@ -132,9 +132,9 @@
     (insert-audit-rows! plaid.fixtures/db op1 "2026-05-28T10:01:00Z" 2)
     (insert-operation! plaid.fixtures/db op2 "2026-05-28T10:01:01Z")
     (insert-audit-rows! plaid.fixtures/db op2 "2026-05-28T10:01:01Z" 3)
-    (with-redefs [olap/olap-config (constantly (cfg batch-size))]
+    (with-redefs [history/history-config (constantly (cfg batch-size))]
       (let [{:keys [applied-ops rows-consumed]}
-            (tailer/poll-once! plaid.fixtures/db *olap-node*)]
+            (tailer/poll-once! plaid.fixtures/db *history-node*)]
         (is (= 2 applied-ops))
         (is (= 5 rows-consumed))))))
 
@@ -147,31 +147,31 @@
   ;; `seed-cursor` was used in-memory only and never written to XTDB.
   ;; `cursor-read` would return nil forever, breaking health reporting
   ;; and the staleness check.
-  (with-redefs [olap/olap-config (constantly {:enabled? true
-                                              :cold-replay-on-empty? false
-                                              :tailer {:batch-size 500
-                                                       :poll-interval-ms 5000}})]
-    (is (nil? (olap/cursor-read *olap-node*)) "precondition: no cursor")
-    (let [{:keys [applied-ops cursor]} (tailer/poll-once! plaid.fixtures/db *olap-node*)]
+  (with-redefs [history/history-config (constantly {:enabled? true
+                                                    :cold-replay-on-empty? false
+                                                    :tailer {:batch-size 500
+                                                             :poll-interval-ms 5000}})]
+    (is (nil? (history/cursor-read *history-node*)) "precondition: no cursor")
+    (let [{:keys [applied-ops cursor]} (tailer/poll-once! plaid.fixtures/db *history-node*)]
       (is (zero? applied-ops) "OLTP is empty so nothing applies")
       (is (some? cursor) "but the seed cursor was still returned"))
-    (is (some? (olap/cursor-read *olap-node*))
+    (is (some? (history/cursor-read *history-node*))
         "and crucially the seed cursor was PERSISTED so health reads see it")))
 
 (deftest seed-cursor-persisted-on-first-poll-cold-replay-true-empty-oltp
   ;; Same fix, the other config branch: cold-replay-on-empty? true with
   ;; an empty OLTP still has no apply to write a cursor, so we must seed.
-  (with-redefs [olap/olap-config (constantly {:enabled? true
-                                              :cold-replay-on-empty? true
-                                              :tailer {:batch-size 500
-                                                       :poll-interval-ms 5000}})]
-    (is (nil? (olap/cursor-read *olap-node*)))
-    (tailer/poll-once! plaid.fixtures/db *olap-node*)
-    (is (some? (olap/cursor-read *olap-node*)))))
+  (with-redefs [history/history-config (constantly {:enabled? true
+                                                    :cold-replay-on-empty? true
+                                                    :tailer {:batch-size 500
+                                                             :poll-interval-ms 5000}})]
+    (is (nil? (history/cursor-read *history-node*)))
+    (tailer/poll-once! plaid.fixtures/db *history-node*)
+    (is (some? (history/cursor-read *history-node*)))))
 
 ;; ============================================================
 ;; Cursor shape: :last-op-ts must round-trip as a String, not ZDT
-;; (BUG-3 regression — see plaid.olap.replayer/cursor-from-op)
+;; (BUG-3 regression — see plaid.history.replayer/cursor-from-op)
 ;; ============================================================
 
 (deftest cursor-last-op-ts-survives-as-iso-string-through-apply
@@ -185,9 +185,9 @@
         ts "2026-05-28T11:00:00Z"]
     (insert-operation! plaid.fixtures/db op-id ts)
     (insert-audit-rows! plaid.fixtures/db op-id ts 1)
-    (with-redefs [olap/olap-config (constantly (cfg 500))]
-      (tailer/poll-once! plaid.fixtures/db *olap-node*))
-    (let [cursor (olap/cursor-read *olap-node*)]
+    (with-redefs [history/history-config (constantly (cfg 500))]
+      (tailer/poll-once! plaid.fixtures/db *history-node*))
+    (let [cursor (history/cursor-read *history-node*)]
       (is (string? (:last-op-ts cursor))
           ":last-op-ts must round-trip as an ISO string, not a ZonedDateTime")
       (is (= (canon-ts ts) (:last-op-ts cursor))
@@ -222,7 +222,7 @@
 
 (deftest cursor-iso-shape-survives-guard-monotonic-advance
   ;; This is the path BUG-3 actually corrupted. Drive
-  ;; `plaid.olap.replayer/apply-op!` directly with an op whose `:op/ts`
+  ;; `plaid.history.replayer/apply-op!` directly with an op whose `:op/ts`
   ;; is a `java.util.Date` (the shape `apply-op-with-guard!` would hand
   ;; off after rebuilding op-record* with an adjusted Date). Without
   ;; the BUG-3 fix, `cursor-from-op` would store that Date verbatim and
@@ -244,14 +244,14 @@
                              :document_id (str (UUID/randomUUID))
                              :value "v"})
                :seq 0}]]
-    (plaid.olap.replayer/apply-op! *olap-node* op-record rows)
-    (let [cursor (olap/cursor-read *olap-node*)]
+    (plaid.history.replayer/apply-op! *history-node* op-record rows)
+    (let [cursor (history/cursor-read *history-node*)]
       (is (string? (:last-op-ts cursor))
           ":last-op-ts is normalized to ISO string when (:op/ts op-record) was a Date")
       (is (not (instance? java.time.ZonedDateTime (:last-op-ts cursor)))
           "specifically not a ZonedDateTime — the regression shape that broke fetch-batch")
       ;; A Date/Instant input is rendered via the canonical fixed-width
-      ;; 9-digit formatter (`olap/->iso-string` → `psc/instant->iso`),
+      ;; 9-digit formatter (`history/->iso-string` → `psc/instant->iso`),
       ;; same format `now-iso` produces for `operations.ts`, so the
       ;; cursor stays lexicographically comparable. NOT `Instant.toString`
       ;; (which would drop the fractional part on a whole second).
@@ -261,7 +261,7 @@
           "fixed-width 9-digit fractional seconds"))))
 
 (deftest apply-op-with-explicit-system-time-preserves-cursor-oltp-axis
-  ;; When guard-monotonic fires (clock skew / backfill), the OLAP-axis
+  ;; When guard-monotonic fires (clock skew / backfill), the history-axis
   ;; `:system-time` advances but the cursor's `:last-op-ts` MUST stay
   ;; on the OLTP axis (i.e. equal to the original `operations.ts`).
   ;; Otherwise `fetch-batch`'s `WHERE (o.ts, o.id) > cursor` clause
@@ -274,7 +274,7 @@
   ;; governs only the XTDB write axis.
   (let [op-id (str (UUID/randomUUID))
         oltp-ts-str "2026-05-28T08:00:00Z"
-        ;; Pretend the OLAP's previous latest-system-from was 12:00.
+        ;; Pretend the history's previous latest-system-from was 12:00.
         ;; In production apply-op-with-guard! computes the adjusted
         ;; Date via guard-monotonic; here we pass it directly.
         adjusted-system-time (java.util.Date/from
@@ -292,8 +292,8 @@
                              :document_id (str (UUID/randomUUID))
                              :value "v"})
                :seq 0}]]
-    (plaid.olap.replayer/apply-op! *olap-node* op-record rows adjusted-system-time)
-    (let [cursor (olap/cursor-read *olap-node*)]
+    (plaid.history.replayer/apply-op! *history-node* op-record rows adjusted-system-time)
+    (let [cursor (history/cursor-read *history-node*)]
       (is (= (canon-ts oltp-ts-str) (:last-op-ts cursor))
           "cursor's :last-op-ts equals the ORIGINAL OLTP op.ts (canonical form), NOT the adjusted system-time")
       (is (not= (.toString (.toInstant adjusted-system-time))
@@ -308,7 +308,7 @@
 ;; is the operator's only recourse when a malformed audit row halts the tailer.
 ;; A bad post_image (unparseable JSON) makes `replayer/parse-image` throw
 ;; `:replayer/malformed-row`, which the loop catches and records via
-;; `olap/set-stalled!`. The cursor doc's `:tailer-status` flips to `:stalled`
+;; `history/set-stalled!`. The cursor doc's `:tailer-status` flips to `:stalled`
 ;; with a populated `:stall-reason`. From there:
 ;;   - `resume!` clears the stall flag but does NOT advance the cursor — the
 ;;     loop will re-hit the same bad row and stall again.
@@ -330,7 +330,7 @@
   ;; Two-step verification of the stall path:
   ;;   1. `poll-once!` against a malformed audit row throws `:replayer/malformed-row`.
   ;;      In production the run-loop's outer try/catch catches and writes the stall.
-  ;;   2. The stall write (`olap/set-stalled!`) flips :tailer-status to :stalled
+  ;;   2. The stall write (`history/set-stalled!`) flips :tailer-status to :stalled
   ;;      and populates :stall-reason for operator diagnosis.
   (let [batch-size 50
         op-id (str (UUID/randomUUID))
@@ -338,9 +338,9 @@
     (insert-operation! plaid.fixtures/db op-id ts)
     (insert-malformed-audit-row! plaid.fixtures/db op-id ts 0)
     (testing "poll-once! propagates the malformed-row ex-info"
-      (with-redefs [olap/olap-config (constantly (cfg batch-size))]
+      (with-redefs [history/history-config (constantly (cfg batch-size))]
         (let [thrown (try
-                       (tailer/poll-once! plaid.fixtures/db *olap-node*)
+                       (tailer/poll-once! plaid.fixtures/db *history-node*)
                        nil
                        (catch clojure.lang.ExceptionInfo e e))]
           (is (some? thrown) "throws on malformed audit row")
@@ -348,13 +348,13 @@
               "exception type drives the run-loop's stall write"))))
     (testing "the loop's stall write surfaces the reason"
       ;; The run-loop's stall write happens in apply-batches-until-empty!'s
-      ;; catch — `olap/set-stalled!` records both the cursor's halt and
+      ;; catch — `history/set-stalled!` records both the cursor's halt and
       ;; the operator-facing reason. Simulate that write here.
-      (olap/set-stalled! *olap-node*
-                         {:op-id op-id
-                          :seq 0
-                          :reason "audit row missing post_image for non-delete change"})
-      (let [cursor (olap/cursor-read *olap-node*)]
+      (history/set-stalled! *history-node*
+                            {:op-id op-id
+                             :seq 0
+                             :reason "audit row missing post_image for non-delete change"})
+      (let [cursor (history/cursor-read *history-node*)]
         (is (= :stalled (:tailer-status cursor))
             "stall flag set on cursor")
         (is (string? (:stall-reason cursor))
@@ -368,21 +368,21 @@
   ;; Drive the private skip-row + set-running! helpers in isolation rather
   ;; than `resume!` itself — `resume!`'s 0-arg form derefs the
   ;; `plaid.server.sql/datasource` defstate, which isn't started in this
-  ;; unit-test fixture. The integration suite's `with-test-olap-node`
+  ;; unit-test fixture. The integration suite's `with-test-history-node`
   ;; covers the wired-up path; here we just need to verify the cursor
   ;; semantics: `set-running!` clears the stall WITHOUT advancing.
   (let [op-id (str (UUID/randomUUID))
         ts "2026-05-28T13:01:00Z"]
     (insert-operation! plaid.fixtures/db op-id ts)
     (insert-malformed-audit-row! plaid.fixtures/db op-id ts 0)
-    (olap/set-stalled! *olap-node*
-                       {:op-id op-id
-                        :seq 0
-                        :reason "audit row missing post_image for non-delete change"})
-    (let [pre-cursor (olap/cursor-read *olap-node*)]
+    (history/set-stalled! *history-node*
+                          {:op-id op-id
+                           :seq 0
+                           :reason "audit row missing post_image for non-delete change"})
+    (let [pre-cursor (history/cursor-read *history-node*)]
       (is (= :stalled (:tailer-status pre-cursor)))
-      (olap/set-running! *olap-node*)
-      (let [post-cursor (olap/cursor-read *olap-node*)]
+      (history/set-running! *history-node*)
+      (let [post-cursor (history/cursor-read *history-node*)]
         (is (= :running (:tailer-status post-cursor)) "stall flag cleared")
         (is (nil? (:stall-reason post-cursor)) "stall-reason cleared too")
         (is (= (:last-op-ts pre-cursor) (:last-op-ts post-cursor))
@@ -414,38 +414,38 @@
     (insert-malformed-audit-row! plaid.fixtures/db op2-id ts2 0)
     (insert-operation! plaid.fixtures/db op3-id ts3)
     (insert-audit-rows! plaid.fixtures/db op3-id ts3 1)
-    (with-redefs [olap/olap-config (constantly (cfg 50))]
+    (with-redefs [history/history-config (constantly (cfg 50))]
       ;; First poll: applies op1 and writes its cursor, then throws on op2.
-      (try (tailer/poll-once! plaid.fixtures/db *olap-node*)
+      (try (tailer/poll-once! plaid.fixtures/db *history-node*)
            (catch clojure.lang.ExceptionInfo _ nil))
       ;; Cursor at op1 after the first poll (op2's bad row caused the
       ;; throw before its cursor advance could happen). XTDB round-trips
       ;; the UUID-shape op-id, so coerce to str on the read side.
-      (let [cur-after-op1 (olap/cursor-read *olap-node*)]
+      (let [cur-after-op1 (history/cursor-read *history-node*)]
         (is (= op1-id (str (:last-op-id cur-after-op1)))
             "cursor sits at op1 after the throw"))
       ;; Run-loop would write the stall here — simulate.
-      (olap/set-stalled! *olap-node*
-                         {:op-id op2-id
-                          :seq 0
-                          :reason "audit row missing post_image for non-delete change"})
+      (history/set-stalled! *history-node*
+                            {:op-id op2-id
+                             :seq 0
+                             :reason "audit row missing post_image for non-delete change"})
       ;; Operator's :skip-current-row? path: skip past op2's bad row,
       ;; then clear the stall flag.
-      (skip-row! plaid.fixtures/db *olap-node*)
-      (olap/set-running! *olap-node*)
-      (let [cur-after-skip (olap/cursor-read *olap-node*)]
+      (skip-row! plaid.fixtures/db *history-node*)
+      (history/set-running! *history-node*)
+      (let [cur-after-skip (history/cursor-read *history-node*)]
         (is (= op2-id (str (:last-op-id cur-after-skip)))
             "skip lands the cursor on the bad row's op so the next batch query strictly skips past it"))
       ;; Next poll: op3 applies cleanly.
-      (let [{:keys [applied-ops]} (tailer/poll-once! plaid.fixtures/db *olap-node*)]
+      (let [{:keys [applied-ops]} (tailer/poll-once! plaid.fixtures/db *history-node*)]
         (is (= 1 applied-ops) "op3 applies after skip")
-        (let [cursor (olap/cursor-read *olap-node*)]
+        (let [cursor (history/cursor-read *history-node*)]
           (is (= :running (:tailer-status cursor)))
           (is (= op3-id (str (:last-op-id cursor)))
               "cursor advanced past op2 (skipped) to op3 (applied)"))))))
 
 ;; ============================================================
-;; olap-cursor accessor — direct shape coverage
+;; history-cursor accessor — direct shape coverage
 ;; ============================================================
 ;;
 ;; The integration test asserts the cursor's existence indirectly via the
@@ -453,7 +453,7 @@
 ;; the exposed keys without flipping a REST status — operator dashboards
 ;; consume this shape.
 
-(deftest olap-cursor-returns-canonical-running-shape
+(deftest history-cursor-returns-canonical-running-shape
   ;; The integration test surfaces this indirectly via 425 / /health; this
   ;; pins the exact key set so a refactor that drops a field surfaces here
   ;; rather than as a frontend complaint.
@@ -461,16 +461,16 @@
   ;; We apply the cursor directly via `cursor->tx-op` rather than driving
   ;; the full poll-once! pipeline. The poll path is exercised end-to-end
   ;; by the other tests in this ns; here the load-bearing question is
-  ;; "does `olap-cursor` expose the right keys with the right types?".
+  ;; "does `history-cursor` expose the right keys with the right types?".
   ;; The direct-write avoids any cross-test OLTP state leak.
   (let [op-id (UUID/randomUUID)
         ts "2026-05-29T01:00:00Z"]
-    (xt/submit-tx *olap-node*
-                  [(olap/cursor->tx-op {:last-op-ts ts
-                                        :last-op-id op-id
-                                        :last-seq 3
-                                        :tailer-status :running})])
-    (let [c (olap-doc/olap-cursor *olap-node*)]
+    (xt/submit-tx *history-node*
+                  [(history/cursor->tx-op {:last-op-ts ts
+                                           :last-op-id op-id
+                                           :last-seq 3
+                                           :tailer-status :running})])
+    (let [c (history-doc/history-cursor *history-node*)]
       (is (some? c) "cursor exposed via the accessor")
       (is (= ts (:ts c)) ":ts is the cursor's last-op-ts as ISO string")
       (is (= op-id (:op-id c))
@@ -479,29 +479,29 @@
       (is (= :running (:status c))
           ":status reflects tailer-status"))))
 
-(deftest olap-cursor-surfaces-stalled-status
-  ;; Pin the stalled-status branch of olap-cursor — a stalled tailer is
+(deftest history-cursor-surfaces-stalled-status
+  ;; Pin the stalled-status branch of history-cursor — a stalled tailer is
   ;; what /health and 425/503 responses surface to operators. The
-  ;; `:stall-reason` lives on the underlying cursor doc; `olap-cursor`
+  ;; `:stall-reason` lives on the underlying cursor doc; `history-cursor`
   ;; only exposes `:status` today, but the stalled state must be visible.
-  (olap/set-stalled! *olap-node*
-                     {:op-id (str (UUID/randomUUID))
-                      :seq 3
-                      :reason "test stall"})
-  (let [c (olap-doc/olap-cursor *olap-node*)]
+  (history/set-stalled! *history-node*
+                        {:op-id (str (UUID/randomUUID))
+                         :seq 3
+                         :reason "test stall"})
+  (let [c (history-doc/history-cursor *history-node*)]
     (is (= :stalled (:status c))
         "stalled status propagates through the public accessor"))
   ;; Underlying cursor still carries the diagnostic reason for /health
-  ;; reads (which consult olap/cursor-read directly).
-  (let [raw (olap/cursor-read *olap-node*)]
+  ;; reads (which consult history/cursor-read directly).
+  (let [raw (history/cursor-read *history-node*)]
     (is (re-find #"test stall" (:stall-reason raw))
         "stall-reason preserved on the raw cursor doc")))
 
-(deftest olap-cursor-returns-nil-on-fresh-node
-  ;; Cold-start case: no cursor has been written. `olap-cursor` returns
+(deftest history-cursor-returns-nil-on-fresh-node
+  ;; Cold-start case: no cursor has been written. `history-cursor` returns
   ;; nil rather than throwing — /health treats nil as "not ready" without
   ;; a 500.
-  (is (nil? (olap-doc/olap-cursor *olap-node*))
+  (is (nil? (history-doc/history-cursor *history-node*))
       "fresh node with no cursor returns nil"))
 
 ;; ============================================================
@@ -532,9 +532,9 @@
         ts "2026-05-28T15:00:00Z"]
     (insert-operation! plaid.fixtures/db op-id ts)
     (insert-audit-rows! plaid.fixtures/db op-id ts (inc batch-size))
-    (with-redefs [olap/olap-config (constantly (cfg batch-size))]
+    (with-redefs [history/history-config (constantly (cfg batch-size))]
       (let [{:keys [applied-ops rows-consumed]}
-            (tailer/poll-once! plaid.fixtures/db *olap-node*)]
+            (tailer/poll-once! plaid.fixtures/db *history-node*)]
         (is (= 1 applied-ops))
         (is (= (inc batch-size) rows-consumed)
             "the first grow multiplier comfortably fits a (batch-size + 1)-row op")))))
@@ -548,14 +548,14 @@
         ts "2026-05-28T15:01:00Z"]
     (insert-operation! plaid.fixtures/db op-id ts)
     (insert-audit-rows! plaid.fixtures/db op-id ts (+ batch-size 3))
-    (with-redefs [olap/olap-config (constantly (cfg batch-size))
+    (with-redefs [history/history-config (constantly (cfg batch-size))
                   ;; Force the grow loop to exit on the first iteration
                   ;; without finding a fitting multiplier — the cap-hit
                   ;; branch is structurally identical, just at a real
                   ;; multiplier of 1024 we can't afford to populate.
                   tailer/fetch-grow-multipliers []]
       (let [thrown (try
-                     (tailer/poll-once! plaid.fixtures/db *olap-node*)
+                     (tailer/poll-once! plaid.fixtures/db *history-node*)
                      nil
                      (catch clojure.lang.ExceptionInfo e e))]
         (is (some? thrown) "exhausted multipliers must throw, not return empty")
@@ -579,27 +579,27 @@
   ;; the timeout the catch block is broken — the run-loop swallowed
   ;; the throw without recording it.
   (let [ds plaid.fixtures/db
-        node *olap-node*
+        node *history-node*
         op-id (str (UUID/randomUUID))
         ts "2026-05-28T16:00:00Z"]
     (insert-operation! ds op-id ts)
     (insert-malformed-audit-row! ds op-id ts 0)
-    (with-redefs [olap/olap-config (constantly
-                                    {:enabled? true
-                                     :cold-replay-on-empty? true
-                                     :tailer {:batch-size 50
-                                              :poll-interval-ms 50}})]
-      (let [done (#'tailer/run-loop! ds node (olap/olap-config))]
+    (with-redefs [history/history-config (constantly
+                                          {:enabled? true
+                                           :cold-replay-on-empty? true
+                                           :tailer {:batch-size 50
+                                                    :poll-interval-ms 50}})]
+      (let [done (#'tailer/run-loop! ds node (history/history-config))]
         (try
           ;; Wake the loop immediately rather than waiting out the
           ;; heartbeat, then poll the cursor for the stall flag. The
           ;; loop runs poll-once! → catches → set-stalled! → exits
           ;; (running? false on next iteration).
-          (olap/nudge!)
+          (history/nudge!)
           (let [deadline (+ (System/currentTimeMillis) 5000)
                 stalled-cursor
                 (loop []
-                  (let [c (olap/cursor-read node)]
+                  (let [c (history/cursor-read node)]
                     (cond
                       (= :stalled (:tailer-status c)) c
                       (>= (System/currentTimeMillis) deadline) nil
@@ -640,7 +640,7 @@
 
 (deftest run-loop-does-not-stall-on-transient-sqlite-busy-and-recovers
   (let [ds plaid.fixtures/db
-        node *olap-node*
+        node *history-node*
         op-id (str (UUID/randomUUID))
         ts "2026-05-28T17:00:00Z"
         cfg {:enabled? true
@@ -649,7 +649,7 @@
     (insert-operation! ds op-id ts)
     (insert-audit-rows! ds op-id ts 1)
     (testing "every audit-log read throws SQLITE_BUSY -> loop retries, never stalls"
-      (with-redefs [olap/olap-config (constantly cfg)
+      (with-redefs [history/history-config (constantly cfg)
                     ;; Each read loses the lock race. The message shape
                     ;; mirrors the live stall_reason that org.sqlite emits.
                     tailer/fetch-batch
@@ -658,10 +658,10 @@
                               "[SQLITE_BUSY] The database file is locked (database is locked)")))]
         (let [done (#'tailer/run-loop! ds node cfg)]
           (try
-            (olap/nudge!)
+            (history/nudge!)
             ;; Several poll cycles' worth of transient failures.
             (Thread/sleep 400)
-            (let [c (olap/cursor-read node)]
+            (let [c (history/cursor-read node)]
               (is (not= :stalled (:tailer-status c))
                   "a transient SQLITE_BUSY on the read must NOT stall the tailer")
               (is (nil? (:stall-reason c))
@@ -675,11 +675,11 @@
                 done :done
                 (clojure.core.async/timeout 5000) :timeout))))))
     (testing "lock clears -> a normal poll applies the op; no manual resume! needed"
-      (with-redefs [olap/olap-config (constantly cfg)]
+      (with-redefs [history/history-config (constantly cfg)]
         (let [{:keys [applied-ops]} (tailer/poll-once! ds node)]
           (is (= 1 applied-ops)
               "the formerly-locked op applies once contention clears — self-healed")
-          (let [c (olap/cursor-read node)]
+          (let [c (history/cursor-read node)]
             (is (= op-id (str (:last-op-id c)))
                 "cursor advanced to the formerly-locked op")
             (is (not= :stalled (:tailer-status c))
@@ -693,7 +693,7 @@
   ;; persisting :stalled, or every restart comes up dead until a manual
   ;; resume!. (Regression for the live dev-restart stall.)
   (let [ds plaid.fixtures/db
-        node *olap-node*
+        node *history-node*
         op-id (str (UUID/randomUUID))
         ts "2026-05-28T18:00:00Z"
         cfg {:enabled? true
@@ -702,20 +702,20 @@
     (insert-operation! ds op-id ts)
     (insert-audit-rows! ds op-id ts 1)
     (testing "a 'datasource closed' read error exits cleanly, no persisted stall"
-      (with-redefs [olap/olap-config (constantly cfg)
+      (with-redefs [history/history-config (constantly cfg)
                     tailer/fetch-batch
                     (fn [& _]
                       (throw (java.sql.SQLException.
                               "HikariDataSource HikariDataSource (plaid-sqlite) has been closed.")))]
         (let [done (#'tailer/run-loop! ds node cfg)]
-          (olap/nudge!)
+          (history/nudge!)
           ;; The loop should hit the closed-datasource error and exit on
           ;; its own (no stop signal needed); wait for the done sentinel.
           (let [[v _] (clojure.core.async/alts!!
                        [done (clojure.core.async/timeout 5000)])]
             (is (= ::tailer/exited v)
                 "loop exits on its own after a shutdown-class read error"))
-          (let [c (olap/cursor-read node)]
+          (let [c (history/cursor-read node)]
             (is (not= :stalled (:tailer-status c))
                 "a datasource-closed error must NOT persist :stalled")
             (is (nil? (:stall-reason c))
@@ -724,11 +724,11 @@
           (when-let [s @@#'tailer/stop-chan]
             (clojure.core.async/close! s)))))
     (testing "next poll (datasource healthy again) applies the op — resumed, not stalled"
-      (with-redefs [olap/olap-config (constantly cfg)]
+      (with-redefs [history/history-config (constantly cfg)]
         (let [{:keys [applied-ops]} (tailer/poll-once! ds node)]
           (is (= 1 applied-ops)
               "the op the closed read skipped applies cleanly on the next start")
-          (is (= op-id (str (:last-op-id (olap/cursor-read node))))
+          (is (= op-id (str (:last-op-id (history/cursor-read node))))
               "cursor advanced — the closed-datasource error left it resumable"))))))
 
 (deftest clear-stale-stall-on-start-clears-flag-without-moving-cursor
@@ -738,7 +738,7 @@
   ;; RUNNING and retries. Critical safety property: it must NOT advance
   ;; the cursor (retry, not skip) — a real bad row must re-stall, never be
   ;; silently dropped.
-  (let [node *olap-node*
+  (let [node *history-node*
         clear! @#'tailer/clear-stale-stall-on-start!]
     (testing "a stalled node is cleared to running, cursor untouched"
       ;; Seed a cursor, then stall it with a reason + offending op-id/seq.
@@ -746,14 +746,14 @@
             ts "2026-05-28T19:00:00Z"]
         (insert-operation! plaid.fixtures/db op-id ts)
         (insert-audit-rows! plaid.fixtures/db op-id ts 1)
-        (with-redefs [olap/olap-config (constantly (cfg 50))]
+        (with-redefs [history/history-config (constantly (cfg 50))]
           (tailer/poll-once! plaid.fixtures/db node))    ; advance cursor to op-id
-        (let [pre (olap/cursor-read node)]
-          (olap/set-stalled! node {:op-id (str (UUID/randomUUID)) :seq 7
-                                   :reason "simulated prior stall"})
-          (is (= :stalled (:tailer-status (olap/cursor-read node))) "precondition: stalled")
+        (let [pre (history/cursor-read node)]
+          (history/set-stalled! node {:op-id (str (UUID/randomUUID)) :seq 7
+                                      :reason "simulated prior stall"})
+          (is (= :stalled (:tailer-status (history/cursor-read node))) "precondition: stalled")
           (clear! node)
-          (let [post (olap/cursor-read node)]
+          (let [post (history/cursor-read node)]
             (is (= :running (:tailer-status post)) "flag cleared to running")
             (is (nil? (:stall-reason post)) "stall-reason cleared")
             ;; cursor position is byte-for-byte what it was BEFORE the stall —
@@ -763,10 +763,10 @@
             (is (= (:last-op-ts pre) (:last-op-ts post)) "cursor ts unchanged")
             (is (= (:last-seq pre) (:last-seq post)) "cursor seq unchanged")))))
     (testing "a running node is left untouched (no-op)"
-      (olap/set-running! node)
-      (let [before (olap/cursor-read node)]
+      (history/set-running! node)
+      (let [before (history/cursor-read node)]
         (clear! node)
-        (is (= before (olap/cursor-read node)) "no change when already running")))))
+        (is (= before (history/cursor-read node)) "no change when already running")))))
 
 ;; ============================================================
 ;; BUG-RES regression: resume! must restart a dead loop
@@ -787,8 +787,8 @@
   ;; that the prior `done` promise-chan has the `::exited` sentinel
   ;; buffered; how the loop got there doesn't matter for this test.
   (let [ds plaid.fixtures/db
-        node *olap-node*
-        cfg (-> (olap/olap-config)
+        node *history-node*
+        cfg (-> (history/history-config)
                 ;; Tight heartbeat so the loop's first alts! returns
                 ;; quickly when we close stop.
                 (assoc-in [:tailer :poll-interval-ms] 50))
@@ -917,9 +917,9 @@
 (deftest check-max-disk-warn-fires-when-over-threshold-on-stride-tick
   ;; The check is gated on `disk-check-stride` (every Nth poll) — so we
   ;; advance the poll counter to land exactly on a stride boundary
-  ;; before calling. Stub `olap/disk-bytes` to a value over the
+  ;; before calling. Stub `history/disk-bytes` to a value over the
   ;; threshold so the warn-arm path executes deterministically without
-  ;; depending on any actual on-disk OLAP node.
+  ;; depending on any actual on-disk history node.
   (reset-warn-atoms!)
   (let [check! @#'tailer/check-max-disk-warn!
         stride @#'tailer/disk-check-stride
@@ -930,7 +930,7 @@
         cfg {:tailer {:max-disk-warn-mb 10}}
         before @@#'tailer/last-disk-warn-at]
     ;; 100MB > 10MB threshold → warn must fire on the stride tick.
-    (with-redefs [plaid.olap.core/disk-bytes (constantly (* 100 1024 1024))]
+    (with-redefs [plaid.history.core/disk-bytes (constantly (* 100 1024 1024))]
       (check! cfg))
     (is (> @@#'tailer/last-disk-warn-at before)
         "atom advanced — warn fired (over-threshold && stride boundary)")))
@@ -955,7 +955,7 @@
         cfg {:tailer {:max-disk-warn-mb 10}}
         before @@#'tailer/last-disk-warn-at]
     (reset! @#'tailer/poll-counter 0) ; next swap! lands at 1
-    (with-redefs [plaid.olap.core/disk-bytes (constantly (* 100 1024 1024))]
+    (with-redefs [plaid.history.core/disk-bytes (constantly (* 100 1024 1024))]
       (check! cfg))
     (is (= before @@#'tailer/last-disk-warn-at)
         "atom untouched — non-stride poll skips disk read entirely")))

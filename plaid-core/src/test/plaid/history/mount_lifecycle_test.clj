@@ -1,24 +1,24 @@
-(ns plaid.olap.mount-lifecycle-test
-  "Smoke test for the OLAP defstate chain — `plaid.olap.core/node` AND
-  `plaid.olap.tailer/tailer` must reach :start when mount runs with
-  `:plaid.olap/config :enabled? true`.
+(ns plaid.history.mount-lifecycle-test
+  "Smoke test for the history defstate chain — `plaid.history.core/node` AND
+  `plaid.history.tailer/tailer` must reach :start when mount runs with
+  `:plaid.history/config :enabled? true`.
 
   Why this test exists: the integration suite drives the tailer
   directly via `#'tailer/run-loop!` (so the per-test in-memory XTDB
   node gets its own go-loop), which bypasses mount's defstate
   registration entirely. A removal of the side-effect
-  `[plaid.olap.tailer]` require from the production startup graph
+  `[plaid.history.tailer]` require from the production startup graph
   would leave the integration tests green AND let the tailer defstate
-  never reach `:start` in production — the OLAP node would replicate
+  never reach `:start` in production — the history node would replicate
   exactly nothing, and every `?as-of=` GET would 425 forever with no
   test failure to surface it.
 
-  This test stands up mount with a temp on-disk OLAP store so the
+  This test stands up mount with a temp on-disk history store so the
   node defstate has somewhere to land, drives `(mount/start)`, and
   asserts both defstates registered. The temp dir is cleaned up on
   teardown so we don't leak files across CI runs.
 
-  NB: the test deliberately does NOT use the `with-test-olap-node`
+  NB: the test deliberately does NOT use the `with-test-history-node`
   fixture — that fixture exists exactly to bypass mount. The point
   here is to exercise the production lifecycle the rest of the suite
   intentionally avoids."
@@ -26,12 +26,12 @@
             [mount.core :as mount]
             ;; Side-effect require: brings the tailer defstate into the
             ;; mount registry. The whole point of this test is that
-            ;; removing this require silently breaks the OLAP. Resolving
+            ;; removing this require silently breaks the history. Resolving
             ;; via `requiring-resolve` after `(mount/start)` would NOT
             ;; catch the regression — mount only sees defstates whose
             ;; ns has been loaded by the time `start` runs.
-            [plaid.olap.core :as olap]
-            [plaid.olap.tailer :as tailer]
+            [plaid.history.core :as history]
+            [plaid.history.tailer :as tailer]
             [plaid.server.config :as scfg]
             [plaid.server.sql :as ssql])
   (:import (java.io File)
@@ -42,7 +42,7 @@
   responsible for `cleanup!`-ing."
   []
   (let [path (Files/createTempDirectory
-              "plaid-olap-mount-"
+              "plaid-history-mount-"
               (make-array java.nio.file.attribute.FileAttribute 0))]
     (.toAbsolutePath path)
     (str path)))
@@ -72,8 +72,8 @@
   (let [parent (.getParentFile (File. db-path))]
     (when (.exists parent) (.delete parent))))
 
-(deftest olap-mount-defstate-registered-when-ns-loaded
-  ;; The BUG-1 shape: `plaid.olap.tailer` is never required from the
+(deftest history-mount-defstate-registered-when-ns-loaded
+  ;; The BUG-1 shape: `plaid.history.tailer` is never required from the
   ;; production startup graph (`plaid.server.main` / `http_server`), so
   ;; mount doesn't know the `tailer` defstate exists and silently skips
   ;; it. This regression is invisible to the integration test suite,
@@ -88,48 +88,48 @@
   ;; is necessary AND verifying mount sees the var is sufficient.
   ;;
   ;; Registration alone catches the "require was dropped" regression
-  ;; cheaply; `olap-tailer-defstate-starts-and-runs-under-mount` below
+  ;; cheaply; `history-tailer-defstate-starts-and-runs-under-mount` below
   ;; exercises the actual :start lifecycle.
   (let [states (set (mount/find-all-states))]
-    (is (contains? states "#'plaid.olap.core/node")
-        "plaid.olap.core/node is registered with mount")
-    (is (contains? states "#'plaid.olap.tailer/tailer")
-        (str "plaid.olap.tailer/tailer is registered with mount — if this fails, "
-             "the side-effect require of [plaid.olap.tailer] is missing from "
+    (is (contains? states "#'plaid.history.core/node")
+        "plaid.history.core/node is registered with mount")
+    (is (contains? states "#'plaid.history.tailer/tailer")
+        (str "plaid.history.tailer/tailer is registered with mount — if this fails, "
+             "the side-effect require of [plaid.history.tailer] is missing from "
              "the production startup graph and the tailer never starts (BUG-1)"))))
 
-(deftest olap-tailer-defstate-starts-and-runs-under-mount
+(deftest history-tailer-defstate-starts-and-runs-under-mount
   ;; The full production lifecycle the integration suite bypasses: start
   ;; the REAL tailer defstate through mount and confirm its :start body
   ;; runs without throwing and the loop is alive.
   ;;
   ;; This is the regression guard for the `@datasource` bug: the tailer
-  ;; :start does `(run-loop! datasource olap/node cfg)`, where mount
+  ;; :start does `(run-loop! datasource history/node cfg)`, where mount
   ;; root-binds `datasource` to the raw HikariDataSource (NOT a
   ;; derefable). An earlier `@datasource` deref threw ClassCastException
   ;; here — invisible to the integration tests, which pass the datasource
   ;; explicitly to `#'run-loop!`. If anyone reintroduces the deref, this
   ;; test fails at mount/start.
-  (let [olap-dir (temp-dir)
+  (let [history-dir (temp-dir)
         log-dir (temp-dir)
         db-path (temp-db-path)
         cfg {:plaid.server.sql/config {:main-db-path db-path}
-             :plaid.olap/config {:enabled? true
-                                 :storage-path olap-dir
-                                 :log-path log-dir
+             :plaid.history/config {:enabled? true
+                                    :storage-path history-dir
+                                    :log-path log-dir
                                  ;; Long heartbeat so the loop parks on
                                  ;; the timeout rather than busy-polling
                                  ;; during the test window.
-                                 :tailer {:poll-interval-ms 60000
-                                          :batch-size 500}}}]
+                                    :tailer {:poll-interval-ms 60000
+                                             :batch-size 500}}}]
     (with-redefs [ssql/make-admin-user (fn [_ds] nil)]
       (try
         (mount/stop)
         (mount/start-with-states
          {#'scfg/config {:start (fn [] cfg) :stop (fn [] nil)}})
         ;; Start the real datasource, node, AND tailer defstates — no subs.
-        (mount/start #'ssql/datasource #'olap/node #'tailer/tailer)
-        (is (some? olap/node)
+        (mount/start #'ssql/datasource #'history/node #'tailer/tailer)
+        (is (some? history/node)
             "node defstate reached :start with :enabled? + on-disk paths")
         (is (some? tailer/tailer)
             "tailer defstate reached :start without throwing (datasource fix)")
@@ -140,6 +140,6 @@
               "tailer is caught up against the empty audit log"))
         (finally
           (mount/stop)
-          (delete-recursively! olap-dir)
+          (delete-recursively! history-dir)
           (delete-recursively! log-dir)
           (cleanup-db! db-path))))))

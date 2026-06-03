@@ -12,7 +12,7 @@
   transactions provide atomicity, and SQLite's single-writer model
   serializes concurrent batches naturally."
   (:require [clojure.string]
-            [plaid.olap.core :as olap]
+            [plaid.history.core :as history]
             [plaid.sql.common :as psc]
             [plaid.server.events :as events]
             [plaid.server.locks :as locks]
@@ -232,7 +232,7 @@
                   ;; lock — so it is strictly monotonic with COMMIT order.
                   ;; Stamping it before with-tx (as we used to) let a
                   ;; lower-ts op commit AFTER a higher-ts op under
-                  ;; concurrent writers; the OLAP tailer's
+                  ;; concurrent writers; the history tailer's
                   ;; `(ts,id) > cursor` keyset then skipped the lower-ts
                   ;; op forever (silent replica data loss).
                   (let [ts (psc/next-monotonic-ts! tx)
@@ -288,9 +288,9 @@
                           (bump-document-version! tx (:document op-attrs) ts))
                         result))))
           op-record @op-record*]
-      ;; Nudge the OLAP tailer ASAP after the OLTP tx commits. Goes
+      ;; Nudge the history tailer ASAP after the OLTP tx commits. Goes
       ;; BEFORE post-submit! so a slow event-bus publish or lock
-      ;; refresh can't delay the OLAP catching up. nudge! is a
+      ;; refresh can't delay the history catching up. nudge! is a
       ;; non-blocking put! on a dropping-buffer-1 channel — no
       ;; back-pressure risk if the tailer is busy.
       ;;
@@ -301,9 +301,9 @@
       ;; `enabled?` or a publish/lock-refresh inside post-submit! must
       ;; not turn a committed write into a 500 response.
       (try
-        (olap/nudge!)
+        (history/nudge!)
         (catch Throwable t
-          (log/warn t "OLAP nudge failed after successful commit:" (ex-message t))))
+          (log/warn t "history nudge failed after successful commit:" (ex-message t))))
       (try
         (post-submit! op-record (:user op-attrs))
         (catch Throwable t

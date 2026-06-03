@@ -5,12 +5,12 @@
             [plaid.server.config :refer [config]]
             [plaid.server.middleware :refer [middleware]]
             [plaid.server.events] ; Start the events system
-            ;; Side-effect require: registers the plaid.olap.tailer mount
-            ;; defstate. Without it, `mount/start` brings up plaid.olap.core/node
+            ;; Side-effect require: registers the plaid.history.tailer mount
+            ;; defstate. Without it, `mount/start` brings up plaid.history.core/node
             ;; (required transitively via middleware) but NEVER the tailer, so
-            ;; the OLAP node exists yet replicates nothing — every ?as-of= read
+            ;; the history node exists yet replicates nothing — every ?as-of= read
             ;; would 425 forever. (Re-added: a prior round lost this require.)
-            [plaid.olap.tailer]
+            [plaid.history.tailer]
             [taoensso.timbre :as log]))
 
 ;; https://github.com/ptaoussanis/sente/blob/master/src/taoensso/sente/server_adapters/jetty9.clj

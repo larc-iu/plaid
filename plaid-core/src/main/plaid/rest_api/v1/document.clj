@@ -3,21 +3,21 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.media :as media]
-            [plaid.olap.document :as olap-doc]
+            [plaid.history.document :as history-doc]
             [plaid.server.locks :as locks]
             [reitit.coercion.malli]
             [plaid.sql.document :as doc]))
 
-;; Defined below; forward-declared so the auth-path OLAP read in
+;; Defined below; forward-declared so the auth-path history read in
 ;; get-project-id can be timeout-bounded like the GET handler's read.
-(declare with-olap-timeout)
+(declare with-history-timeout)
 
 (defn get-project-id
   "Resolve the project id for permission checks.
 
   Order: explicit body `:project-id` wins (POST create); else look up
   the doc's project on the OLTP `:db`; else, for at-time GETs, fall
-  through to the OLAP replica at `:as-of-ts` so docs that were deleted
+  through to the history replica at `:as-of-ts` so docs that were deleted
   from OLTP but existed at `ts` still resolve their project (and the
   privilege check then runs against CURRENT ACL membership — historical
   ACL is out of scope per design).
@@ -32,9 +32,9 @@
       prj-id prj-id
       doc-id (or (-> (doc/get db doc-id) :document/project)
                  (when (and as-of-node as-of-ts)
-                   ;; OLAP fallthrough: doc was deleted from OLTP but
-                   ;; may have existed at ts. Let `:olap/not-caught-up`
-                   ;; / `:olap/stalled` ex-infos propagate — `wrap-route-as-of`
+                   ;; history fallthrough: doc was deleted from OLTP but
+                   ;; may have existed at ts. Let `:history/not-caught-up`
+                   ;; / `:history/stalled` ex-infos propagate — `wrap-route-as-of`
                    ;; (outer to this auth middleware) maps them to 425/503
                    ;; with proper context; swallowing them here would
                    ;; quietly degrade to a 403 the user can't diagnose.
@@ -43,21 +43,21 @@
                    ;; the GET handler below.
                    ;;
                    ;; Timeout-bounded: this runs in the auth middleware,
-                   ;; BEFORE the GET handler's own with-olap-timeout, so
+                   ;; BEFORE the GET handler's own with-history-timeout, so
                    ;; without this a hung XTDB query on the deleted-doc
                    ;; path would hold a request thread + connection
-                   ;; unbounded — the exact failure with-olap-timeout
+                   ;; unbounded — the exact failure with-history-timeout
                    ;; exists to prevent.
-                   (-> (with-olap-timeout
-                         #(olap-doc/get-at as-of-node doc-id as-of-ts))
+                   (-> (with-history-timeout
+                         #(history-doc/get-at as-of-node doc-id as-of-ts))
                        :document/project)))
       :else nil)))
 
 (defn get-document-id [{params :parameters}]
   (-> params :path :document-id))
 
-(def ^:private olap-read-timeout-ms
-  "Hard cap on a single OLAP at-time read. The OLAP deep read hits XTDB;
+(def ^:private history-read-timeout-ms
+  "Hard cap on a single history at-time read. The history deep read hits XTDB;
   a hung XTDB query would otherwise hold a request thread + an XTDB
   connection indefinitely. JDK 21 + http-kit virtual threads make thread
   starvation a non-acute risk, but bounding a stuck query cleanly is
@@ -66,31 +66,31 @@
   design; promote to config if operators ever need to tune it (#16)."
   30000)
 
-(defn- with-olap-timeout
-  "Run `thunk` (an OLAP read) on a future and deref with a bounded
-  timeout. On timeout, throw `{:type :olap/read-timeout}` which
-  `wrap-route-as-of` maps to 503 — same family as `:olap/stalled`.
+(defn- with-history-timeout
+  "Run `thunk` (an history read) on a future and deref with a bounded
+  timeout. On timeout, throw `{:type :history/read-timeout}` which
+  `wrap-route-as-of` maps to 503 — same family as `:history/stalled`.
 
   Any exception thrown inside `thunk` propagates with its ORIGINAL type
   preserved: `deref` on a future rethrows the worker's exception wrapped
   in a `j.u.c.ExecutionException`, which would defeat the middleware's
   `(instance? ExceptionInfo t)` type-routing and silently demote
-  `:olap/not-caught-up` / `:olap/stalled` to the generic 503. We unwrap
+  `:history/not-caught-up` / `:history/stalled` to the generic 503. We unwrap
   the cause and rethrow it so the typed ex-infos reach the middleware
   intact."
   [thunk]
   (let [fut (future (thunk))
         timeout-sentinel ::timeout
         result (try
-                 (deref fut olap-read-timeout-ms timeout-sentinel)
+                 (deref fut history-read-timeout-ms timeout-sentinel)
                  (catch java.util.concurrent.ExecutionException e
                    (throw (or (.getCause e) e))))]
     (if (= result timeout-sentinel)
       (do
         (future-cancel fut)
-        (throw (ex-info "olap read timed out"
-                        {:type :olap/read-timeout
-                         :timeout-ms olap-read-timeout-ms})))
+        (throw (ex-info "history read timed out"
+                        {:type :history/read-timeout
+                         :timeout-ms history-read-timeout-ms})))
       result)))
 
 (def document-routes
@@ -127,23 +127,23 @@
                               as-of-node :as-of-node
                               as-of-ts :as-of-ts}]
                           ;; `wrap-route-as-of` injects :as-of-node + :as-of-ts
-                          ;; when ?as-of= was supplied and the OLAP is enabled.
-                          ;; In that case dispatch to the OLAP read API; the
+                          ;; when ?as-of= was supplied and the history is enabled.
+                          ;; In that case dispatch to the history read API; the
                           ;; SQL deep-read shape is the contract on both sides.
                           ;; The version header is OLTP-only — at-time reads
                           ;; can't usefully advise OCC against the current row.
-                          ;; `:oltp-db db` to the OLAP reads so they
+                          ;; `:oltp-db db` to the history reads so they
                           ;; can suppress `:document/media-url` for docs
                           ;; deleted from OLTP — see
-                          ;; `olap-doc/attach-media-url` (option B).
+                          ;; `history-doc/attach-media-url` (option B).
                           (let [document (cond
                                            (and as-of-node include-body)
-                                           (with-olap-timeout
-                                             #(olap-doc/get-with-layer-data-at
+                                           (with-history-timeout
+                                             #(history-doc/get-with-layer-data-at
                                                as-of-node document-id as-of-ts {:oltp-db db}))
                                            as-of-node
-                                           (with-olap-timeout
-                                             #(olap-doc/get-at as-of-node document-id as-of-ts {:oltp-db db}))
+                                           (with-history-timeout
+                                             #(history-doc/get-at as-of-node document-id as-of-ts {:oltp-db db}))
                                            include-body
                                            (doc/get-with-layer-data db document-id)
                                            :else

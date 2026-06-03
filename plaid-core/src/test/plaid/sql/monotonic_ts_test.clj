@@ -1,9 +1,9 @@
 (ns plaid.sql.monotonic-ts-test
   "Unit coverage for `plaid.sql.common/next-monotonic-ts!`'s strict-monotonic
-  tie-break — the invariant the OLAP tailer's `(ts, id)` keyset depends on.
+  tie-break — the invariant the history tailer's `(ts, id)` keyset depends on.
 
   Why this exists: the integration-level test
-  `plaid.olap.full-coverage-test/operations-ts-strictly-monotonic-under-rapid-writes`
+  `plaid.history.full-coverage-test/operations-ts-strictly-monotonic-under-rapid-writes`
   drives writes through the REST stack, where every round-trip lets the wall
   clock advance — so it can only ever exercise the `(.isAfter now prev)` branch
   and NEVER the `(.plusNanos prev 1)` tie-break. Mutation testing confirmed a

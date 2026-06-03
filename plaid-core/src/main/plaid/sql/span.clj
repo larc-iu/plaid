@@ -379,9 +379,9 @@
                          {:document-ids doc-ids :code 400})))
        ;; Insert all span rows. We deliberately do NOT use
        ;; `psc/insert-many!` here: that helper emits a bare :insert audit
-       ;; row per span (no :tokens). Because the OLAP replayer treats an
+       ;; row per span (no :tokens). Because the history replayer treats an
        ;; :insert as a full put (replace), a bulk-created span that is
-       ;; never subsequently updated would land in the OLAP with NO
+       ;; never subsequently updated would land in the history with NO
        ;; tokens even though `span_tokens` has them. Instead we insert the
        ;; rows + join rows + metadata silently and then emit ONE synthetic
        ;; :insert per span whose post_image folds :tokens (and :metadata

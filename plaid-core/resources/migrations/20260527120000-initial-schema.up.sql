@@ -272,10 +272,10 @@ CREATE TABLE entity_metadata (
 -- post-image JSON so the log is self-contained enough for future replay.
 --
 -- Retention policy: KEEP FOREVER pre-ETL. These tables are the canonical
--- change-data-capture stream for the planned OLAP replica (see
+-- change-data-capture stream for the planned history replica (see
 -- docs/sql-port-review-2026-05-27.md §8 "Audit log retention policy").
 -- audit_writes grows monotonically; disk-space monitoring is operator
--- responsibility today. Do NOT add pruning rules until the OLAP replica
+-- responsibility today. Do NOT add pruning rules until the history replica
 -- is built and has consumed the audit log through a real sync mechanism.
 --;;
 CREATE TABLE operations (
