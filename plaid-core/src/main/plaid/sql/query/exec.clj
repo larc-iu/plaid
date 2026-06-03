@@ -124,7 +124,8 @@
                 (let [k [kind id]]
                   (if (contains? @cache k)
                     (@cache k)
-                    (let [e ((kind->get kind) db id)]
+                    ;; layer-kind vars have no entity reader (yet) — return the id
+                    (let [e (if-let [g (kind->get kind)] (g db id) {:id id})]
                       (swap! cache assoc k e)
                       e))))]
     (mapv (fn [row] (mapv fetch find-kinds row)) id-results)))

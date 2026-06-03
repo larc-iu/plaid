@@ -38,6 +38,17 @@
 (def ^:private layer-tbl
   {:span :span_layers :token :token_layers :relation :relation_layers})
 
+;; Layer variables: a var in an entity's :layer position is a node of a LAYER
+;; kind, joined to the entity's `*_layer_id`. (Same-layer joins + projection.)
+(def ^:private layer-entity-table
+  {:span-layer :span_layers :token-layer :token_layers
+   :relation-layer :relation_layers :vocab-layer :vocab_layers})
+
+(def ^:private layer-alias-prefix
+  {:span-layer "slv" :token-layer "tlv" :relation-layer "rlv" :vocab-layer "vlv"})
+
+(defn- layer-kind? [k] (contains? layer-entity-table k))
+
 (defn- err-500! [msg data]
   (throw (ex-info msg (merge {:code 500 :query-error/stage :compile} data))))
 
@@ -101,55 +112,80 @@
     [:in col (mapv enc v)]
     [:= col (enc v)]))
 
+(defn- ensure-layer-var!
+  "Allocate a layer-table alias for a LAYER variable `v` of `kind` and emit its
+  scope predicate (project_id IN scope; vocab layers are global -> via
+  project_vocabs grants). The entity that names this layer joins to its `:id`."
+  [st v kind]
+  (let [a (next-alias! st (layer-alias-prefix kind))]
+    (swap! st assoc-in [:var->alias v] a)
+    (add-from! st [(layer-entity-table kind) a])
+    (if (= kind :vocab-layer)
+      (let [pv (next-alias! st "pv")]
+        (add-from! st [:project_vocabs pv])
+        (add-where! st [:= (col a :id) (col pv :vocab_layer_id)])
+        (add-where! st [:in (col pv :project_id) (:scope @st)]))
+      (add-where! st [:in (col a :project_id) (:scope @st)]))
+    (swap! st update :scoped conj v)))
+
 (defn- ensure-var!
   "Allocate (once) a table alias for var v, emit its base table, scope predicate,
   and the value/doc/begin/end filters from ALL its entity constraint maps (ANDed).
-  `constraints` maps var -> vector of constraint maps. Idempotent."
+  `constraints` maps var -> vector of constraint maps. Idempotent. A LAYER var is
+  handled by `ensure-layer-var!`; an entity var whose `:layer` is itself a var is
+  scoped by joining to that (scoped) layer node — the named version of the
+  defense-in-depth join."
   [st v constraints]
   (let [kind (get-in @st [:kinds v])]
     (when (nil? kind)
       (err-500! (str "No inferred kind for var " v) {:var v}))
     (when-not (get-in @st [:var->alias v])
-      (let [a (next-alias! st (alias-prefix kind))]
-        (swap! st assoc-in [:var->alias v] a)
-        (add-from! st [(entity-table kind) a])
-        ;; --- scope predicate (THE ACL invariant) ---
-        (let [cmaps (get constraints v)                 ; vector of constraint maps (may be nil)
-              layer-id-sets (keep ::qr/layer-ids cmaps)] ; one per layer-named clause
-          (cond
-            ;; a layer-named clause already pins scope; AND one IN per such clause
-            (seq layer-id-sets)
-            (doseq [ids layer-id-sets]
-              (add-where! st [:in (col a (layer-fk kind)) (vec ids)]))
-            ;; vocab layers are global — scope via project_vocabs grants
-            (= kind :vocab)
-            (let [pv (next-alias! st "pv")]
-              (add-from! st [:project_vocabs pv])
-              (add-where! st [:= (col a :vocab_layer_id) (col pv :vocab_layer_id)])
-              (add-where! st [:in (col pv :project_id) (:scope @st)]))
-            ;; defense-in-depth: join the var's layer table, filter project_id IN scope
-            :else
-            (let [lt-table (or (layer-tbl kind)
-                               (err-500! (str "No layer table registered for kind " kind
-                                              " — keep entity-table/alias-prefix/layer-fk/layer-tbl in sync")
-                                         {:kind kind}))
-                  lt (next-alias! st "lt")]
-              (add-from! st [lt-table lt])
-              (add-where! st [:= (col a (layer-fk kind)) (col lt :id)])
-              (add-where! st [:in (col lt :project_id) (:scope @st)])))
-          (swap! st update :scoped conj v)
-          ;; --- non-scope filters, ANDed across every clause on this var ---
-          (doseq [cs cmaps]
-            (when (contains? cs :value)
-              (add-where! st (atomic-pred (col a :value) (:value cs) psc/write-json)))
-            (when (contains? cs :form)          ; vocab_items.form — plain TEXT, not JSON
-              (add-where! st (atomic-pred (col a :form) (:form cs) identity)))
-            (when (contains? cs :doc)
-              (add-where! st (atomic-pred (col a :document_id) (:doc cs) str)))
-            (when (contains? cs :begin)
-              (add-where! st (atomic-pred (col a :begin) (:begin cs) identity)))
-            (when (contains? cs :end)
-              (add-where! st (atomic-pred (col a :end_) (:end cs) identity)))))))
+      (if (layer-kind? kind)
+        (ensure-layer-var! st v kind)
+        (let [a (next-alias! st (alias-prefix kind))]
+          (swap! st assoc-in [:var->alias v] a)
+          (add-from! st [(entity-table kind) a])
+          ;; --- scope predicate (THE ACL invariant) ---
+          (let [cmaps (get constraints v)                 ; vector of constraint maps (may be nil)
+                layer-id-sets (keep ::qr/layer-ids cmaps)  ; one per layer-named clause
+                layer-var (some #(let [l (:layer %)] (when (symbol? l) l)) cmaps)]
+            (cond
+              ;; :layer is a VARIABLE -> join to the (scoped) layer node it names
+              layer-var
+              (add-where! st [:= (col a (layer-fk kind)) (col (ensure-var! st layer-var constraints) :id)])
+              ;; a layer-named clause already pins scope; AND one IN per such clause
+              (seq layer-id-sets)
+              (doseq [ids layer-id-sets]
+                (add-where! st [:in (col a (layer-fk kind)) (vec ids)]))
+              ;; vocab layers are global — scope via project_vocabs grants
+              (= kind :vocab)
+              (let [pv (next-alias! st "pv")]
+                (add-from! st [:project_vocabs pv])
+                (add-where! st [:= (col a :vocab_layer_id) (col pv :vocab_layer_id)])
+                (add-where! st [:in (col pv :project_id) (:scope @st)]))
+              ;; defense-in-depth: join the var's layer table, filter project_id IN scope
+              :else
+              (let [lt-table (or (layer-tbl kind)
+                                 (err-500! (str "No layer table registered for kind " kind
+                                                " — keep entity-table/alias-prefix/layer-fk/layer-tbl in sync")
+                                           {:kind kind}))
+                    lt (next-alias! st "lt")]
+                (add-from! st [lt-table lt])
+                (add-where! st [:= (col a (layer-fk kind)) (col lt :id)])
+                (add-where! st [:in (col lt :project_id) (:scope @st)])))
+            (swap! st update :scoped conj v)
+            ;; --- non-scope filters, ANDed across every clause on this var ---
+            (doseq [cs cmaps]
+              (when (contains? cs :value)
+                (add-where! st (atomic-pred (col a :value) (:value cs) psc/write-json)))
+              (when (contains? cs :form)          ; vocab_items.form — plain TEXT, not JSON
+                (add-where! st (atomic-pred (col a :form) (:form cs) identity)))
+              (when (contains? cs :doc)
+                (add-where! st (atomic-pred (col a :document_id) (:doc cs) str)))
+              (when (contains? cs :begin)
+                (add-where! st (atomic-pred (col a :begin) (:begin cs) identity)))
+              (when (contains? cs :end)
+                (add-where! st (atomic-pred (col a :end_) (:end cs) identity))))))))
     (get-in @st [:var->alias v])))
 
 ;; ---------------------------------------------------------------------------
@@ -311,10 +347,11 @@
         find-vars))
 
 (defn- assert-acl-invariant! [st]
-  (let [entity-vars (->> (:kinds @st) (filter (fn [[_ k]] (contains? entity-table k))) (map key) set)
+  (let [scoped-kind? #(or (contains? entity-table %) (layer-kind? %))
+        entity-vars (->> (:kinds @st) (filter (fn [[_ k]] (scoped-kind? k))) (map key) set)
         unscoped (set/difference entity-vars (:scoped @st))]
     (when (seq unscoped)
-      (err-500! (str "ACL invariant violated: entity vars without a scope predicate: " (vec unscoped))
+      (err-500! (str "ACL invariant violated: entity/layer vars without a scope predicate: " (vec unscoped))
                 {:vars (vec unscoped)}))))
 
 (defn compile-query

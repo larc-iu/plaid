@@ -102,17 +102,18 @@
     :else (err! :parse (str "Expected a keyword or string, got: " (pr-str x)))))
 
 (defn- normalize-constraints
-  "Constraint map: keyword-ize keys, and var-ize ONLY the keys whose values are
-  query variables — `:source`/`:target` (inline relation endpoints). Every other
-  value (`:value` `:form` `:layer` `:doc` `:begin` `:end`) is a literal and is
-  left untouched, so a value that merely looks like a var (a gloss `\"?\"`, a
-  literal string `\"?x\"`) is never silently coerced into a symbol."
+  "Constraint map: keyword-ize keys, and var-ize the keys whose values may be a
+  query variable — `:source`/`:target` (inline relation endpoints) and `:layer`
+  (a layer variable). `->var` only coerces strings that actually look like vars
+  (`\"?x\"`), so a literal layer ref (`\"pos\"`) or a literal gloss (`\"?\"`)
+  stays a string. Every other value (`:value` `:form` `:doc` `:begin` `:end`) is
+  left untouched."
   [m]
   (when-not (map? m)
     (err! :parse (str "Clause constraint must be a map, got: " (pr-str m))))
   (reduce-kv (fn [acc k v]
                (let [k (->kw k)]
-                 (assoc acc k (if (#{:source :target} k) (->var v) v))))
+                 (assoc acc k (if (#{:source :target :layer} k) (->var v) v))))
              {} m))
 
 ;; --- :seq sugar (CQP-style token sequences) --------------------------------
@@ -218,6 +219,12 @@
             {:var v}))
     (assoc kinds v k)))
 
+;; A var in an entity's :layer position is a LAYER variable, of the matching
+;; layer kind. Naming the layer lets two entities share it (a same-layer join)
+;; and lets it be returned/constrained.
+(def ^:private entity->layer-kind
+  {:span :span-layer :token :token-layer :relation :relation-layer :vocab :vocab-layer})
+
 (defn- clause-kinds
   "The (var -> kind) bindings a single clause asserts."
   [kinds clause]
@@ -225,7 +232,11 @@
     (cond
       (contains? entity-clauses head)
       (let [[v cmap] args
-            kinds (assoc-kind kinds v head)]
+            kinds (assoc-kind kinds v head)
+            ;; a var in :layer position binds a layer var of the matching kind
+            kinds (if (var? (:layer cmap))
+                    (assoc-kind kinds (:layer cmap) (entity->layer-kind head))
+                    kinds)]
         ;; :relation's :source/:target inline vars are spans
         (reduce (fn [kk rk]
                   (if-let [sv (get cmap rk)]
@@ -248,14 +259,15 @@
 
 (defn clause-vars
   "The vars a single positive (entity/relationship) clause mentions — its bound
-  var(s), plus inline :source/:target. (Not :not, which is filtered upstream.)"
+  var(s), plus inline :source/:target and a :layer variable. (Not :not, which is
+  filtered upstream.)"
   [clause]
   (let [[head & args] clause]
     (cond
       (contains? entity-clauses head)
       (let [[v cmap] args]
         (into (if (var? v) [v] [])
-              (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target])))
+              (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target :layer])))
       (contains? rel-clauses head) (filterv var? args)
       :else [])))
 

@@ -149,7 +149,10 @@
             (cond
               ;; recurse into a :not's inner clauses so their layer refs resolve
               (= head :not) (into [:not] (map resolve-clause (rest clause)))
-              (and (layer-named? head) (map? cmap) (contains? cmap :layer))
+              ;; a :layer that is a VARIABLE is a layer node (compiled as a join),
+              ;; not a reference to resolve — leave it for the compiler
+              (and (layer-named? head) (map? cmap) (contains? cmap :layer)
+                   (not (symbol? (:layer cmap))))
               (let [ids (resolve-ref (get-index head) head (:layer cmap))]
                 [head v (assoc cmap ::layer-ids (vec ids))])
               :else clause)))]
