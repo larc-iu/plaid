@@ -311,6 +311,40 @@ layers on purpose isn't a scalar reference — it'll be expressed with a layer
 > of whatever it loaded; feed those in — they're unambiguous by construction.
 > Names/aliases are best for human exploration.
 
+### 6.5 Layer variables
+
+Instead of a layer *reference*, the `layer` slot can hold a **variable**
+(`"?sl"`). A layer variable binds the entity's layer as a first-class node, which
+lets you do two things references can't:
+
+**Same-layer join** — two entities sharing a layer variable are forced onto the
+*same* (otherwise unspecified) layer:
+
+```jsonc
+// a NOUN and a VERB span that live on the SAME layer (whichever it is)
+["span", "?a", {"layer": "?sl", "value": "NOUN"}],
+["span", "?b", {"layer": "?sl", "value": "VERB"}]
+```
+
+**Project the layer** — put a layer variable in `find` to get the layer id back.
+
+**Intentional multi-layer match** — a layer variable can be constrained by a
+`*-layer` clause, and because layer *names* aren't unique, this is the sanctioned
+way to match the same layer across many projects (the thing a scalar reference
+refuses with an "ambiguous" 400):
+
+```jsonc
+// every NOUN span on a layer named "pos", in ALL readable projects
+["span", "?s", {"layer": "?sl", "value": "NOUN"}],
+["span-layer", "?sl", {"name": "pos"}]
+```
+
+The layer-constraint clause matches the entity's kind: `span-layer`,
+`token-layer`, `relation-layer`, `vocab-layer`. It currently constrains by
+`name`; an unconstrained layer variable ranges over every layer of its kind in
+scope. (A layer variable used for two different kinds — e.g. a span's layer and a
+token's layer — is a 400 kind conflict.)
+
 ---
 
 ## 7. Putting it together — worked examples
@@ -534,6 +568,10 @@ clauses). Matches if any group matches; results are UNIONed.
 **Negation** — `["not", clause, …]`. Matches when the conjunction of the clauses
 has no match (`NOT EXISTS`). Vars bound outside correlate; inner-only vars are
 existential (and can't be in `find`).
+
+**Layer variable** — a var in the `layer` slot (`{"layer": "?sl"}`); bind/share a
+layer (same-layer join, projection). Constrain it with `["span-layer", "?sl",
+{"name": …}]` (or `token-layer`/`relation-layer`/`vocab-layer`).
 
 **Top level** — `{find, where, scope?, limit?, return?}`.
 

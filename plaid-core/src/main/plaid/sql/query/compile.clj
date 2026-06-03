@@ -95,6 +95,7 @@
                (let [[head v cmap] clause]
                  (cond
                    (contains? entity-table head) (update acc v (fnil conj []) (or cmap {}))
+                   (contains? layer-entity-table head) (update acc v (fnil conj []) (or cmap {}))
                    (= head :not) (collect acc (rest clause))
                    :else acc)))
              acc clauses))]
@@ -113,10 +114,13 @@
     [:= col (enc v)]))
 
 (defn- ensure-layer-var!
-  "Allocate a layer-table alias for a LAYER variable `v` of `kind` and emit its
-  scope predicate (project_id IN scope; vocab layers are global -> via
-  project_vocabs grants). The entity that names this layer joins to its `:id`."
-  [st v kind]
+  "Allocate a layer-table alias for a LAYER variable `v` of `kind`, emit its scope
+  predicate (project_id IN scope; vocab layers are global -> via project_vocabs
+  grants), and any `:name` filters from `[:span-layer ?v {:name …}]` clauses. The
+  entity that names this layer joins to its `:id`. Because a layer name is not
+  unique across projects, an unconstrained-by-id layer var ranges over EVERY
+  matching layer in scope — the sanctioned intentional multi-layer match."
+  [st v kind constraints]
   (let [a (next-alias! st (layer-alias-prefix kind))]
     (swap! st assoc-in [:var->alias v] a)
     (add-from! st [(layer-entity-table kind) a])
@@ -126,7 +130,10 @@
         (add-where! st [:= (col a :id) (col pv :vocab_layer_id)])
         (add-where! st [:in (col pv :project_id) (:scope @st)]))
       (add-where! st [:in (col a :project_id) (:scope @st)]))
-    (swap! st update :scoped conj v)))
+    (swap! st update :scoped conj v)
+    (doseq [cs (get constraints v)]
+      (when (contains? cs :name)
+        (add-where! st (atomic-pred (col a :name) (:name cs) identity))))))
 
 (defn- ensure-var!
   "Allocate (once) a table alias for var v, emit its base table, scope predicate,
@@ -141,7 +148,7 @@
       (err-500! (str "No inferred kind for var " v) {:var v}))
     (when-not (get-in @st [:var->alias v])
       (if (layer-kind? kind)
-        (ensure-layer-var! st v kind)
+        (ensure-layer-var! st v kind constraints)
         (let [a (next-alias! st (alias-prefix kind))]
           (swap! st assoc-in [:var->alias v] a)
           (add-from! st [(entity-table kind) a])
@@ -372,6 +379,8 @@
     (doseq [clause (:where resolved)]
       (cond
         (= :not (first clause)) (compile-not! st constraints clause)
+        ;; layer-constraint clauses are fully handled by ensure-layer-var! in Pass B
+        (contains? layer-entity-table (first clause)) nil
         (contains? entity-table (first clause)) (compile-relation-inline! st constraints clause)
         :else (compile-rel! st constraints clause)))
     (assert-acl-invariant! st)

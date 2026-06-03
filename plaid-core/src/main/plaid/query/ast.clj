@@ -60,6 +60,14 @@
 ;; layer vars) or :source/:target (vars).
 (def ^:private alternation-keys #{:value :form :doc :begin :end})
 
+;; Layer-constraint clauses: [:span-layer ?sl {constraint-map}]. The head IS the
+;; layer kind; binds/constrains a LAYER variable. Value = allowed constraint keys.
+(def ^:private layer-clauses
+  {:span-layer     #{:name}
+   :token-layer    #{:name}
+   :relation-layer #{:name}
+   :vocab-layer    #{:name}})
+
 ;; Relationship clauses and their arity (number of var args after the head).
 (def ^:private rel-clauses
   {:covers     2     ; [:covers ?span ?token]
@@ -252,6 +260,8 @@
       (= head :source)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :target)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :vocab-link) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :vocab))
+      ;; a layer-constraint clause binds its var to the head's layer kind
+      (contains? layer-clauses head) (assoc-kind kinds (first args) head)
       ;; :not contributes its inner clauses' kinds (so inner-only vars get a kind
       ;; for compilation, and an inner use conflicting with an outer use errors)
       (= head :not)        (reduce clause-kinds kinds args)
@@ -269,6 +279,7 @@
         (into (if (var? v) [v] [])
               (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target :layer])))
       (contains? rel-clauses head) (filterv var? args)
+      (contains? layer-clauses head) (if (var? (first args)) [(first args)] [])
       :else [])))
 
 (defn positive-binding-vars
@@ -350,6 +361,18 @@
           (err! :validate (str "Clause :" (name head) " takes " arity " vars, got " (count args))))
         (when-not (every? var? args)
           (err! :validate (str "Clause :" (name head) " arguments must all be vars, got: " (pr-str (vec args))))))
+
+      (contains? layer-clauses head)
+      (let [[v cmap] args]
+        (when-not (var? v)
+          (err! :validate (str "Layer clause :" (name head) " needs a layer var as its first argument, got: " (pr-str v))))
+        (when (and (some? cmap) (not (map? cmap)))
+          (err! :validate (str "Layer clause :" (name head) " constraints must be a map, got: " (pr-str cmap))))
+        (let [allowed (layer-clauses head)
+              unknown (remove allowed (keys (or cmap {})))]
+          (when (seq unknown)
+            (err! :validate (str "Unknown constraint key(s) " (vec unknown) " on :" (name head)
+                                 " (allowed: " (vec (sort allowed)) ")")))))
 
       (= head :not)
       (do

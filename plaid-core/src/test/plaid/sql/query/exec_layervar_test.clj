@@ -59,6 +59,33 @@
         (is (= ["sl"] (:columns r)))
         (is (= [[(str pos)]] (tuples r)))))))
 
+(defn- build-named!
+  "Project `pname` with a 'pos' span layer carrying one NOUN span. Returns the
+  NOUN span id."
+  [pname]
+  (let [pid  (h/create-test-project admin-request pname)
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        pos  (id (h/create-span-layer admin-request tokl "pos"))
+        doc  (h/create-test-document admin-request pid "d1")
+        text (id (h/create-text admin-request txtl doc "aa"))
+        t0 (id (h/create-token admin-request tokl text 0 2))]
+    (id (h/create-span admin-request pos [t0] "NOUN"))))
+
+(deftest layer-var-by-name-is-the-multi-match-escape
+  (let [n1 (build-named! "MA1")
+        n2 (build-named! "MA2")]
+    (testing "[:span-layer ?sl {:name \"pos\"}] matches NOUN on the 'pos' layer of BOTH projects"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?s"]
+                       "where" [["span" "?s" {"layer" "?sl" "value" "NOUN"}]
+                                ["span-layer" "?sl" {"name" "pos"}]]})]
+        (is (= #{(str n1) (str n2)} (set (map first (tuples r)))))))
+    (testing "a bare scalar name 'pos' is ambiguous (400); the layer var is the sanctioned way to match both"
+      (is (= 400 (try (qe/run db "admin@example.com"
+                              {"find" ["?s"] "where" [["span" "?s" {"layer" "pos" "value" "NOUN"}]]})
+                      (catch clojure.lang.ExceptionInfo e (:code (ex-data e)))))))))
+
 (deftest layer-var-kind-conflict
   (build!)
   (testing "a layer var used as both a span-layer and a token-layer is a 400 kind conflict"
