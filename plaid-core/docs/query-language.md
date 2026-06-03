@@ -60,8 +60,37 @@ A query is a JSON object (a Python `dict` / a JS object):
 | `where` | yes | Non-empty list of clauses (the pattern). |
 | `scope` | no | Restrict to specific projects. Default: every project you can read. |
 | `limit` | no | Max rows. Default 100, hard cap 1000 (see §10). |
+| `order-by` | no | Sort the results (see §2.5). Without it, row order is unspecified. |
 | `return` | no | `"ids"` (default), `"entities"`, or `"count"` (see §9). |
 | `strict-layers` | no | If `true`, scalar layer references must be ids (reject names/paths/aliases — §6). |
+
+### 2.5 Ordering — `order-by`
+
+Without `order-by` the rows come back in whatever order the database finds them —
+fine for a `count`, useless for a concordance. `order-by` is a list of
+`[variable, attribute]` (or `[variable, attribute, "desc"]`) entries, applied
+left to right:
+
+```python
+# NOUNs, sorted by document then by position in the text
+client.query({
+    "find": ["?t"],
+    "where": [["token", "?t", {"layer": "Words"}],
+              ["span",  "?s", {"layer": "POS", "value": "NOUN"}],
+              ["covers", "?s", "?t"]],
+    "order-by": [["?t", "doc"], ["?t", "begin"]],
+})
+```
+
+- The variable **must be one you `find`** — you can only sort by something you
+  return.
+- The attribute depends on the variable's kind: tokens take
+  `begin` / `end` / `precedence` / `doc` / `id`; spans and relations take
+  `value` / `doc` / `id`; vocab items take `form` / `id`.
+- Direction is `"asc"` (default) or `"desc"`. Missing values (e.g. a null
+  `precedence`) always sort last, either direction.
+- Ordering is applied across the whole result, including queries that use `:or`
+  or `:seq` (which run as a union internally).
 
 ### Variables
 

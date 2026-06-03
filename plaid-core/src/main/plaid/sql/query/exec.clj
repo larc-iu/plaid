@@ -95,11 +95,16 @@
   (min (or user-limit default-limit) hard-cap))
 
 (defn- assemble
-  "Row-returning HoneySQL for the compiled branches under `limit`."
-  [hqs limit]
-  (if (= 1 (count hqs))
-    (assoc (first hqs) :limit limit)
-    {:select [:*] :from [[{:union hqs} :_q]] :limit limit}))
+  "Row-returning HoneySQL for the compiled branches under `limit`, with an
+  optional ORDER BY applied OUTSIDE any UNION (the sort columns are projected
+  into each branch as `__ord_N`, so a single ORDER BY at the top sorts the whole
+  compound)."
+  [hqs limit order]
+  (let [base (if (= 1 (count hqs))
+               (first hqs)
+               {:select [:*] :from [[{:union hqs} :_q]]})]
+    (cond-> (assoc base :limit limit)
+      (seq order) (assoc :order-by order))))
 
 (defn- count-query
   "COUNT(*) over the (distinct) union of branches, capped: the inner subquery is
@@ -152,8 +157,9 @@
          :count (min n count-cap)
          :truncated (> n count-cap)})
       (let [lim (effective-limit (:limit head))
+            order (qc/order-directive (first hqs))
             ;; fetch one extra row to detect truncation, then trim
-            rows (run-bounded db (fn [conn] (psc/q conn (assemble hqs (inc lim)))))
+            rows (run-bounded db (fn [conn] (psc/q conn (assemble hqs (inc lim) order))))
             truncated? (> (count rows) lim)
             rows (vec (take lim rows))
             id-results (mapv (fn [row] (mapv #(get row %) col-kws)) rows)

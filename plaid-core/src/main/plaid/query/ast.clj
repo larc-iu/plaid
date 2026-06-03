@@ -87,6 +87,15 @@
 (def ^:private deferred-clauses
   #{})
 
+;; Attributes a :find var of each kind may be ORDER BY'd on. Backend-agnostic
+;; domain set; the compiler maps each to a column. Only :find vars are orderable
+;; (they are bound in every UNION branch, so the sort column is always present).
+(def ^:private order-attrs
+  {:span     #{:value :doc :id}
+   :token    #{:begin :end :precedence :doc :id}
+   :relation #{:value :doc :id}
+   :vocab    #{:form :id}})
+
 ;; ---------------------------------------------------------------------------
 ;; Errors
 ;; ---------------------------------------------------------------------------
@@ -194,6 +203,14 @@
                   (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
                   (rest clause)))))
 
+(defn- normalize-order-spec
+  "Canonicalize one :order-by entry to `[?var :attr :dir]` (dir defaults :asc)."
+  [spec]
+  (when-not (and (sequential? spec) (<= 2 (count spec) 3))
+    (err! :parse (str "Each :order-by entry must be [var attr] or [var attr dir], got: " (pr-str spec))))
+  (let [[v attr dir] spec]
+    [(->var v) (->kw attr) (if (nil? dir) :asc (->kw dir))]))
+
 (defn parse
   "Normalize a raw request map (string- or keyword-keyed; JSON or EDN dialect)
   into the canonical EDN AST. Pure; does not validate semantics beyond the
@@ -208,6 +225,10 @@
       (contains? m :scope)  (assoc :scope (let [s (reduce-kv (fn [a k v] (assoc a (->kw k) v)) {} (:scope m))]
                                             s))
       (contains? m :limit)  (assoc :limit (:limit m))
+      (contains? m :order-by) (assoc :order-by (let [ob (:order-by m)]
+                                                 (when-not (sequential? ob)
+                                                   (err! :parse (str ":order-by must be a list of [var attr dir] entries, got: " (pr-str ob))))
+                                                 (mapv normalize-order-spec ob)))
       (contains? m :return) (assoc :return (->kw (:return m)))
       (contains? m :strict-layers) (assoc :strict-layers (:strict-layers m))
       (contains? m :as-of)  (assoc :as-of (:as-of m)))))     ; carried so validate can reject it
@@ -325,6 +346,15 @@
   (when (contains? ast :strict-layers)
     (when-not (boolean? (:strict-layers ast))
       (err! :validate (str ":strict-layers must be true or false, got: " (pr-str (:strict-layers ast))))))
+  (when-let [ob (:order-by ast)]
+    (let [find-set (set (:find ast))]
+      (doseq [[v attr dir] ob]
+        (when-not (var? v)
+          (err! :validate (str ":order-by var must be a var, got: " (pr-str v))))
+        (when-not (find-set v)
+          (err! :validate (str ":order-by may only reference :find vars; " v " is not selected")))
+        (when-not (#{:asc :desc} dir)
+          (err! :validate (str ":order-by direction must be asc or desc, got: " (pr-str dir)))))))
   ast)
 
 (defn- validate-clause!
@@ -405,6 +435,12 @@
       (err! :validate (str "Var(s) " (vec find-unbound) " in :find are never positively bound "
                            "(a var that appears only inside :not is not bound)")
             {:vars (vec find-unbound)}))
+    (doseq [[v attr _] (:order-by ast)]
+      (let [k (get kinds v)
+            allowed (order-attrs k)]
+        (when-not (and allowed (allowed attr))
+          (err! :validate (str ":order-by cannot sort a " (name (or k :unknown)) " var (" v ") by "
+                               attr "; allowed: " (vec (sort (or allowed #{}))))))))
     (-> ast
         (assoc :return (or (:return ast) :ids))
         (assoc ::var-kinds kinds))))

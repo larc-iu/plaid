@@ -372,6 +372,34 @@
             [(col a :id) (keyword (subs (name v) 1))]))
         find-vars))
 
+;; ORDER BY: an :order-by attribute -> the column it sorts on (ast validated the
+;; attribute is legal for the var's kind). The sort column is projected as a
+;; hidden `__ord_N` so it survives the UNION; exec applies the ORDER BY at
+;; assembly (outside any compound SELECT). NULLS LAST throughout (only
+;; :precedence is nullable) so missing values sort to the end either direction.
+(def ^:private order-col
+  {:begin :begin :end :end_ :precedence :precedence
+   :value :value :doc :document_id :id :id :form :form})
+
+(defn order-directive
+  "The ORDER BY directive ([[col dir] ...]) compile-query attached as metadata,
+  or nil. exec reads it from the head branch and applies it once at assembly."
+  [hq]
+  (::order-by (meta hq)))
+
+(defn- order-projection
+  "For each :order-by spec, a [hidden-select-pair  order-by-pair]. The select
+  pair exposes the sort column under `:__ord_N`; the order-by pair references it."
+  [st order-by]
+  (map-indexed
+   (fn [i [v attr dir]]
+     (let [a (get-in @st [:var->alias v])
+           ord-kw (keyword (str "__ord_" i))]
+       (when (nil? a) (err-500! (str "Order var " v " was never bound to a table") {:var v}))
+       [[(col a (order-col attr)) ord-kw]
+        [ord-kw (if (= dir :desc) :desc-nulls-last :asc-nulls-last)]]))
+   order-by))
+
 (defn- assert-acl-invariant! [st]
   (let [scoped-kind? #(or (contains? entity-table %) (layer-kind? %))
         entity-vars (->> (:kinds @st) (filter (fn [[_ k]] (scoped-kind? k))) (map key) set)
@@ -409,7 +437,12 @@
         (contains? entity-table (first clause)) (compile-relation-inline! st constraints clause)
         :else (compile-rel! st constraints clause)))
     (assert-acl-invariant! st)
-    (cond-> {:select-distinct (find-select st (:find resolved))
-             :from (:from @st)
-             :where (into [:and] (:where @st))}
-      (:limit resolved) (assoc :limit (:limit resolved)))))
+    (let [order-pairs (order-projection st (:order-by resolved))
+          select (into (find-select st (:find resolved)) (map first) order-pairs)
+          directive (mapv second order-pairs)
+          hq (cond-> {:select-distinct select
+                      :from (:from @st)
+                      :where (into [:and] (:where @st))}
+               (:limit resolved) (assoc :limit (:limit resolved)))]
+      (cond-> hq
+        (seq directive) (vary-meta assoc ::order-by directive)))))

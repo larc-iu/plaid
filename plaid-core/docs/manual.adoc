@@ -1039,6 +1039,31 @@ await client.query({
 Whatever you put in `scope` is narrowed down to what you can already read, so `scope` can only ever restrict a search--never grant access to something new.
 (Vocab layers are shared between projects, so a vocab item is visible to you when any project in your scope has been given its layer.)
 
+== Putting Results in Order
+
+Unless you say otherwise, the matches come back in no particular order--the database hands them over in whatever order is convenient, which can change from one run to the next.
+When the order matters--say you want a concordance that reads top-to-bottom through the text--add an `orderBy`.
+
+It is a list of `[variable, attribute]` pairs, read left to right, just like sorting a spreadsheet by one column and then another:
+
+[,javascript]
+----
+// every NOUN, listed by document and then by where it sits in the text
+await client.query({
+  find: ["?t"],
+  where: [["token", "?t", { layer: "Words" }],
+          ["span",  "?s", { layer: "POS", value: "NOUN" }],
+          ["covers", "?s", "?t"]],
+  orderBy: [["?t", "doc"], ["?t", "begin"]],
+});
+----
+
+A few rules of thumb:
+
+* you can only sort by a variable you actually asked for in `find`;
+* what you can sort *by* depends on what the variable is--a token by where it begins or ends or by its position (`begin`, `end`, `precedence`); a span or relation by its `value`; a vocabulary entry by its `form`; anything by its `id` or its `doc`;
+* add `"desc"` as a third element--`["?t", "begin", "desc"]`--to go from last to first; the default is first to last.
+
 == What Comes Back
 
 By default a query gives you ids, but you can ask for more by setting `return`:
