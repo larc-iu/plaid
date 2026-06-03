@@ -101,7 +101,7 @@
                       "where" [["span" "?s" {"layer" "ScProj/pos" "value" {"var" "?v"}}]]}))))
   (testing "ordering predicate on an entity var is a 400"
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"cannot order entity variables"
+         clojure.lang.ExceptionInfo #"cannot order entity"
          (ast/expand {"find" ["?a"]
                       "where" [["span" "?a" {"layer" "ScProj/pos"}]
                                ["span" "?b" {"layer" "ScProj/pos"}]

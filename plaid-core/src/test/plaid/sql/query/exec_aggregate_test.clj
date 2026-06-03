@@ -101,6 +101,33 @@
                                 [["span" "?s" {"layer" "AggProj/pos" "value" 20}]]]]
                       "return" {"group" [] "aggregates" [["count"]]}})))))
 
+(deftest count-vs-find-tuple-divergence-under-fanout
+  ;; Pins the documented subtlety: return:"count" counts distinct FIND tuples,
+  ;; while an aggregate count over a one-to-many join counts MATCHES (all bound
+  ;; vars). They diverge as soon as a covers/fan-out is present.
+  (let [pid  (h/create-test-project admin-request "FanProj")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "pos"))
+        doc  (h/create-test-document admin-request pid "d1")
+        tx   (id (h/create-text admin-request txtl doc "aa bb cc"))
+        t0 (id (h/create-token admin-request tokl tx 0 2))
+        t1 (id (h/create-token admin-request tokl tx 3 5))
+        t2 (id (h/create-token admin-request tokl tx 6 8))]
+    (h/create-span admin-request sl [t0 t1] "X")  ; covers TWO tokens
+    (h/create-span admin-request sl [t2] "Y")     ; covers one
+    (let [where [["span" "?s" {"layer" "FanProj/pos"}]
+                 ["token" "?t" {"layer" "FanProj/words"}]
+                 ["covers" "?s" "?t"]]
+          tuple-count (:count (qe/run db "admin@example.com"
+                                      {"find" ["?s"] "where" where "return" "count"}))
+          match-count (ffirst (:results (qe/run db "admin@example.com"
+                                                {"where" where "return" {"group" [] "aggregates" [["count"]]}})))]
+      (testing "return:count = distinct spans (2); group:[] count = span×token matches (3)"
+        (is (= 2 tuple-count))
+        (is (= 3 match-count))
+        (is (not= tuple-count match-count))))))
+
 (deftest aggregate-validation
   (testing ":find is rejected alongside an aggregate :return"
     (is (thrown-with-msg?

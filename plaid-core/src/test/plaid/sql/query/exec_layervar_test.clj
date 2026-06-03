@@ -136,6 +136,20 @@
                                          ["span-layer" "?sl" {"name" "pos"}]]
                                 "strict-layers" true "return" "count"})))))))
 
+(deftest layer-var-plus-literal-both-apply
+  ;; Regression (round-6): a var carrying BOTH a layer variable and a literal layer
+  ;; must satisfy both. The literal `IN` filter used to be dropped under the
+  ;; layer-var arm of the scope cond (over-broad results).
+  (let [{:keys [pos pos-noun pos-verb feat-noun]} (build!)]
+    (testing "?s on ?sl AND on the literal pos layer -> only pos spans (feat NOUN excluded)"
+      (let [r   (qe/run db "admin@example.com"
+                        {"find" ["?s"]
+                         "where" [["span" "?s" {"layer" "?sl"}]
+                                  ["span" "?s" {"layer" (str pos)}]]})
+            got (set (map first (tuples r)))]
+        (is (= #{(str pos-noun) (str pos-verb)} got))
+        (is (not (contains? got (str feat-noun))) "the feat-layer NOUN must be filtered out")))))
+
 (deftest vocab-layer-variable
   ;; Coverage: a vocab-layer layer-variable uses the distinct project_vocabs scope
   ;; path (vocab layers are global; reachable only via a grant to an in-scope

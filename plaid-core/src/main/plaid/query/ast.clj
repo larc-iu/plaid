@@ -684,9 +684,12 @@
         (doseq [t [a b] :when (var? t)]
           (when-not (positive t)
             (err! :validate (str "Predicate :" (name op) " references unbound var " t))))
+        ;; ordering ops are only meaningful on scalar values; any non-scalar var
+        ;; (entity OR layer) resolves to an opaque id with no order. Reject by the
+        ;; complement (anything that isn't a scalar) so new kinds are covered too.
         (when (and (order-pred-ops op)
-                   (some #(and (var? %) (#{:span :token :relation :vocab :document :text} (get kinds %))) [a b]))
-          (err! :validate (str "Predicate :" (name op) " cannot order entity variables "
+                   (some #(and (var? %) (not= :scalar (get kinds %))) [a b]))
+          (err! :validate (str "Predicate :" (name op) " cannot order entity/layer variables "
                                "(ids are unordered); use := or :!=")))))
     (doseq [[v attr _] (:order-by ast)]
       (let [k (get kinds v)
@@ -888,9 +891,14 @@
   projections have different shapes — a 500 from the SQL engine). Reject the
   mismatch with a clean 400."
   [branch-wheres]
+  ;; Compare the vars actually PROJECTED per branch: positive (non-:not) entity/
+  ;; layer vars — exactly the ids the distinct-match key emits. Keying off
+  ;; `infer-kinds` instead would fold in `:not`-existential vars, so a var that is
+  ;; positive in one branch but only inside a `:not` in another would look equal
+  ;; here yet project a different column count -> a UNION-arity 500.
   (let [entity-sets (mapv (fn [w]
-                            (set (keep (fn [[v k]] (when (not= :scalar k) v))
-                                       (infer-kinds {:where w}))))
+                            (let [kinds (infer-kinds {:where w})]
+                              (set (remove #(= :scalar (get kinds %)) (positive-binding-vars w)))))
                           branch-wheres)]
     (when (apply not= entity-sets)
       (err! :validate (str "When aggregating over alternatives (:or/:seq), every alternative must bind the "

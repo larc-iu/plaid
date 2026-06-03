@@ -68,6 +68,53 @@
                               ["related*" "?a" "?b" {"layer" "ClsProj/dep" "value" "det"}]]})]
       (is (= #{"B"} (vals-of r))))))
 
+(defn- build-other!
+  "A SECOND project with its own node/dep chain X->Y, to prove :related* never
+  reaches across projects."
+  []
+  (let [pid  (h/create-test-project admin-request "OtherCls")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        nl   (id (h/create-span-layer admin-request tokl "node"))
+        dl   (id (h/create-relation-layer admin-request nl "dep"))
+        doc  (h/create-test-document admin-request pid "d1")
+        text (id (h/create-text admin-request txtl doc "xx yy"))
+        mk   (fn [b e v] (let [t (id (h/create-token admin-request tokl text b e))]
+                           (id (h/create-span admin-request nl [t] v))))
+        x (mk 0 2 "X") y (mk 3 5 "Y")]
+    (h/create-relation admin-request dl x y "det")
+    {:pid pid}))
+
+(deftest related-value-list
+  (build!)
+  (testing "an edge-value LIST (alternation) follows any matching edge -> A reaches B and C"
+    ;; exercises the IN-list compile path for :related* :value (vs the scalar = path)
+    (let [r (qe/run db "admin@example.com"
+                    {"find" ["?b"]
+                     "where" [["span" "?a" {"layer" "ClsProj/node" "value" "A"}]
+                              ["span" "?b" {"layer" "ClsProj/node"}]
+                              ["related*" "?a" "?b" {"layer" "ClsProj/dep" "value" ["det" "nsubj"]}]]})]
+      (is (= #{"B" "C"} (vals-of r))))))
+
+(deftest related-respects-scope
+  (build!)        ; ClsProj: A->B->C
+  (build-other!)  ; OtherCls: X->Y
+  (testing ":scope confines :related* to one project; reachability never crosses into OtherCls"
+    ;; the bare name "dep" would be ambiguous across both projects without scope;
+    ;; scoping to ClsProj resolves it uniquely and bounds the closure to ClsProj.
+    (let [r (qe/run db "admin@example.com"
+                    {"find" ["?a" "?b"]
+                     "where" [["span" "?a" {"layer" "?nl"}]
+                              ["span" "?b" {"layer" "?nl"}]
+                              ["span-layer" "?nl" {"name" "node"}]
+                              ["related*" "?a" "?b" {"layer" "dep"}]]
+                     "scope" {"projects" ["ClsProj"]}})
+          pairs (set (map (fn [[sa sb]]
+                            [(:span/value (:body (h/get-span admin-request sa)))
+                             (:span/value (:body (h/get-span admin-request sb)))])
+                          (:results r)))]
+      (is (= #{["A" "B"] ["A" "C"] ["B" "C"]} pairs)))))
+
 (deftest related-validation
   (testing ":related* without a :layer is a 400"
     (is (thrown-with-msg?

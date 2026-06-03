@@ -319,3 +319,27 @@
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?x"]
                                               "where" [["text" "?x" {}] ["text" "?x2" {}]
                                                        [">" "?x" "?x2"]]}))))))
+
+(deftest review6-hardening
+  (testing "ordering predicates on LAYER variables are rejected (layer ids are unordered)"
+    (is (= 400 (code-of #(ast/parse+validate
+                          {"find" ["?a"]
+                           "where" [["span" "?a" {"layer" "?sl"}] ["span" "?b" {"layer" "?sl2"}]
+                                    ["span-layer" "?sl" {}] ["span-layer" "?sl2" {}]
+                                    ["<" "?sl" "?sl2"]]}))))
+    (testing "but = / != on layer vars stay allowed (same/different layer)"
+      (is (some? (ast/parse+validate
+                  {"find" ["?a"]
+                   "where" [["span" "?a" {"layer" "?sl"}] ["span" "?b" {"layer" "?sl2"}]
+                            ["span-layer" "?sl" {}] ["span-layer" "?sl2" {}]
+                            ["!=" "?sl" "?sl2"]]})))))
+  (testing "aggregating over :or where a var is positive in one branch but :not-only in another is a clean 400"
+    ;; ?t is positively bound in branch 1, but appears only inside :not in branch 2 —
+    ;; the branches would project different entity-var counts -> UNION arity 500.
+    ;; Must be rejected at validate, not blow up in SQL.
+    (is (= 400 (code-of #(ast/expand
+                          {"where" [["span" "?s" {"layer" "p"}]
+                                    ["or"
+                                     [["token" "?t" {"layer" "w"}] ["covers" "?s" "?t"]]
+                                     [["not" ["token" "?t" {"layer" "w"}] ["covers" "?s" "?t"]]]]]
+                           "return" {"group" ["?s"] "aggregates" [["count"]]}}))))))
