@@ -612,7 +612,12 @@ client.query({
   comparable.
 - **Group keys** are bound variables (an entity → grouped by its id; a value
   variable → grouped by its value). `"group": []` (or omitted) gives one overall
-  row — the general form of `return: "count"`.
+  row. Note its `count` is the number of distinct **full matches** (bindings of
+  *every* variable in the query), which is **not** in general the same as
+  `return: "count"` — that counts distinct tuples of the `find` variables only.
+  The two agree only when `find` already names every bound entity; a one-to-many
+  join (e.g. an added `["covers", "?s", "?t"]`) makes the aggregate `count`
+  larger. See the fan-out note below.
 - Aggregation runs over the **distinct set of matches** (every distinct binding of
   the query's variables). Result columns are the group variable names followed by
   one column per aggregate (`op` for `count`, `op_var` otherwise).
@@ -620,13 +625,14 @@ client.query({
   30s time limit still applies, and a very large number of groups is truncated.
 - `find` and `order-by` aren't used with an aggregate `return`.
 
-> ⚠️ **Fan-out matters for `sum`/`avg`.** Because a match is a binding of *all* the
-> query's variables, a one-to-many join repeats the aggregated value once per
-> match. If you bind extra entities — e.g. `["covers", "?s", "?t"]` — a span's
-> value is counted once *per token it covers*, so `sum`/`avg` over `?s`'s value
-> will be inflated by that fan-out (`count` and `min`/`max` are unaffected). Keep
-> the WHERE pattern down to the entity you're aggregating (plus pure filters) when
-> you want a faithful `sum`/`avg`.
+> ⚠️ **Fan-out matters.** Because a match is a binding of *all* the query's
+> variables, a one-to-many join repeats the aggregated value once per match. If you
+> bind extra entities — e.g. `["covers", "?s", "?t"]` — a span's value is counted
+> once *per token it covers*, so `sum`/`avg` over `?s`'s value will be inflated by
+> that fan-out, and `count` likewise reports the number of *matches* (span×token
+> pairs), not the number of distinct spans. (`min`/`max` are unaffected — the extra
+> copies don't change the extremes.) Keep the WHERE pattern down to the entity
+> you're measuring (plus pure filters) when you want faithful `sum`/`avg`/`count`.
 
 ---
 

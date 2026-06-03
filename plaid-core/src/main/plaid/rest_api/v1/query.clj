@@ -31,6 +31,11 @@
                                {:status code :body {:error (ex-message e)}}
                                (do (log/error e "Query failed for user" user-id)
                                    {:status code :body {:error "Internal query error"}}))))
-                         (catch Exception e
+                         ;; Throwable, not Exception: a deeply-nested query body
+                         ;; can recurse to a StackOverflowError (an Error), which
+                         ;; would otherwise escape uncaught and bypass this 500
+                         ;; envelope. Parse caps nesting depth too, but catch
+                         ;; defensively so no internal Error ever reaches the wire.
+                         (catch Throwable e
                            (log/error e "Query failed for user" user-id)
                            {:status 500 :body {:error "Internal query error"}})))}}]])

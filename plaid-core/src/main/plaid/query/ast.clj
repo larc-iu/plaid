@@ -201,57 +201,71 @@
                                     (pr-str (first more))))))]
     (cond-> [head cmap] named (conj :as named))))
 
+;; Bounds parse/expand/validate recursion so a deeply-nested clause body (e.g.
+;; `[:not [:not [:not ...]]]`) can't blow the stack with a StackOverflowError —
+;; which, being an `Error` not an `Exception`, would escape the endpoint's
+;; ExceptionInfo/Exception handlers and surface as an uncaught 500. Capping at
+;; parse time bounds the depth of every downstream walk too.
+(def ^:private max-clause-depth 64)
+
 (defn- normalize-seq-element
-  [elem]
-  (when-not (and (sequential? elem) (seq elem))
-    (err! :parse (str "Each seq element must be a non-empty vector, got: " (pr-str elem))))
-  (let [head (->kw (first elem))]
-    (cond
-      (#{:? :* :+} head) [head (normalize-seq-element (second elem))]
-      (= :rep head)      (let [[_ n m inner] elem] [:rep n m (normalize-seq-element inner)])
-      :else              (normalize-seq-atom head (rest elem)))))
+  ([elem] (normalize-seq-element elem 0))
+  ([elem depth]
+   (when (> depth max-clause-depth)
+     (err! :parse (str "Seq element quantifiers nested too deeply (max " max-clause-depth ")")))
+   (when-not (and (sequential? elem) (seq elem))
+     (err! :parse (str "Each seq element must be a non-empty vector, got: " (pr-str elem))))
+   (let [head (->kw (first elem))]
+     (cond
+       (#{:? :* :+} head) [head (normalize-seq-element (second elem) (inc depth))]
+       (= :rep head)      (let [[_ n m inner] elem] [:rep n m (normalize-seq-element inner (inc depth))])
+       :else              (normalize-seq-atom head (rest elem))))))
 
 (declare normalize-clause)
 
 (defn- normalize-or-clause
   "Normalize an [:or group ...] clause; each group is a list of clauses (its own
   conjunction). Clauses are normalized recursively, so groups may nest :or/:seq."
-  [groups]
+  [groups depth]
   (into [:or]
         (map (fn [g]
                (when-not (sequential? g)
                  (err! :parse (str "Each :or group must be a list of clauses, got: " (pr-str g))))
-               (mapv normalize-clause g)))
+               (mapv #(normalize-clause % depth) g)))
         groups))
 
 (defn- normalize-not-clause
   "Normalize a [:not clause ...] clause; the negated sub-pattern is the
   conjunction of the given clauses (normalized recursively)."
-  [clauses]
-  (into [:not] (map normalize-clause clauses)))
+  [clauses depth]
+  (into [:not] (map #(normalize-clause % depth) clauses)))
 
 (defn- normalize-seq-clause
   "Normalize a [:seq {config} elem ...] clause."
-  [args]
+  [args depth]
   (when-not (map? (first args))
     (err! :parse "A :seq clause needs a config map (with at least :layer) as its first argument"))
   (into [:seq (normalize-constraints (first args))]
-        (map normalize-seq-element (rest args))))
+        (map #(normalize-seq-element % depth) (rest args))))
 
 (defn- normalize-clause
-  [clause]
-  (when-not (and (sequential? clause) (seq clause))
-    (err! :parse (str "Each :where clause must be a non-empty vector, got: " (pr-str clause))))
-  (let [head (->kw (first clause))]
-    (cond
-      (= head :seq) (normalize-seq-clause (rest clause))
-      (= head :or)  (normalize-or-clause (rest clause))
-      (= head :not) (normalize-not-clause (rest clause))
-      ;; predicate: terms are vars or literals (numbers/strings pass through)
-      (pred-ops head) (into [head] (map ->var) (rest clause))
-      :else (into [head]
-                  (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
-                  (rest clause)))))
+  ([clause] (normalize-clause clause 0))
+  ([clause depth]
+   (when (> depth max-clause-depth)
+     (err! :parse (str "Query clauses nested too deeply (max " max-clause-depth ")")))
+   (when-not (and (sequential? clause) (seq clause))
+     (err! :parse (str "Each :where clause must be a non-empty vector, got: " (pr-str clause))))
+   (let [head (->kw (first clause))
+         d (inc depth)]
+     (cond
+       (= head :seq) (normalize-seq-clause (rest clause) d)
+       (= head :or)  (normalize-or-clause (rest clause) d)
+       (= head :not) (normalize-not-clause (rest clause) d)
+       ;; predicate: terms are vars or literals (numbers/strings pass through)
+       (pred-ops head) (into [head] (map ->var) (rest clause))
+       :else (into [head]
+                   (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
+                   (rest clause))))))
 
 (defn- normalize-order-spec
   "Canonicalize one :order-by entry to `[?var :attr :dir]` (dir defaults :asc)."
@@ -288,8 +302,14 @@
     (err! :parse (str "Query must be a map/object, got: " (pr-str raw))))
   (let [m (reduce-kv (fn [acc k v] (assoc acc (->kw k) v)) {} raw)]
     (cond-> {}
-      (contains? m :find)   (assoc :find (mapv ->var (:find m)))
-      (contains? m :where)  (assoc :where (mapv normalize-clause (:where m)))
+      (contains? m :find)   (assoc :find (let [f (:find m)]
+                                           (when-not (sequential? f)
+                                             (err! :parse (str ":find must be a list of vars, got: " (pr-str f))))
+                                           (mapv ->var f)))
+      (contains? m :where)  (assoc :where (let [w (:where m)]
+                                            (when-not (sequential? w)
+                                              (err! :parse (str ":where must be a list of clauses, got: " (pr-str w))))
+                                            (mapv normalize-clause w)))
       (contains? m :scope)  (assoc :scope (let [s (:scope m)]
                                             (when-not (map? s)
                                               (err! :parse (str ":scope must be a map with :projects and/or :project-ids, got: " (pr-str s))))
@@ -606,7 +626,14 @@
           (when (seq unknown)
             (err! :validate (str ":related* constraints may only be :layer and :value, got: " (vec unknown))))
           (when (symbol? (:layer cmap))
-            (err! :validate ":related* :layer must be a relation-layer reference, not a variable"))))
+            (err! :validate ":related* :layer must be a relation-layer reference, not a variable"))
+          ;; the compiler matches an edge's :value with literal `=` / list `IN`
+          ;; only; a regex/value-variable map would silently compile to an
+          ;; equality against the literal map text and never match. Reject it.
+          (when-let [val (:value cmap)]
+            (when (map? val)
+              (err! :validate (str ":related* :value must be a literal or a list of literals; "
+                                   "regex and value-variables are not supported on :related* edges"))))))
 
       (pred-ops head)
       (do
@@ -658,7 +685,7 @@
           (when-not (positive t)
             (err! :validate (str "Predicate :" (name op) " references unbound var " t))))
         (when (and (order-pred-ops op)
-                   (some #(and (var? %) (#{:span :token :relation :vocab} (get kinds %))) [a b]))
+                   (some #(and (var? %) (#{:span :token :relation :vocab :document :text} (get kinds %))) [a b]))
           (err! :validate (str "Predicate :" (name op) " cannot order entity variables "
                                "(ids are unordered); use := or :!=")))))
     (doseq [[v attr _] (:order-by ast)]

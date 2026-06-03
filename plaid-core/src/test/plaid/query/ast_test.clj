@@ -288,3 +288,34 @@
   (is (not (ast/var? 's)))
   (is (not (ast/var? "?s")))
   (is (= (symbol "?s") (ast/->var "?s"))))
+
+(deftest review3-hardening
+  (testing "non-seqable :find / :where are a clean 400, not a 500 (no ISeq IllegalArgumentException)"
+    (is (= 400 (code-of #(ast/parse {"find" 5 "where" [["span" "?s" {"layer" "x"}]]}))))
+    (is (= 400 (code-of #(ast/parse {"find" ["?s"] "where" 7}))))
+    (is (= 400 (code-of #(ast/expand {"find" 5 "where" [["span" "?s" {"layer" "x"}]]})))))
+  (testing "deeply nested clause bodies are capped at parse with a 400 (no StackOverflowError escaping)"
+    (let [nest  (fn nest [n] (if (zero? n) ["span" "?s" {"layer" "x"}] ["not" (nest (dec n))]))
+          onest (fn onest [n] (if (zero? n) ["span" "?s" {"layer" "x"}]
+                                  ["or" [(onest (dec n))] [["span" "?s" {}]]]))]
+      (is (= 400 (code-of #(ast/parse {"find" ["?s"] "where" [(nest 2000)]}))))
+      (is (= 400 (code-of #(ast/parse {"find" ["?s"] "where" [(onest 2000)]}))))
+      ;; shallow nesting still works
+      (is (some? (ast/parse {"find" ["?s"] "where" [(nest 5)]})))))
+  (testing ":related* :value accepts a literal or list, but rejects a regex/value-var map (would never match)"
+    (let [ok (fn [v] (ast/parse+validate
+                      {"find" ["?a" "?b"]
+                       "where" [["span" "?a" {"layer" "s"}] ["span" "?b" {"layer" "s"}]
+                                ["related*" "?a" "?b" (merge {"layer" "dep"} (when v {"value" v}))]]}))]
+      (is (some? (ok nil)))
+      (is (some? (ok "nsubj")))
+      (is (some? (ok ["nsubj" "obj"])))
+      (is (= 400 (code-of #(ok {"regex" "^d"}))) "regex on a :related* edge is rejected, not silently non-matching")
+      (is (= 400 (code-of #(ok {"var" "?v"}))) "value-variable on a :related* edge is rejected")))
+  (testing "ordering predicates on document/text vars are rejected (entity ids are unordered)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?d"]
+                                              "where" [["document" "?d" {}] ["document" "?d2" {}]
+                                                       ["<" "?d" "?d2"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?x"]
+                                              "where" [["text" "?x" {}] ["text" "?x2" {}]
+                                                       [">" "?x" "?x2"]]}))))))

@@ -452,9 +452,22 @@
                          ;; per-hop relation filter: in the (scoped) layer set, and
                          ;; the optional :value. Correlates scope via layer-ids.
                          hop (fn [r]
-                               (cond-> [:and [:in (col r :relation_layer_id) layer-ids]]
-                                 (contains? cmap :value)
-                                 (conj (atomic-pred (col r :value) (:value cmap) psc/write-json))))]
+                               (let [s (next-alias! st "rcs")
+                                     sl (next-alias! st "rcsl")]
+                                 (cond-> [:and [:in (col r :relation_layer_id) layer-ids]
+                                          ;; defense-in-depth: the span this hop reaches must
+                                          ;; itself live in a span layer within scope, so
+                                          ;; reachability can't cross into an unreadable project
+                                          ;; even if a relation's endpoints ever did. (Today the
+                                          ;; relation write-path forbids that, so this is belt &
+                                          ;; braces — but it makes :related* self-sufficient.)
+                                          [:exists {:select [1]
+                                                    :from [[:spans s] [:span_layers sl]]
+                                                    :where [:and [:= (col s :id) (col r :target_span_id)]
+                                                            [:= (col sl :id) (col s :span_layer_id)]
+                                                            [:in (col sl :project_id) (:scope @st)]]}]]
+                                   (contains? cmap :value)
+                                   (conj (atomic-pred (col r :value) (:value cmap) psc/write-json)))))]
                      ;; transitive reachability over source_span_id -> target_span_id,
                      ;; via a correlated recursive CTE inside EXISTS (>=1 hop).
                      (add-where! st

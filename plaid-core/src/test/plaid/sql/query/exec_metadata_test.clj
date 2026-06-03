@@ -71,6 +71,51 @@
                       {"find" ["?d"] "where" [["document" "?d" {"metadata" {"genre" "news"}}]]})]
         (is (= #{(str d1)} (ids r)))))))
 
+(defn- build-kinds!
+  "One of each metadatable entity carrying `tag=keep` (plus an untagged sibling),
+  to exercise every kind->meta-type mapping (token/relation/vocab-item/text), not
+  just span/document."
+  []
+  (let [pid  (h/create-test-project admin-request "MetaKinds")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "pos"))
+        rl   (id (h/create-relation-layer admin-request sl "dep"))
+        vl   (id (h/create-vocab-layer admin-request "lex"))
+        _    (h/link-vocab-to-project admin-request pid vl)
+        d1   (h/create-test-document admin-request pid "doc-1")
+        text (id (h/create-text admin-request txtl d1 "aa bb"))
+        t0 (id (h/create-token admin-request tokl text 0 2 nil {"tag" "keep"}))
+        t1 (id (h/create-token admin-request tokl text 3 5))
+        sa (id (h/create-span admin-request sl [t0] "A"))
+        sb (id (h/create-span admin-request sl [t1] "B"))
+        r0 (id (h/create-relation admin-request rl sa sb "nsubj" {"tag" "keep"}))
+        vi (id (h/create-vocab-item admin-request vl "dog" {"tag" "keep"}))]
+    (h/update-text-metadata admin-request text {"tag" "keep"})
+    {:t0 t0 :r0 r0 :vi vi :text text}))
+
+(deftest metadata-on-all-kinds
+  (let [{:keys [t0 r0 vi text]} (build-kinds!)]
+    (testing "token metadata (entity_type = token)"
+      (is (= #{(str t0)}
+             (ids (qe/run db "admin@example.com"
+                          {"find" ["?t"] "where" [["token" "?t" {"layer" "MetaKinds/words"
+                                                                 "metadata" {"tag" "keep"}}]]})))))
+    (testing "relation metadata (entity_type = relation)"
+      (is (= #{(str r0)}
+             (ids (qe/run db "admin@example.com"
+                          {"find" ["?r"] "where" [["relation" "?r" {"layer" "MetaKinds/dep"
+                                                                    "metadata" {"tag" "keep"}}]]})))))
+    (testing "vocab-item metadata (entity_type = vocab-item)"
+      (is (= #{(str vi)}
+             (ids (qe/run db "admin@example.com"
+                          {"find" ["?v"] "where" [["vocab" "?v" {"layer" "lex"
+                                                                 "metadata" {"tag" "keep"}}]]})))))
+    (testing "text metadata (entity_type = text)"
+      (is (= #{(str text)}
+             (ids (qe/run db "admin@example.com"
+                          {"find" ["?x"] "where" [["text" "?x" {"metadata" {"tag" "keep"}}]]})))))))
+
 (deftest metadata-validation
   (testing "a bad regex inside metadata is a 400"
     (is (thrown-with-msg?

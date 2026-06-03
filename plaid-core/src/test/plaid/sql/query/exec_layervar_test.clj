@@ -136,6 +136,28 @@
                                          ["span-layer" "?sl" {"name" "pos"}]]
                                 "strict-layers" true "return" "count"})))))))
 
+(deftest vocab-layer-variable
+  ;; Coverage: a vocab-layer layer-variable uses the distinct project_vocabs scope
+  ;; path (vocab layers are global; reachable only via a grant to an in-scope
+  ;; project) — exercised here end-to-end, unlike the span-layer paths above.
+  (let [pid (h/create-test-project admin-request "VLVProj")
+        vl  (id (h/create-vocab-layer admin-request "lexicon"))
+        _   (h/link-vocab-to-project admin-request pid vl)
+        dog (id (h/create-vocab-item admin-request vl "dog"))
+        _   (id (h/create-vocab-item admin-request vl "cat"))]
+    (testing "a vocab var bound through a [:vocab-layer ?vl {:name ...}] clause resolves in-scope items"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?v"]
+                       "where" [["vocab" "?v" {"layer" "?vl" "form" "dog"}]
+                                ["vocab-layer" "?vl" {"name" "lexicon"}]]})]
+        (is (= [[(str dog)]] (tuples r)))))
+    (testing "the layer var can be projected in :find"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?vl"]
+                       "where" [["vocab" "?v" {"layer" "?vl" "form" "dog"}]
+                                ["vocab-layer" "?vl" {"name" "lexicon"}]]})]
+        (is (= [[(str vl)]] (tuples r)))))))
+
 (deftest not-with-layer-constraint-clause
   ;; Regression: a [:span-layer ?SL {...}] clause inside a :not used to fall to
   ;; compile-rel!'s default branch and throw a 500. It must compile + run.
