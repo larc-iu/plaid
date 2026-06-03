@@ -25,7 +25,15 @@ export const Layout = () => {
       >
         <Container size="xl">
           <Group justify="space-between" h={64}>
-            <Title order={3}>Plaid UD</Title>
+            <Title
+              order={3}
+              component={Link}
+              to="/"
+              c="inherit"
+              style={{ textDecoration: 'none' }}
+            >
+              Plaid UD
+            </Title>
             {user && (
               <Group gap="xs">
                 <Button component={Link} to="/profile" variant="subtle" color="gray" size="sm">
