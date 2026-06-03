@@ -89,6 +89,14 @@
 ;; Pass B: ensure every var has a table + scope predicate + filters
 ;; ---------------------------------------------------------------------------
 
+(defn- atomic-pred
+  "`= literal` for a scalar value, `IN (…)` for a vector (value alternation).
+  `enc` encodes each literal to its stored form."
+  [col v enc]
+  (if (vector? v)
+    [:in col (mapv enc v)]
+    [:= col (enc v)]))
+
 (defn- ensure-var!
   "Allocate (once) a table alias for var v, emit its base table, scope predicate,
   and the value/doc/begin/end filters from ALL its entity constraint maps (ANDed).
@@ -129,15 +137,15 @@
           ;; --- non-scope filters, ANDed across every clause on this var ---
           (doseq [cs cmaps]
             (when (contains? cs :value)
-              (add-where! st [:= (col a :value) (psc/write-json (:value cs))]))
+              (add-where! st (atomic-pred (col a :value) (:value cs) psc/write-json)))
             (when (contains? cs :form)          ; vocab_items.form — plain TEXT, not JSON
-              (add-where! st [:= (col a :form) (:form cs)]))
+              (add-where! st (atomic-pred (col a :form) (:form cs) identity)))
             (when (contains? cs :doc)
-              (add-where! st [:= (col a :document_id) (str (:doc cs))]))
+              (add-where! st (atomic-pred (col a :document_id) (:doc cs) str)))
             (when (contains? cs :begin)
-              (add-where! st [:= (col a :begin) (:begin cs)]))
+              (add-where! st (atomic-pred (col a :begin) (:begin cs) identity)))
             (when (contains? cs :end)
-              (add-where! st [:= (col a :end_) (:end cs)]))))))
+              (add-where! st (atomic-pred (col a :end_) (:end cs) identity)))))))
     (get-in @st [:var->alias v])))
 
 ;; ---------------------------------------------------------------------------

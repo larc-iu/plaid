@@ -217,6 +217,16 @@
     (is (= 400 (code-of #(ast/expand {"find" ["?s"] "where" [["or" [["span" "?s" {}]] "notagroup"]]})))
         "each :or group must be a list of clauses")))
 
+(deftest value-alternation
+  (testing "a vector constraint value (one-of) is accepted on literal-match keys"
+    (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"value" ["NOUN" "VERB"]}]]})))
+    (is (some? (ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"begin" [0 5]}]]}))))
+  (testing "an empty list is rejected"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"value" []}]]})))))
+  (testing "alternation is not allowed on :layer (multi-layer is a 400) or :source"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" ["a" "b"]}]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?r"] "where" [["relation" "?r" {"source" ["?a" "?b"]}]]}))))))
+
 (deftest find-rejects-duplicate-vars
   (testing "a duplicate var in :find is a 400 (would emit a duplicate result column)"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s" "?s"] "where" [["span" "?s" {}]]}))))))

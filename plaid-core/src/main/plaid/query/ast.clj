@@ -55,6 +55,11 @@
    :relation #{:layer :value :doc :source :target}
    :vocab    #{:layer :form}})
 
+;; Constraint keys whose value may be a vector = "one of" (compiles to IN). The
+;; literal-match keys only — NOT :layer (multi-layer is unique-or-400 / future
+;; layer vars) or :source/:target (vars).
+(def ^:private alternation-keys #{:value :form :doc :begin :end})
+
 ;; Relationship clauses and their arity (number of var args after the head).
 (def ^:private rel-clauses
   {:covers     2     ; [:covers ?span ?token]
@@ -285,7 +290,17 @@
               unknown (remove allowed (keys (or cmap {})))]
           (when (seq unknown)
             (err! :validate (str "Unknown constraint key(s) " (vec unknown) " on :" (name head)
-                                 " (allowed: " (vec (sort allowed)) ")")))))
+                                 " (allowed: " (vec (sort allowed)) ")"))))
+        ;; value alternation: a vector value means "one of" -> IN. Allowed only on
+        ;; the literal-match keys; non-empty.
+        (doseq [[k v] cmap]
+          (when (vector? v)
+            (when-not (alternation-keys k)
+              (err! :validate (str ":" (name head) " constraint :" (name k)
+                                   " does not support a list value (alternation is allowed on "
+                                   (vec (sort alternation-keys)) ")")))
+            (when (empty? v)
+              (err! :validate (str ":" (name head) " constraint :" (name k) " list must be non-empty"))))))
 
       (contains? rel-clauses head)
       (let [arity (rel-clauses head)]

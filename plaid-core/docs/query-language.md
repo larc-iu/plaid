@@ -99,6 +99,11 @@ readable projects (§8). A few examples:
 > stored value exactly. `form` (on vocab) is plain text. The clients and the
 > engine handle encoding for you — just pass the literal you want.
 
+> **One-of (alternation).** The literal-match keys — `value`, `form`, `doc`,
+> `begin`, `end` — also accept a **list**, meaning "any of these":
+> `{"value": ["NOUN", "PROPN"]}` → `value IN (…)`. (Not `layer`, which must
+> resolve to a single layer — §6.)
+
 ---
 
 ## 4. Relationship clauses
@@ -226,9 +231,9 @@ Rules:
 - Each group is compiled as its own conjunctive query and the results are
   `UNION`ed (set semantics — a row matching two groups appears once).
 
-> For simple "one field is one of several values" alternation, a value list
-> (`{"value": ["NOUN", "PROPN"]}`) — compiling to a single `IN` rather than a
-> UNION — is planned as a lighter-weight shorthand.
+> For simple "one field is one of several values" alternation, prefer a **value
+> list** (§3) — `{"value": ["NOUN", "PROPN"]}` compiles to a single `IN` rather
+> than a UNION of branches.
 
 ---
 
@@ -493,8 +498,6 @@ clauses). Matches if any group matches; results are UNIONed.
 
 ## 14. Not yet supported (roadmap)
 
-- Value-list alternation (`{"value": ["NOUN", "PROPN"]}` → `IN`) — a lighter
-  shorthand for `:or` on a single field.
 - Negation (`:not` / "no such clause").
 - Unbounded sequence quantifiers (`*`, `+`).
 - Cursor/streaming for very large result sets.

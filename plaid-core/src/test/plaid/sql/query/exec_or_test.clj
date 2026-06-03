@@ -63,6 +63,15 @@
         (is (= 3 (:count r)))
         (is (= #{(str noun0) (str verb1) (str noun2)} (set (map first (tuples r)))))))))
 
+(deftest value-alternation-matches-as-one-query
+  (let [{:keys [noun0 verb1 noun2]} (build!)]
+    (testing "{:value [NOUN VERB]} matches the same set as the :or, via a single IN (1 branch)"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?s"]
+                       "where" [["span" "?s" {"layer" "OrProj/pos" "value" ["NOUN" "VERB"]}]]})]
+        (is (= 3 (:count r)))
+        (is (= #{(str noun0) (str verb1) (str noun2)} (set (map first (tuples r)))))))))
+
 (deftest or-count-is-distinct-union
   (build!)
   (testing ":return :count over an :or counts the distinct union"
