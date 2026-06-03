@@ -16,6 +16,9 @@
   "exports": {
     ".": "./src/index.js"
   },
+  "scripts": {
+    "test": "node --test"
+  },
   "files": [
     "src/",
     "index.d.ts"
